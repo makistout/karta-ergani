@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ψηφιακή κάρτα</title>
+  <link rel="stylesheet" href="/static/css/office.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">Λογιστικό Γραφείο<small>Ψηφιακή Κάρτα Εργασίας</small></div>
+      <nav>
+        <a href="/ui/" data-nav="home">Αρχική</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
+        <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
+        <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/work-card" data-nav="workcard" class="active">Ψηφιακή κάρτα</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <h1 class="page-title"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i> Ψηφιακή κάρτα</h1>
+      <p class="page-desc" id="workCardDesc">Δηλώσεις εισόδου/εξόδου (WRKCardSE) στο Ergani API για το ενεργό κατάστημα.</p>
+
+      <div class="card work-card-terminal">
+        <div class="terminal-badge online">
+          <span class="terminal-badge-dot" aria-hidden="true"></span>
+          ONLINE · ΤΕΡΜΑΤΙΚΟ ΨΗΦΙΑΚΗΣ ΚΑΡΤΑΣ
+        </div>
+        <div class="terminal-clock" id="terminalClock" aria-live="polite">--:--:--</div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <h2 style="font-size:1rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.4rem;">
+          <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Νέα δήλωση
+        </h2>
+        <div id="workCardForm" class="work-card-form">
+          <div class="form-row">
+            <label for="wcEmployeeInput">Εργαζόμενος</label>
+            <div class="ac-wrap">
+              <input id="wcEmployeeInput" type="text" placeholder="ΑΦΜ, επώνυμο ή όνομα…" autocomplete="off"
+                disabled role="combobox" aria-autocomplete="list" aria-controls="wcEmployeeList" aria-expanded="false">
+              <ul id="wcEmployeeList" class="ac-list" role="listbox"></ul>
+            </div>
+            <input type="hidden" id="wcEmployeeAfm">
+          </div>
+          <div class="form-row">
+            <label for="wcComments">Σχόλιο (προαιρετικό)</label>
+            <input type="text" id="wcComments" maxlength="500" placeholder="π.χ. mobile app v1">
+          </div>
+          <div class="work-card-actions">
+            <button type="button" class="btn" id="btnCheckIn" disabled>
+              <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span>Είσοδος (check_in)</span>
+            </button>
+            <button type="button" class="btn btn-outline-primary" id="btnCheckOut" disabled>
+              <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Έξοδος (check_out)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar-dates card">
+        <div class="toolbar-dates-row">
+          <div id="workCardDatePicker"></div>
+          <button type="button" class="btn btn-secondary" id="btnRefreshCards">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Συγχρονισμός & ανανέωση</span>
+          </button>
+        </div>
+      </div>
+      <div class="card work-card-section">
+        <h2 class="work-card-section-title">
+          <i class="bi bi-clock-history" aria-hidden="true"></i> Πραγματική απασχόληση (portal Ergani)
+        </h2>
+        <p class="work-card-section-desc">Τι έχει καταγραφεί στο ημερολόγιο πραγματικής — ενημερώνεται με «Συγχρονισμός &amp; ανανέωση» (portal parse) ή από τη <a href="/ui/work-log">σελίδα πραγματικής</a>.</p>
+        <div id="workLogWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+
+      <div class="card work-card-section">
+        <h2 class="work-card-section-title">
+          <i class="bi bi-database" aria-hidden="true"></i> Δηλώσεις ψηφιακής κάρτας (δική μας βάση)
+        </h2>
+        <p class="work-card-section-desc">Τι έχουμε υποβάλει στο Ergani API (WRKCardSE) και αποθηκεύσει τοπικά.</p>
+        <div id="workCardWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+      <div id="wcMsg" class="msg"></div>
+    </main>
+  </div>
+  <script src="/static/js/office-common.js"></script>
+  <script src="/static/js/office-autocomplete.js"></script>
+  <script src="/static/js/office-date-picker.js"></script>
+  <script src="/static/js/work-card-list.js"></script>
+</body>
+</html>

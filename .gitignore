@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+documentation/document_extracted.txt
+
+# Scripts — προσωρινά / δοκιμές
+scripts/temp_portal_output/
+scripts/__pycache__/
+scripts/*.json
+scripts/temp_*.py
+scripts/temp_probe_*.py
