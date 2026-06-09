@@ -87,8 +87,10 @@ function renderTable(rows, count, store) {
 
 async function runSync() {
   const btn = document.getElementById("btnSyncEmployees");
-  btn.disabled = true;
-  Office.showMsg("empMsg", "Συγχρονισμός με Ergani…", true);
+  const wrap = document.getElementById("employeesWrap");
+  Office.setButtonLoading(btn, true);
+  Office.showLoading("empMsg", "Συγχρονισμός με Ergani… Παρακαλώ περιμένετε.");
+  if (wrap) Office.showTableLoading(wrap, "Συγχρονισμός Ergani…");
   try {
     const res = await fetch("/api/ergani/sync-all", { method: "POST" });
     const data = await res.json();
@@ -103,6 +105,6 @@ async function runSync() {
   } catch (e) {
     Office.showMsg("empMsg", String(e), false);
   } finally {
-    btn.disabled = false;
+    Office.setButtonLoading(btn, false);
   }
 }

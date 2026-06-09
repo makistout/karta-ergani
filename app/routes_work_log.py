@@ -7,6 +7,13 @@ from flask import Blueprint, jsonify, request
 
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
+from app.portal_work_log_sync import iter_work_log_sync_events
+from app.sync_jobs import get_sync_job
+from app.sync_route_util import (
+    parse_sync_request,
+    should_run_async,
+    start_async_portal_sync,
+)
 from app.repo_work_log import (
     list_work_log_for_range,
     list_work_log_for_store,
@@ -79,8 +86,19 @@ def work_log_sync_route():
     if not ctx:
         return jsonify({"error": "Δεν έχει επιλεγεί κατάστημα"}), 400
     data = request.get_json(silent=True) or {}
-    from_iso = data.get("from") or data.get("date")
-    to_iso = data.get("to") or from_iso
+    from_iso, to_iso, dates = parse_sync_request(data)
+    if not from_iso:
+        return jsonify({"error": "Λείπει date ή from/to"}), 400
+
+    if should_run_async(data, dates):
+        store_ctx = dict(ctx)
+        return start_async_portal_sync(
+            lambda: iter_work_log_sync_events(
+                store_ctx, from_iso=from_iso, to_iso=to_iso, max_days=31
+            ),
+            label="work_log_sync",
+        )
+
     try:
         result = fetch_and_save_work_log_for_ctx(
             ctx,
@@ -102,3 +120,11 @@ def work_log_sync_route():
         "sync": result,
         "error": result.get("detail") if not result.get("success") else None,
     })
+
+
+@work_log_bp.get("/sync/status/<job_id>")
+def work_log_sync_status(job_id: str):
+    job = get_sync_job(job_id)
+    if not job:
+        return jsonify({"error": "Άγνωστο ή ολοκληρωμένο job"}), 404
+    return jsonify(job)

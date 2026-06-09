@@ -15,14 +15,25 @@ import requests
 
 from app.date_util import iso_to_ergani_dates
 from app.ergani_parse import portal_rows_to_work_log_items
+from app.karta_log import KartaLogger, logger_for_store
+from app.portal_form_util import set_portal_dates
 from app.portal_schedule_sync import (
     REQUEST_TIMEOUT,
-    _asp_hidden,
     _extract_aspnet_form_data,
     _has_next_grid_page,
     _login_session,
     _pick_pararthma,
     _portal_base,
+)
+
+_WORKLOG_CTRL = "ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl"
+_WORKLOG_DATE_FROM_FALLBACK = (
+    f"{_WORKLOG_CTRL}$DateFromEdit",
+    "ctl00_ctl00_ContentHolder_ContentHolder_DailyWorkTimesSearchControl_DateFromEdit",
+)
+_WORKLOG_DATE_TO_FALLBACK = (
+    f"{_WORKLOG_CTRL}$DateToEdit",
+    "ctl00_ctl00_ContentHolder_ContentHolder_DailyWorkTimesSearchControl_DateToEdit",
 )
 from app.repo_entities import upsert_employee_by_afm
 from app.repo_work_log import replace_work_log_for_day
@@ -123,39 +134,202 @@ def _open_daily_work_times(session: requests.Session, portal_base: str) -> tuple
     return r.text, r.url
 
 
-def _search_day(
+def _search_work_log(
     session: requests.Session,
     page_html: str,
     page_url: str,
     ctx: dict[str, Any],
-    work_date: str,
+    date_from: str,
+    date_to: str | None = None,
 ) -> list[list[str]]:
+    date_to = date_to or date_from
     form = _find_search_form(page_html)
     if not form:
         raise RuntimeError("Δεν βρέθηκε φόρμα αναζήτησης πραγματικής απασχόλησης")
 
-    data = _asp_hidden(form)
+    data = _extract_aspnet_form_data(page_html, include_text=True)
     branch_aa = str(ctx.get("branch_aa") or "0").strip()
-    par_key = (
-        "ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl"
-        "$PararthmaSelection$PararthmaListEdit"
+    data[f"{_WORKLOG_CTRL}$PararthmaSelection$PararthmaListEdit"] = _pick_pararthma(
+        page_html, branch_aa
     )
-    data[par_key] = _pick_pararthma(page_html, branch_aa)
-    data["ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl$AfmEdit"] = ""
-    data["ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl$EponimoBox"] = ""
-    data["ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl$NameBox"] = ""
-    data["ctl00_ctl00_ContentHolder_ContentHolder_DailyWorkTimesSearchControl_DateFromEdit"] = work_date
-    data["ctl00_ctl00_ContentHolder_ContentHolder_DailyWorkTimesSearchControl_DateToEdit"] = work_date
-    data[
-        "ctl00$ctl00$ContentHolder$ContentHolder$DailyWorkTimesSearchControl$SearchControlSearchButton"
-    ] = "Αναζήτηση"
+    data[f"{_WORKLOG_CTRL}$AfmEdit"] = ""
+    data[f"{_WORKLOG_CTRL}$EponimoBox"] = ""
+    data[f"{_WORKLOG_CTRL}$NameBox"] = ""
+    set_portal_dates(
+        data,
+        page_html,
+        date_from,
+        date_to,
+        fallback_from=_WORKLOG_DATE_FROM_FALLBACK,
+        fallback_to=_WORKLOG_DATE_TO_FALLBACK,
+    )
+    data[f"{_WORKLOG_CTRL}$SearchControlSearchButton"] = "Αναζήτηση"
 
     action = urljoin(page_url, form.get("action") or page_url)
     r = session.post(action, data=data, timeout=REQUEST_TIMEOUT, allow_redirects=True)
     if "error.aspx" in r.url.lower():
-        raise RuntimeError(f"Σφάλμα portal κατά την αναζήτηση για {work_date}")
+        raise RuntimeError(
+            f"Σφάλμα portal κατά την αναζήτηση για {date_from} – {date_to}"
+        )
 
     return _collect_all_grid_rows(session, r.url, r.text)
+
+
+def _persist_work_log_items(
+    ctx: dict[str, Any],
+    work_dates: list[str],
+    items: list[dict[str, Any]],
+) -> int:
+    employer_afm = str(ctx["employer_afm"]).strip()
+    branch_aa = str(ctx.get("branch_aa") or "0").strip()
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for it in items:
+        wd = str(it.get("work_date") or "").strip()
+        if wd:
+            by_day.setdefault(wd, []).append(it)
+
+    total = 0
+    for wd in work_dates:
+        day_items = by_day.get(wd, [])
+        seen_afm: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for it in day_items:
+            afm = (it.get("employee_afm") or "").strip()
+            if not afm or afm in seen_afm:
+                continue
+            seen_afm.add(afm)
+            upsert_employee_by_afm(afm, it.get("eponymo"), it.get("onoma"))
+            deduped.append(it)
+        total += replace_work_log_for_day(employer_afm, branch_aa, wd, deduped)
+    return total
+
+
+def _work_log_sync_result(
+    *,
+    dates: list[str],
+    total: int,
+    errors: list[str],
+    days_synced: int,
+    portal_base: str,
+    log: KartaLogger,
+) -> dict[str, Any]:
+    ok = days_synced > 0 and len(errors) < len(dates)
+    single = len(dates) == 1
+    detail = (
+        f"{total} εγγραφές portal ({len(dates)} ημέρες)"
+        + (f" — {len(errors)} αποτυχίες" if errors else "")
+    )
+    log.info(
+        "Ολοκλήρωση συγχρονισμού πραγματικής",
+        success=ok,
+        count=total,
+        days_synced=days_synced,
+        errors=len(errors),
+    )
+    return {
+        "success": ok,
+        "detail": detail,
+        "work_date": dates[0] if single else None,
+        "work_dates": dates,
+        "days_synced": days_synced,
+        "count": total,
+        "errors": errors[:20],
+        "logs": log.tail(100),
+        "source": "portal",
+        "portal_base": portal_base,
+    }
+
+
+def iter_work_log_sync_events(
+    ctx: dict[str, Any],
+    from_iso: str | None = None,
+    to_iso: str | None = None,
+    *,
+    max_days: int = 31,
+) -> Any:
+    if not from_iso:
+        from_iso = datetime.today().strftime("%Y-%m-%d")
+    to_iso = to_iso or from_iso
+    dates = iso_to_ergani_dates(from_iso, to_iso, max_days)
+    log = logger_for_store("work_log_sync", ctx)
+    portal_base = _portal_base(ctx)
+
+    log.info(
+        "Έναρξη συγχρονισμού πραγματικής",
+        from_iso=from_iso,
+        to_iso=to_iso,
+        days=len(dates),
+        portal_base=portal_base,
+    )
+    yield {
+        "event": "progress",
+        "message": "Σύνδεση στο portal Ergani…",
+        "step": 0,
+        "total": len(dates),
+    }
+
+    try:
+        session = _login_session(ctx)
+        page_html, page_url = _open_daily_work_times(session, portal_base)
+        log.info("Σύνδεση portal — OK")
+    except (requests.RequestException, ValueError, RuntimeError) as ex:
+        log.error(f"Αποτυχία σύνδεσης portal: {ex}")
+        yield {"event": "error", "message": str(ex), "logs": log.tail(100)}
+        return
+
+    total = 0
+    errors: list[str] = []
+    days_synced = 0
+
+    for i, wd in enumerate(dates):
+        msg = f"Ενημέρωση ημερομηνίας {wd} ({i + 1}/{len(dates)})…"
+        log.info(msg, work_date=wd, step=i + 1, total=len(dates))
+        yield {
+            "event": "progress",
+            "message": msg,
+            "step": i + 1,
+            "total": len(dates),
+            "work_date": wd,
+        }
+        try:
+            r_reload = session.get(page_url, timeout=REQUEST_TIMEOUT)
+            page_html = r_reload.text
+            page_url = r_reload.url
+            log.info("Αναζήτηση portal", work_date=wd)
+            grid_rows = _search_work_log(session, page_html, page_url, ctx, wd, wd)
+            items = portal_rows_to_work_log_items(grid_rows, default_work_date=wd)
+            n = _persist_work_log_items(ctx, [wd], items)
+            total += n
+            days_synced += 1
+            log.info(f"Αποθηκεύτηκαν {n} εγγραφές", work_date=wd, count=n)
+            yield {
+                "event": "day_ok",
+                "message": f"{wd}: {n} εγγραφές",
+                "work_date": wd,
+                "count": n,
+            }
+        except (requests.RequestException, ValueError, RuntimeError) as ex:
+            err = f"{wd}: {ex}"
+            errors.append(err)
+            log.error(str(ex), work_date=wd)
+            yield {"event": "day_err", "message": err, "work_date": wd}
+
+    result = _work_log_sync_result(
+        dates=dates,
+        total=total,
+        errors=errors,
+        days_synced=days_synced,
+        portal_base=portal_base,
+        log=log,
+    )
+    yield {
+        "event": "done",
+        "success": result["success"],
+        "sync": result,
+        "message": result["detail"],
+        "logs": result.get("logs"),
+        "error": None if result["success"] else result["detail"],
+    }
 
 
 def sync_work_log_from_portal(
@@ -165,65 +339,35 @@ def sync_work_log_from_portal(
     *,
     max_days: int = 31,
 ) -> dict[str, Any]:
-    if not from_iso:
-        from_iso = datetime.today().strftime("%Y-%m-%d")
-    to_iso = to_iso or from_iso
-    dates = iso_to_ergani_dates(from_iso, to_iso, max_days)
-    employer_afm = str(ctx["employer_afm"]).strip()
-    branch_aa = str(ctx.get("branch_aa") or "0").strip()
-
     portal_base = _portal_base(ctx)
-    try:
-        session = _login_session(ctx)
-        page_html, page_url = _open_daily_work_times(session, portal_base)
-    except (requests.RequestException, ValueError, RuntimeError) as ex:
-        return {
-            "success": False,
-            "detail": str(ex),
-            "count": 0,
-            "days_synced": 0,
-            "source": "portal",
-            "portal_base": portal_base,
-        }
-
-    total = 0
-    errors: list[str] = []
-    for wd in dates:
-        try:
-            r_reload = session.get(page_url, timeout=REQUEST_TIMEOUT)
-            page_html = r_reload.text
-            page_url = r_reload.url
-            grid_rows = _search_day(session, page_html, page_url, ctx, wd)
-            items = portal_rows_to_work_log_items(grid_rows, default_work_date=wd)
-            seen_afm: set[str] = set()
-            for it in items:
-                afm = (it.get("employee_afm") or "").strip()
-                if not afm or afm in seen_afm:
-                    continue
-                seen_afm.add(afm)
-                upsert_employee_by_afm(
-                    afm,
-                    it.get("eponymo"),
-                    it.get("onoma"),
-                )
-            n = replace_work_log_for_day(employer_afm, branch_aa, wd, items)
-            total += n
-        except (requests.RequestException, ValueError, RuntimeError) as ex:
-            errors.append(f"{wd}: {ex}")
-
-    ok = len(errors) < len(dates)
-    single = len(dates) == 1
+    for ev in iter_work_log_sync_events(
+        ctx, from_iso=from_iso, to_iso=to_iso, max_days=max_days
+    ):
+        if ev.get("event") == "done":
+            return ev.get("sync") or {
+                "success": False,
+                "detail": ev.get("error") or "Αποτυχία",
+                "count": 0,
+                "days_synced": 0,
+                "source": "portal",
+                "portal_base": portal_base,
+            }
+        if ev.get("event") == "error":
+            return {
+                "success": False,
+                "detail": ev.get("message") or "Αποτυχία",
+                "count": 0,
+                "days_synced": 0,
+                "errors": [],
+                "logs": ev.get("logs") or [],
+                "source": "portal",
+                "portal_base": portal_base,
+            }
     return {
-        "success": ok,
-        "detail": (
-            f"{total} εγγραφές portal ({len(dates)} ημέρες)"
-            + (f" — {len(errors)} αποτυχίες" if errors else "")
-        ),
-        "work_date": dates[0] if single else None,
-        "work_dates": dates,
-        "days_synced": len(dates) - len(errors),
-        "count": total,
-        "errors": errors[:8],
+        "success": False,
+        "detail": "Διακόπηκε ο συγχρονισμός",
+        "count": 0,
+        "days_synced": 0,
         "source": "portal",
         "portal_base": portal_base,
     }

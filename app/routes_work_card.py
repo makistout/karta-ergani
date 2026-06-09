@@ -186,6 +186,10 @@ def _submit_work_card(
         ergani_id,
     )
 
+    err_msg = None
+    if not resp.ok and isinstance(parsed, dict):
+        err_msg = str(parsed.get("message") or parsed.get("Message") or "").strip() or None
+
     return jsonify({
         "success": resp.ok,
         "status": resp.status_code,
@@ -195,6 +199,7 @@ def _submit_work_card(
         "ergani_submission_id": ergani_id,
         "f_type": resolved_type,
         "f_type_label": _f_type_label(resolved_type),
+        "error": err_msg,
         "data": parsed,
     }), resp.status_code if not resp.ok else 200
 

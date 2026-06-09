@@ -68,6 +68,51 @@ def replace_schedule_for_day(
         return n
 
 
+def _has_schedule_hours(row: dict[str, Any]) -> bool:
+    hf = (row.get("hour_from") or "").strip()
+    ht = (row.get("hour_to") or "").strip()
+    return bool(hf or ht)
+
+
+def _ergani_date_sort_key(work_date: str | None) -> tuple[int, int, int]:
+    parts = (work_date or "").strip().split("/")
+    if len(parts) == 3:
+        try:
+            d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+            if y < 100:
+                y += 2000
+            return (y, m, d)
+        except ValueError:
+            pass
+    return (9999, 12, 31)
+
+
+def _schedule_sort_key(row: dict[str, Any]) -> tuple:
+    wd = _ergani_date_sort_key(row.get("work_date"))
+    if _has_schedule_hours(row):
+        return (
+            wd,
+            0,
+            (row.get("hour_from") or "").strip() or "99:99",
+            (row.get("eponymo") or "").upper(),
+            row.get("employee_afm") or "",
+        )
+    shift = (row.get("shift_type") or "").strip().upper()
+    return (
+        wd,
+        1,
+        0 if shift else 1,
+        shift,
+        (row.get("eponymo") or "").upper(),
+        row.get("employee_afm") or "",
+    )
+
+
+def sort_schedule_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ανά ημερομηνία· μέσα στην ημέρα πρώτα με ώρες, μετά χωρίς (αλφαβητικά τύπος)."""
+    return sorted(rows, key=_schedule_sort_key)
+
+
 def list_schedule_for_store(
     employer_afm: str,
     branch_aa: str,

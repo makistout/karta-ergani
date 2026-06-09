@@ -93,6 +93,18 @@ def _pick_name(*pairs: tuple[str | None, str | None]) -> tuple[str, str]:
     return "", ""
 
 
+def _schedule_shows_blank(schedule: dict[str, Any] | None) -> bool:
+    """True όταν στη στήλη «Ψηφ. ωράριο» θα εμφανιστεί «—» (χωρίς ώρες/τύπο βάρδιας)."""
+    if not schedule:
+        return True
+    hf = (schedule.get("hour_from") or "").strip()
+    ht = (schedule.get("hour_to") or "").strip()
+    if hf or ht:
+        return False
+    st = (schedule.get("shift_type") or "").strip()
+    return not st
+
+
 def _evaluate_row(
     *,
     sched: dict[str, Any] | None,
@@ -346,6 +358,7 @@ def build_card_status_report(
 
     rows_out.sort(
         key=lambda r: (
+            1 if _schedule_shows_blank(r.get("schedule")) else 0,
             _STATUS_ORDER.get(r["status"], 99),
             (r.get("eponymo") or "").upper(),
             r.get("employee_afm") or "",

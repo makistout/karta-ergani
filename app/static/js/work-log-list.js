@@ -1,4 +1,5 @@
 let datePicker = null;
+let tableState = { rows: [], page: 1, count: 0, store: null, range: null };
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("worklog");
@@ -61,16 +62,27 @@ async function loadWorkLog() {
 }
 
 function renderTable(rows, count, store, range) {
+  tableState = { rows, page: 1, count, store, range };
+  renderTablePage();
+}
+
+function renderTablePage() {
   const wrap = document.getElementById("workLogWrap");
+  const { rows, store, range } = tableState;
   const multi = range.start !== range.end;
   if (!rows.length) {
     wrap.innerHTML =
       `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές. Πατήστε «Συγχρονισμός Ergani».</span></p>`;
     return;
   }
+
+  const pg = Office.paginateSlice(rows, tableState.page);
+  tableState.page = pg.page;
+
   const storeLine = store
-    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${count} εγγραφές</p>`
+    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${rows.length} εγγραφές</p>`
     : "";
+
   const t = document.createElement("table");
   t.className = "data";
   const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
@@ -83,7 +95,8 @@ function renderTable(rows, count, store, range) {
     hr.appendChild(th);
   });
   t.appendChild(hr);
-  rows.forEach((row) => {
+
+  pg.items.forEach((row) => {
     const tr = document.createElement("tr");
     const cells = [row.employee_afm || "", row.eponymo || "", row.onoma || ""];
     if (multi) cells.push(row.work_date || "");
@@ -96,44 +109,39 @@ function renderTable(rows, count, store, range) {
     });
     t.appendChild(tr);
   });
+
   wrap.innerHTML = storeLine;
   wrap.appendChild(t);
+  if (pg.totalPages > 1) {
+    wrap.appendChild(
+      Office.buildTablePager(pg.page, pg.totalPages, pg.total, (p) => {
+        tableState.page = p;
+        renderTablePage();
+      })
+    );
+  }
 }
 
 async function runSync() {
-  const btn = document.getElementById("btnSyncWorkLog");
   const r = getRange();
-  btn.disabled = true;
-  const days = r.start === r.end ? "μία ημέρα" : `${r.start} – ${r.end}`;
-  Office.showMsg("workLogMsg", `Συγχρονισμός portal Ergani (${days})…`, true);
+  const body = r.start === r.end ? { date: r.start } : { from: r.start, to: r.end };
+  Office.beginSyncPanel("workLogWrap", "workLogMsg");
   try {
-    const body = r.start === r.end ? { date: r.start } : { from: r.start, to: r.end };
-    const res = await fetch("/api/work-log/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    const payload = await Office.runPortalSync({
+      url: "/api/work-log/sync",
+      body,
+      msgId: "workLogMsg",
+      btnId: "btnSyncWorkLog",
+      startMessage: "Συγχρονισμός πραγματικής απασχόλησης",
     });
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      Office.showMsg("workLogMsg", `Σφάλμα HTTP ${res.status}`, false);
-      return;
-    }
-    if (res.ok && data.success) {
-      const host = Office.portalHostFromSync(data.sync);
-      Office.showMsg(
-        "workLogMsg",
-        `Ολοκληρώθηκε — ${data.sync?.count ?? 0} εγγραφές${host ? ` (${host})` : ""}.`,
-        true
-      );
+    const result = Office.buildSyncResultMessage(payload, Office.portalHostFromSync);
+    Office.endSyncPanel("workLogWrap", "workLogMsg");
+    if (result.ok) {
       await loadWorkLog();
-    } else {
-      Office.showMsg("workLogMsg", data.error || data.sync?.detail || "Αποτυχία", false);
     }
+    Office.showMsg("workLogMsg", result.text, result.ok);
   } catch (e) {
+    Office.endSyncPanel("workLogWrap", "workLogMsg");
     Office.showMsg("workLogMsg", String(e), false);
-  } finally {
-    btn.disabled = false;
   }
 }

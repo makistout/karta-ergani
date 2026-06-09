@@ -77,7 +77,7 @@ function mkBtn(label, cls, iconName, fn) {
 }
 
 async function selectStore(id) {
-  Office.showMsg("listMsg", "Επιλογή και συγχρονισμός Ergani…", true);
+  Office.showLoading("listMsg", "Επιλογή και συγχρονισμός Ergani… Παρακαλώ περιμένετε.");
   try {
     const res = await fetch("/api/store/select", {
       method: "POST",

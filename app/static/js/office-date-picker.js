@@ -8,17 +8,21 @@ Office.createDatePicker = function (opts) {
   const singleDay = opts.mode === "single";
   const onApply = opts.onApply || (() => {});
 
-  const QUICK = [
+  const ALL_QUICK = [
     { id: "today", label: "Σήμερα" },
     { id: "yesterday", label: "Χθες" },
     { id: "last7", label: "7 ημέρες" },
     { id: "last30", label: "30 ημέρες" },
   ];
+  const quickIds = Array.isArray(opts.quickPresets) && opts.quickPresets.length
+    ? opts.quickPresets
+    : ALL_QUICK.map((p) => p.id);
+  const QUICK = ALL_QUICK.filter((p) => quickIds.includes(p.id));
 
   let start = isoToday();
   let end = isoToday();
 
-  mount.className = "dp-mount";
+  mount.className = singleDay ? "dp-mount dp-single" : "dp-mount";
   mount.innerHTML = `
     <div class="dp-bar">
       <div class="dp-quick" role="group" aria-label="Γρήγορη επιλογή"></div>
@@ -88,7 +92,39 @@ Office.createDatePicker = function (opts) {
     }
   }
 
+  function resolveBound(raw) {
+    if (!raw) return null;
+    if (raw === "today") return isoToday();
+    if (raw === "yesterday") return addDays(isoToday(), -1);
+    return String(raw).slice(0, 10);
+  }
+
+  function applyInputBounds() {
+    const minIso = resolveBound(opts.minDate);
+    const maxIso = resolveBound(opts.maxDate);
+    if (minIso) {
+      inpStart.min = minIso;
+      inpEnd.min = minIso;
+    }
+    if (maxIso) {
+      inpStart.max = maxIso;
+      inpEnd.max = maxIso;
+    }
+  }
+
+  function clampIso(iso) {
+    const minIso = resolveBound(opts.minDate);
+    const maxIso = resolveBound(opts.maxDate);
+    let v = iso;
+    if (minIso && v < minIso) v = minIso;
+    if (maxIso && v > maxIso) v = maxIso;
+    return v;
+  }
+
   function syncInputs() {
+    start = clampIso(start);
+    end = clampIso(end);
+    if (singleDay) end = start;
     inpStart.value = start;
     inpEnd.value = end;
   }
@@ -125,8 +161,9 @@ Office.createDatePicker = function (opts) {
   inpStart.addEventListener("change", readInputs);
   inpEnd.addEventListener("change", readInputs);
 
+  applyInputBounds();
   renderQuick();
-  applyPreset("today", true);
+  applyPreset(quickIds.includes("today") ? "today" : quickIds[0], true);
 
   return {
     getRange: () => ({ start, end }),

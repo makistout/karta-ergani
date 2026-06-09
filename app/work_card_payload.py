@@ -10,6 +10,14 @@ from zoneinfo import ZoneInfo
 
 SUBMISSION_CODE_WRK_CARD = "WRKCardSE"
 
+# Λίστα Ergani — εκπρόθεσμη δήλωση κάρτας (εγχειρίδιο, παράρτημα)
+AITIOLOGIA_CODES: dict[str, str] = {
+    "001": "ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ",
+    "002": "ΠΡΟΒΛΗΜΑ ΣΤΑ ΣΥΣΤΗΜΑΤΑ ΤΟΥ ΕΡΓΟΔΟΤΗ",
+    "003": "ΠΡΟΒΛΗΜΑ ΣΥΝΔΕΣΗΣ ΜΕ ΤΟ ΠΣ ΕΡΓΑΝΗ",
+}
+RETRO_AITIOLOGIA_INTERNET = "001"
+
 
 class WorkCardPayloadError(ValueError):
     pass
@@ -66,6 +74,48 @@ def parse_event_at(raw: str | None, reference_date: str | None) -> datetime:
     return now
 
 
+def normalize_aitiologia(raw: str | None) -> str | None:
+    """Μετατροπή σε κωδικό Ergani (001/002/003) — όχι ελεύθερο κείμενο."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    if s in AITIOLOGIA_CODES:
+        return s
+    upper = s.upper()
+    if any(
+        tok in upper
+        for tok in (
+            "INTERNET",
+            "ΙΝΤΕΡΝΕΤ",
+            "ΤΗΛΕΠΙΚΟΙΝΩΝ",
+            "ΗΛΕΚΤΡΟΔΟΤ",
+            "ΠΡΟΒΛΗΜΑ ΙΝΤΕΡΝΕΤ",
+        )
+    ):
+        return RETRO_AITIOLOGIA_INTERNET
+    if "ΣΥΣΤΗΜΑΤΑ" in upper and "ΕΡΓΟΔΟΤΗ" in upper:
+        return "002"
+    if "ΣΥΝΔΕΣΗΣ" in upper and "ΕΡΓΑΝΗ" in upper:
+        return "003"
+    if s.isdigit() and s.zfill(3) in AITIOLOGIA_CODES:
+        return s.zfill(3)
+    raise WorkCardPayloadError(
+        f"Μη έγκυρος κωδικός αιτιολογίας: {s}. "
+        f"Επιτρεπτοί: {', '.join(sorted(AITIOLOGIA_CODES))}"
+    )
+
+
+def format_f_date_for_ergani(dt: datetime) -> str:
+    """Μορφή όπως το εγχειρίδιο: 2022-05-04T01:10:00.7099109+03:00"""
+    local = dt.astimezone(tz_athens())
+    offset = local.strftime("%z")
+    tz = f"{offset[:3]}:{offset[3:]}" if offset else "+03:00"
+    frac = f"{local.microsecond:06d}1" if local.microsecond else "0000000"
+    return f"{local.strftime('%Y-%m-%dT%H:%M:%S')}.{frac}{tz}"
+
+
 def build_wrk_card_se_payload(
     *,
     employer_afm: str,
@@ -91,7 +141,8 @@ def build_wrk_card_se_payload(
     dt = parse_event_at(event_at, reference_date)
     ref = (reference_date or "").strip()[:10] or dt.date().isoformat()
     datetime.strptime(ref, "%Y-%m-%d")
-    f_date = dt.isoformat(timespec="milliseconds")
+    f_date = format_f_date_for_ergani(dt)
+    ait = normalize_aitiologia(aitiologia)
     detail: dict[str, Any] = {
         "f_afm": emp,
         "f_eponymo": ep,
@@ -99,7 +150,7 @@ def build_wrk_card_se_payload(
         "f_type": ft,
         "f_reference_date": ref,
         "f_date": f_date,
-        "f_aitiologia": (aitiologia or "").strip() or None,
+        "f_aitiologia": ait,
     }
     return {
         "Cards": {

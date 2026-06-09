@@ -305,6 +305,80 @@ input, select {
   border-top: 1px solid var(--border);
 }
 
+.work-card-declare-card {
+  margin-bottom: 1rem;
+}
+
+.work-card-declare-title {
+  font-size: 1rem;
+  margin: 0 0 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.work-card-declare-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.work-card-form-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+.work-card-retro {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #f8fafc;
+}
+
+.work-card-retro-title {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+}
+
+.work-card-retro-optional {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.work-card-retro-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.work-card-retro .form-row input[type="date"],
+.work-card-retro .form-row input[type="time"] {
+  width: 100%;
+  max-width: none;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.work-card-actions-retro {
+  border-top-color: #e2e8f0;
+}
+
+@media (max-width: 900px) {
+  .work-card-declare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .btn-outline-primary {
   background: #fff;
   color: var(--brand-light);
@@ -318,6 +392,11 @@ input, select {
 
 .work-card-form .ac-wrap {
   max-width: 28rem;
+}
+
+.work-card-form .ac-wrap.field-err input {
+  border-color: var(--err);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
 }
 
 .work-card-section {
@@ -430,6 +509,21 @@ a.btn {
   flex-shrink: 0;
   margin-top: 0.1rem;
   margin-inline-end: 0.15rem;
+}
+
+@keyframes office-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.bi-spin {
+  display: inline-block;
+  animation: office-spin 0.85s linear infinite;
+}
+
+.btn.is-loading {
+  opacity: 0.88;
+  cursor: wait;
 }
 
 .meta-line {
@@ -574,6 +668,100 @@ input[role="combobox"] {
 
 .msg.ok { background: #ecfdf5; color: var(--ok); }
 .msg.err { background: #fef2f2; color: var(--err); }
+.msg.loading { background: #e0f2fe; color: #0369a1; }
+
+.msg.loading .sync-loading-text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.sync-progress {
+  width: 100%;
+  flex: 1 1 100%;
+  height: 6px;
+  margin-top: 0.35rem;
+  background: rgba(3, 105, 161, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sync-progress-bar {
+  height: 100%;
+  background: #0284c7;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.msg.show.loading {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.card.sync-active .list-wrap {
+  display: none;
+}
+
+.msg.sync-panel {
+  display: flex !important;
+  margin-top: 0;
+  min-height: 8rem;
+  padding: 1.5rem 1.25rem;
+  font-size: 1rem;
+  align-items: center;
+}
+
+.msg.sync-panel .sync-loading-text {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.msg.sync-panel .sync-progress {
+  height: 8px;
+  margin-top: 0.65rem;
+}
+
+.table-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, #e5e7eb);
+  font-size: 0.85rem;
+}
+
+.table-pager-btn {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text, #111827);
+  cursor: pointer;
+}
+
+.table-pager-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.table-pager-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.table-pager-pages {
+  color: var(--muted);
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+.table-pager-info {
+  margin-left: auto;
+  color: var(--muted);
+}
 
 /* Toolbar ημερομηνιών */
 .toolbar-dates {
@@ -601,6 +789,11 @@ input[role="combobox"] {
 .dp-mount {
   flex: 1;
   min-width: 0;
+}
+
+.dp-mount.dp-single .dp-sep,
+.dp-mount.dp-single .dp-field-end {
+  display: none !important;
 }
 
 .dp-bar {

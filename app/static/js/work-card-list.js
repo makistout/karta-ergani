@@ -2,6 +2,10 @@ let datePicker = null;
 let employeeAc = null;
 let clockTimer = null;
 
+const RETRO_AITIOLOGIA = "001";
+const RETRO_AITIOLOGIA_LABEL =
+  "001 — ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ";
+
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("workcard");
   startTerminalClock();
@@ -20,8 +24,29 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnRefreshCards").onclick = () => refreshDayData();
   document.getElementById("btnCheckIn").onclick = () => submitCard("check_in");
   document.getElementById("btnCheckOut").onclick = () => submitCard("check_out");
+  document.getElementById("btnRetroCheckIn").onclick = () => submitCard("check_in", { retro: true });
+  document.getElementById("btnRetroCheckOut").onclick = () => submitCard("check_out", { retro: true });
+  document.getElementById("wcEmployeeInput")?.addEventListener("input", () => {
+    document.querySelector(".work-card-form .ac-wrap.field-err")?.classList.remove("field-err");
+  });
+  initRetroDefaults();
   initPage();
 });
+
+function initRetroDefaults() {
+  const d = document.getElementById("wcRetroDate");
+  const t = document.getElementById("wcRetroTime");
+  const now = new Date();
+  if (d) {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    d.value = `${y}-${m}-${day}`;
+  }
+  if (t) {
+    t.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  }
+}
 
 function startTerminalClock() {
   const tick = () => {
@@ -44,13 +69,45 @@ function selectedEmployeeAfm() {
   return employeeAc ? employeeAc.getValue().code : "";
 }
 
+function showWorkCardMsg(text, ok) {
+  Office.showMsg("wcMsg", text, ok);
+  const el = document.getElementById("wcMsg");
+  const input = document.getElementById("wcEmployeeInput");
+  if (!ok && input) {
+    input.focus();
+    input.closest(".ac-wrap")?.classList.add("field-err");
+  } else if (input) {
+    input.closest(".ac-wrap")?.classList.remove("field-err");
+  }
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function requireEmployee() {
+  const afm = (selectedEmployeeAfm() || "").trim();
+  if (!afm) {
+    showWorkCardMsg("Επίλεξε εργαζόμενο", false);
+    return false;
+  }
+  return true;
+}
+
 function setFormEnabled(enabled) {
   const input = document.getElementById("wcEmployeeInput");
   const btnIn = document.getElementById("btnCheckIn");
   const btnOut = document.getElementById("btnCheckOut");
+  const retroDate = document.getElementById("wcRetroDate");
+  const retroTime = document.getElementById("wcRetroTime");
+  const btnRetroIn = document.getElementById("btnRetroCheckIn");
+  const btnRetroOut = document.getElementById("btnRetroCheckOut");
   if (input) input.disabled = !enabled;
   if (btnIn) btnIn.disabled = !enabled;
   if (btnOut) btnOut.disabled = !enabled;
+  if (retroDate) retroDate.disabled = !enabled;
+  if (retroTime) retroTime.disabled = !enabled;
+  if (btnRetroIn) btnRetroIn.disabled = !enabled;
+  if (btnRetroOut) btnRetroOut.disabled = !enabled;
 }
 
 async function initPage() {
@@ -70,7 +127,7 @@ async function initPage() {
   await Office.loadActiveStore();
   await loadEmployees();
   setFormEnabled(true);
-  loadDayData();
+  await refreshDayData({ auto: true });
 }
 
 async function loadEmployees() {
@@ -96,60 +153,50 @@ async function loadEmployees() {
   }
 }
 
-async function refreshDayData() {
+async function refreshDayData(options = {}) {
+  const auto = Boolean(options.auto);
   const date = cardDate();
-  const btn = document.getElementById("btnRefreshCards");
+  const logWrap = document.getElementById("workLogWrap");
+  const cardWrap = document.getElementById("workCardWrap");
   if (!date) {
-    Office.showMsg("wcMsg", "Επιλέξτε ημερομηνία.", false);
+    if (!auto) Office.showMsg("wcMsg", "Επιλέξτε ημερομηνία.", false);
     return;
   }
-  if (btn) btn.disabled = true;
-  Office.showMsg("wcMsg", `Συγχρονισμός portal Ergani για ${date}…`, true);
+  if (logWrap) Office.showTableLoading(logWrap, "Συγχρονισμός Ergani…");
+  if (cardWrap) Office.showTableLoading(cardWrap, "Συγχρονισμός Ergani…");
   try {
     const activeRes = await fetch("/api/store/active");
     const activeData = await activeRes.json();
     if (!activeData.store) {
-      Office.showMsg("wcMsg", "Επιλέξτε ενεργό κατάστημα (sidebar).", false);
+      if (!auto) Office.showMsg("wcMsg", "Επιλέξτε ενεργό κατάστημα (sidebar).", false);
       await loadDayData();
       return;
     }
-    const syncRes = await fetch("/api/work-log/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date }),
+    const payload = await Office.runPortalSync({
+      url: "/api/work-log/sync",
+      body: { date },
+      msgId: "wcMsg",
+      btnId: "btnRefreshCards",
+      startMessage: `Συγχρονισμός πραγματικής για ${date}`,
     });
-    const syncData = await Office.parseJson(syncRes);
-    if (syncData._parseError) {
-      Office.showMsg("wcMsg", syncData._parseError, false);
-      await loadDayData();
-      return;
-    }
-    if (!syncRes.ok || !syncData.success) {
-      Office.showMsg(
-        "wcMsg",
-        syncData.error || syncData.sync?.detail || "Αποτυχία συγχρονισμού portal",
-        false
-      );
-      await loadDayData();
-      return;
-    }
-    const host = Office.portalHostFromSync(syncData.sync);
-    const n = syncData.sync?.count ?? 0;
+    const result = Office.buildSyncResultMessage(payload, Office.portalHostFromSync);
     await loadDayData();
-    Office.showMsg(
-      "wcMsg",
-      `Ενημερώθηκε — portal: ${n} εγγραφές${host ? ` (${host})` : ""}.`,
-      true
-    );
+    if (!auto || !result.ok) {
+      Office.showMsg("wcMsg", result.text, result.ok);
+    } else {
+      const el = document.getElementById("wcMsg");
+      if (el) {
+        el.className = "msg";
+        el.innerHTML = "";
+      }
+    }
   } catch (e) {
-    Office.showMsg("wcMsg", String(e), false);
+    if (!auto) Office.showMsg("wcMsg", String(e), false);
     try {
       await loadDayData();
     } catch {
       /* ignore */
     }
-  } finally {
-    if (btn) btn.disabled = false;
   }
 }
 
@@ -270,51 +317,83 @@ function renderCardTable(wrap, rows, count, dateIso) {
   wrap.appendChild(t);
 }
 
-async function submitCard(eventName) {
+function setSubmitButtonsDisabled(disabled) {
+  ["btnCheckIn", "btnCheckOut", "btnRetroCheckIn", "btnRetroCheckOut"].forEach((id) => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = disabled;
+  });
+}
+
+async function submitCard(eventName, options = {}) {
+  const retro = Boolean(options.retro);
+  if (!requireEmployee()) return;
   const afm = selectedEmployeeAfm();
-  const date = cardDate();
-  if (!afm) {
-    Office.showMsg("wcMsg", "Επιλέξτε εργαζόμενο από τη λίστα (↑/↓ + Enter ή Tab).", false);
-    return;
+
+  let referenceDate;
+  let eventAt = null;
+  let aitiologia = null;
+  if (retro) {
+    referenceDate = (document.getElementById("wcRetroDate")?.value || "").trim();
+    const retroTime = (document.getElementById("wcRetroTime")?.value || "").trim();
+    if (!referenceDate || !retroTime) {
+      showWorkCardMsg("Συμπληρώστε ημερομηνία και ώρα προγενέστερης καταχώρησης.", false);
+      return;
+    }
+    eventAt = `${referenceDate}T${retroTime}:00`;
+    aitiologia = RETRO_AITIOLOGIA;
+  } else {
+    referenceDate = cardDate();
+    if (!referenceDate) {
+      showWorkCardMsg("Επίλεξε ημερομηνία αναφοράς (κάτω).", false);
+      return;
+    }
   }
-  if (!date) {
-    Office.showMsg("wcMsg", "Επιλέξτε ημερομηνία.", false);
-    return;
-  }
-  const btnIn = document.getElementById("btnCheckIn");
-  const btnOut = document.getElementById("btnCheckOut");
-  btnIn.disabled = true;
-  btnOut.disabled = true;
+
+  setSubmitButtonsDisabled(true);
   const label = eventName === "check_in" ? "Είσοδος" : "Έξοδος";
-  Office.showMsg("wcMsg", `Υποβολή ${label} (WRKCardSE)…`, true);
+  const prefix = retro ? "Προγενέστερη " : "";
+  Office.showLoading("wcMsg", `Υποβολή ${prefix}${label} (WRKCardSE)… Παρακαλώ περιμένετε.`);
+  document.getElementById("wcMsg")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   try {
+    const body = {
+      employee_afm: afm,
+      event: eventName,
+      reference_date: referenceDate,
+      comments: document.getElementById("wcComments").value.trim() || null,
+    };
+    if (eventAt) body.event_at = eventAt;
+    if (aitiologia) body.aitiologia = aitiologia;
+
     const res = await fetch("/api/work-card/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        employee_afm: afm,
-        event: eventName,
-        reference_date: date,
-        comments: document.getElementById("wcComments").value.trim() || null,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await Office.parseJson(res);
     if (data._parseError) {
-      Office.showMsg("wcMsg", data._parseError, false);
+      showWorkCardMsg(data._parseError, false);
       return;
     }
     if (!res.ok || !data.success) {
-      Office.showMsg("wcMsg", data.error || data.data?.error || "Αποτυχία υποβολής", false);
+      const err =
+        data.error ||
+        data.data?.message ||
+        data.data?.Message ||
+        data.data?.error ||
+        "Αποτυχία υποβολής";
+      showWorkCardMsg(err, false);
       return;
     }
-    Office.showMsg(
-      "wcMsg",
-      `Επιτυχία — ${data.f_type_label || label}${data.protocol ? ` · ${data.protocol}` : ""}`,
-      true
-    );
+    if (retro && datePicker && referenceDate !== cardDate()) {
+      datePicker.setRange(referenceDate, referenceDate);
+    }
+    let okMsg = `Επιτυχία — ${data.f_type_label || label}`;
+    if (retro) okMsg += ` · ${referenceDate}`;
+    if (data.protocol) okMsg += ` · ${data.protocol}`;
+    showWorkCardMsg(okMsg, true);
     await loadDayData();
   } catch (e) {
-    Office.showMsg("wcMsg", String(e), false);
+    showWorkCardMsg(String(e), false);
   } finally {
     setFormEnabled(true);
   }

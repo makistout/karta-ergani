@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
   reportDatePicker = Office.createDatePicker({
     mountId: "homeDatePicker",
     mode: "single",
+    quickPresets: ["today", "yesterday"],
     onApply: () => loadCardReport(),
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
@@ -53,7 +54,7 @@ async function loadCardReport() {
     }
 
     renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date);
-    renderTable(wrap, data.rows || [], data.meta || {});
+    renderTable(wrap, sortReportRows(data.rows || []), data.meta || {});
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -99,6 +100,42 @@ function statusClass(status) {
     no_schedule: "status-muted",
   };
   return map[status] || "status-muted";
+}
+
+const REPORT_STATUS_ORDER = {
+  at_work: 0,
+  needs_checkout: 1,
+  completed: 2,
+  late_arrival: 3,
+  needs_checkin: 4,
+  unscheduled_work: 5,
+  absent: 6,
+  pending: 7,
+  no_schedule: 8,
+  rest: 9,
+};
+
+function scheduleShowsBlank(schedule) {
+  if (!schedule) return true;
+  const hf = (schedule.hour_from || "").trim();
+  const ht = (schedule.hour_to || "").trim();
+  if (hf || ht) return false;
+  return !(schedule.shift_type || "").trim();
+}
+
+function sortReportRows(rows) {
+  return [...rows].sort((a, b) => {
+    const blankA = scheduleShowsBlank(a.schedule) ? 1 : 0;
+    const blankB = scheduleShowsBlank(b.schedule) ? 1 : 0;
+    if (blankA !== blankB) return blankA - blankB;
+    const stA = REPORT_STATUS_ORDER[a.status] ?? 99;
+    const stB = REPORT_STATUS_ORDER[b.status] ?? 99;
+    if (stA !== stB) return stA - stB;
+    const epA = (a.eponymo || "").toUpperCase();
+    const epB = (b.eponymo || "").toUpperCase();
+    if (epA !== epB) return epA.localeCompare(epB, "el");
+    return (a.employee_afm || "").localeCompare(b.employee_afm || "", "el");
+  });
 }
 
 function fmtHours(block) {
