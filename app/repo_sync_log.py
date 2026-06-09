@@ -150,6 +150,150 @@ def append_line(
         pass
 
 
+def count_runs(*, store_id: int | None = None) -> int:
+    if not tables_available():
+        return 0
+    try:
+        with cursor() as cur:
+            if store_id is not None:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM dbo.{_RUN_TABLE} WHERE store_id = ?",
+                    int(store_id),
+                )
+            else:
+                cur.execute(f"SELECT COUNT(*) FROM dbo.{_RUN_TABLE}")
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+    except pyodbc.Error:
+        return 0
+
+
+def list_runs(
+    *,
+    store_id: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    if not tables_available():
+        return []
+    lim = max(1, min(int(limit), 200))
+    off = max(0, int(offset))
+    try:
+        with cursor() as cur:
+            if store_id is not None:
+                cur.execute(
+                    f"""
+                    SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
+                           r.step, r.total,
+                           CAST(r.started_at AS DATETIME2) AS started_at,
+                           CAST(r.finished_at AS DATETIME2) AS finished_at,
+                           s.name AS store_name
+                    FROM dbo.{_RUN_TABLE} r
+                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                    WHERE r.store_id = ?
+                    ORDER BY r.started_at DESC
+                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """,
+                    int(store_id),
+                    off,
+                    lim,
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
+                           r.step, r.total,
+                           CAST(r.started_at AS DATETIME2) AS started_at,
+                           CAST(r.finished_at AS DATETIME2) AS finished_at,
+                           s.name AS store_name
+                    FROM dbo.{_RUN_TABLE} r
+                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                    ORDER BY r.started_at DESC
+                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """,
+                    off,
+                    lim,
+                )
+            rows = cur.fetchall()
+    except pyodbc.Error:
+        return []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item: dict[str, Any] = {
+            "run_id": row[0],
+            "store_id": row[1],
+            "operation": row[2],
+            "status": row[3],
+            "message": row[4],
+            "step": row[5],
+            "total": row[6],
+        }
+        if row[7] is not None:
+            item["started_at"] = (
+                row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7])
+            )
+        if row[8] is not None:
+            item["finished_at"] = (
+                row[8].isoformat() if hasattr(row[8], "isoformat") else str(row[8])
+            )
+        if row[9]:
+            item["store_name"] = row[9]
+        out.append(item)
+    return out
+
+
+def get_run(run_id: str) -> dict[str, Any] | None:
+    if not tables_available():
+        return None
+    try:
+        with cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
+                       r.step, r.total,
+                       CAST(r.started_at AS DATETIME2) AS started_at,
+                       CAST(r.finished_at AS DATETIME2) AS finished_at,
+                       r.result_json,
+                       s.name AS store_name
+                FROM dbo.{_RUN_TABLE} r
+                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                WHERE r.run_id = ?
+                """,
+                run_id,
+            )
+            row = cur.fetchone()
+    except pyodbc.Error:
+        return None
+    if not row:
+        return None
+    item: dict[str, Any] = {
+        "run_id": row[0],
+        "store_id": row[1],
+        "operation": row[2],
+        "status": row[3],
+        "message": row[4],
+        "step": row[5],
+        "total": row[6],
+    }
+    if row[7] is not None:
+        item["started_at"] = (
+            row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7])
+        )
+    if row[8] is not None:
+        item["finished_at"] = (
+            row[8].isoformat() if hasattr(row[8], "isoformat") else str(row[8])
+        )
+    if row[9]:
+        try:
+            item["result"] = json.loads(row[9])
+        except json.JSONDecodeError:
+            item["result_raw"] = row[9]
+    if row[10]:
+        item["store_name"] = row[10]
+    item["lines"] = list_lines(run_id, limit=500)
+    return item
+
+
 def list_lines(run_id: str, limit: int = 150) -> list[dict[str, Any]]:
     if not tables_available():
         return []
@@ -158,7 +302,8 @@ def list_lines(run_id: str, limit: int = 150) -> list[dict[str, Any]]:
         with cursor() as cur:
             cur.execute(
                 f"""
-                SELECT TOP (?) seq, level, message, fields_json, created_at
+                SELECT TOP (?) seq, level, message, fields_json,
+                       CAST(created_at AS DATETIME2) AS created_at
                 FROM dbo.{_LOG_TABLE}
                 WHERE run_id = ?
                 ORDER BY seq DESC

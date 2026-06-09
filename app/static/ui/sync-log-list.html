@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Καταγραφή συγχρονισμών</title>
+  <link rel="stylesheet" href="/static/css/office.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">Λογιστικό Γραφείο<small>Ψηφιακή Κάρτα Εργασίας</small></div>
+      <nav>
+        <a href="/ui/" data-nav="home">Αρχική</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
+        <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
+        <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/work-card" data-nav="workcard">Ψηφιακή κάρτα</a>
+        <a href="/ui/sync-log" data-nav="synclog" class="active">Καταγραφή</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <h1 class="page-title"><i class="bi bi-journal-text" aria-hidden="true"></i> Καταγραφή συγχρονισμών</h1>
+      <p class="page-desc" id="syncLogDesc">Ιστορικό συγχρονισμών Ergani — αποθηκευμένο στη βάση.</p>
+      <div class="actions sync-log-actions">
+        <label class="sync-log-filter">
+          <input type="checkbox" id="chkActiveStoreOnly" checked>
+          <span>Μόνο ενεργό κατάστημα</span>
+        </label>
+        <button type="button" class="btn" id="btnRefreshLogs">
+          <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
+        </button>
+      </div>
+      <div class="card">
+        <div id="syncLogRunsWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+      <div class="card sync-log-detail-card hidden" id="syncLogDetailCard">
+        <h2 class="sync-log-detail-title" id="syncLogDetailTitle">Λεπτομέρειες</h2>
+        <div id="syncLogDetailMeta" class="sync-log-detail-meta"></div>
+        <div id="syncLogDetailLines" class="sync-log-detail-lines"></div>
+      </div>
+      <div id="syncLogMsg" class="msg"></div>
+    </main>
+  </div>
+  <script src="/static/js/office-common.js"></script>
+  <script src="/static/js/sync-log-list.js"></script>
+</body>
+</html>

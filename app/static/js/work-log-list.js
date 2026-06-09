@@ -87,7 +87,7 @@ function renderTablePage() {
   t.className = "data";
   const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
-  headers.push("Από", "Έως", "ΑΑ");
+  headers.push("Ευελ. (λεπτά)", "Από", "Έως", "ΑΑ");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
@@ -100,7 +100,12 @@ function renderTablePage() {
     const tr = document.createElement("tr");
     const cells = [row.employee_afm || "", row.eponymo || "", row.onoma || ""];
     if (multi) cells.push(row.work_date || "");
-    cells.push(row.hour_from || "", row.hour_to || "", row.source_aa || "0");
+    cells.push(
+      Office.formatFlexMinutes(row.flex_arrival_minutes),
+      row.hour_from || "",
+      row.hour_to || "",
+      row.source_aa || "0"
+    );
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
       if (i === 1) td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;

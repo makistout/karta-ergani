@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-06-09 — Κουμπί άδειας στην αρχική (WTOLeave)
+
+### Backend
+
+- **`app/leave_payload.py`**, **`app/leave_types.py`**, **`app/routes_leave.py`**
+- `POST /api/leave/submit` → Ergani **`WTOLeave`** (Οργάνωση Χρόνου Εργασίας — Άδειες)
+- `GET /api/leave/types` — κωδικοί τύπων άδειας (Παράρτημα 9)
+- **`card_report.py`**: `leave_eligible` όταν δεν υπάρχει άφιξη και έχουν περάσει **ευελιξία + 1′** από την ώρα έναρξης
+
+### UI (αρχική)
+
+- Κουμπί **«Άδεια»** στη στήλη «Τι να γίνει» για επιλέξιμες γραμμές
+- Modal: είδος άδειας + παρατηρήσεις → **Αποστολή στο Ergani**
+- Αποθήκευση αίτησης στο `karta_declaration`
+
+---
+
+## 2026-06-05 — Ευέλικτη προσέλευση (EueliktoWrario)
+
+### Βάση & sync
+
+- Στήλη **`karta_employee.flex_arrival_minutes`** (`sql/alter_add_flex_arrival_minutes.sql`) — λεπτά ευελιξίας από EX_BASE_05 / `EueliktoWrario`.
+- **`ergani_parse.parse_flex_arrival_minutes`**, **`upsert_employee`**, συγχρονισμός EX_BASE_05.
+
+### Αναφορές & UI
+
+- **`card_report.py`**: ανά εργαζόμενο tolerance (fallback 15′ αν `null`, 0′ αν μηδέν) για καθυστέρηση άφιξης / πρόωρη αποχώρηση.
+- Στήλη **«Ευελ. (λεπτά)»** σε αρχική, ψηφιακό ωράριο, πραγματική απασχόληση, εργαζόμενους, ψηφιακή κάρτα.
+- **`Office.formatFlexMinutes()`** στο `office-common.js`.
+
+---
+
 ## 2026-06-05 — Sync logs στη βάση, αναλυτικά βήματα παντού
 
 ### Βάση (`karta_sync_run`, `karta_sync_log`)

@@ -238,8 +238,22 @@ def parse_schedule(payload: Any) -> list[dict[str, Any]]:
     return out
 
 
-def parse_employees(payload: Any) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
+def parse_flex_arrival_minutes(item: dict[str, Any]) -> int | None:
+    """Ευέλικτη προσέλευση (λεπτά) — πεδίο EueliktoWrario από EX_BASE_05."""
+    raw = item.get("EueliktoWrario")
+    if raw is None:
+        raw = item.get("eueliktoWrario")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(value, 120))
+
+
+def parse_employees(payload: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for item in extract_raw_list(payload):
         afm = str(item.get("afm") or item.get("Afm") or "").strip()
         if not afm:
@@ -250,6 +264,7 @@ def parse_employees(payload: Any) -> list[dict[str, str]]:
                 item.get("Eponimo") or item.get("Eponymo") or item.get("eponymo") or ""
             )[:200],
             "onoma": str(item.get("Onoma") or item.get("onoma") or "")[:200],
+            "flex_arrival_minutes": parse_flex_arrival_minutes(item),
         })
     return out
 

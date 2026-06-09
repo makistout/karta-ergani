@@ -21,6 +21,7 @@ const Office = {
       schedule: "calendar-week",
       worklog: "clock-history",
       workcard: "credit-card-2-front",
+      synclog: "journal-text",
     };
     document.querySelectorAll(".sidebar nav a[data-nav]").forEach((a) => {
       if (a.querySelector(".bi")) return;
@@ -418,6 +419,15 @@ const Office = {
   },
 
   /** Ώρα από f_date — ίδια λογική με ergani api-console (HH:MM:SS). */
+  /** Ευέλικτη προσέλευση (EueliktoWrario) — λεπτά καθυστέρησης άφιξης/αποχώρησης. */
+  formatFlexMinutes(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    if (n <= 0) return "0′";
+    return `${Math.round(n)}′`;
+  },
+
   formatFDateTime(fDate) {
     if (!fDate) return "—";
     let timeVal = String(fDate);

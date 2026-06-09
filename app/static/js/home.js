@@ -1,4 +1,6 @@
 let reportDatePicker = null;
+let leaveTypes = [];
+let leaveModalRow = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("home");
@@ -9,12 +11,156 @@ document.addEventListener("DOMContentLoaded", () => {
     onApply: () => loadCardReport(),
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
+  initLeaveModal();
+  loadLeaveTypes();
   loadCardReport();
 });
 
 function reportDate() {
   const r = reportDatePicker ? reportDatePicker.getRange() : { start: "" };
   return r.start || "";
+}
+
+function leaveTypeLabel(type) {
+  if (!type) return "—";
+  return `${type.code} — ${type.label}`;
+}
+
+function renderLeaveTypeList() {
+  const list = document.getElementById("leaveTypeList");
+  if (!list) return;
+  list.innerHTML = leaveTypes
+    .map(
+      (t) =>
+        `<li role="option" data-code="${Office.escapeHtml(t.code)}" tabindex="-1">` +
+        `<span class="leave-type-code">${Office.escapeHtml(t.code)}</span>` +
+        `<span>${Office.escapeHtml(t.label)}</span></li>`
+    )
+    .join("");
+  list.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => selectLeaveType(li.dataset.code || ""));
+  });
+}
+
+function setLeaveTypeOpen(open) {
+  const list = document.getElementById("leaveTypeList");
+  const trigger = document.getElementById("leaveTypeTrigger");
+  if (!list || !trigger) return;
+  list.classList.toggle("show", open);
+  trigger.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function selectLeaveType(code) {
+  const hidden = document.getElementById("leaveTypeValue");
+  const trigger = document.getElementById("leaveTypeTrigger");
+  const list = document.getElementById("leaveTypeList");
+  const type = leaveTypes.find((t) => t.code === code) || leaveTypes[0];
+  if (!hidden || !trigger || !type) return;
+  hidden.value = type.code;
+  trigger.textContent = leaveTypeLabel(type);
+  list?.querySelectorAll("li").forEach((li) => {
+    li.classList.toggle("selected", li.dataset.code === type.code);
+  });
+  setLeaveTypeOpen(false);
+}
+
+async function loadLeaveTypes() {
+  try {
+    const res = await fetch("/api/leave/types");
+    const data = await res.json();
+    leaveTypes = data.types || [];
+    renderLeaveTypeList();
+    if (leaveTypes.length) selectLeaveType(leaveTypes[0].code);
+  } catch {
+    leaveTypes = [];
+  }
+}
+
+function initLeaveModal() {
+  const modal = document.getElementById("leaveModal");
+  if (!modal) return;
+  modal.querySelectorAll("[data-leave-close]").forEach((el) => {
+    el.addEventListener("click", closeLeaveModal);
+  });
+  document.getElementById("btnLeaveCancel")?.addEventListener("click", closeLeaveModal);
+  document.getElementById("btnLeaveSubmit")?.addEventListener("click", submitLeave);
+  document.getElementById("leaveTypeTrigger")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const list = document.getElementById("leaveTypeList");
+    setLeaveTypeOpen(!list?.classList.contains("show"));
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".leave-type-picker")) setLeaveTypeOpen(false);
+  });
+}
+
+function openLeaveModal(row) {
+  leaveModalRow = row;
+  const modal = document.getElementById("leaveModal");
+  const sub = document.getElementById("leaveModalEmployee");
+  const msg = document.getElementById("leaveModalMsg");
+  if (!modal || !sub) return;
+  sub.textContent = `${row.eponymo || ""} ${row.onoma || ""}`.trim() + ` · ΑΦΜ ${row.employee_afm || ""}`;
+  const comments = document.getElementById("leaveComments");
+  if (comments) comments.value = "";
+  if (msg) {
+    msg.className = "msg";
+    msg.textContent = "";
+  }
+  if (leaveTypes.length) selectLeaveType(leaveTypes[0].code);
+  setLeaveTypeOpen(false);
+  modal.classList.remove("hidden");
+}
+
+function closeLeaveModal() {
+  setLeaveTypeOpen(false);
+  document.getElementById("leaveModal")?.classList.add("hidden");
+  leaveModalRow = null;
+}
+
+async function submitLeave() {
+  if (!leaveModalRow) return;
+  const btn = document.getElementById("btnLeaveSubmit");
+  const ref = reportDate();
+  const leaveType = document.getElementById("leaveTypeValue")?.value || "";
+  const comments = document.getElementById("leaveComments")?.value?.trim() || null;
+  if (!ref || !leaveType) {
+    Office.showMsg("leaveModalMsg", "Επιλέξτε ημερομηνία και τύπο άδειας.", false);
+    return;
+  }
+  Office.setButtonLoading(btn, true);
+  Office.showLoading("leaveModalMsg", "Αποστολή WTOLeave στο Ergani…");
+  try {
+    const res = await fetch("/api/leave/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employee_afm: leaveModalRow.employee_afm,
+        eponymo: leaveModalRow.eponymo,
+        onoma: leaveModalRow.onoma,
+        reference_date: ref,
+        leave_type: leaveType,
+        comments,
+      }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok || !data.success) {
+      Office.showMsg(
+        "leaveModalMsg",
+        data.error || data.data?.message || data.data?.Message || "Αποτυχία υποβολής",
+        false
+      );
+      return;
+    }
+    closeLeaveModal();
+    const proto = data.protocol ? ` · ${data.protocol}` : "";
+    Office.showMsg("leaveMsg", `Άδεια υποβλήθηκε επιτυχώς${proto}`, true);
+    await loadCardReport();
+  } catch (e) {
+    Office.showMsg("leaveModalMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
 }
 
 async function loadCardReport() {
@@ -154,6 +300,22 @@ function fmtCard(card) {
   return parts.length ? parts.join(" · ") : "—";
 }
 
+function buildActionCell(r) {
+  const notes =
+    (r.notes || []).length > 0
+      ? `<ul class="report-notes">${r.notes
+          .map((n) => `<li>${Office.escapeHtml(n)}</li>`)
+          .join("")}</ul>`
+      : "";
+  let html = Office.escapeHtml(r.action || "—") + notes;
+  if (r.leave_eligible) {
+    html +=
+      `<div><button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}">` +
+      `${Office.icon("calendar-x")}<span>Άδεια</span></button></div>`;
+  }
+  return html;
+}
+
 function renderTable(wrap, rows, meta) {
   if (!meta.has_schedule && !meta.has_work_log) {
     wrap.innerHTML =
@@ -174,6 +336,7 @@ function renderTable(wrap, rows, meta) {
     "ΑΦΜ",
     "Επώνυμο",
     "Όνομα",
+    "Ευελ. (λεπτά)",
     "Ψηφ. ωράριο",
     "Πραγματική",
     "Δηλώσεις κάρτας",
@@ -185,34 +348,30 @@ function renderTable(wrap, rows, meta) {
   });
   t.appendChild(hr);
 
+  const rowByAfm = new Map(rows.map((r) => [r.employee_afm, r]));
+
   rows.forEach((r) => {
     const tr = document.createElement("tr");
     const badge = document.createElement("span");
     badge.className = `status-badge ${statusClass(r.status)}`;
     badge.textContent = r.status_label || r.status || "";
 
-    const notes =
-      (r.notes || []).length > 0
-        ? `<ul class="report-notes">${r.notes
-            .map((n) => `<li>${Office.escapeHtml(n)}</li>`)
-            .join("")}</ul>`
-        : "";
-
     const cells = [
       badge.outerHTML,
       r.employee_afm || "",
       r.eponymo || "",
       r.onoma || "",
+      Office.formatFlexMinutes(r.flex_arrival_minutes),
       fmtHours(r.schedule),
       fmtHours(r.work_log),
       fmtCard(r.card),
-      (r.action || "—") + notes,
+      buildActionCell(r),
     ];
-    const colClass = ["", "col-afm", "col-name", "col-name", "", "", "", "col-action"];
+    const colClass = ["", "col-afm", "col-name", "col-name", "col-flex", "", "", "", "col-action"];
     cells.forEach((html, i) => {
       const td = document.createElement("td");
       if (colClass[i]) td.className = colClass[i];
-      if (i === 0 || i === 7) td.innerHTML = html;
+      if (i === 0 || i === 8) td.innerHTML = html;
       else td.textContent = html;
       tr.appendChild(td);
     });
@@ -221,4 +380,12 @@ function renderTable(wrap, rows, meta) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
+
+  wrap.querySelectorAll("[data-leave-afm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const afm = btn.getAttribute("data-leave-afm");
+      const row = rowByAfm.get(afm);
+      if (row) openLeaveModal(row);
+    });
+  });
 }

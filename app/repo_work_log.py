@@ -80,7 +80,7 @@ def list_work_log_for_store(
             SELECT TOP ({lim})
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
-                emp.eponymo, emp.onoma,
+                emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(w.synced_at AS datetime2) AS synced_at
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
@@ -111,7 +111,7 @@ def list_work_log_for_range(
             SELECT TOP ({lim})
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
-                emp.eponymo, emp.onoma,
+                emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(w.synced_at AS datetime2) AS synced_at
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm

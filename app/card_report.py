@@ -10,6 +10,7 @@ from typing import Any
 
 from app.date_util import format_date_for_ergani, format_f_date_time
 from app.repo_card import list_card_events_for_store_date
+from app.repo_entities import flex_arrival_map_for_employer
 from app.repo_schedule import list_schedule_for_store
 from app.repo_work_log import list_work_log_for_store
 from app.work_card_payload import tz_athens
@@ -105,6 +106,37 @@ def _schedule_shows_blank(schedule: dict[str, Any] | None) -> bool:
     return not st
 
 
+def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
+    if flex_arrival_minutes is None:
+        return default
+    return max(0, int(flex_arrival_minutes))
+
+
+def _is_leave_eligible(
+    *,
+    sched: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+    card_in: dict[str, Any] | None,
+    s_start: int | None,
+    now_min: int,
+    tol: int,
+) -> bool:
+    if not sched:
+        return False
+    shift_type = (sched or {}).get("shift_type")
+    sched_from = (sched or {}).get("hour_from")
+    sched_to = (sched or {}).get("hour_to")
+    if _is_rest_day(shift_type, sched_from, sched_to):
+        return False
+    if (wl or {}).get("hour_from"):
+        return False
+    if card_in:
+        return False
+    if s_start is None:
+        return False
+    return now_min > s_start + tol + 1
+
+
 def _evaluate_row(
     *,
     sched: dict[str, Any] | None,
@@ -112,8 +144,13 @@ def _evaluate_row(
     card_in: dict[str, Any] | None,
     card_out: dict[str, Any] | None,
     work_date_ergani: str,
+    flex_arrival_minutes: int | None = None,
     late_tolerance_min: int = 15,
 ) -> dict[str, Any]:
+    tol = _flex_tolerance_minutes(
+        flex_arrival_minutes,
+        default=late_tolerance_min,
+    )
     notes: list[str] = []
     shift_type = (sched or {}).get("shift_type")
     sched_from = (sched or {}).get("hour_from")
@@ -135,6 +172,7 @@ def _evaluate_row(
             "action": "Δεν απαιτείται δήλωση κάρτας",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": False,
         }
 
     now_min = _minutes_now_on_date(work_date_ergani)
@@ -142,6 +180,14 @@ def _evaluate_row(
     s_end = _hm_to_minutes(sched_to)
     a_start = _hm_to_minutes(actual_from)
     a_end = _hm_to_minutes(actual_to)
+    leave_eligible = _is_leave_eligible(
+        sched=sched,
+        wl=wl,
+        card_in=card_in,
+        s_start=s_start,
+        now_min=now_min,
+        tol=tol,
+    )
 
     if not sched and (a_start is not None or card_in or card_out):
         return {
@@ -150,6 +196,7 @@ def _evaluate_row(
             "action": "Ελέγξτε ψηφιακό ωράριο ή καταχώρηση στην κάρτα",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": False,
         }
 
     if not sched:
@@ -159,6 +206,7 @@ def _evaluate_row(
             "action": "Συγχρονίστε το ψηφιακό ωράριο",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": False,
         }
 
     if card_in and not a_start:
@@ -167,16 +215,21 @@ def _evaluate_row(
         notes.append("Υπάρχει δήλωση εξόδου στην κάρτα, χωρίς ώρα λήξης στο ημερολόγιο")
 
     if a_start is not None and a_end is not None:
-        if s_start is not None and a_start > s_start + late_tolerance_min:
-            notes.append(f"Καθυστέρηση άφιξης (ωράριο {sched_from}, πραγματική {actual_from})")
-        if s_end is not None and a_end < s_end - late_tolerance_min:
-            notes.append(f"Πρόωρη αποχώρηση (ωράριο {sched_to}, πραγματική {actual_to})")
+        if s_start is not None and a_start > s_start + tol:
+            notes.append(
+                f"Καθυστέρηση άφιξης (ωράριο {sched_from}, πραγματική {actual_from}, ευελ. {tol}′)"
+            )
+        if s_end is not None and a_end < s_end - tol:
+            notes.append(
+                f"Πρόωρη αποχώρηση (ωράριο {sched_to}, πραγματική {actual_to}, ευελ. {tol}′)"
+            )
         return {
             "status": "completed",
             "status_label": "Ολοκληρωμένη μέρα",
             "action": "—",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": False,
         }
 
     if a_start is not None and a_end is None:
@@ -187,6 +240,7 @@ def _evaluate_row(
                 "action": "Να δηλωθεί αποχώρηση (έξοδος) στην κάρτα εργασίας",
                 "notes": notes,
                 "card": card_block,
+                "leave_eligible": False,
             }
         return {
             "status": "at_work",
@@ -194,9 +248,15 @@ def _evaluate_row(
             "action": "Στο τέλος βάρδιας: δήλωση αποχώρησης (έξοδος)",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": False,
         }
 
     if a_start is None:
+        leave_action = (
+            "Δήλωση άδειας (WTOLeave) — πέραν ευελιξίας προσέλευσης"
+            if leave_eligible
+            else None
+        )
         if s_start is not None and now_min < s_start - 30:
             return {
                 "status": "pending",
@@ -204,22 +264,25 @@ def _evaluate_row(
                 "action": f"Προσέλευση (είσοδος) πριν/στις {sched_from or '—'}",
                 "notes": notes,
                 "card": card_block,
+                "leave_eligible": False,
             }
         if s_end is not None and now_min > s_end:
             return {
                 "status": "absent",
                 "status_label": "Δεν καταγράφεται άφιξη",
-                "action": "Ελέγξτε κάρτα και ημερολόγιο πραγματικής απασχόλησης",
+                "action": leave_action or "Ελέγξτε κάρτα και ημερολόγιο πραγματικής απασχόλησης",
                 "notes": notes,
                 "card": card_block,
+                "leave_eligible": leave_eligible,
             }
-        if s_start is not None and now_min > s_start + late_tolerance_min:
+        if s_start is not None and now_min > s_start + tol:
             return {
                 "status": "late_arrival",
                 "status_label": "Καθυστερημένη άφιξη",
-                "action": "Να δηλωθεί προσέλευση (είσοδος) στην κάρτα εργασίας",
+                "action": leave_action or "Να δηλωθεί προσέλευση (είσοδος) στην κάρτα εργασίας",
                 "notes": notes,
                 "card": card_block,
+                "leave_eligible": leave_eligible,
             }
         return {
             "status": "needs_checkin",
@@ -227,6 +290,7 @@ def _evaluate_row(
             "action": "Να δηλωθεί προσέλευση (είσοδος) στην κάρτα εργασίας",
             "notes": notes,
             "card": card_block,
+            "leave_eligible": leave_eligible,
         }
 
     return {
@@ -235,6 +299,7 @@ def _evaluate_row(
         "action": "Ελέγξτε ωράριο και κάρτα",
         "notes": notes,
         "card": card_block,
+        "leave_eligible": False,
     }
 
 
@@ -252,6 +317,7 @@ def build_card_status_report(
     card_events = list_card_events_for_store_date(
         employer_afm, branch_aa, ref_iso
     )
+    flex_by_afm = flex_arrival_map_for_employer(employer_afm)
 
     sched_by_afm: dict[str, dict[str, Any]] = {}
     for row in schedule_rows:
@@ -314,12 +380,18 @@ def build_card_status_report(
                 (card_out.get(afm) or {}).get("f_onoma"),
             ),
         )
+        flex_min = flex_by_afm.get(afm)
+        if flex_min is None and sched:
+            flex_min = sched.get("flex_arrival_minutes")
+        if flex_min is None and wl:
+            flex_min = wl.get("flex_arrival_minutes")
         ev = _evaluate_row(
             sched=sched,
             wl=wl,
             card_in=card_in.get(afm),
             card_out=card_out.get(afm),
             work_date_ergani=work_date,
+            flex_arrival_minutes=flex_min,
         )
         st = ev["status"]
         summary["total"] += 1
@@ -332,6 +404,7 @@ def build_card_status_report(
             "employee_afm": afm,
             "eponymo": ep,
             "onoma": on,
+            "flex_arrival_minutes": flex_min,
             "schedule": (
                 {
                     "hour_from": sched.get("hour_from"),
@@ -354,6 +427,7 @@ def build_card_status_report(
             "status_label": ev["status_label"],
             "action": ev["action"],
             "notes": ev["notes"],
+            "leave_eligible": bool(ev.get("leave_eligible")),
         })
 
     rows_out.sort(

@@ -9,7 +9,9 @@ from app.routes_ergani import ergani_bp
 from app.routes_local import local_bp
 from app.routes_store import store_bp
 from app.routes_sync import sync_bp
+from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
+from app.routes_leave import leave_bp
 from app.routes_work_card import work_card_bp
 
 
@@ -19,10 +21,12 @@ def create_app() -> Flask:
     app.secret_key = Config.SECRET_KEY
     app.url_map.strict_slashes = False
     app.register_blueprint(work_card_bp)
+    app.register_blueprint(leave_bp)
     app.register_blueprint(local_bp)
     app.register_blueprint(store_bp)
     app.register_blueprint(ergani_bp)
     app.register_blueprint(sync_bp)
+    app.register_blueprint(sync_log_bp)
     app.register_blueprint(employees_bp)
     app.register_blueprint(schedule_bp)
     app.register_blueprint(work_log_bp)
@@ -46,6 +50,8 @@ def create_app() -> Flask:
             "work_card": "/api/work-card/",
             "work_card_list": "GET /api/work-card/list",
             "work_card_submit": "POST /api/work-card/submit",
+            "leave_types": "GET /api/leave/types",
+            "leave_submit": "POST /api/leave/submit",
             "local": "/api/local/",
             "health": "/api/local/health",
         })

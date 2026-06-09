@@ -35,7 +35,7 @@ def list_employees_for_employer(
     afm = norm_afm(employer_afm)
     sql = f"""
         SELECT TOP ({lim})
-            emp.id, emp.afm, emp.eponymo, emp.onoma,
+            emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
             e.active, p.code_aa AS parartima_aa,
             p.description AS parartima_desc,
             em.afm AS employer_afm,
@@ -169,33 +169,70 @@ def upsert_employee_by_afm(
         return upsert_employee(cur, afm, ep, on)
 
 
+def flex_arrival_map_for_employer(employer_afm: str) -> dict[str, int | None]:
+    """ΑΦΜ εργαζόμενου → ευέλικτη προσέλευση (λεπτά)."""
+    afm = norm_afm(employer_afm)
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT emp.afm, emp.flex_arrival_minutes
+            FROM dbo.karta_employee emp
+            JOIN dbo.karta_employment e ON emp.id = e.employee_id
+            JOIN dbo.karta_employer em ON e.employer_id = em.id
+            WHERE em.afm = ? AND e.active = 1
+            """,
+            (afm,),
+        )
+        out: dict[str, int | None] = {}
+        for row in cur.fetchall():
+            emp_afm = str(row[0]).strip()
+            flex = row[1]
+            out[emp_afm] = int(flex) if flex is not None else None
+        return out
+
+
 def upsert_employee(
     cur: pyodbc.Cursor,
     afm: str,
     eponymo: str | None,
     onoma: str | None,
+    *,
+    flex_arrival_minutes: int | None = None,
 ) -> int | None:
     a = norm_afm(afm)
     cur.execute("SELECT id FROM dbo.karta_employee WHERE afm = ?", (a,))
     row = cur.fetchone()
     if row:
-        cur.execute(
-            """
-            UPDATE dbo.karta_employee
-            SET eponymo = COALESCE(NULLIF(?, ''), eponymo),
-                onoma = COALESCE(NULLIF(?, ''), onoma),
-                updated_at = SYSDATETIMEOFFSET()
-            WHERE id = ?
-            """,
-            (eponymo or "", onoma or "", int(row[0])),
-        )
+        if flex_arrival_minutes is not None:
+            cur.execute(
+                """
+                UPDATE dbo.karta_employee
+                SET eponymo = COALESCE(NULLIF(?, ''), eponymo),
+                    onoma = COALESCE(NULLIF(?, ''), onoma),
+                    flex_arrival_minutes = ?,
+                    updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (eponymo or "", onoma or "", int(flex_arrival_minutes), int(row[0])),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE dbo.karta_employee
+                SET eponymo = COALESCE(NULLIF(?, ''), eponymo),
+                    onoma = COALESCE(NULLIF(?, ''), onoma),
+                    updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (eponymo or "", onoma or "", int(row[0])),
+            )
         return int(row[0])
     cur.execute(
         """
-        INSERT INTO dbo.karta_employee (afm, eponymo, onoma)
-        OUTPUT INSERTED.id VALUES (?, ?, ?)
+        INSERT INTO dbo.karta_employee (afm, eponymo, onoma, flex_arrival_minutes)
+        OUTPUT INSERTED.id VALUES (?, ?, ?, ?)
         """,
-        (a, eponymo, onoma),
+        (a, eponymo, onoma, flex_arrival_minutes),
     )
     ins = cur.fetchone()
     return int(ins[0]) if ins else None

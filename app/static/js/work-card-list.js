@@ -256,7 +256,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ημ/νία", "Ώρα από", "Ώρα έως"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -264,14 +264,23 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   t.appendChild(hr);
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    [row.employee_afm, row.eponymo, row.onoma, row.work_date, row.hour_from || "—", row.hour_to || "—"].forEach(
-      (txt, i) => {
-        const td = document.createElement("td");
-        if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
-        else td.textContent = txt || "";
-        tr.appendChild(td);
-      }
-    );
+    [
+      row.employee_afm,
+      row.eponymo,
+      row.onoma,
+      Office.formatFlexMinutes(row.flex_arrival_minutes),
+      row.work_date,
+      row.hour_from || "—",
+      row.hour_to || "—",
+    ].forEach((txt, i) => {
+      const td = document.createElement("td");
+      if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
+      else if (i === 3) {
+        td.className = "col-flex";
+        td.textContent = txt || "";
+      } else td.textContent = txt || "";
+      tr.appendChild(td);
+    });
     t.appendChild(tr);
   });
   wrap.appendChild(t);
@@ -287,7 +296,7 @@ function renderCardTable(wrap, rows, count, dateIso) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Τύπος", "Ώρα", "Πρωτόκολο", "Ημ/νία υποβολής"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Τύπος", "Ώρα", "Πρωτόκολο", "Ημ/νία υποβολής"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -300,6 +309,7 @@ function renderCardTable(wrap, rows, count, dateIso) {
       row.f_afm,
       row.f_eponymo,
       row.f_onoma,
+      Office.formatFlexMinutes(row.flex_arrival_minutes),
       row.f_type_label || row.f_type,
       Office.formatFDateTime(row.f_time || row.f_date),
       row.protocol || "—",
@@ -308,6 +318,9 @@ function renderCardTable(wrap, rows, count, dateIso) {
       const td = document.createElement("td");
       if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
       else if (i === 3) {
+        td.className = "col-flex";
+        td.textContent = txt || "";
+      } else if (i === 4) {
         td.innerHTML = `<span class="report-chip ${typeCls}">${Office.escapeHtml(txt || "")}</span>`;
       } else td.textContent = txt || "";
       tr.appendChild(td);

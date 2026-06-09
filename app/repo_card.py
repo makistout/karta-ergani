@@ -204,9 +204,11 @@ def list_card_events_for_store_date(
         SELECT TOP ({lim})
             e.id, e.f_afm, e.f_eponymo, e.f_onoma, e.f_type,
             e.f_reference_date, e.f_date, e.f_aitiologia,
+            emp.flex_arrival_minutes,
             d.success, d.protocol
         FROM dbo.karta_card_event e
         INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+        LEFT JOIN dbo.karta_employee emp ON emp.afm = e.f_afm
         WHERE e.f_afm_ergodoti = ? AND e.f_aa = ?
           AND e.f_reference_date = ?
           AND d.success = 1
@@ -237,9 +239,11 @@ def list_card_events_for_store_range(
         SELECT TOP ({lim})
             e.id, e.f_afm, e.f_eponymo, e.f_onoma, e.f_type,
             e.f_reference_date, e.f_date, e.f_aitiologia,
+            emp.flex_arrival_minutes,
             d.success, d.protocol, d.submit_date_text, d.ergani_submission_id
         FROM dbo.karta_card_event e
         INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+        LEFT JOIN dbo.karta_employee emp ON emp.afm = e.f_afm
         WHERE e.f_afm_ergodoti = ? AND e.f_aa = ?
           AND e.f_reference_date >= ? AND e.f_reference_date <= ?
           AND d.success = 1

@@ -68,6 +68,7 @@ BEGIN
         afm NVARCHAR(9) NOT NULL,
         eponymo NVARCHAR(200) NULL,
         onoma NVARCHAR(200) NULL,
+        flex_arrival_minutes INT NULL,
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_employee_updated DEFAULT (SYSDATETIMEOFFSET()),
         CONSTRAINT UQ_karta_employee_afm UNIQUE (afm)
     );

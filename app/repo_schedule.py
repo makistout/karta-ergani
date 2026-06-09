@@ -129,7 +129,7 @@ def list_schedule_for_store(
             SELECT TOP ({lim})
                 s.id, s.employee_afm, s.hour_from, s.hour_to, s.shift_type,
                 s.break_minutes, s.break_in_work, s.extra, s.work_date,
-                emp.eponymo, emp.onoma,
+                emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(s.synced_at AS datetime2) AS synced_at
             FROM dbo.karta_schedule s
             LEFT JOIN dbo.karta_employee emp ON emp.afm = s.employee_afm
@@ -160,7 +160,7 @@ def list_schedule_for_range(
             SELECT TOP ({lim})
                 s.id, s.employee_afm, s.hour_from, s.hour_to, s.shift_type,
                 s.break_minutes, s.break_in_work, s.extra, s.work_date,
-                emp.eponymo, emp.onoma,
+                emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(s.synced_at AS datetime2) AS synced_at
             FROM dbo.karta_schedule s
             LEFT JOIN dbo.karta_employee emp ON emp.afm = s.employee_afm

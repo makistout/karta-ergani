@@ -145,7 +145,7 @@ function renderTablePage() {
   t.className = "data";
   const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
-  headers.push("Από", "Έως", "Τύπος", "Διάλειμμα");
+  headers.push("Ευελ. (λεπτά)", "Από", "Έως", "Τύπος", "Διάλειμμα");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
@@ -159,6 +159,7 @@ function renderTablePage() {
     const cells = [row.employee_afm || "", row.eponymo || "", row.onoma || ""];
     if (multi) cells.push(row.work_date || "");
     cells.push(
+      Office.formatFlexMinutes(row.flex_arrival_minutes),
       row.hour_from || "",
       row.hour_to || "",
       row.shift_type || "",

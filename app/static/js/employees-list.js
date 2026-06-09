@@ -49,7 +49,7 @@ function renderTable(rows, count, store) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Παράρτημα Ergani", "Κατάσταση"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Παράρτημα Ergani", "Κατάσταση"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -66,6 +66,10 @@ function renderTable(rows, count, store) {
     const tdOn = document.createElement("td");
     tdOn.textContent = emp.onoma || "";
     tr.appendChild(tdOn);
+    const tdFlex = document.createElement("td");
+    tdFlex.className = "col-flex";
+    tdFlex.textContent = Office.formatFlexMinutes(emp.flex_arrival_minutes);
+    tr.appendChild(tdFlex);
     const tdAa = document.createElement("td");
     const aa = emp.parartima_aa ?? "—";
     const pd = emp.parartima_desc ? ` — ${emp.parartima_desc}` : "";

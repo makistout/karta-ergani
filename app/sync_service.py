@@ -151,7 +151,11 @@ def iter_store_sync_events(
                         continue
                     active_afms.add(norm_afm(e_afm))
                     emp_id = upsert_employee(
-                        cur, e_afm, emp.get("eponymo"), emp.get("onoma")
+                        cur,
+                        e_afm,
+                        emp.get("eponymo"),
+                        emp.get("onoma"),
+                        flex_arrival_minutes=emp.get("flex_arrival_minutes"),
                     )
                     if emp_id:
                         upsert_employment(cur, employer_id, emp_id, part_id)
