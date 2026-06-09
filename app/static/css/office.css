@@ -704,11 +704,12 @@ input[role="combobox"] {
 
 .msg.sync-panel {
   display: flex !important;
+  flex-direction: column;
   margin-top: 0;
   min-height: 8rem;
   padding: 1.5rem 1.25rem;
   font-size: 1rem;
-  align-items: center;
+  align-items: stretch;
 }
 
 .msg.sync-panel .sync-loading-text {
@@ -719,6 +720,31 @@ input[role="combobox"] {
 .msg.sync-panel .sync-progress {
   height: 8px;
   margin-top: 0.65rem;
+}
+
+.sync-log-lines {
+  max-height: 14rem;
+  overflow-y: auto;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  line-height: 1.45;
+  width: 100%;
+}
+
+.sync-log-line + .sync-log-line {
+  margin-top: 0.2rem;
+}
+
+.sync-log-line.sync-log-error {
+  color: var(--err, #b91c1c);
+}
+
+.sync-log-line.sync-log-warn {
+  color: #b45309;
 }
 
 .table-pager {

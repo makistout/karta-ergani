@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import requests
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, after_this_request, jsonify, request, session
 
 from app import repo_store as repo
 from app.ergani_env import env_label, normalize_ergani_env, store_api_context
@@ -15,7 +15,8 @@ from app.portal_auth import verify_store_wizard
 from app.ergani_env import api_login_credentials
 from app.ergani_client import ErganiClient
 from app.store_credentials_util import MASKED, merge_secret, mask_store_secrets
-from app.sync_service import sync_store_from_ergani
+from app.sync_jobs import create_portal_sync_job, get_sync_job, run_portal_sync_job
+from app.sync_service import iter_store_sync_events
 
 store_bp = Blueprint("store", __name__, url_prefix="/api/store")
 
@@ -249,24 +250,49 @@ def select_store():
     session["employer_afm"] = ctx["employer_afm"]
     session["branch_aa"] = ctx["branch_aa"]
     session["ergani_env"] = ctx["ergani_env"]
-    sync = sync_store_from_ergani(
-        token,
-        ctx["employer_afm"],
-        ctx["branch_aa"],
-        int(cfg["id"]),
-        api_base_url=ctx["api_base_url"],
+
+    job_id = create_portal_sync_job(
+        label="store_select",
+        store_id=int(cfg["id"]),
     )
+    store_payload = {
+        "id": ctx["id"],
+        "name": ctx["name"],
+        "employer_afm": ctx["employer_afm"],
+        "branch_aa": ctx["branch_aa"],
+        "ergani_env": ctx["ergani_env"],
+        "ergani_env_label": ctx["ergani_env_label"],
+        "api_base_url": ctx.get("api_base_url"),
+        "portal_base_url": ctx.get("portal_base_url"),
+    }
+
+    @after_this_request
+    def _start_store_sync(response):
+        run_portal_sync_job(
+            job_id,
+            lambda: iter_store_sync_events(
+                token,
+                ctx["employer_afm"],
+                ctx["branch_aa"],
+                int(cfg["id"]),
+                api_base_url=ctx["api_base_url"],
+                run_id=job_id,
+                store_name=ctx.get("name"),
+            ),
+        )
+        return response
+
     return jsonify({
         "success": True,
-        "store": {
-            "id": ctx["id"],
-            "name": ctx["name"],
-            "employer_afm": ctx["employer_afm"],
-            "branch_aa": ctx["branch_aa"],
-            "ergani_env": ctx["ergani_env"],
-            "ergani_env_label": ctx["ergani_env_label"],
-            "api_base_url": ctx.get("api_base_url"),
-            "portal_base_url": ctx.get("portal_base_url"),
-        },
-        "sync": sync,
+        "store": store_payload,
+        "async": True,
+        "job_id": job_id,
     })
+
+
+@store_bp.get("/select/status/<job_id>")
+def select_store_status(job_id: str):
+    job = get_sync_job(job_id)
+    if not job:
+        return jsonify({"error": "Άγνωστο ή ολοκληρωμένο job"}), 404
+    return jsonify(job)

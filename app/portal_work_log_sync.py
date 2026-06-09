@@ -246,12 +246,13 @@ def iter_work_log_sync_events(
     to_iso: str | None = None,
     *,
     max_days: int = 31,
+    run_id: str | None = None,
 ) -> Any:
     if not from_iso:
         from_iso = datetime.today().strftime("%Y-%m-%d")
     to_iso = to_iso or from_iso
     dates = iso_to_ergani_dates(from_iso, to_iso, max_days)
-    log = logger_for_store("work_log_sync", ctx)
+    log = logger_for_store("work_log_sync", ctx, run_id=run_id)
     portal_base = _portal_base(ctx)
 
     log.info(

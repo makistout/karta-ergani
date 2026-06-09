@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Iterator
 from typing import Any
 
 from app.db import cursor
 from app.ergani_client import ErganiClient
-from app.date_util import format_date_for_ergani
 from app.ergani_parse import (
     parse_branches,
     parse_employees,
     parse_employer_profile,
 )
 from app.ergani_env import store_api_context
-from app.schedule_sync import fetch_and_save_schedule_for_ctx
-from app.work_log_sync import fetch_and_save_work_log_for_ctx
 from app.http_helpers import json_or_text
+from app.karta_log import KartaLogger
+from app.portal_schedule_sync import iter_schedule_sync_events
+from app.portal_work_log_sync import iter_work_log_sync_events
 from app.repo_entities import (
     deactivate_stale_employments,
     upsert_employee,
@@ -27,6 +27,8 @@ from app.repo_entities import (
 from app import repo_store
 from app.work_card_payload import norm_afm
 
+STORE_SYNC_STEPS = 5
+
 
 def _step(ok: bool, detail: str = "", **extra: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"success": ok, "detail": detail}
@@ -34,21 +36,30 @@ def _step(ok: bool, detail: str = "", **extra: Any) -> dict[str, Any]:
     return out
 
 
-def sync_store_from_ergani(
+def iter_store_sync_events(
     bearer: str,
     employer_afm: str,
     branch_aa: str,
     store_id: int | None = None,
     *,
     api_base_url: str | None = None,
-) -> dict[str, Any]:
+    run_id: str | None = None,
+    store_name: str | None = None,
+) -> Iterator[dict[str, Any]]:
     """
-    Αντλεί από Ergani: εργοδότη, παραρτήματα, εργαζόμενους.
-    Ψηφιακό ωράριο: portal (σήμερα). Work log: κλήση API χωρίς αποθήκευση ακόμα.
+    Generator events για πλήρη συγχρονισμό καταστήματος — API + portal (σήμερα).
     """
+    log = KartaLogger(
+        "store_select",
+        store_id=store_id,
+        store_name=store_name,
+        run_id=run_id,
+        register_run=run_id is None,
+    )
     client = ErganiClient(api_base_url)
     afm = str(employer_afm).strip()
     aa = str(branch_aa or "0").strip()[:32] or "0"
+    total = STORE_SYNC_STEPS
     results: dict[str, Any] = {
         "employer": _step(False),
         "branches": _step(False),
@@ -57,7 +68,18 @@ def sync_store_from_ergani(
         "work_log": _step(False),
     }
 
+    log.info("Έναρξη συγχρονισμού καταστήματος", employer_afm=afm, branch_aa=aa)
+    yield {
+        "event": "progress",
+        "message": "Έναρξη συγχρονισμού…",
+        "step": 0,
+        "total": total,
+    }
+
     # EX_BASE_01 — στοιχεία εργοδότη
+    msg = "Ενημέρωση στοιχείων εργοδότη (EX_BASE_01)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 1, "total": total}
     try:
         r01 = client.execute_service("EX_BASE_01", [], bearer)
         p01 = json_or_text(r01)
@@ -67,12 +89,19 @@ def sync_store_from_ergani(
             with cursor() as cur:
                 upsert_employer(cur, afm, eponimia=eponimia)
             results["employer"] = _step(True, "Εργοδότης ενημερώθηκε", eponimia=eponimia)
+            log.info("Εργοδότης ενημερώθηκε", eponimia=eponimia)
         else:
-            results["employer"] = _step(False, f"HTTP {r01.status_code}")
+            detail = f"HTTP {r01.status_code}"
+            results["employer"] = _step(False, detail)
+            log.error(f"Αποτυχία EX_BASE_01: {detail}")
     except Exception as ex:
         results["employer"] = _step(False, str(ex))
+        log.error(f"Σφάλμα EX_BASE_01: {ex}")
 
     # EX_BASE_02 — παραρτήματα
+    msg = "Ενημέρωση παραρτημάτων (EX_BASE_02)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 2, "total": total}
     try:
         r02 = client.execute_service("EX_BASE_02", [], bearer)
         p02 = json_or_text(r02)
@@ -91,12 +120,19 @@ def sync_store_from_ergani(
                         )
                         n += 1
             results["branches"] = _step(True, f"{n} παραρτήματα", count=n)
+            log.info(f"Αποθηκεύτηκαν {n} παραρτήματα", count=n)
         else:
-            results["branches"] = _step(False, f"HTTP {r02.status_code}")
+            detail = f"HTTP {r02.status_code}"
+            results["branches"] = _step(False, detail)
+            log.error(f"Αποτυχία EX_BASE_02: {detail}")
     except Exception as ex:
         results["branches"] = _step(False, str(ex))
+        log.error(f"Σφάλμα EX_BASE_02: {ex}")
 
     # EX_BASE_05 — εργαζόμενοι
+    msg = "Ενημέρωση εργαζομένων (EX_BASE_05)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 3, "total": total}
     try:
         r05 = client.execute_service("EX_BASE_05", [], bearer)
         p05 = json_or_text(r05)
@@ -122,61 +158,169 @@ def sync_store_from_ergani(
                         synced += 1
                 if active_afms:
                     deactivate_stale_employments(cur, employer_id, active_afms)
-            results["employees"] = _step(
-                True, f"{synced} εργαζόμενοι", count=synced
-            )
+            results["employees"] = _step(True, f"{synced} εργαζόμενοι", count=synced)
+            log.info(f"Αποθηκεύτηκαν {synced} εργαζόμενοι", count=synced)
         else:
-            results["employees"] = _step(False, f"HTTP {r05.status_code}")
+            detail = f"HTTP {r05.status_code}"
+            results["employees"] = _step(False, detail)
+            log.error(f"Αποτυχία EX_BASE_05: {detail}")
     except Exception as ex:
         results["employees"] = _step(False, str(ex))
+        log.error(f"Σφάλμα EX_BASE_05: {ex}")
 
-    try:
-        sched_ctx = None
-        if store_id:
-            cfg = repo_store.get_store_config(int(store_id))
-            if cfg:
-                sched_ctx = store_api_context(cfg)
-        if sched_ctx:
-            sched = fetch_and_save_schedule_for_ctx(sched_ctx, None, None, max_days=1)
-        else:
-            sched = {"success": False, "detail": "Δεν βρέθηκε κατάστημα για portal ωράριο", "count": 0}
-        results["schedule"] = _step(
-            sched.get("success", False),
-            sched.get("detail", ""),
-            count=sched.get("count", 0),
-            work_date=sched.get("work_date"),
-        )
-    except Exception as ex:
-        results["schedule"] = _step(False, str(ex))
+    sched_ctx = None
+    if store_id:
+        cfg = repo_store.get_store_config(int(store_id))
+        if cfg:
+            sched_ctx = store_api_context(cfg)
 
-    try:
-        wl_ctx = None
-        if store_id:
-            cfg = repo_store.get_store_config(int(store_id))
-            if cfg:
-                wl_ctx = store_api_context(cfg)
-        if wl_ctx:
-            wl = fetch_and_save_work_log_for_ctx(wl_ctx, None, None, max_days=1)
+    # Ψηφιακό ωράριο — portal
+    msg = "Ψηφιακό ωράριο (portal Ergani)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 4, "total": total}
+    if sched_ctx:
+        sched_result: dict[str, Any] | None = None
+        for ev in iter_schedule_sync_events(
+            sched_ctx, max_days=1, run_id=log.run_id
+        ):
+            ev_type = ev.get("event")
+            if ev_type == "progress" and ev.get("message"):
+                sub = ev["message"]
+                yield {
+                    "event": "progress",
+                    "message": f"Ωράριο: {sub}",
+                    "step": 4,
+                    "total": total,
+                }
+            elif ev_type == "day_ok":
+                log.info(
+                    ev.get("message") or "Ημέρα ωραρίου OK",
+                    work_date=ev.get("work_date"),
+                    count=ev.get("count"),
+                )
+            elif ev_type == "day_err":
+                log.error(ev.get("message") or "Σφάλμα ωραρίου")
+            elif ev_type == "done":
+                sched_result = ev.get("sync") or {}
+            elif ev_type == "error":
+                sched_result = {
+                    "success": False,
+                    "detail": ev.get("message") or "Αποτυχία portal ωραρίου",
+                    "count": 0,
+                }
+        if sched_result:
+            results["schedule"] = _step(
+                sched_result.get("success", False),
+                sched_result.get("detail", ""),
+                count=sched_result.get("count", 0),
+                work_date=sched_result.get("work_date"),
+            )
         else:
-            wl = {
-                "success": False,
-                "detail": "Δεν βρέθηκε κατάστημα για portal πραγματικής απασχόλησης",
-                "count": 0,
-            }
-        results["work_log"] = _step(
-            wl.get("success", False),
-            wl.get("detail", ""),
-            count=wl.get("count", 0),
-            work_date=wl.get("work_date"),
-        )
-    except Exception as ex:
-        results["work_log"] = _step(False, str(ex))
+            results["schedule"] = _step(False, "Διακόπηκε ο συγχρονισμός ωραρίου")
+            log.error("Διακόπηκε ο συγχρονισμός ωραρίου")
+    else:
+        detail = "Δεν βρέθηκε κατάστημα για portal ωράριο"
+        results["schedule"] = _step(False, detail, count=0)
+        log.warning(detail)
+
+    # Πραγματική απασχόληση — portal
+    msg = "Πραγματική απασχόληση (portal Ergani)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 5, "total": total}
+    wl_ctx = sched_ctx
+    if wl_ctx:
+        wl_result: dict[str, Any] | None = None
+        for ev in iter_work_log_sync_events(
+            wl_ctx, max_days=1, run_id=log.run_id
+        ):
+            ev_type = ev.get("event")
+            if ev_type == "progress" and ev.get("message"):
+                sub = ev["message"]
+                yield {
+                    "event": "progress",
+                    "message": f"Πραγματική: {sub}",
+                    "step": 5,
+                    "total": total,
+                }
+            elif ev_type == "day_ok":
+                log.info(
+                    ev.get("message") or "Ημέρα πραγματικής OK",
+                    work_date=ev.get("work_date"),
+                    count=ev.get("count"),
+                )
+            elif ev_type == "day_err":
+                log.error(ev.get("message") or "Σφάλμα πραγματικής")
+            elif ev_type == "done":
+                wl_result = ev.get("sync") or {}
+            elif ev_type == "error":
+                wl_result = {
+                    "success": False,
+                    "detail": ev.get("message") or "Αποτυχία portal πραγματικής",
+                    "count": 0,
+                }
+        if wl_result:
+            results["work_log"] = _step(
+                wl_result.get("success", False),
+                wl_result.get("detail", ""),
+                count=wl_result.get("count", 0),
+                work_date=wl_result.get("work_date"),
+            )
+        else:
+            results["work_log"] = _step(False, "Διακόπηκε ο συγχρονισμός πραγματικής")
+            log.error("Διακόπηκε ο συγχρονισμός πραγματικής")
+    else:
+        detail = "Δεν βρέθηκε κατάστημα για portal πραγματικής απασχόλησης"
+        results["work_log"] = _step(False, detail, count=0)
+        log.warning(detail)
 
     if store_id:
         try:
             repo_store.touch_last_sync(int(store_id))
-        except Exception:
-            pass
+            log.info("Ενημερώθηκε ημερομηνία τελευταίου συγχρονισμού")
+        except Exception as ex:
+            log.warning(f"Δεν ενημερώθηκε last_sync_at: {ex}")
 
     ok_all = results["employees"].get("success")
-    return {"success": bool(ok_all), "sync_results": results}
+    sync_payload = {"success": bool(ok_all), "sync_results": results}
+    summary_parts = []
+    if results["employees"].get("success"):
+        summary_parts.append(f"{results['employees'].get('count', 0)} εργαζόμενοι")
+    if results["schedule"].get("success"):
+        summary_parts.append(f"{results['schedule'].get('count', 0)} ωράριο")
+    if results["work_log"].get("success"):
+        summary_parts.append(f"{results['work_log'].get('count', 0)} πραγματική")
+    summary = "Ολοκληρώθηκε — " + ", ".join(summary_parts) if summary_parts else (
+        "Ολοκληρώθηκε με προειδοποιήσεις" if ok_all else "Αποτυχία συγχρονισμού"
+    )
+    log.info(summary, success=bool(ok_all))
+    yield {
+        "event": "done",
+        "success": bool(ok_all),
+        "sync": sync_payload,
+        "message": summary,
+        "logs": log.tail(100),
+        "error": None if ok_all else results["employees"].get("detail"),
+    }
+
+
+def sync_store_from_ergani(
+    bearer: str,
+    employer_afm: str,
+    branch_aa: str,
+    store_id: int | None = None,
+    *,
+    api_base_url: str | None = None,
+) -> dict[str, Any]:
+    """Συγχρονισμός χωρίς streaming — για συμβατότητα."""
+    for ev in iter_store_sync_events(
+        bearer,
+        employer_afm,
+        branch_aa,
+        store_id,
+        api_base_url=api_base_url,
+    ):
+        if ev.get("event") == "done":
+            return ev.get("sync") or {"success": False, "sync_results": {}}
+        if ev.get("event") == "error":
+            return {"success": False, "sync_results": {}, "detail": ev.get("message")}
+    return {"success": False, "sync_results": {}}

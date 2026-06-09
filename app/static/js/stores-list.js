@@ -76,8 +76,31 @@ function mkBtn(label, cls, iconName, fn) {
   return b;
 }
 
+function buildStoreSelectMessage(payload) {
+  const sync = payload?.sync || {};
+  const results = sync.sync_results || {};
+  const emp = results.employees;
+  let msg = payload?.store?.name ? `Ενεργό: ${payload.store.name}` : "Επιλογή ολοκληρώθηκε";
+  if (emp?.success) {
+    msg += ` — ${emp.count ?? 0} εργαζόμενοι`;
+  }
+  const sched = results.schedule;
+  if (sched?.success) {
+    msg += `, ${sched.count ?? 0} ωράριο`;
+  }
+  const wl = results.work_log;
+  if (wl?.success) {
+    msg += `, ${wl.count ?? 0} πραγμ. απασχόληση`;
+  }
+  if (!emp?.success && emp?.detail) {
+    msg += ` — προειδοποίηση: ${emp.detail}`;
+  }
+  return { ok: Boolean(payload?.success), text: msg };
+}
+
 async function selectStore(id) {
-  Office.showLoading("listMsg", "Επιλογή και συγχρονισμός Ergani… Παρακαλώ περιμένετε.");
+  Office.beginSyncPanel("storesListWrap", "listMsg");
+  Office.showLoading("listMsg", "Σύνδεση Ergani και έναρξη συγχρονισμού…", 0, 5);
   try {
     const res = await fetch("/api/store/select", {
       method: "POST",
@@ -85,29 +108,41 @@ async function selectStore(id) {
       body: JSON.stringify({ id }),
     });
     const data = await res.json();
-    if (res.ok && data.success) {
-      const emp = data.sync?.sync_results?.employees;
-      let msg = `Ενεργό: ${data.store.name}`;
-      const sched = data.sync?.sync_results?.schedule;
-      if (emp?.success) {
-        msg += ` — ${emp.count ?? 0} εργαζόμενοι`;
-      }
-      if (sched?.success) {
-        msg += `, ${sched.count ?? 0} ωράριο`;
-      }
-      const wl = data.sync?.sync_results?.work_log;
-      if (wl?.success) {
-        msg += `, ${wl.count ?? 0} πραγμ. απασχόληση`;
-      }
-      if (!emp?.success && emp?.detail) {
-        msg += ` — προειδοποίηση: ${emp.detail}`;
-      }
-      Office.showMsg("listMsg", msg, Boolean(emp?.success ?? true));
-      await Office.loadActiveStore();
-    } else {
+    if (!res.ok || !data.success) {
+      Office.endSyncPanel("storesListWrap", "listMsg");
       Office.showMsg("listMsg", data.error || "Αποτυχία επιλογής", false);
+      return;
     }
+    if (!data.job_id) {
+      if (data.sync) {
+        Office.endSyncPanel("storesListWrap", "listMsg");
+        const legacy = buildStoreSelectMessage({ success: true, store: data.store, sync: data.sync });
+        await Office.loadActiveStore();
+        Office.showMsg("listMsg", legacy.text, legacy.ok);
+        return;
+      }
+      Office.endSyncPanel("storesListWrap", "listMsg");
+      Office.showMsg(
+        "listMsg",
+        "Δεν ξεκίνησε background συγχρονισμός (λείπει job_id). Επανεκκινήστε τον server (python run.py) και κάντε Ctrl+F5.",
+        false
+      );
+      return;
+    }
+    const statusUrl = `/api/store/select/status/${encodeURIComponent(data.job_id)}`;
+    const polled = await Office.pollSyncJob(statusUrl, "listMsg");
+    Office.endSyncPanel("storesListWrap", "listMsg");
+    const result = buildStoreSelectMessage({
+      success: polled.success,
+      store: data.store,
+      sync: polled.sync,
+    });
+    if (result.ok) {
+      await Office.loadActiveStore();
+    }
+    Office.showMsg("listMsg", polled.error && !polled.success ? polled.error : result.text, result.ok);
   } catch (e) {
+    Office.endSyncPanel("storesListWrap", "listMsg");
     Office.showMsg("listMsg", String(e), false);
   }
 }

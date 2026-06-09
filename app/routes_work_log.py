@@ -93,10 +93,15 @@ def work_log_sync_route():
     if should_run_async(data, dates):
         store_ctx = dict(ctx)
         return start_async_portal_sync(
-            lambda: iter_work_log_sync_events(
-                store_ctx, from_iso=from_iso, to_iso=to_iso, max_days=31
+            lambda job_id: iter_work_log_sync_events(
+                store_ctx,
+                from_iso=from_iso,
+                to_iso=to_iso,
+                max_days=31,
+                run_id=job_id,
             ),
             label="work_log_sync",
+            store_id=int(ctx["id"]),
         )
 
     try:

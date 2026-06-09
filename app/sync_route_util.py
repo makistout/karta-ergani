@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from collections.abc import Iterator
+from typing import Any, Callable
 
 from flask import after_this_request, jsonify
 
@@ -26,16 +27,17 @@ def should_run_async(data: dict[str, Any], dates: list[str]) -> bool:
 
 
 def start_async_portal_sync(
-    events_fn: Callable[[], Iterator[dict[str, Any]]],
+    events_fn: Callable[[str], Iterator[dict[str, Any]]],
     *,
     label: str,
+    store_id: int | None = None,
 ):
     """Επιστρέφει job_id αμέσως — ο worker ξεκινά μετά την αποστολή της HTTP απάντησης."""
-    job_id = create_portal_sync_job(label=label)
+    job_id = create_portal_sync_job(label=label, store_id=store_id)
 
     @after_this_request
     def _start_worker(response):
-        run_portal_sync_job(job_id, events_fn)
+        run_portal_sync_job(job_id, lambda: events_fn(job_id))
         return response
 
     return jsonify({"async": True, "job_id": job_id})

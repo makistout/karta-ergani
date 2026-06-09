@@ -87,22 +87,36 @@ function renderTable(rows, count, store) {
 
 async function runSync() {
   const btn = document.getElementById("btnSyncEmployees");
-  const wrap = document.getElementById("employeesWrap");
   Office.setButtonLoading(btn, true);
-  Office.showLoading("empMsg", "Συγχρονισμός με Ergani… Παρακαλώ περιμένετε.");
-  if (wrap) Office.showTableLoading(wrap, "Συγχρονισμός Ergani…");
+  Office.beginSyncPanel("employeesWrap", "empMsg");
+  Office.showLoading("empMsg", "Έναρξη συγχρονισμού Ergani…", 0, 5);
   try {
     const res = await fetch("/api/ergani/sync-all", { method: "POST" });
     const data = await res.json();
-    if (res.ok && data.success) {
-      const n = data.sync_results?.employees?.count ?? 0;
+    if (!res.ok) {
+      Office.endSyncPanel("employeesWrap", "empMsg");
+      Office.showMsg("empMsg", data.error || "Αποτυχία", false);
+      return;
+    }
+    if (!data.job_id) {
+      Office.endSyncPanel("employeesWrap", "empMsg");
+      Office.showMsg("empMsg", "Δεν ξεκίνησε background συγχρονισμός (λείπει job_id).", false);
+      return;
+    }
+    const statusUrl = `/api/ergani/sync-all/status/${encodeURIComponent(data.job_id)}`;
+    const polled = await Office.pollSyncJob(statusUrl, "empMsg");
+    Office.endSyncPanel("employeesWrap", "empMsg");
+    if (polled.success) {
+      const n = polled.sync?.sync_results?.employees?.count ?? 0;
       Office.showMsg("empMsg", `Ολοκληρώθηκε — ${n} εργαζόμενοι.`, true);
       await loadEmployees();
     } else {
-      const det = data.sync_results?.employees?.detail || data.error || "Αποτυχία";
+      const det =
+        polled.sync?.sync_results?.employees?.detail || polled.error || "Αποτυχία";
       Office.showMsg("empMsg", det, false);
     }
   } catch (e) {
+    Office.endSyncPanel("employeesWrap", "empMsg");
     Office.showMsg("empMsg", String(e), false);
   } finally {
     Office.setButtonLoading(btn, false);

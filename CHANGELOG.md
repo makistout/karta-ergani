@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-06-05 — Sync logs στη βάση, αναλυτικά βήματα παντού
+
+### Βάση (`karta_sync_run`, `karta_sync_log`)
+
+- Migration: **`sql/alter_add_karta_sync_log.sql`** — κάθε συγχρονισμός = ένα `run_id` (UUID) + γραμμές log (INFO/WARN/ERROR).
+- Module **`app/repo_sync_log.py`** — `create_run`, `append_line`, `update_run_progress`, `finish_run`, `list_lines`.
+
+### Logging (`app/karta_log.py`)
+
+- **`KartaLogger`** γράφει **μόνο στη βάση** (αφαιρέθηκε το `logs/karta-ergani.log`).
+- Κάθε background job συνδέεται με `run_id`· status polling επιστρέφει **`log_lines`** από τη βάση.
+
+### Επιλογή καταστήματος & πλήρης sync
+
+- `POST /api/store/select` → auth + session, μετά **`{ async: true, job_id }`**· συγχρονισμός σε background.
+- `GET /api/store/select/status/<job_id>` — progress + log γραμμές.
+- **`iter_store_sync_events`** (`sync_service.py`): EX_BASE_01/02/05, portal ωράριο, portal πραγματική — με live βήματα όπως schedule/work-log.
+- UI **`stores-list.js`**: sync panel + polling + scrollable log.
+
+### Χειροκίνητος συγχρονισμός εργαζομένων
+
+- `POST /api/ergani/sync-all` → async + `GET /api/ergani/sync-all/status/<job_id>`.
+- UI **`employees-list.js`**: ίδιο pattern με καταστήματα.
+
+### Portal sync (ωράριο / πραγματική)
+
+- `run_id` περνά στο `iter_schedule_sync_events` / `iter_work_log_sync_events` — όλα τα logs στο ίδιο run.
+
+---
+
 ## 2026-06-05 — Μία ειδοποίηση sync, live progress, logging
 
 ### Συγχρονισμός UI
