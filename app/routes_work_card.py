@@ -40,7 +40,7 @@ work_card_bp = Blueprint("work_card", __name__, url_prefix="/api/work-card")
 def _integration_key_ok() -> bool:
     expected = (Config.WORK_CARD_API_KEY or "").strip()
     if not expected:
-        return True
+        return bool(Config.FLASK_DEBUG)
     got = (request.headers.get("X-Work-Card-Api-Key") or "").strip()
     if not got:
         body = request.get_json(silent=True) or {}

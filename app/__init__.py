@@ -16,10 +16,15 @@ from app.routes_work_card import work_card_bp
 
 
 def create_app() -> Flask:
+    Config.validate_for_startup()
     app = Flask(__name__)
     app.config.from_object(Config)
     app.secret_key = Config.SECRET_KEY
     app.url_map.strict_slashes = False
+
+    from app.security import register_api_token_guard
+
+    register_api_token_guard(app)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)
     app.register_blueprint(local_bp)

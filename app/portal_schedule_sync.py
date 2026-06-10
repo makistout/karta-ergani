@@ -353,6 +353,7 @@ def iter_schedule_sync_events(
     to_iso = to_iso or from_iso
     dates = iso_to_ergani_dates(from_iso, to_iso, max_days)
     log = logger_for_store("schedule_sync", ctx, run_id=run_id)
+    finalize_run = run_id is None
     portal_base = _portal_base(ctx)
 
     log.info(
@@ -380,6 +381,15 @@ def iter_schedule_sync_events(
             "message": str(ex),
             "logs": log.tail(100),
         }
+        if finalize_run:
+            from app import repo_sync_log
+
+            repo_sync_log.finish_run(
+                log.run_id,
+                status="error",
+                message=str(ex),
+                result={"success": False, "error": str(ex)},
+            )
         return
 
     total = 0
@@ -427,6 +437,15 @@ def iter_schedule_sync_events(
         portal_base=portal_base,
         log=log,
     )
+    if finalize_run:
+        from app import repo_sync_log
+
+        repo_sync_log.finish_run(
+            log.run_id,
+            status="done" if result["success"] else "error",
+            message=result["detail"],
+            result=result,
+        )
     yield {
         "event": "done",
         "success": result["success"],

@@ -176,6 +176,12 @@ BEGIN
     );
     CREATE INDEX IX_karta_card_event_declaration ON dbo.karta_card_event (declaration_id);
     CREATE INDEX IX_karta_card_event_afm_date_type ON dbo.karta_card_event (f_afm, f_reference_date, f_type);
+    CREATE UNIQUE INDEX UQ_karta_card_event_day_type
+        ON dbo.karta_card_event (f_afm_ergodoti, f_aa, f_afm, f_reference_date, f_type)
+        WHERE f_afm IS NOT NULL
+          AND f_reference_date IS NOT NULL
+          AND f_type IS NOT NULL
+          AND f_afm_ergodoti IS NOT NULL;
 END
 GO
 

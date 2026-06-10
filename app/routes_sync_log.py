@@ -40,6 +40,7 @@ def sync_log_runs():
 
     limit = request.args.get("limit", default=50, type=int) or 50
     offset = request.args.get("offset", default=0, type=int) or 0
+    repo_sync_log.reconcile_stale_runs()
     runs = repo_sync_log.list_runs(store_id=store_id, limit=limit, offset=offset)
     total = repo_sync_log.count_runs(store_id=store_id)
     for r in runs:
@@ -59,6 +60,7 @@ def sync_log_run_detail(run_id: str):
             "error": "Δεν υπάρχουν οι πίνακες log στη βάση.",
             "db_setup": "sql/alter_add_karta_sync_log.sql",
         }), 503
+    repo_sync_log.reconcile_stale_runs()
     run = repo_sync_log.get_run(run_id)
     if not run:
         return jsonify({"error": "Δεν βρέθηκε εγγραφή"}), 404

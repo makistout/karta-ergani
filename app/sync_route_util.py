@@ -23,7 +23,8 @@ def parse_sync_request(data: dict[str, Any]) -> tuple[str | None, str | None, li
 def should_run_async(data: dict[str, Any], dates: list[str]) -> bool:
     if data.get("async") in (True, "true", "1", 1):
         return True
-    return len(dates) > 1
+    # Πάντα async — ώστε finish_run στη βάση και live progress
+    return True
 
 
 def start_async_portal_sync(

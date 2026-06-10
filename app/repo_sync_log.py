@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
 import pyodbc
@@ -150,6 +151,130 @@ def append_line(
         pass
 
 
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")[:32])
+    except (TypeError, ValueError):
+        return None
+
+
+_DURATION_SQL = """
+    CASE
+        WHEN r.finished_at IS NOT NULL
+        THEN DATEDIFF(SECOND, r.started_at, r.finished_at)
+        WHEN LOWER(RTRIM(r.status)) = N'running'
+        THEN DATEDIFF(SECOND, r.started_at, SYSDATETIMEOFFSET())
+        ELSE NULL
+    END AS duration_seconds
+"""
+
+
+def _enrich_run_timing(item: dict[str, Any]) -> None:
+    raw_duration = item.pop("_duration_seconds", None)
+    if raw_duration is not None:
+        try:
+            item["duration_seconds"] = max(0, int(raw_duration))
+        except (TypeError, ValueError):
+            pass
+    if item.get("duration_seconds") is None:
+        started = _parse_iso_dt(item.get("started_at"))
+        finished = _parse_iso_dt(item.get("finished_at"))
+        if started and finished:
+            item["duration_seconds"] = max(0, int((finished - started).total_seconds()))
+        elif started and str(item.get("status") or "").lower() == "running":
+            now = datetime.now(started.tzinfo) if started.tzinfo else datetime.now()
+            item["duration_seconds"] = max(0, int((now - started).total_seconds()))
+    if str(item.get("status") or "").lower() == "running":
+        item["in_progress"] = True
+
+
+def reconcile_stale_runs() -> int:
+    """Runs που έμειναν 'running' — διόρθωση από logs ή ηλικία."""
+    if not tables_available():
+        return 0
+    total = 0
+    statements = [
+        # 1) Ξεκάθαρο μήνυμα ολοκλήρωσης στα logs
+        f"""
+        UPDATE r
+        SET status = N'done',
+            finished_at = COALESCE(r.finished_at, sub.last_ts),
+            message = COALESCE(NULLIF(r.message, N''), sub.done_msg)
+        FROM dbo.{_RUN_TABLE} r
+        INNER JOIN (
+            SELECT l.run_id,
+                   MAX(l.created_at) AS last_ts,
+                   MAX(CASE
+                       WHEN l.message LIKE N'%Ολοκλήρωση%'
+                            OR l.message LIKE N'%Ολοκληρώθηκε%'
+                       THEN l.message
+                   END) AS done_msg
+            FROM dbo.{_LOG_TABLE} l
+            GROUP BY l.run_id
+        ) sub ON sub.run_id = r.run_id
+        WHERE LOWER(RTRIM(r.status)) = N'running'
+          AND sub.done_msg IS NOT NULL
+        """,
+        # 2) Έχει logs, τελευταία δραστηριότητα πριν 5+ λεπτά
+        f"""
+        UPDATE r
+        SET status = CASE
+                WHEN sub.has_error > 0 THEN N'error'
+                ELSE N'done'
+            END,
+            finished_at = COALESCE(r.finished_at, sub.last_ts),
+            message = COALESCE(
+                NULLIF(r.message, N''),
+                tail.last_msg,
+                N'Ολοκληρώθηκε (αυτόματη διόρθωση κατάστασης)'
+            )
+        FROM dbo.{_RUN_TABLE} r
+        INNER JOIN (
+            SELECT l.run_id,
+                   MAX(l.created_at) AS last_ts,
+                   SUM(CASE WHEN LOWER(l.level) = N'error' THEN 1 ELSE 0 END) AS has_error
+            FROM dbo.{_LOG_TABLE} l
+            GROUP BY l.run_id
+        ) sub ON sub.run_id = r.run_id
+        OUTER APPLY (
+            SELECT TOP 1 l2.message AS last_msg
+            FROM dbo.{_LOG_TABLE} l2
+            WHERE l2.run_id = r.run_id
+            ORDER BY l2.created_at DESC, l2.seq DESC
+        ) tail
+        WHERE LOWER(RTRIM(r.status)) = N'running'
+          AND sub.last_ts < DATEADD(MINUTE, -5, SYSDATETIMEOFFSET())
+          AND r.started_at < DATEADD(MINUTE, -5, SYSDATETIMEOFFSET())
+        """,
+        # 3) Χωρίς logs, παλιότερο από 10 λεπτά
+        f"""
+        UPDATE r
+        SET status = N'error',
+            finished_at = COALESCE(r.finished_at, SYSDATETIMEOFFSET()),
+            message = COALESCE(
+                NULLIF(r.message, N''),
+                N'Διακόπηκε χωρίς καταγραφή ολοκλήρωσης'
+            )
+        FROM dbo.{_RUN_TABLE} r
+        WHERE LOWER(RTRIM(r.status)) = N'running'
+          AND r.started_at < DATEADD(MINUTE, -10, SYSDATETIMEOFFSET())
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.{_LOG_TABLE} l WHERE l.run_id = r.run_id
+          )
+        """,
+    ]
+    try:
+        with cursor() as cur:
+            for sql in statements:
+                cur.execute(sql)
+                total += int(cur.rowcount or 0)
+    except pyodbc.Error:
+        return total
+    return total
+
+
 def count_runs(*, store_id: int | None = None) -> int:
     if not tables_available():
         return 0
@@ -187,7 +312,8 @@ def list_runs(
                            r.step, r.total,
                            CAST(r.started_at AS DATETIME2) AS started_at,
                            CAST(r.finished_at AS DATETIME2) AS finished_at,
-                           s.name AS store_name
+                           s.name AS store_name,
+                           {_DURATION_SQL}
                     FROM dbo.{_RUN_TABLE} r
                     LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
                     WHERE r.store_id = ?
@@ -205,7 +331,8 @@ def list_runs(
                            r.step, r.total,
                            CAST(r.started_at AS DATETIME2) AS started_at,
                            CAST(r.finished_at AS DATETIME2) AS finished_at,
-                           s.name AS store_name
+                           s.name AS store_name,
+                           {_DURATION_SQL}
                     FROM dbo.{_RUN_TABLE} r
                     LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
                     ORDER BY r.started_at DESC
@@ -238,6 +365,9 @@ def list_runs(
             )
         if row[9]:
             item["store_name"] = row[9]
+        if row[10] is not None:
+            item["_duration_seconds"] = row[10]
+        _enrich_run_timing(item)
         out.append(item)
     return out
 
@@ -254,7 +384,8 @@ def get_run(run_id: str) -> dict[str, Any] | None:
                        CAST(r.started_at AS DATETIME2) AS started_at,
                        CAST(r.finished_at AS DATETIME2) AS finished_at,
                        r.result_json,
-                       s.name AS store_name
+                       s.name AS store_name,
+                       {_DURATION_SQL}
                 FROM dbo.{_RUN_TABLE} r
                 LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
                 WHERE r.run_id = ?
@@ -290,7 +421,10 @@ def get_run(run_id: str) -> dict[str, Any] | None:
             item["result_raw"] = row[9]
     if row[10]:
         item["store_name"] = row[10]
+    if row[11] is not None:
+        item["_duration_seconds"] = row[11]
     item["lines"] = list_lines(run_id, limit=500)
+    _enrich_run_timing(item)
     return item
 
 

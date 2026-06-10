@@ -377,19 +377,35 @@ const Office = {
         return this.pollSyncJob(statusUrl, msgId);
       }
 
-      this.showLoading(msgId, `${startMessage}… Παρακαλώ περιμένετε.`);
+      this.showLoading(msgId, `${startMessage} — έναρξη…`, 0, 0);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, async: true }),
       });
-      const data = await res.json();
-      return {
-        success: Boolean(res.ok && data.success),
-        sync: data.sync,
-        error: data.error || data.sync?.detail,
-        logs: data.sync?.logs,
-      };
+      const start = await this.parseJson(res);
+      if (!res.ok) {
+        return {
+          success: false,
+          error: start.error || start._parseError || `HTTP ${res.status}`,
+        };
+      }
+      if (!start.job_id) {
+        if (start.success !== undefined) {
+          return {
+            success: Boolean(start.success),
+            sync: start.sync,
+            error: start.error || start.sync?.detail,
+            logs: start.sync?.logs,
+          };
+        }
+        return {
+          success: false,
+          error: start.error || "Δεν ξεκίνησε background job (λείπει job_id).",
+        };
+      }
+      const statusUrl = this._syncStatusUrl(url, start.job_id);
+      return this.pollSyncJob(statusUrl, msgId);
     } catch (e) {
       return { success: false, error: String(e) };
     } finally {

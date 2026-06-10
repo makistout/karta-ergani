@@ -1,4 +1,4 @@
-const syncLogState = { page: 1, selectedRunId: null };
+const syncLogState = { page: 1, selectedRunId: null, refreshTimer: null };
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("synclog");
@@ -19,6 +19,55 @@ function formatTs(iso) {
   return String(iso).replace("T", " ").slice(0, 19);
 }
 
+function parseTsMs(iso) {
+  if (!iso) return null;
+  const t = Date.parse(String(iso).replace(" ", "T"));
+  return Number.isFinite(t) ? t : null;
+}
+
+function runDurationSeconds(run) {
+  if (run.duration_seconds != null && run.duration_seconds >= 0) {
+    return run.duration_seconds;
+  }
+  const startMs = parseTsMs(run.started_at);
+  const endMs = parseTsMs(run.finished_at);
+  if (startMs != null && endMs != null) {
+    return Math.max(0, Math.floor((endMs - startMs) / 1000));
+  }
+  if (startMs != null && String(run.status || "").toLowerCase() === "running") {
+    return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  }
+  return null;
+}
+
+function formatDuration(seconds, inProgress) {
+  if (seconds == null || seconds < 0) return inProgress ? "…" : "—";
+  const s = Math.floor(seconds);
+  if (s < 60) return inProgress ? `${s} δευτ.` : `${s} δευτ.`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) {
+    const base = rem ? `${m} λεπτ. ${rem} δευτ.` : `${m} λεπτ.`;
+    return inProgress ? `${base}…` : base;
+  }
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  const base = rm ? `${h} ώρ. ${rm} λεπτ.` : `${h} ώρ.`;
+  return inProgress ? `${base}…` : base;
+}
+
+function scheduleAutoRefresh(runs) {
+  if (syncLogState.refreshTimer) {
+    clearInterval(syncLogState.refreshTimer);
+    syncLogState.refreshTimer = null;
+  }
+  const hasRunning = (runs || []).some(
+    (r) => String(r.status || "").toLowerCase() === "running"
+  );
+  if (!hasRunning) return;
+  syncLogState.refreshTimer = setInterval(() => loadRuns(true), 5000);
+}
+
 function statusBadge(status) {
   const s = String(status || "").toLowerCase();
   let cls = "sync-status-running";
@@ -35,7 +84,7 @@ function statusBadge(status) {
   return `<span class="sync-status-badge ${cls}">${Office.escapeHtml(label)}</span>`;
 }
 
-async function loadRuns() {
+async function loadRuns(silent) {
   const wrap = document.getElementById("syncLogRunsWrap");
   const activeOnly = document.getElementById("chkActiveStoreOnly")?.checked;
   const offset = (syncLogState.page - 1) * Office.TABLE_PAGE_SIZE;
@@ -56,11 +105,14 @@ async function loadRuns() {
       return;
     }
     renderRunsTable(data.runs || [], data.count || 0);
+    scheduleAutoRefresh(data.runs || []);
     if (syncLogState.selectedRunId) {
       await loadRunDetail(syncLogState.selectedRunId, false);
     }
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    if (!silent) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    }
   }
 }
 
@@ -76,7 +128,7 @@ function renderRunsTable(runs, pageCount) {
   const t = document.createElement("table");
   t.className = "data sync-log-runs-table";
   const hr = document.createElement("tr");
-  ["Ημ/νία", "Λειτουργία", "Κατάστημα", "Κατάσταση", "Μήνυμα", ""].forEach((h) => {
+  ["Έναρξη", "Λήξη", "Διάρκεια", "Λειτουργία", "Κατάστημα", "Κατάσταση", "Μήνυμα", ""].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -88,9 +140,21 @@ function renderRunsTable(runs, pageCount) {
     tr.className = "sync-log-run-row";
     if (run.run_id === syncLogState.selectedRunId) tr.classList.add("selected");
 
-    const tdDate = document.createElement("td");
-    tdDate.textContent = formatTs(run.started_at);
-    tr.appendChild(tdDate);
+    const tdStart = document.createElement("td");
+    tdStart.textContent = formatTs(run.started_at);
+    tdStart.className = "sync-log-ts";
+    tr.appendChild(tdStart);
+
+    const tdEnd = document.createElement("td");
+    const inProgress = String(run.status || "").toLowerCase() === "running";
+    tdEnd.textContent = inProgress ? "—" : formatTs(run.finished_at);
+    tdEnd.className = "sync-log-ts";
+    tr.appendChild(tdEnd);
+
+    const tdDur = document.createElement("td");
+    tdDur.textContent = formatDuration(runDurationSeconds(run), run.in_progress);
+    tdDur.className = "sync-log-duration";
+    tr.appendChild(tdDur);
 
     const tdOp = document.createElement("td");
     tdOp.textContent = run.operation_label || run.operation || "—";
@@ -167,7 +231,12 @@ async function loadRunDetail(runId, scrollIntoView) {
         `<div class="sync-log-meta-grid">` +
         `<span><strong>Run ID:</strong> <code>${Office.escapeHtml(run.run_id)}</code></span>` +
         `<span><strong>Έναρξη:</strong> ${Office.escapeHtml(formatTs(run.started_at))}</span>` +
-        `<span><strong>Λήξη:</strong> ${Office.escapeHtml(formatTs(run.finished_at))}</span>` +
+        `<span><strong>Λήξη:</strong> ${Office.escapeHtml(
+          String(run.status || "").toLowerCase() === "running" ? "—" : formatTs(run.finished_at)
+        )}</span>` +
+        `<span><strong>Διάρκεια:</strong> ${Office.escapeHtml(
+          formatDuration(runDurationSeconds(run), run.in_progress)
+        )}</span>` +
         `<span><strong>Κατάστημα:</strong> ${Office.escapeHtml(run.store_name || "—")}</span>` +
         `<span><strong>Κατάσταση:</strong> ${statusBadge(run.status)}</span>` +
         (run.message

@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-06-09 — Ασφάλεια (αντίδραση σε security review)
+
+### Διορθώσεις κώδικα
+
+- **`config.py`**: αφαίρεση hardcoded DB/Ergani passwords· `validate_for_startup()` — fail-fast αν λείπουν secrets (ιδίως με `FLASK_DEBUG=0`).
+- **`GET /api/store/<id>`**: masking `password` / `web_password` (όπως στο `/list`).
+- **`/api/work-card/event`**: απαιτεί `WORK_CARD_API_KEY` εκτός `FLASK_DEBUG=1`.
+- **`KARTA_OFFICE_TOKEN`**: προαιρετικό header `X-Office-Token` για όλα τα `/api/*` (εκτός health).
+- **`sql/alter_add_card_event_unique.sql`**: unique index κατά διπλής υποβολής κάρτας.
+
+### Εκκρεμεί / χειροκίνητα
+
+- **Περιστροφή** κωδικών που εκτέθηκαν στο git ιστορικό (DB, Ergani) — τα παλιά defaults αφαιρέθηκαν μόνο από τον κώδικα.
+- **Login UI / RBAC** για το admin panel — προτείνεται reverse-proxy auth ή μελλοντικό session login.
+- **Ergani bearer** σε Flask cookie session — server-side session store ή μικρότερο TTL.
+- **Κρυπτογράφηση** `karta_store_config.password` στη βάση (τώρα plaintext).
+
+---
+
 ## 2026-06-09 — Κουμπί άδειας στην αρχική (WTOLeave)
 
 ### Backend

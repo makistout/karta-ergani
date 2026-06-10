@@ -816,6 +816,17 @@ input[role="combobox"] {
   color: var(--muted);
 }
 
+.sync-log-runs-table .sync-log-ts {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.sync-log-runs-table .sync-log-duration {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
 .sync-log-runs-table tr.sync-log-run-row {
   cursor: pointer;
 }
