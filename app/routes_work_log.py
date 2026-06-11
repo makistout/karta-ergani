@@ -17,8 +17,10 @@ from app.sync_route_util import (
 from app.repo_work_log import (
     list_work_log_for_range,
     list_work_log_for_store,
+    list_work_log_history_for_employee,
     work_log_table_missing_message,
 )
+from app.work_card_payload import norm_afm
 from app.work_log_sync import fetch_and_save_work_log_for_ctx
 
 work_log_bp = Blueprint("work_log", __name__, url_prefix="/api/work-log")
@@ -75,6 +77,44 @@ def work_log_list():
         "from": from_iso,
         "to": to_iso,
         "work_dates": ergani_dates,
+        "count": len(rows),
+        "work_log": rows,
+    })
+
+
+@work_log_bp.get("/history")
+def work_log_history():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα", "work_log": []}), 400
+    employee_afm = norm_afm(request.args.get("employee_afm") or "")
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+    try:
+        rows = list_work_log_history_for_employee(
+            ctx["employer_afm"],
+            ctx["branch_aa"],
+            employee_afm,
+        )
+    except pyodbc.Error as ex:
+        return _db_error(ex)
+    for r in rows:
+        if hasattr(r.get("synced_at"), "isoformat"):
+            r["synced_at"] = r["synced_at"].isoformat()
+    employee_name = ""
+    if rows:
+        employee_name = (
+            f"{rows[0].get('eponymo') or ''} {rows[0].get('onoma') or ''}".strip()
+        )
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx["branch_aa"],
+        },
+        "employee_afm": employee_afm,
+        "employee_name": employee_name,
         "count": len(rows),
         "work_log": rows,
     })

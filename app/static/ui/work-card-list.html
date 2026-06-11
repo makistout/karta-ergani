@@ -12,17 +12,19 @@
       <div class="logo">Λογιστικό Γραφείο<small>Ψηφιακή Κάρτα Εργασίας</small></div>
       <nav>
         <a href="/ui/" data-nav="home">Αρχική</a>
-        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
         <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
         <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
         <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
         <a href="/ui/work-card" data-nav="workcard" class="active">Ψηφιακή κάρτα</a>
-        <a href="/ui/sync-log" data-nav="synclog">Καταγραφή</a>
+        <a href="/ui/sync" data-nav="sync">Συγχρονισμός</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/sync-log" data-nav="synclog">Καταγραφές</a>
       </nav>
     </aside>
     <main class="main">
       <h1 class="page-title"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i> Ψηφιακή κάρτα</h1>
       <p class="page-desc" id="workCardDesc">Δηλώσεις εισόδου/εξόδου (WRKCardSE) στο Ergani API για το ενεργό κατάστημα.</p>
+      <p class="page-desc sync-meta-line" id="workCardWorkLogSyncMeta"></p>
 
       <div class="card work-card-terminal">
         <div class="terminal-badge online">
@@ -73,7 +75,7 @@
             </p>
             <div class="form-row">
               <label for="wcRetroDate">Ημερομηνία κτυπήματος</label>
-              <input type="date" id="wcRetroDate" disabled>
+              <input type="text" id="wcRetroDate" placeholder="ηη/μμ/εεεε" disabled>
             </div>
             <div class="form-row">
               <label for="wcRetroTime">Ώρα κτυπήματος</label>
@@ -119,7 +121,7 @@
   </div>
   <script src="/static/js/office-common.js"></script>
   <script src="/static/js/office-autocomplete.js"></script>
-  <script src="/static/js/office-date-picker.js"></script>
+  <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
   <script src="/static/js/work-card-list.js?v=20260605flex"></script>
 </body>
 </html>

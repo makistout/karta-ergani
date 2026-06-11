@@ -59,6 +59,9 @@ def _apply_event(job: dict[str, Any], ev: dict[str, Any]) -> None:
                 repo_store.touch_schedule_sync(sid)
             elif label == "work_log_sync":
                 repo_store.touch_work_log_sync(sid)
+            elif label == "period_sync":
+                repo_store.touch_schedule_sync(sid)
+                repo_store.touch_work_log_sync(sid)
     elif event == "error":
         job["status"] = "error"
         job["message"] = ev.get("message") or "Σφάλμα"

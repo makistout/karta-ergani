@@ -5,6 +5,7 @@ let initialAutoSyncDone = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("schedule");
+  Office.initWorkLogHistoryModal();
   datePicker = Office.createDatePicker({
     mountId: "scheduleDatePicker",
     mode: "range",
@@ -170,8 +171,17 @@ function renderTablePage() {
     );
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
-      if (i === 1) td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
-      else td.textContent = txt;
+      if (i === 1) {
+        td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
+      } else if (i === 2) {
+        td.className = "work-log-name-cell";
+        const span = document.createElement("span");
+        span.textContent = txt;
+        td.appendChild(span);
+        Office.appendWorkLogHistoryButton(td, row);
+      } else {
+        td.textContent = txt;
+      }
       tr.appendChild(td);
     });
     t.appendChild(tr);

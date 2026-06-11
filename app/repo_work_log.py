@@ -121,3 +121,36 @@ def list_work_log_for_range(
             (afm, aa, *dates),
         )
         return rows_to_dicts(cur)
+
+
+def list_work_log_history_for_employee(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    lim = max(1, min(int(limit), 5000))
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    e_afm = norm_afm(employee_afm)
+    if not e_afm:
+        return []
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP ({lim})
+                w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
+                w.source_aa, w.is_end_date_different,
+                emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
+                CAST(w.synced_at AS datetime2) AS synced_at
+            FROM dbo.karta_work_log w
+            LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
+            WHERE w.employer_afm = ? AND w.branch_aa = ? AND w.employee_afm = ?
+            ORDER BY
+                TRY_CONVERT(date, w.work_date, 103) DESC,
+                w.hour_from DESC,
+                w.id DESC
+            """,
+            (afm, aa, e_afm),
+        )
+        return rows_to_dicts(cur)

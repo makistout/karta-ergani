@@ -9,6 +9,7 @@ from app.routes_ergani import ergani_bp
 from app.routes_local import local_bp
 from app.routes_store import store_bp
 from app.routes_sync import sync_bp
+from app.routes_period_sync import period_sync_bp
 from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
 from app.routes_leave import leave_bp
@@ -31,6 +32,7 @@ def create_app() -> Flask:
     app.register_blueprint(store_bp)
     app.register_blueprint(ergani_bp)
     app.register_blueprint(sync_bp)
+    app.register_blueprint(period_sync_bp)
     app.register_blueprint(sync_log_bp)
     app.register_blueprint(employees_bp)
     app.register_blueprint(schedule_bp)

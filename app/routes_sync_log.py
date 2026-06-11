@@ -13,6 +13,7 @@ _OPERATION_LABELS = {
     "store_select": "Επιλογή καταστήματος",
     "ergani_sync_all": "Συγχρονισμός Ergani",
     "schedule_sync": "Ψηφιακό ωράριο",
+    "period_sync": "Συγχρονισμός περιόδου",
     "work_log_sync": "Πραγματική απασχόληση",
 }
 

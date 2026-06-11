@@ -365,7 +365,7 @@ def iter_schedule_sync_events(
     )
     yield {
         "event": "progress",
-        "message": "Σύνδεση στο portal Ergani…",
+        "message": "Σύνδεση στο portal Ergani (ψηφιακό ωράριο)…",
         "step": 0,
         "total": len(dates),
     }
@@ -373,7 +373,7 @@ def iter_schedule_sync_events(
     try:
         session = _login_session(ctx)
         page_html, page_url = _open_current_status(session, portal_base)
-        log.info("Σύνδεση portal — OK")
+        log.info("Σύνδεση portal (ψηφιακό ωράριο) — OK")
     except (requests.RequestException, ValueError, RuntimeError) as ex:
         log.error(f"Αποτυχία σύνδεσης portal: {ex}")
         yield {
@@ -397,7 +397,7 @@ def iter_schedule_sync_events(
     days_synced = 0
 
     for i, wd in enumerate(dates):
-        msg = f"Ενημέρωση ημερομηνίας {wd} ({i + 1}/{len(dates)})…"
+        msg = f"Ψηφιακό ωράριο: ενημέρωση {wd} ({i + 1}/{len(dates)})…"
         log.info(msg, work_date=wd, step=i + 1, total=len(dates))
         yield {
             "event": "progress",
@@ -410,16 +410,16 @@ def iter_schedule_sync_events(
             r_reload = session.get(page_url, timeout=REQUEST_TIMEOUT)
             page_html = r_reload.text
             page_url = r_reload.url
-            log.info("Αναζήτηση portal", work_date=wd)
+            log.info(f"Ψηφιακό ωράριο: αναζήτηση στο portal για {wd}", work_date=wd)
             grid_rows = _search_schedule(session, page_html, page_url, ctx, wd, wd)
             items = portal_rows_to_schedule_items(grid_rows, default_work_date=wd)
             n = _persist_schedule_items(ctx, [wd], items)
             total += n
             days_synced += 1
-            log.info(f"Αποθηκεύτηκαν {n} εγγραφές", work_date=wd, count=n)
+            log.info(f"Ψηφιακό ωράριο: αποθηκεύτηκαν {n} εγγραφές για {wd}", work_date=wd, count=n)
             yield {
                 "event": "day_ok",
-                "message": f"{wd}: {n} εγγραφές",
+                "message": f"Ψηφιακό ωράριο: {wd} — {n} εγγραφές",
                 "work_date": wd,
                 "count": n,
             }

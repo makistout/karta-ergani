@@ -1,4 +1,5 @@
 let datePicker = null;
+let retroDatePicker = null;
 let employeeAc = null;
 let clockTimer = null;
 
@@ -21,6 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
     mode: "single",
     onApply: () => loadDayData(),
   });
+  retroDatePicker = Office.attachGreekDateField({ inputId: "wcRetroDate" });
+  if (retroDatePicker) retroDatePicker.setDisabled(true);
   document.getElementById("btnRefreshCards").onclick = () => refreshDayData();
   document.getElementById("btnCheckIn").onclick = () => submitCard("check_in");
   document.getElementById("btnCheckOut").onclick = () => submitCard("check_out");
@@ -34,14 +37,13 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initRetroDefaults() {
-  const d = document.getElementById("wcRetroDate");
   const t = document.getElementById("wcRetroTime");
   const now = new Date();
-  if (d) {
+  if (retroDatePicker) {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
-    d.value = `${y}-${m}-${day}`;
+    retroDatePicker.setIso(`${y}-${m}-${day}`);
   }
   if (t) {
     t.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -104,7 +106,8 @@ function setFormEnabled(enabled) {
   if (input) input.disabled = !enabled;
   if (btnIn) btnIn.disabled = !enabled;
   if (btnOut) btnOut.disabled = !enabled;
-  if (retroDate) retroDate.disabled = !enabled;
+  if (retroDatePicker) retroDatePicker.setDisabled(!enabled);
+  else if (retroDate) retroDate.disabled = !enabled;
   if (retroTime) retroTime.disabled = !enabled;
   if (btnRetroIn) btnRetroIn.disabled = !enabled;
   if (btnRetroOut) btnRetroOut.disabled = !enabled;
@@ -118,6 +121,8 @@ async function initPage() {
   if (!activeData.store) {
     setFormEnabled(false);
     if (employeeAc) employeeAc.setItems([]);
+    const syncMeta = document.getElementById("workCardWorkLogSyncMeta");
+    if (syncMeta) syncMeta.innerHTML = "";
     const msg =
       `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Επιλέξτε ενεργό κατάστημα (sidebar).</span></p>`;
     if (logWrap) logWrap.innerHTML = msg;
@@ -125,6 +130,7 @@ async function initPage() {
     return;
   }
   await Office.loadActiveStore();
+  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog");
   await loadEmployees();
   setFormEnabled(true);
   await refreshDayData({ auto: true });
@@ -180,6 +186,9 @@ async function refreshDayData(options = {}) {
       startMessage: `Συγχρονισμός πραγματικής για ${date}`,
     });
     const result = Office.buildSyncResultMessage(payload, Office.portalHostFromSync);
+    if (result.ok) {
+      await Office.recordStoreSync("work_log");
+    }
     await loadDayData();
     if (!auto || !result.ok) {
       Office.showMsg("wcMsg", result.text, result.ok);
@@ -205,6 +214,8 @@ async function loadDayData() {
   const cardWrap = document.getElementById("workCardWrap");
   const date = cardDate();
   if (!date || !logWrap || !cardWrap) return;
+
+  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog");
 
   Office.showTableLoading(logWrap, "Φόρτωση πραγματικής απασχόλησης…");
   Office.showTableLoading(cardWrap, "Φόρτωση δηλώσεων κάρτας…");
@@ -346,7 +357,11 @@ async function submitCard(eventName, options = {}) {
   let eventAt = null;
   let aitiologia = null;
   if (retro) {
-    referenceDate = (document.getElementById("wcRetroDate")?.value || "").trim();
+    referenceDate =
+      retroDatePicker?.getIso() ||
+      document.getElementById("wcRetroDate")?.dataset?.iso ||
+      Office.parseDateGr(document.getElementById("wcRetroDate")?.value || "") ||
+      "";
     const retroTime = (document.getElementById("wcRetroTime")?.value || "").trim();
     if (!referenceDate || !retroTime) {
       showWorkCardMsg("Συμπληρώστε ημερομηνία και ώρα προγενέστερης καταχώρησης.", false);

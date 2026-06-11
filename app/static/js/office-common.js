@@ -21,6 +21,7 @@ const Office = {
       schedule: "calendar-week",
       worklog: "clock-history",
       workcard: "credit-card-2-front",
+      sync: "arrow-repeat",
       synclog: "journal-text",
     };
     document.querySelectorAll(".sidebar nav a[data-nav]").forEach((a) => {
@@ -30,12 +31,14 @@ const Office = {
       a.innerHTML = `${this.icon(navIcons[key] || "circle")}<span>${label}</span>`;
     });
     document.querySelectorAll(".sidebar").forEach((sb) => {
-      if (sb.querySelector("#sidebarActiveStore")) return;
-      const box = document.createElement("div");
-      box.id = "sidebarActiveStore";
-      box.className = "sidebar-active-store hidden";
+      let box = sb.querySelector("#sidebarActiveStore");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "sidebarActiveStore";
+        box.className = "sidebar-active-store hidden";
+      }
       const nav = sb.querySelector("nav");
-      if (nav) sb.insertBefore(box, nav);
+      if (nav) nav.after(box);
       else sb.appendChild(box);
     });
   },
@@ -546,6 +549,115 @@ const Office = {
     } catch {
       return null;
     }
+  },
+
+  formatSyncedAt(iso) {
+    if (!iso) return "—";
+    return String(iso).replace("T", " ").slice(0, 16);
+  },
+
+  initWorkLogHistoryModal(modalId = "workLogHistoryModal") {
+    const modal = document.getElementById(modalId);
+    if (!modal || modal.dataset.historyBound) return;
+    modal.dataset.historyBound = "1";
+    modal.querySelectorAll("[data-history-close]").forEach((el) => {
+      el.addEventListener("click", () => this.closeWorkLogHistoryModal(modalId));
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (modal.classList.contains("hidden")) return;
+      e.preventDefault();
+      this.closeWorkLogHistoryModal(modalId);
+    });
+  },
+
+  closeWorkLogHistoryModal(modalId = "workLogHistoryModal") {
+    document.getElementById(modalId)?.classList.add("hidden");
+  },
+
+  renderWorkLogHistoryTable(rows) {
+    if (!rows.length) {
+      return (
+        `<p style="color:var(--muted);">${this.icon("clock")}` +
+        `<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές στη βάση για αυτόν τον εργαζόμενο.</span></p>`
+      );
+    }
+    const headers = ["Ημερομηνία", "Από", "Έως", "Συγχρονισμός"];
+    let html = `<table class="data work-log-history-table"><tr>${headers
+      .map((h) => `<th>${this.escapeHtml(h)}</th>`)
+      .join("")}</tr>`;
+    rows.forEach((row) => {
+      html +=
+        "<tr>" +
+        [
+          row.work_date || "",
+          row.hour_from || "",
+          row.hour_to || "",
+          this.formatSyncedAt(row.synced_at),
+        ]
+          .map((txt) => `<td>${this.escapeHtml(String(txt))}</td>`)
+          .join("") +
+        "</tr>";
+    });
+    html += "</table>";
+    return html;
+  },
+
+  async openWorkLogHistoryModal(row, ids = {}) {
+    const modalId = ids.modalId || "workLogHistoryModal";
+    const subId = ids.subId || "workLogHistoryEmployee";
+    const wrapId = ids.wrapId || "workLogHistoryWrap";
+    const afm = (row.employee_afm || "").trim();
+    if (!afm) return;
+    const modal = document.getElementById(modalId);
+    const sub = document.getElementById(subId);
+    const wrap = document.getElementById(wrapId);
+    if (!modal || !sub || !wrap) return;
+    const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
+    sub.textContent = `${name || "Εργαζόμενος"} · ΑΦΜ ${afm}`;
+    wrap.innerHTML = `<p class="table-loading">${this.icon("arrow-repeat")}<span>Φόρτωση ιστορικού…</span></p>`;
+    modal.classList.remove("hidden");
+    try {
+      const res = await fetch(
+        `/api/work-log/history?employee_afm=${encodeURIComponent(afm)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(data.error || "Σφάλμα")}</p>`;
+        return;
+      }
+      if (data.employee_name && !name) {
+        sub.textContent = `${data.employee_name} · ΑΦΜ ${afm}`;
+      }
+      const count = data.count || 0;
+      const meta =
+        count > 0
+          ? `<p class="table-meta" style="margin:0 0 0.5rem;">${this.icon("database")} <strong>${count}</strong> εγγραφές στη βάση (νεότερες πρώτα)</p>`
+          : "";
+      wrap.innerHTML = meta + this.renderWorkLogHistoryTable(data.work_log || []);
+    } catch (e) {
+      wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(String(e))}</p>`;
+    }
+  },
+
+  appendWorkLogHistoryButton(td, row) {
+    const afm = (row.employee_afm || "").trim();
+    if (!afm) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-secondary work-log-history-btn";
+    btn.title = "Πραγματική απασχόληση — ιστορικό";
+    btn.setAttribute(
+      "aria-label",
+      `Πραγματική απασχόληση για ${row.eponymo || ""} ${row.onoma || ""}`.trim()
+    );
+    btn.innerHTML = this.icon("clock-history");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.openWorkLogHistoryModal(row);
+    });
+    td.appendChild(btn);
   },
 
   updateSyncMetaLine(elId, store, kind) {

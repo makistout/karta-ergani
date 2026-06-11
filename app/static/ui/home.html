@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ψηφιακή Κάρτα — Αρχική</title>
-  <link rel="stylesheet" href="/static/css/office.css">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260611home">
 </head>
 <body>
   <div class="layout">
@@ -12,35 +12,36 @@
       <div class="logo">Λογιστικό Γραφείο<small>Ψηφιακή Κάρτα Εργασίας</small></div>
       <nav>
         <a href="/ui/" data-nav="home" class="active">Αρχική</a>
-        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
         <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
         <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
         <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
         <a href="/ui/work-card" data-nav="workcard">Ψηφιακή κάρτα</a>
-        <a href="/ui/sync-log" data-nav="synclog">Καταγραφή</a>
+        <a href="/ui/sync" data-nav="sync">Συγχρονισμός</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/sync-log" data-nav="synclog">Καταγραφές</a>
       </nav>
     </aside>
     <main class="main">
       <h1 class="page-title"><i class="bi bi-grid-1x2-fill" aria-hidden="true"></i> Αρχική</h1>
       <p class="page-desc">Αναφορά κάρτας εργασίας: τι προβλέπει το ψηφιακό ωράριο, τι έχει καταγραφεί στην πραγματική απασχόληση και τι χρειάζεται (είσοδος/έξοδος).</p>
+      <p class="page-desc sync-meta-line" id="homeWorkLogSyncMeta"></p>
 
-      <div class="card">
-        <h2 style="font-size:1rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.4rem;">
-          <i class="bi bi-clipboard2-pulse" aria-hidden="true"></i> Αναφορά ημέρας
-        </h2>
-        <div class="toolbar-dates-row" style="margin-bottom:0.75rem;">
+      <div class="toolbar-dates card">
+        <div class="toolbar-dates-row">
           <div id="homeDatePicker"></div>
           <button type="button" class="btn btn-secondary" id="btnRefreshReport">
             <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
           </button>
         </div>
+      </div>
+      <div class="card list-card">
         <div id="cardReportSummary" class="report-summary"></div>
-        <p id="cardReportMeta" class="table-meta" style="margin-top:0.35rem;"></p>
-        <div id="cardReportWrap" style="margin-top:0.75rem;">
+        <p id="cardReportMeta" class="table-meta"></p>
+        <div id="cardReportWrap" class="list-wrap">
           <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
         </div>
-        <div id="leaveMsg" class="msg" style="margin-top:0.75rem;"></div>
       </div>
+      <div id="leaveMsg" class="msg"></div>
 
       <div id="leaveModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="leaveModalTitle">
         <div class="office-modal-backdrop" data-leave-close></div>
@@ -75,14 +76,15 @@
           <a class="btn" href="/ui/schedule"><i class="bi bi-calendar-week" aria-hidden="true"></i><span>Ψηφιακό ωράριο</span></a>
           <a class="btn" href="/ui/work-log"><i class="bi bi-clock-history" aria-hidden="true"></i><span>Πραγματική απασχόληση</span></a>
           <a class="btn" href="/ui/work-card"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i><span>Ψηφιακή κάρτα</span></a>
-          <a class="btn btn-secondary" href="/ui/sync-log"><i class="bi bi-journal-text" aria-hidden="true"></i><span>Καταγραφή</span></a>
+          <a class="btn" href="/ui/sync"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός</span></a>
+          <a class="btn btn-secondary" href="/ui/sync-log"><i class="bi bi-journal-text" aria-hidden="true"></i><span>Καταγραφές</span></a>
           <a class="btn btn-secondary" href="/ui/stores"><i class="bi bi-shop-window" aria-hidden="true"></i><span>Καταστήματα</span></a>
         </div>
       </div>
     </main>
   </div>
   <script src="/static/js/office-common.js"></script>
-  <script src="/static/js/office-date-picker.js?v=20260608e"></script>
-  <script src="/static/js/home.js?v=20260609leave2"></script>
+  <script src="/static/js/office-date-picker.js?v=20260611gr3"></script>
+  <script src="/static/js/home.js?v=20260611home"></script>
 </body>
 </html>

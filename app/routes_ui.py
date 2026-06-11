@@ -55,6 +55,11 @@ def ui_work_card():
     return send_from_directory(_UI_DIR, "work-card-list.html")
 
 
+@ui_bp.get("/sync")
+def ui_sync_hub():
+    return send_from_directory(_UI_DIR, "sync-hub.html")
+
+
 @ui_bp.get("/sync-log")
 def ui_sync_log():
     return send_from_directory(_UI_DIR, "sync-log-list.html")

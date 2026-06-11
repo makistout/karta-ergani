@@ -6,9 +6,13 @@ document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("home");
   reportDatePicker = Office.createDatePicker({
     mountId: "homeDatePicker",
-    mode: "single",
-    quickPresets: ["today", "yesterday"],
-    onApply: () => loadCardReport(),
+    mode: "range",
+    autoApply: false,
+    quickPresets: ["today", "yesterday", "last7", "last30"],
+    quickLabels: {
+      last7: "Τελευταία εβδομάδα",
+      last30: "Τελευταίος μήνας",
+    },
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
   initLeaveModal();
@@ -16,9 +20,24 @@ document.addEventListener("DOMContentLoaded", () => {
   loadCardReport();
 });
 
+function reportRange() {
+  return reportDatePicker ? reportDatePicker.getRange() : { start: "", end: "" };
+}
+
 function reportDate() {
-  const r = reportDatePicker ? reportDatePicker.getRange() : { start: "" };
-  return r.start || "";
+  return reportRange().start || "";
+}
+
+function reportQueryString() {
+  const { start, end } = reportRange();
+  if (!start) return "";
+  if (!end || start === end) return `date=${encodeURIComponent(start)}`;
+  return `from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`;
+}
+
+function isMultiDayReport(data) {
+  const dates = data?.work_dates;
+  return Array.isArray(dates) && dates.length > 1;
 }
 
 function leaveTypeLabel(type) {
@@ -133,11 +152,12 @@ function closeLeaveModal() {
 async function submitLeave() {
   if (!leaveModalRow) return;
   const btn = document.getElementById("btnLeaveSubmit");
-  const ref = reportDate();
+  const ref =
+    Office.parseDateGr(leaveModalRow.work_date || "") || reportDate();
   const leaveType = document.getElementById("leaveTypeValue")?.value || "";
   const comments = document.getElementById("leaveComments")?.value?.trim() || null;
   if (!ref || !leaveType) {
-    Office.showMsg("leaveModalMsg", "Επιλέξτε ημερομηνία και τύπο άδειας.", false);
+    Office.showMsg("leaveModalMsg", "Επιλέξτε περίοδο και τύπο άδειας.", false);
     return;
   }
   Office.setButtonLoading(btn, true);
@@ -179,8 +199,8 @@ async function loadCardReport() {
   const wrap = document.getElementById("cardReportWrap");
   const meta = document.getElementById("cardReportMeta");
   const sumEl = document.getElementById("cardReportSummary");
-  const date = reportDate();
-  if (!date) {
+  const qs = reportQueryString();
+  if (!qs) {
     return;
   }
 
@@ -192,13 +212,16 @@ async function loadCardReport() {
     const activeRes = await fetch("/api/store/active");
     const activeData = await activeRes.json();
     if (!activeData.store) {
+      const syncMeta = document.getElementById("homeWorkLogSyncMeta");
+      if (syncMeta) syncMeta.innerHTML = "";
       wrap.innerHTML =
         `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Επιλέξτε ενεργό κατάστημα από το sidebar για την αναφορά.</span></p>`;
       return;
     }
     await Office.loadActiveStore();
+    await Office.refreshActiveStoreSyncMeta("homeWorkLogSyncMeta", "worklog");
 
-    const res = await fetch(`/api/dashboard/card-report?date=${encodeURIComponent(date)}`);
+    const res = await fetch(`/api/dashboard/card-report?${qs}`);
     let data = {};
     try {
       data = await res.json();
@@ -212,7 +235,12 @@ async function loadCardReport() {
     }
 
     renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date);
-    renderTable(wrap, sortReportRows(data.rows || []), data.meta || {});
+    renderTable(
+      wrap,
+      sortReportRows(data.rows || []),
+      data.meta || {},
+      isMultiDayReport(data)
+    );
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -282,7 +310,11 @@ function scheduleShowsBlank(schedule) {
 }
 
 function sortReportRows(rows) {
+  const dayKey = (s) => Office.parseDateGr(s || "") || s || "";
   return [...rows].sort((a, b) => {
+    const da = dayKey(a.work_date);
+    const db = dayKey(b.work_date);
+    if (da && db && da !== db) return da.localeCompare(db);
     const blankA = scheduleShowsBlank(a.schedule) ? 1 : 0;
     const blankB = scheduleShowsBlank(b.schedule) ? 1 : 0;
     if (blankA !== blankB) return blankA - blankB;
@@ -322,45 +354,51 @@ function buildActionCell(r) {
   let html = Office.escapeHtml(r.action || "—") + notes;
   if (r.leave_eligible) {
     html +=
-      `<div><button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}">` +
+      `<div><button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}" data-leave-date="${Office.escapeHtml(r.work_date || "")}">` +
       `${Office.icon("calendar-x")}<span>Άδεια</span></button></div>`;
   }
   return html;
 }
 
-function renderTable(wrap, rows, meta) {
+function renderTable(wrap, rows, meta, multiDay) {
   if (!meta.has_schedule && !meta.has_work_log) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("clipboard-data")}<span style="margin-left:0.35rem;">Δεν υπάρχουν δεδομένα για την ημέρα. Συγχρονίστε πρώτα το ψηφιακό ωράριο και την πραγματική απασχόληση.</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("clipboard-data")}<span style="margin-left:0.35rem;">Δεν υπάρχουν δεδομένα για την περίοδο. Συγχρονίστε πρώτα το ψηφιακό ωράριο και την πραγματική απασχόληση.</span></p>`;
     return;
   }
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">Δεν βρέθηκαν εγγραφές εργαζομένων για την ημέρα.</p>`;
+      `<p style="color:var(--muted);">Δεν βρέθηκαν εγγραφές εργαζομένων για την περίοδο.</p>`;
     return;
   }
 
   const t = document.createElement("table");
   t.className = "data report-table";
   const hr = document.createElement("tr");
-  [
+  const headers = [
     "Κατάσταση",
     "ΑΦΜ",
     "Επώνυμο",
     "Όνομα",
+  ];
+  if (multiDay) headers.push("Ημερομηνία");
+  headers.push(
     "Ευελ. (λεπτά)",
     "Ψηφ. ωράριο",
     "Πραγματική",
     "Δηλώσεις κάρτας",
-    "Τι να γίνει",
-  ].forEach((h) => {
+    "Τι να γίνει"
+  );
+  headers.forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
   });
   t.appendChild(hr);
 
-  const rowByAfm = new Map(rows.map((r) => [r.employee_afm, r]));
+  const rowByKey = new Map(
+    rows.map((r) => [`${r.employee_afm}|${r.work_date || ""}`, r])
+  );
 
   rows.forEach((r) => {
     const tr = document.createElement("tr");
@@ -373,17 +411,23 @@ function renderTable(wrap, rows, meta) {
       r.employee_afm || "",
       r.eponymo || "",
       r.onoma || "",
+    ];
+    if (multiDay) cells.push(r.work_date || "");
+    cells.push(
       Office.formatFlexMinutes(r.flex_arrival_minutes),
       fmtHours(r.schedule),
       fmtHours(r.work_log),
       fmtCard(r.card),
-      buildActionCell(r),
-    ];
-    const colClass = ["", "col-afm", "col-name", "col-name", "col-flex", "", "", "", "col-action"];
+      buildActionCell(r)
+    );
+    const colClass = ["", "col-afm", "col-name", "col-name"];
+    if (multiDay) colClass.push("");
+    colClass.push("col-flex", "", "", "", "col-action");
     cells.forEach((html, i) => {
       const td = document.createElement("td");
       if (colClass[i]) td.className = colClass[i];
-      if (i === 0 || i === 8) td.innerHTML = html;
+      const actionIdx = cells.length - 1;
+      if (i === 0 || i === actionIdx) td.innerHTML = html;
       else td.textContent = html;
       tr.appendChild(td);
     });
@@ -396,7 +440,8 @@ function renderTable(wrap, rows, meta) {
   wrap.querySelectorAll("[data-leave-afm]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const afm = btn.getAttribute("data-leave-afm");
-      const row = rowByAfm.get(afm);
+      const wd = btn.getAttribute("data-leave-date") || "";
+      const row = rowByKey.get(`${afm}|${wd}`);
       if (row) openLeaveModal(row);
     });
   });

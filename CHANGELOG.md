@@ -4,6 +4,46 @@
 
 ---
 
+## 2026-06-11 — Συγχρονισμός περιόδου, αναφορά περιόδου, navigation & UI
+
+### Backend — συγχρονισμός περιόδου
+
+- **`app/period_sync.py`**: πλήρης sync διαστήματος — προσωπικό (EX_BASE_01/02/05) + portal ψηφιακό ωράριο + portal πραγματική απασχόληση.
+- **`app/routes_period_sync.py`**: `POST /api/period-sync/run` (async job), `GET /api/period-sync/run/status/<job_id>`.
+- Label **`period_sync`** σε **`sync_jobs.py`**, **`routes_sync_log.py`**.
+- Αναλυτικά μηνύματα log ανά φάση: **Προσωπικό** / **Ψηφιακό ωράριο** / **Πραγματική απασχόληση** (`portal_schedule_sync`, `portal_work_log_sync`, `period_sync`).
+
+### Backend — ιστορικό πραγματικής
+
+- **`GET /api/work-log/history?employee_afm=`** — όλες οι εγγραφές πραγματικής ενός εργαζόμενου από τη βάση (`repo_work_log.list_work_log_history_for_employee`).
+
+### UI — σελίδα Συγχρονισμός (`/ui/sync`)
+
+- **`sync-hub.html`**, **`sync-hub.js`**: επιλογή περιόδου, κουμπί **Συγχρονισμός**, live καταγραφή βημάτων (polling job).
+- Ίδια διάταξη toolbar με ωράριο/πραγματική (`toolbar-dates` + `toolbar-dates-row`).
+
+### UI — αρχική (`/ui/`)
+
+- Αναφορά περιόδου: presets (Σήμερα, Χθες, Τελευταία εβδομάδα, Τελευταίος μήνας), διάστημα **Από–Έως**.
+- **`autoApply: false`** — η αναφορά **δεν** ανανεώνεται αυτόματα· μόνο με **Ανανέωση** (refresh από DB, όχι Ergani sync).
+- Toolbar ξεχωριστή κάρτα + πίνακας σε `list-card` (όπως ωράριο/πραγματική).
+- **`routes_dashboard.py`**: `GET /api/dashboard/card-report` με `from` / `to`.
+
+### UI — navigation & sidebar
+
+- Νέο menu **Συγχρονισμός** (`/ui/sync`) σε όλα τα HTML.
+- **Καταστήματα** μετακινήθηκαν πάνω από **Καταγραφές** (μετονομασία από «Καταγραφή»).
+- Box ενεργού καταστήματος (`#sidebarActiveStore`) **μετά** το menu (κάτω από Καταγραφές), όχι στην κορυφή.
+- Αφαίρεση κειμένου «Parse portal Ergani — eservices.yeka.gr…» από ψηφιακό ωράριο και πραγματική απασχόληση.
+
+### UI — ημερολόγιο & λοιπά
+
+- **`office-date-picker.js`**: ελληνικό φορμάτ ηη/μμ/εεεε, popup ημερολόγιο, `autoApply`, `layout`.
+- **`office.css`**: `margin-bottom: 0` στο `.dp-text` (χωρίς κενό κάτω από inputs ημερομηνίας).
+- **Ψηφιακό ωράριο**: εικονίδιο δίπλα στο όνομα → modal ιστορικού πραγματικής (`Office.appendWorkLogHistoryButton` στο `office-common.js`).
+
+---
+
 ## 2026-06-11 — Auto-sync timestamps, ρυθμίσεις καταστήματος, UI polish
 
 ### Βάση
