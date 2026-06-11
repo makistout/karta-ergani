@@ -92,6 +92,18 @@ function initLeaveModal() {
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".leave-type-picker")) setLeaveTypeOpen(false);
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("hidden")) return;
+    const list = document.getElementById("leaveTypeList");
+    if (list?.classList.contains("show")) {
+      e.preventDefault();
+      setLeaveTypeOpen(false);
+      return;
+    }
+    e.preventDefault();
+    closeLeaveModal();
+  });
 }
 
 function openLeaveModal(row) {

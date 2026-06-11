@@ -1,16 +1,18 @@
 let datePicker = null;
 let currentRange = { start: "", end: "" };
 let tableState = { rows: [], page: 1, count: 0, store: null, range: null, workDates: [] };
+let initialAutoSyncDone = false;
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("schedule");
   datePicker = Office.createDatePicker({
     mountId: "scheduleDatePicker",
     mode: "range",
     onApply: () => loadSchedule(),
   });
-  document.getElementById("btnSyncSchedule").onclick = runSync;
-  loadSchedule();
+  document.getElementById("btnSyncSchedule").onclick = () => runSync();
+  await maybeAutoSyncSchedule();
+  await loadSchedule();
 });
 
 function getRange() {
@@ -113,6 +115,7 @@ async function loadSchedule() {
       r,
       data.work_dates
     );
+    await Office.refreshActiveStoreSyncMeta("scheduleSyncMeta", "schedule");
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -186,27 +189,69 @@ function renderTablePage() {
   }
 }
 
-async function runSync() {
+async function maybeAutoSyncSchedule() {
+  if (initialAutoSyncDone) return;
+  initialAutoSyncDone = true;
+  try {
+    const activeRes = await fetch("/api/store/active");
+    const activeData = await activeRes.json();
+    if (!activeData.store) return;
+    if (!Office.scheduleNeedsAutoSync(activeData.store.schedule_last_sync_at)) return;
+    await runSync({ date: Office.todayIsoLocal() }, { auto: true });
+  } catch {
+    /* αγνόηση — θα φορτώσει η λίστα */
+  }
+}
+
+async function runSync(bodyOverride, opts = {}) {
+  const { auto = false } = opts;
   const r = getRange();
   const body =
-    r.start === r.end ? { date: r.start } : { from: r.start, to: r.end };
-  Office.beginSyncPanel("scheduleWrap", "schedMsg");
+    bodyOverride ||
+    (r.start === r.end ? { date: r.start } : { from: r.start, to: r.end });
+  if (!auto) {
+    Office.beginSyncPanel("scheduleWrap", "schedMsg");
+  } else {
+    Office.showMsg(
+      "schedMsg",
+      "Αυτόματος συγχρονισμός ωραρίου για σήμερα…",
+      true
+    );
+  }
   try {
     const payload = await Office.runPortalSync({
       url: "/api/schedule/sync",
       body,
       msgId: "schedMsg",
       btnId: "btnSyncSchedule",
-      startMessage: "Συγχρονισμός ψηφιακού ωραρίου",
+      startMessage: auto
+        ? "Αυτόματος συγχρονισμός ωραρίου (σήμερα)"
+        : "Συγχρονισμός ψηφιακού ωραρίου",
     });
     const result = Office.buildSyncResultMessage(payload, Office.portalHostFromSync);
-    Office.endSyncPanel("scheduleWrap", "schedMsg");
+    if (!auto) {
+      Office.endSyncPanel("scheduleWrap", "schedMsg");
+    }
     if (result.ok) {
+      await Office.recordStoreSync("schedule");
+      await Office.loadActiveStore();
       await loadSchedule();
     }
-    Office.showMsg("schedMsg", result.text, result.ok);
+    Office.showMsg(
+      "schedMsg",
+      auto
+        ? result.ok
+          ? `Αυτόματος συγχρονισμός: ${result.text}`
+          : result.text
+        : result.text,
+      result.ok
+    );
+    return result.ok;
   } catch (e) {
-    Office.endSyncPanel("scheduleWrap", "schedMsg");
+    if (!auto) {
+      Office.endSyncPanel("scheduleWrap", "schedMsg");
+    }
     Office.showMsg("schedMsg", String(e), false);
+    return false;
   }
 }

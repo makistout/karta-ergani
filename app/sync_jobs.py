@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Iterator
 from typing import Any, Callable
 
-from app import repo_sync_log
+from app import repo_sync_log, repo_store
 
 _jobs: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
@@ -52,6 +52,13 @@ def _apply_event(job: dict[str, Any], ev: dict[str, Any]) -> None:
                 message=job.get("message"),
                 result=job.get("result"),
             )
+        if ev.get("success") and job.get("store_id"):
+            sid = int(job["store_id"])
+            label = job.get("label") or ""
+            if label == "schedule_sync":
+                repo_store.touch_schedule_sync(sid)
+            elif label == "work_log_sync":
+                repo_store.touch_work_log_sync(sid)
     elif event == "error":
         job["status"] = "error"
         job["message"] = ev.get("message") or "Σφάλμα"

@@ -488,6 +488,83 @@ const Office = {
       `<p class="table-loading"><i class="bi bi-arrow-repeat bi-spin" aria-hidden="true"></i>` +
       `<span>${this.escapeHtml(msg)}</span></p>`;
   },
+
+  todayIsoLocal() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  },
+
+  isoCalendarDay(iso) {
+    if (!iso) return null;
+    return String(iso).slice(0, 10);
+  },
+
+  formatSyncTimestamp(iso) {
+    if (!iso) return "ποτέ";
+    return String(iso).replace("T", " ").slice(0, 16);
+  },
+
+  scheduleNeedsAutoSync(scheduleLastSyncAt) {
+    const today = this.todayIsoLocal();
+    const last = this.isoCalendarDay(scheduleLastSyncAt);
+    return !last || last < today;
+  },
+
+  workLogNeedsAutoSync(workLogLastSyncAt, intervalMinutes) {
+    const mins = Math.max(5, parseInt(intervalMinutes, 10) || 30);
+    if (!workLogLastSyncAt) return true;
+    const t = Date.parse(String(workLogLastSyncAt).replace(" ", "T"));
+    if (!Number.isFinite(t)) return true;
+    return Date.now() - t >= mins * 60 * 1000;
+  },
+
+  async recordStoreSync(kind) {
+    try {
+      const res = await fetch("/api/store/record-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+        cache: "no-store",
+      });
+      return await this.parseJson(res);
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+
+  async refreshActiveStoreSyncMeta(elId, kind) {
+    try {
+      const res = await fetch("/api/store/active", { cache: "no-store" });
+      const data = await res.json();
+      if (data.store) {
+        this.updateSyncMetaLine(elId, data.store, kind);
+      }
+      return data.store || null;
+    } catch {
+      return null;
+    }
+  },
+
+  updateSyncMetaLine(elId, store, kind) {
+    const el = document.getElementById(elId);
+    if (!el || !store) return;
+    if (kind === "schedule") {
+      const last = this.formatSyncTimestamp(store.schedule_last_sync_at);
+      el.innerHTML =
+        `Τελευταίος συγχρονισμός ωραρίου: <strong>${this.escapeHtml(last)}</strong>` +
+        ` · Αυτόματη ανανέωση σήμερα αν λείπει.`;
+      return;
+    }
+    const mins = store.work_log_sync_interval_minutes || 30;
+    const last = this.formatSyncTimestamp(store.work_log_last_sync_at);
+    el.innerHTML =
+      `Τελευταίος συγχρονισμός πραγματικής: <strong>${this.escapeHtml(last)}</strong>` +
+      ` · Αυτόματη ανανέωση κάθε <strong>${mins}</strong> λεπτά` +
+      ` (<a href="/ui/stores">ρυθμίσεις καταστήματος</a>).`;
+  },
 };
 
 document.addEventListener("DOMContentLoaded", () => {

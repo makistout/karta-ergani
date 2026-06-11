@@ -1,15 +1,17 @@
 let datePicker = null;
 let tableState = { rows: [], page: 1, count: 0, store: null, range: null };
+let initialAutoSyncDone = false;
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("worklog");
   datePicker = Office.createDatePicker({
     mountId: "workLogDatePicker",
     mode: "range",
     onApply: () => loadWorkLog(),
   });
-  document.getElementById("btnSyncWorkLog").onclick = runSync;
-  loadWorkLog();
+  document.getElementById("btnSyncWorkLog").onclick = () => runSync();
+  await maybeAutoSyncWorkLog();
+  await loadWorkLog();
 });
 
 function getRange() {
@@ -30,7 +32,7 @@ async function loadWorkLog() {
   }
   Office.showTableLoading(wrap);
   try {
-    const activeRes = await fetch("/api/store/active");
+    const activeRes = await fetch("/api/store/active", { cache: "no-store" });
     const activeData = await activeRes.json();
     if (!activeData.store) {
       btn.disabled = true;
@@ -56,6 +58,7 @@ async function loadWorkLog() {
       return;
     }
     renderTable(data.work_log || [], data.count || 0, data.store, r);
+    await Office.refreshActiveStoreSyncMeta("workLogSyncMeta", "worklog");
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -127,26 +130,77 @@ function renderTablePage() {
   }
 }
 
-async function runSync() {
+async function maybeAutoSyncWorkLog() {
+  if (initialAutoSyncDone) return;
+  initialAutoSyncDone = true;
+  try {
+    const activeRes = await fetch("/api/store/active", { cache: "no-store" });
+    const activeData = await activeRes.json();
+    const store = activeData.store;
+    if (!store) return;
+    if (
+      !Office.workLogNeedsAutoSync(
+        store.work_log_last_sync_at,
+        store.work_log_sync_interval_minutes
+      )
+    ) {
+      return;
+    }
+    await runSync({ date: Office.todayIsoLocal() }, { auto: true });
+  } catch {
+    /* αγνόηση */
+  }
+}
+
+async function runSync(bodyOverride, opts = {}) {
+  const { auto = false } = opts;
   const r = getRange();
-  const body = r.start === r.end ? { date: r.start } : { from: r.start, to: r.end };
-  Office.beginSyncPanel("workLogWrap", "workLogMsg");
+  const body =
+    bodyOverride ||
+    (r.start === r.end ? { date: r.start } : { from: r.start, to: r.end });
+  if (!auto) {
+    Office.beginSyncPanel("workLogWrap", "workLogMsg");
+  } else {
+    Office.showMsg(
+      "workLogMsg",
+      "Αυτόματος συγχρονισμός πραγματικής για σήμερα…",
+      true
+    );
+  }
   try {
     const payload = await Office.runPortalSync({
       url: "/api/work-log/sync",
       body,
       msgId: "workLogMsg",
       btnId: "btnSyncWorkLog",
-      startMessage: "Συγχρονισμός πραγματικής απασχόλησης",
+      startMessage: auto
+        ? "Αυτόματος συγχρονισμός πραγματικής (σήμερα)"
+        : "Συγχρονισμός πραγματικής απασχόλησης",
     });
     const result = Office.buildSyncResultMessage(payload, Office.portalHostFromSync);
-    Office.endSyncPanel("workLogWrap", "workLogMsg");
+    if (!auto) {
+      Office.endSyncPanel("workLogWrap", "workLogMsg");
+    }
     if (result.ok) {
+      await Office.recordStoreSync("work_log");
+      await Office.loadActiveStore();
       await loadWorkLog();
     }
-    Office.showMsg("workLogMsg", result.text, result.ok);
+    Office.showMsg(
+      "workLogMsg",
+      auto
+        ? result.ok
+          ? `Αυτόματος συγχρονισμός: ${result.text}`
+          : result.text
+        : result.text,
+      result.ok
+    );
+    return result.ok;
   } catch (e) {
-    Office.endSyncPanel("workLogWrap", "workLogMsg");
+    if (!auto) {
+      Office.endSyncPanel("workLogWrap", "workLogMsg");
+    }
     Office.showMsg("workLogMsg", String(e), false);
+    return false;
   }
 }

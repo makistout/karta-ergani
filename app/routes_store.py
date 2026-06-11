@@ -165,6 +165,7 @@ def save_store():
         return jsonify({"error": "Υποχρευτικά admin username και password (portal)"}), 400
     if not fields["employer_afm"]:
         return jsonify({"error": "Υποχρεωτικό employer_afm"}), 400
+    wl_interval = data.get("work_log_sync_interval_minutes")
     saved = repo.save_store_config(
         name=fields["name"],
         username=fields["username"],
@@ -183,9 +184,60 @@ def save_store():
         kad_desc=data.get("kad_desc"),
         kallikratis_code=data.get("kallikratis_code"),
         kallikratis_desc=data.get("kallikratis_desc"),
+        work_log_sync_interval_minutes=wl_interval,
         store_id=fields["store_id"],
     )
     return jsonify({"success": True, "id": saved})
+
+
+@store_bp.post("/record-sync")
+def record_store_sync():
+    """Καταγραφή επιτυχούς συγχρονισμού — καλείται από το UI μετά το portal sync."""
+    from app.http_helpers import resolve_active_store
+
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Δεν έχει επιλεγεί κατάστημα"}), 400
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "").strip().lower()
+    sid = int(ctx["id"])
+    if kind == "work_log":
+        repo.touch_work_log_sync(sid)
+    elif kind == "schedule":
+        repo.touch_schedule_sync(sid)
+    else:
+        return jsonify({"error": "Άγνωστος τύπος sync (work_log | schedule)"}), 400
+    cfg = repo.get_store_config(sid) or {}
+
+    def _iso_dt(value: Any) -> str | None:
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    sched_at = repo.effective_schedule_sync_at(cfg)
+    wl_at = repo.effective_work_log_sync_at(cfg)
+    return jsonify({
+        "success": True,
+        "kind": kind,
+        "schedule_last_sync_at": _iso_dt(sched_at),
+        "work_log_last_sync_at": _iso_dt(wl_at),
+    })
+
+
+@store_bp.post("/<int:store_id>/sync-settings")
+def update_store_sync_settings(store_id: int):
+    cfg = repo.get_store_config(store_id)
+    if not cfg:
+        return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+    data = request.get_json(silent=True) or {}
+    if "work_log_sync_interval_minutes" not in data:
+        return jsonify({"error": "Λείπει work_log_sync_interval_minutes"}), 400
+    mins = repo.update_work_log_sync_interval(
+        store_id, data.get("work_log_sync_interval_minutes")
+    )
+    return jsonify({"success": True, "work_log_sync_interval_minutes": mins})
 
 
 @store_bp.delete("/<int:store_id>")
@@ -207,6 +259,17 @@ def active_store():
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"store": None})
+    cfg = repo.get_store_config(int(ctx["id"])) or {}
+
+    def _iso_dt(value: Any) -> str | None:
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    sched_at = repo.effective_schedule_sync_at(cfg)
+    wl_at = repo.effective_work_log_sync_at(cfg)
     return jsonify({
         "store": {
             "id": ctx["id"],
@@ -217,6 +280,10 @@ def active_store():
             "ergani_env_label": ctx.get("ergani_env_label"),
             "api_base_url": ctx.get("api_base_url"),
             "portal_base_url": ctx.get("portal_base_url"),
+            "schedule_last_sync_at": _iso_dt(sched_at),
+            "work_log_last_sync_at": _iso_dt(wl_at),
+            "work_log_sync_interval_minutes": cfg.get("work_log_sync_interval_minutes") or 30,
+            "sync_meta_columns": repo.sync_meta_columns_available(),
         }
     })
 

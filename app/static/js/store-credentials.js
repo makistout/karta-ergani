@@ -11,11 +11,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     fillFormFromDraft(draft);
   }
   document.getElementById("btnStep1Next").onclick = onStep1Next;
+  document.getElementById("btnSaveSyncSettings")?.addEventListener("click", saveSyncSettingsOnly);
+  if (params.get("edit") === "1" && draft.id) {
+    document.getElementById("btnSaveSyncSettings")?.classList.remove("hidden");
+  }
 });
 
 function cleanSecret(value) {
   const s = (value || "").trim();
   return s === MASKED ? "" : s;
+}
+
+function readSyncIntervalMinutes() {
+  const raw = parseInt(document.getElementById("workLogSyncInterval")?.value || "30", 10);
+  if (!Number.isFinite(raw)) return 30;
+  return Math.max(5, Math.min(raw, 24 * 60));
 }
 
 function fillFormFromDraft(draft) {
@@ -26,6 +36,10 @@ function fillFormFromDraft(draft) {
   document.getElementById("storeWebUser").value = draft.web_username || "";
   document.getElementById("storeWebPass").value = cleanSecret(draft.web_password);
   document.getElementById("storeEnv").value = draft.ergani_env || "production";
+  const intervalEl = document.getElementById("workLogSyncInterval");
+  if (intervalEl) {
+    intervalEl.value = String(draft.work_log_sync_interval_minutes || 30);
+  }
 }
 
 async function loadStoreIntoForm(storeId) {
@@ -38,8 +52,50 @@ async function loadStoreIntoForm(storeId) {
     }
     fillFormFromDraft(store);
     Office.setDraft({ ...Office.getDraft(), ...store, accessToken: "", branches: null });
+    document.getElementById("btnSaveSyncSettings")?.classList.remove("hidden");
   } catch (e) {
     Office.showMsg("stepMsg", String(e), false);
+  }
+}
+
+async function saveSyncSettingsOnly() {
+  const draft = Office.getDraft();
+  if (!draft.id) {
+    Office.showMsg("stepMsg", "Αποθηκεύστε πρώτα το κατάστημα.", false);
+    return;
+  }
+  const btn = document.getElementById("btnSaveSyncSettings");
+  const mins = readSyncIntervalMinutes();
+  Office.setButtonLoading(btn, true);
+  try {
+    const res = await fetch(`/api/store/${draft.id}/sync-settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ work_log_sync_interval_minutes: mins }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok || !data.success) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης", false);
+      return;
+    }
+    Office.setDraft({
+      ...draft,
+      work_log_sync_interval_minutes: data.work_log_sync_interval_minutes || mins,
+    });
+    if (document.getElementById("workLogSyncInterval")) {
+      document.getElementById("workLogSyncInterval").value = String(
+        data.work_log_sync_interval_minutes || mins
+      );
+    }
+    Office.showMsg(
+      "stepMsg",
+      `Αποθηκεύτηκε διάστημα auto-sync: ${data.work_log_sync_interval_minutes || mins} λεπτά.`,
+      true
+    );
+  } catch (e) {
+    Office.showMsg("stepMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
   }
 }
 
@@ -177,11 +233,24 @@ async function onStep1Next() {
       Office.showMsg("stepMsg", String(saveErr), false);
       return;
     }
+    const work_log_sync_interval_minutes = readSyncIntervalMinutes();
+    if (storeId) {
+      try {
+        await fetch(`/api/store/${storeId}/sync-settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ work_log_sync_interval_minutes }),
+        });
+      } catch {
+        /* draft κρατά την τιμή για τελική αποθήκευση */
+      }
+    }
     Office.setDraft({
       ...draft,
       id: storeId,
       ...fields,
       ergani_env,
+      work_log_sync_interval_minutes,
       accessToken: token,
       employer_afm,
       branches: branchesData.branches || [],

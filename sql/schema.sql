@@ -29,7 +29,10 @@ BEGIN
         kallikratis_code NVARCHAR(16) NULL,
         kallikratis_desc NVARCHAR(500) NULL,
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_store_updated DEFAULT (SYSDATETIMEOFFSET()),
-        last_sync_at DATETIMEOFFSET(7) NULL
+        last_sync_at DATETIMEOFFSET(7) NULL,
+        schedule_last_sync_at DATETIMEOFFSET(7) NULL,
+        work_log_last_sync_at DATETIMEOFFSET(7) NULL,
+        work_log_sync_interval_minutes INT NOT NULL CONSTRAINT DF_karta_store_wl_sync_interval DEFAULT (30)
     );
     CREATE INDEX IX_karta_store_employer ON dbo.karta_store_config (employer_afm, branch_aa);
 END

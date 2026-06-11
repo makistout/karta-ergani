@@ -342,6 +342,10 @@ def iter_work_log_sync_events(
             message=result["detail"],
             result=result,
         )
+    if result.get("success") and ctx.get("id"):
+        from app import repo_store
+
+        repo_store.touch_work_log_sync(int(ctx["id"]))
     yield {
         "event": "done",
         "success": result["success"],

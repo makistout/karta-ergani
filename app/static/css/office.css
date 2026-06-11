@@ -17,6 +17,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+.hidden { display: none !important; }
+
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -144,6 +146,16 @@ body {
 .page-title .bi {
   color: var(--brand-light);
   font-size: 1.15em;
+}
+
+.sync-meta-line {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: -0.35rem;
+}
+
+.sync-meta-line a {
+  color: var(--brand-light);
 }
 
 .page-desc {
@@ -438,12 +450,23 @@ a.btn {
   color: #fff;
 }
 
-.btn:hover { background: var(--brand); }
+.btn:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+.btn:hover .bi {
+  color: #fff;
+}
 
 .btn-secondary {
   background: #fff;
   color: var(--brand);
   border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--brand);
 }
 
 .btn-danger {
@@ -453,6 +476,16 @@ a.btn {
 }
 
 .btn-danger .bi { color: var(--err); }
+
+.btn-danger:hover {
+  background: var(--err);
+  color: #fff;
+  border-color: var(--err);
+}
+
+.btn-danger:hover .bi {
+  color: #fff;
+}
 
 .btn-select {
   background: #fff;

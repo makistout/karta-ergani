@@ -446,6 +446,10 @@ def iter_schedule_sync_events(
             message=result["detail"],
             result=result,
         )
+    if result.get("success") and ctx.get("id"):
+        from app import repo_store
+
+        repo_store.touch_schedule_sync(int(ctx["id"]))
     yield {
         "event": "done",
         "success": result["success"],
