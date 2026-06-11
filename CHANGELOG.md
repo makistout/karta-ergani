@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-06-11 — Auto-sync timestamps, ρυθμίσεις καταστήματος, UI polish
+
+### Βάση
+
+- Στήλες **`schedule_last_sync_at`**, **`work_log_last_sync_at`**, **`work_log_sync_interval_minutes`** (default 30) στο `karta_store_config`.
+- Migration: **`sql/alter_add_store_sync_timestamps.sql`** · script: **`python scripts/run_migration_store_sync_timestamps.py`**.
+
+### Backend
+
+- **`app/repo_store.py`**: `touch_schedule_sync`, `touch_work_log_sync`, `effective_*_sync_at()` (fallback σε `last_sync_at` αν λείπουν οι νέες στήλες).
+- Μετά επιτυχημένο portal sync: touch από **`portal_schedule_sync`**, **`portal_work_log_sync`**, **`sync_jobs.py`**.
+- **`POST /api/store/record-sync`** — body `{ "kind": "schedule" | "work_log" }` (fallback από UI).
+- **`POST /api/store/<id>/sync-settings`** — διάστημα auto-sync πραγματικής (λεπτά, min 5).
+- **`GET /api/store/active`**: επιστρέφει timestamps + `work_log_sync_interval_minutes`.
+
+### UI — auto-sync
+
+| Σελίδα | Συμπεριφορά |
+|--------|-------------|
+| **Ψηφιακό ωράριο** (`schedule-list.js`) | Στο άνοιγμα: auto-sync αν **δεν** έχει γίνει sync **σήμερα** |
+| **Πραγματική απασχόληση** (`work-log-list.js`) | Στο άνοιγμα: auto-sync αν πέρασαν **> N λεπτά** (ρύθμιση καταστήματος) |
+| **Ψηφιακή κάρτα** (`work-card-list.js`) | Στο άνοιγμα: **πάντα** sync πραγματικής για την επιλεγμένη ημέρα (ενημερώνει `work_log_last_sync_at` στο backend) |
+
+Γραμμή meta κάτω από τίτλο: «Τελευταίος συγχρονισμός …» (`Office.updateSyncMetaLine`).
+
+### UI — ρυθμίσεις & λοιπά
+
+- **`store-credentials.html`**: πεδίο «Διάστημα auto-sync πραγματικής (λεπτά)» + κουμπί αποθήκευσης (επεξεργασία καταστήματος).
+- **`home.js`**: **Esc** κλείνει dropdown ή modal άδειας.
+- **`office.css`**: διόρθωση hover κουμπιών (λευκό κείμενο σε primary/secondary/danger).
+
+---
+
+## 2026-06-10 — Sync log: κατάσταση, διάρκεια, ολοκλήρωση runs
+
+### Backend
+
+- **`repo_sync_log.reconcile_stale_runs()`** — runs που έμειναν `running` κλείνουν ως `error` (κλήση από `GET /api/sync-log/runs`).
+- **`finish_run()`** σε standalone portal sync (`portal_schedule_sync`, `portal_work_log_sync`) και **`sync_jobs.py`** — κάθε run κλείνει πάντα.
+- **`sync_route_util`**: portal sync **πάντα async** (live progress + αξιόπιστο `finish_run`).
+- Διάρκεια run: SQL **`DATEDIFF`** (έως `finished_at` ή τώρα αν `running`).
+
+### UI (`sync-log-list.js`)
+
+- Στήλες **Έναρξη**, **Λήξη**, **Διάρκεια** στη λίστα runs.
+- Auto-refresh όσο υπάρχει run `running` · λεπτομέρειες run με grid meta.
+
+---
+
 ## 2026-06-09 — Ασφάλεια (αντίδραση σε security review)
 
 ### Διορθώσεις κώδικα
@@ -139,7 +188,7 @@
 
 ---
 
-## Αναλυτική κατάσταση project (2026-06-04)
+## Αναλυτική κατάσταση project (2026-06-11)
 
 Πλήρης εικόνα όσων έχουν υλοποιηθεί μέχρι σήμερα — για onboarding και συνέχιση ανάπτυξης.
 
@@ -197,6 +246,7 @@ Draft: `sessionStorage` key `kartaStoreDraft` (όνομα, credentials, token, b
 | Admin username/password, usertype | `username`, `password`, `usertype` | Portal parse (01) |
 | Web username/password | `web_username`, `web_password` | Ergani API (02) |
 | Περιβάλλον API | `ergani_env` | `production` / `trial` |
+| Διάστημα auto-sync πραγματικής (λεπτά) | `work_log_sync_interval_minutes` | Μόνο επεξεργασία · `POST /api/store/<id>/sync-settings` |
 
 **Κλικ «Συνέχεια» — σειρά ενεργειών:**
 
@@ -272,7 +322,7 @@ Draft: `sessionStorage` key `kartaStoreDraft` (όνομα, credentials, token, b
 | 3 | `EX_BASE_05` | `karta_employee` + `karta_employment` για το **επιλεγμένο** `branch_aa` · `deactivate_stale_employments` για ΑΦΜ που έφυγαν από απάντηση |
 | 4 | Portal ωράριο (σήμερα) | `fetch_and_save_schedule_for_ctx` — 1 ημέρα, [§5](#διαδικασία-portal-parse-αναλυτικά) |
 | 5 | Portal πραγματική (σήμερα) | `fetch_and_save_work_log_for_ctx` — 1 ημέρα, [§5](#διαδικασία-portal-parse-αναλυτικά) |
-| 6 | `touch_last_sync` | ενημέρωση timestamp καταστήματος |
+| 6 | `touch_schedule_sync` / `touch_work_log_sync` | ξεχωριστά timestamps ανά είδος sync (fallback: `last_sync_at`) |
 
 **Σημείωση:** EX_BASE_08/07 JSON **δεν** χρησιμοποιούνται για sync — μόνο portal HTML.
 
@@ -290,11 +340,11 @@ Draft: `sessionStorage` key `kartaStoreDraft` (όνομα, credentials, token, b
 
 | Ενέργεια | Ροή |
 |----------|-----|
-| Άνοιγμα | Date picker **διάστημα** (chips Από/Έως, max 31 ημέρες) · `onApply` → φόρτωση |
+| Άνοιγμα | Date picker **διάστημα** (chips Από/Έως, max 31 ημέρες) · **auto-sync** αν δεν έχει γίνει sync σήμερα (`schedule_last_sync_at`) · `onApply` → φόρτωση |
 | Προβολή | `GET /api/store/active` → `GET /api/schedule/list?date=` ή `?from=&to=` από `karta_schedule` · ταξινόμηση `sort_schedule_rows()` |
 | **Συγχρονισμός Ergani** | `POST /api/schedule/sync` body `{ date }` ή `{ from, to }` → portal: **μία** αναζήτηση διάστημα ή fallback ανά ημέρα → `replace_schedule_for_day` ανά `work_date` |
 | Loading | `showLoading` + spinner στο κουμπί και στον πίνακα κατά το parse |
-| Μετά sync | `loadSchedule()` — πίνακας: πρώτα ημέρα → με ώρες → χωρίς ώρες (Τύπος α-ω) |
+| Μετά sync | `record-sync` (schedule) + `loadSchedule()` — πίνακας: πρώτα ημέρα → με ώρες → χωρίς ώρες (Τύπος α-ω) |
 
 #### Πραγματική απασχόληση
 
@@ -302,8 +352,10 @@ Draft: `sessionStorage` key `kartaStoreDraft` (όνομα, credentials, token, b
 
 | Ενέργεια | Ροή |
 |----------|-----|
+| Άνοιγμα | **Auto-sync** αν πέρασαν > `work_log_sync_interval_minutes` από `work_log_last_sync_at` |
 | Προβολή | `GET /api/work-log/list?...` από `karta_work_log` |
-| Sync | `POST /api/work-log/sync` → `sync_work_log_from_portal` |
+| Sync | `POST /api/work-log/sync` → `sync_work_log_from_portal` · μετά `record-sync` (work_log) |
+| Ρυθμίσεις | Διάστημα auto-sync: επεξεργασία καταστήματος (`/ui/stores/credentials`) → `POST /api/store/<id>/sync-settings` |
 
 Αν λείπουν πίνακες: HTTP 503 + hint `sql/alter_add_karta_schedule.sql` / `alter_add_karta_work_log.sql`.
 
@@ -537,7 +589,7 @@ sequenceDiagram
 ### UI λογιστικού γραφείου
 
 - `/` → redirect `/ui/home`.
-- Σελίδες: αρχική, καταστήματα, credentials, branch, mappings, εργαζόμενοι, ψηφιακό ωράριο, πραγματική απασχόληση.
+- Σελίδες: αρχική, καταστήματα, credentials, branch, mappings, εργαζόμενοι, ψηφιακό ωράριο, πραγματική απασχόληση, ψηφιακή κάρτα, ιστορικό sync (`/ui/sync-log`).
 - Κοινό: `office.css`, Bootstrap Icons, `office-common.js`, inline date picker (chips Από/Έως).
 - Blueprint UI: `app/routes_ui.py` · API stores: `routes_store.py` · ergani: `routes_ergani.py`.
 
@@ -556,8 +608,12 @@ sequenceDiagram
 | `sql/alter_add_store_web_credentials.sql` | Web credentials |
 | `sql/alter_add_ergani_env.sql` | Περιβάλλον API |
 | `sql/alter_add_ergani_submission_id.sql` | Submission id δήλωσης |
+| `sql/alter_add_karta_sync_log.sql` | Ιστορικό sync runs + γραμμές log |
+| `sql/alter_add_flex_arrival_minutes.sql` | Ευέλικτη προσέλευση (λεπτά) |
+| `sql/alter_add_store_sync_timestamps.sql` | Timestamps auto-sync ανά κατάστημα |
+| `sql/alter_add_card_event_unique.sql` | Unique index κατά διπλής υποβολής κάρτας |
 
-Εφαρμογή: `python scripts/apply_schema.py`.
+Εφαρμογή: `python scripts/apply_schema.py` · για μεμονωμένα alter: `python scripts/run_migration_*.py`.
 
 ### Λειτουργία ανάπτυξης
 
