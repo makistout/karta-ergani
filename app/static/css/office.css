@@ -1504,6 +1504,26 @@ table.data.report-table td.col-flex {
   white-space: nowrap;
 }
 
+table.data.report-table td.col-hours {
+  white-space: nowrap;
+}
+
+.report-missing-time {
+  display: inline-flex;
+  align-items: center;
+  color: var(--err);
+  vertical-align: middle;
+}
+
+.report-missing-time .bi {
+  font-size: 0.95rem;
+}
+
+table.data.report-table td.work-log-action-cell {
+  text-align: center;
+  width: 2.75rem;
+}
+
 .report-notes {
   margin: 0.2rem 0 0 0.85rem;
   padding: 0;

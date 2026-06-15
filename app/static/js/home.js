@@ -336,12 +336,36 @@ function fmtHours(block) {
   return `${a} – ${b}`;
 }
 
-function fmtCard(card) {
-  if (!card) return "—";
-  const parts = [];
-  if (card.has_check_in) parts.push(`Είσοδος ${card.check_in || "✓"}`);
-  if (card.has_check_out) parts.push(`Έξοδος ${card.check_out || "✓"}`);
-  return parts.length ? parts.join(" · ") : "—";
+function fmtHoursPart(value, title) {
+  if ((value || "").trim()) return Office.escapeHtml(value.trim());
+  return (
+    `<span class="report-missing-time" title="${Office.escapeHtml(title)}">` +
+    `${Office.icon("clock")}</span>`
+  );
+}
+
+function fmtWorkLogHtml(block) {
+  if (!block) return "—";
+  const hf = (block.hour_from || "").trim();
+  const ht = (block.hour_to || "").trim();
+  if (!hf && !ht) {
+    const st = (block.shift_type || "").trim();
+    return st ? Office.escapeHtml(st) : "—";
+  }
+  return `${fmtHoursPart(block.hour_from, "Λείπει ώρα εισόδου")} – ${fmtHoursPart(block.hour_to, "Λείπει ώρα εξόδου")}`;
+}
+
+function buildCardLinkCell(r) {
+  const afm = (r.employee_afm || "").trim();
+  if (!afm) return "";
+  const dateIso = Office.erganiDateToIso(r.work_date) || "";
+  const name = `${r.eponymo || ""} ${r.onoma || ""}`.trim();
+  const url = Office.workCardUrl(afm, dateIso, name);
+  return (
+    `<a href="${Office.escapeHtml(url)}" class="work-log-card-link" ` +
+    `title="Ψηφιακή κάρτα" aria-label="Ψηφιακή κάρτα — ${Office.escapeHtml(name || afm)}">` +
+    `${Office.icon("credit-card-2-front")}</a>`
+  );
 }
 
 function buildActionCell(r) {
@@ -377,7 +401,6 @@ function renderTable(wrap, rows, meta, multiDay) {
   const hr = document.createElement("tr");
   const headers = [
     "Κατάσταση",
-    "ΑΦΜ",
     "Επώνυμο",
     "Όνομα",
   ];
@@ -386,7 +409,7 @@ function renderTable(wrap, rows, meta, multiDay) {
     "Ευελ. (λεπτά)",
     "Ψηφ. ωράριο",
     "Πραγματική",
-    "Δηλώσεις κάρτας",
+    "Κάρτα",
     "Τι να γίνει"
   );
   headers.forEach((h) => {
@@ -408,7 +431,6 @@ function renderTable(wrap, rows, meta, multiDay) {
 
     const cells = [
       badge.outerHTML,
-      r.employee_afm || "",
       r.eponymo || "",
       r.onoma || "",
     ];
@@ -416,18 +438,18 @@ function renderTable(wrap, rows, meta, multiDay) {
     cells.push(
       Office.formatFlexMinutes(r.flex_arrival_minutes),
       fmtHours(r.schedule),
-      fmtHours(r.work_log),
-      fmtCard(r.card),
+      fmtWorkLogHtml(r.work_log),
+      buildCardLinkCell(r),
       buildActionCell(r)
     );
-    const colClass = ["", "col-afm", "col-name", "col-name"];
+    const colClass = ["", "col-name", "col-name"];
     if (multiDay) colClass.push("");
-    colClass.push("col-flex", "", "", "", "col-action");
+    colClass.push("col-flex", "col-hours", "col-hours", "work-log-action-cell", "col-action");
+    const htmlColumns = new Set([0, cells.length - 3, cells.length - 2, cells.length - 1]);
     cells.forEach((html, i) => {
       const td = document.createElement("td");
       if (colClass[i]) td.className = colClass[i];
-      const actionIdx = cells.length - 1;
-      if (i === 0 || i === actionIdx) td.innerHTML = html;
+      if (htmlColumns.has(i)) td.innerHTML = html;
       else td.textContent = html;
       tr.appendChild(td);
     });
