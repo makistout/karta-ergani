@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     hiddenId: "wcEmployeeAfm",
     maxItems: 40,
     labelFn: (row) => row.label || `${row.value} — ${row.description || ""}`.trim(),
+    onSelect: () => updateWorkCardEmployeeHistoryLink(),
   });
   datePicker = Office.createDatePicker({
     mountId: "workCardDatePicker",
@@ -31,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnRetroCheckOut").onclick = () => submitCard("check_out", { retro: true });
   document.getElementById("wcEmployeeInput")?.addEventListener("input", () => {
     document.querySelector(".work-card-form .ac-wrap.field-err")?.classList.remove("field-err");
+    updateWorkCardEmployeeHistoryLink();
   });
   initRetroDefaults();
   initPage();
@@ -67,8 +69,57 @@ function cardDate() {
   return r.start || "";
 }
 
+function todayIsoLocal() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
+
+function formatIsoDateGr(iso) {
+  const p = String(iso || "").trim().split("-");
+  if (p.length !== 3) return iso || "";
+  return `${p[2]}/${p[1]}/${p[0]}`;
+}
+
+function shouldSkipErganiSyncForRetro(dateIso) {
+  const prefill = Office.readWorkCardQueryPrefill();
+  if (!prefill.retro) return false;
+  const d = String(dateIso || cardDate() || prefill.date || "").trim();
+  return Boolean(d && d !== todayIsoLocal());
+}
+
+function showWorkCardInfo(text) {
+  const el = document.getElementById("wcMsg");
+  if (!el) return;
+  el.innerHTML = `${Office.icon("info-circle")} <span>${Office.escapeHtml(text)}</span>`;
+  el.className = "msg show loading";
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function selectedEmployeeAfm() {
   return employeeAc ? employeeAc.getValue().code : "";
+}
+
+function selectedEmployeeName() {
+  if (!employeeAc) return "";
+  const { label } = employeeAc.getValue();
+  const m = String(label || "").match(/^\d+\s*—\s*(.+)$/);
+  return m ? m[1].trim() : "";
+}
+
+function updateWorkCardEmployeeHistoryLink() {
+  const link = document.getElementById("wcEmployeeHistoryLink");
+  if (!link) return;
+  const afm = (selectedEmployeeAfm() || "").trim();
+  if (!afm) {
+    link.classList.add("hidden");
+    link.setAttribute("aria-hidden", "true");
+    link.tabIndex = -1;
+    return;
+  }
+  link.href = Office.workLogHistoryUrl(afm, selectedEmployeeName(), "work-card");
+  link.classList.remove("hidden");
+  link.removeAttribute("aria-hidden");
+  link.tabIndex = 0;
 }
 
 function showWorkCardMsg(text, ok) {
@@ -132,8 +183,17 @@ async function initPage() {
   await Office.loadActiveStore();
   await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog");
   await loadEmployees();
+  const prefill = Office.applyWorkCardQueryPrefill(
+    datePicker,
+    employeeAc,
+    retroDatePicker
+  );
+  updateWorkCardEmployeeHistoryLink();
   setFormEnabled(true);
   await refreshDayData({ auto: true });
+  if (prefill.employee_afm) {
+    document.getElementById("wcEmployeeInput")?.focus();
+  }
 }
 
 async function loadEmployees() {
@@ -168,6 +228,22 @@ async function refreshDayData(options = {}) {
     if (!auto) Office.showMsg("wcMsg", "Επιλέξτε ημερομηνία.", false);
     return;
   }
+
+  if (shouldSkipErganiSyncForRetro(date)) {
+    if (logWrap) Office.showTableLoading(logWrap, "Φόρτωση τοπικών δεδομένων…");
+    if (cardWrap) Office.showTableLoading(cardWrap, "Φόρτωση τοπικών δεδομένων…");
+    try {
+      await loadDayData();
+      showWorkCardInfo(
+        `Προγενέστερη καταχώρηση για ${formatIsoDateGr(date)} — δεν εκτελείται συγχρονισμός με Ergani. ` +
+          "Εμφανίζονται μόνο τα δεδομένα από τη βάση."
+      );
+    } catch (e) {
+      if (!auto) Office.showMsg("wcMsg", String(e), false);
+    }
+    return;
+  }
+
   if (logWrap) Office.showTableLoading(logWrap, "Συγχρονισμός Ergani…");
   if (cardWrap) Office.showTableLoading(cardWrap, "Συγχρονισμός Ergani…");
   try {
@@ -267,7 +343,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ψηφ. ωράριο", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -279,6 +355,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
       row.employee_afm,
       row.eponymo,
       row.onoma,
+      row.schedule_label || "—",
       Office.formatFlexMinutes(row.flex_arrival_minutes),
       row.work_date,
       row.hour_from || "—",
@@ -286,7 +363,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
     ].forEach((txt, i) => {
       const td = document.createElement("td");
       if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
-      else if (i === 3) {
+      else if (i === 4) {
         td.className = "col-flex";
         td.textContent = txt || "";
       } else td.textContent = txt || "";

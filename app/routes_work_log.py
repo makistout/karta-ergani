@@ -19,7 +19,10 @@ from app.repo_work_log import (
     list_work_log_for_store,
     list_work_log_history_for_employee,
     work_log_table_missing_message,
+    enrich_work_log_rows_with_schedule,
+    enrich_work_log_history_with_card_punch,
 )
+from app.repo_schedule import schedule_table_missing_message
 from app.work_card_payload import norm_afm
 from app.work_log_sync import fetch_and_save_work_log_for_ctx
 
@@ -64,6 +67,16 @@ def work_log_list():
             )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    try:
+        enrich_work_log_rows_with_schedule(
+            rows, ctx["employer_afm"], ctx["branch_aa"], ergani_dates
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+        for r in rows:
+            r["schedule_label"] = "—"
+            r["schedule"] = None
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()
@@ -98,6 +111,13 @@ def work_log_history():
         )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    try:
+        enrich_work_log_history_with_card_punch(
+            rows, ctx["employer_afm"], ctx["branch_aa"], employee_afm
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()

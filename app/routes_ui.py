@@ -50,6 +50,11 @@ def ui_work_log_list():
     return send_from_directory(_UI_DIR, "work-log-list.html")
 
 
+@ui_bp.get("/work-log/history")
+def ui_work_log_history():
+    return send_from_directory(_UI_DIR, "work-log-history.html")
+
+
 @ui_bp.get("/work-card")
 def ui_work_card():
     return send_from_directory(_UI_DIR, "work-card-list.html")

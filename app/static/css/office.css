@@ -361,6 +361,17 @@ input, select {
   background: #f8fafc;
 }
 
+.work-card-retro--required {
+  border-color: var(--err);
+  background: #fef2f2;
+}
+
+.btn.work-card-action--required {
+  border-color: var(--err) !important;
+  color: var(--err) !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
 .work-card-retro-title {
   font-size: 0.95rem;
   margin: 0 0 0.35rem;
@@ -415,6 +426,81 @@ input, select {
 
 .work-card-form .ac-wrap {
   max-width: 28rem;
+}
+
+.work-card-employee-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 28rem;
+}
+
+.work-card-employee-row .ac-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.work-card-employee-row input[type="text"] {
+  max-width: none;
+}
+
+.work-card-employee-history {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 2.375rem;
+  height: calc(0.5rem * 2 + 1.25rem + 2px);
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--brand-light);
+  text-decoration: none;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.work-card-employee-history:hover {
+  color: var(--brand);
+  border-color: var(--brand-light);
+  background: #f8fafc;
+}
+
+.work-card-employee-history .bi {
+  font-size: 1rem;
+}
+
+.work-card-employee-history.hidden {
+  display: none;
+}
+
+.page-back {
+  margin: 0 0 0.75rem;
+}
+
+.page-back.hidden {
+  display: none;
+}
+
+.page-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--brand-light);
+  text-decoration: none;
+}
+
+.page-back-link:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.work-log-history-page-card {
+  margin-top: 0.5rem;
 }
 
 .work-card-form .ac-wrap.field-err input {
@@ -1453,7 +1539,7 @@ table.data.report-table td.col-flex {
 }
 
 .office-modal-panel--history {
-  width: min(100%, 960px);
+  width: min(100%, 1080px);
   max-height: min(92vh, 640px);
 }
 
@@ -1468,6 +1554,37 @@ table.data.report-table td.col-flex {
   flex-shrink: 0;
   padding: 0.12rem 0.32rem;
   line-height: 1;
+}
+
+.work-log-card-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-light);
+  text-decoration: none;
+  line-height: 1;
+}
+
+.work-log-card-link:hover {
+  color: var(--brand);
+}
+
+.work-log-card-link .bi {
+  font-size: 1.1rem;
+}
+
+.work-log-card-link--required {
+  color: var(--err);
+}
+
+.work-log-card-link--required:hover {
+  color: #b91c1c;
+}
+
+.work-log-action-cell {
+  width: 2.75rem;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .work-log-history-wrap {

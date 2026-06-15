@@ -97,7 +97,7 @@ function renderTablePage() {
   t.className = "data";
   const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
-  headers.push("Ευελ. (λεπτά)", "Από", "Έως", "ΑΑ");
+  headers.push("Ευελ. (λεπτά)", "Ψηφ. ωράριο", "Από", "Έως", "ΑΑ", "Κάρτα");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
@@ -112,6 +112,7 @@ function renderTablePage() {
     if (multi) cells.push(row.work_date || "");
     cells.push(
       Office.formatFlexMinutes(row.flex_arrival_minutes),
+      row.schedule_label || "—",
       row.hour_from || "",
       row.hour_to || "",
       row.source_aa || "0"
@@ -131,6 +132,7 @@ function renderTablePage() {
       }
       tr.appendChild(td);
     });
+    appendWorkCardLinkCell(tr, row, range);
     t.appendChild(tr);
   });
 
@@ -144,6 +146,25 @@ function renderTablePage() {
       })
     );
   }
+}
+
+function appendWorkCardLinkCell(tr, row, range) {
+  const td = document.createElement("td");
+  td.className = "work-log-action-cell";
+  const afm = (row.employee_afm || "").trim();
+  if (afm) {
+    const dateIso =
+      Office.erganiDateToIso(row.work_date) || range?.start || "";
+    const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
+    const a = document.createElement("a");
+    a.href = Office.workCardUrl(afm, dateIso, name);
+    a.className = "work-log-card-link";
+    a.title = "Ψηφιακή κάρτα";
+    a.setAttribute("aria-label", `Ψηφιακή κάρτα — ${name || afm}`);
+    a.innerHTML = Office.icon("credit-card-2-front");
+    td.appendChild(a);
+  }
+  tr.appendChild(td);
 }
 
 async function maybeAutoSyncWorkLog(activeData) {

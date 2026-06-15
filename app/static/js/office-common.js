@@ -557,6 +557,96 @@ const Office = {
     return Date.now() - t >= mins * 60 * 1000;
   },
 
+  erganiDateToIso(workDate) {
+    const m = String(workDate || "")
+      .trim()
+      .match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return "";
+    const day = String(parseInt(m[1], 10)).padStart(2, "0");
+    const month = String(parseInt(m[2], 10)).padStart(2, "0");
+    return `${m[3]}-${month}-${day}`;
+  },
+
+  normalizeHourMinute(timeStr) {
+    const m = String(timeStr || "").trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return "";
+    return `${m[1].padStart(2, "0")}:${m[2]}`;
+  },
+
+  workCardUrl(employeeAfm, dateIso, employeeName, opts = {}) {
+    const afm = String(employeeAfm || "").trim();
+    if (!afm) return "/ui/work-card";
+    const p = new URLSearchParams({ employee_afm: afm });
+    const d = String(dateIso || "").trim();
+    if (d) p.set("date", d);
+    const name = String(employeeName || "").trim();
+    if (name) p.set("employee_name", name);
+    if (opts.retro) p.set("retro", "1");
+    const retroTime = String(opts.retro_time || "").trim();
+    if (retroTime) p.set("retro_time", retroTime);
+    const cardEvent = String(opts.card_event || "").trim();
+    if (cardEvent) p.set("card_event", cardEvent);
+    if (opts.retro_highlight) p.set("retro_highlight", "1");
+    return `/ui/work-card?${p}`;
+  },
+
+  readWorkCardQueryPrefill() {
+    const p = new URLSearchParams(window.location.search);
+    const afm = (p.get("employee_afm") || p.get("afm") || "").trim();
+    const date = (p.get("date") || "").trim();
+    return {
+      employee_afm: afm,
+      employee_name: (p.get("employee_name") || "").trim(),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "",
+      retro: p.get("retro") === "1",
+      retro_time: (p.get("retro_time") || "").trim(),
+      card_event: (p.get("card_event") || "").trim(),
+      retro_highlight: p.get("retro_highlight") === "1",
+    };
+  },
+
+  applyWorkCardQueryPrefill(datePicker, employeeAc, retroDatePicker) {
+    const prefill = this.readWorkCardQueryPrefill();
+    if (prefill.date && datePicker?.setRange) {
+      datePicker.setRange(prefill.date, prefill.date);
+    }
+    if (prefill.employee_afm && employeeAc) {
+      employeeAc.setValue(
+        prefill.employee_afm,
+        prefill.employee_name || prefill.employee_afm
+      );
+    }
+    if (prefill.retro && prefill.date && retroDatePicker) {
+      retroDatePicker.setIso(prefill.date);
+    }
+    if (prefill.retro && prefill.retro_time) {
+      const retroTime = document.getElementById("wcRetroTime");
+      const norm = this.normalizeHourMinute(prefill.retro_time);
+      if (retroTime && norm) retroTime.value = norm;
+    }
+    if (prefill.retro_highlight) {
+      document
+        .querySelector(".work-card-retro")
+        ?.classList.add("work-card-retro--required");
+      requestAnimationFrame(() => {
+        document
+          .querySelector(".work-card-retro")
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+    if (prefill.card_event === "check_in" || prefill.card_event === "check_out") {
+      const btnId = prefill.retro
+        ? prefill.card_event === "check_in"
+          ? "btnRetroCheckIn"
+          : "btnRetroCheckOut"
+        : prefill.card_event === "check_in"
+          ? "btnCheckIn"
+          : "btnCheckOut";
+      document.getElementById(btnId)?.classList.add("work-card-action--required");
+    }
+    return prefill;
+  },
+
   async recordStoreSync(kind) {
     try {
       const res = await fetch("/api/store/record-sync", {
@@ -612,32 +702,125 @@ const Office = {
     document.getElementById(modalId)?.classList.add("hidden");
   },
 
-  renderWorkLogHistoryTable(rows) {
+  renderWorkLogHistoryCardCell(row, ctx, column) {
+    const employeeAfm = (ctx.employee_afm || "").trim();
+    const employeeName = (ctx.employee_name || "").trim();
+    const hf = (row.hour_from || "").trim();
+    const ht = (row.hour_to || "").trim();
+    if (column === "from") {
+      if (hf) return { html: this.escapeHtml(hf), isCard: false };
+      if (
+        !row.needs_card_punch ||
+        row.card_event !== "check_in" ||
+        !row.retro_time ||
+        !employeeAfm
+      ) {
+        return { html: "—", isCard: false };
+      }
+    } else {
+      if (ht) return { html: this.escapeHtml(ht), isCard: false };
+      if (
+        !row.needs_card_punch ||
+        row.card_event !== "check_out" ||
+        !row.retro_time ||
+        !employeeAfm
+      ) {
+        return { html: "—", isCard: false };
+      }
+    }
+    const dateIso = this.erganiDateToIso(row.work_date) || "";
+    const isCheckIn = row.card_event === "check_in";
+    const title = isCheckIn ? "Είσοδος στην κάρτα" : "Έξοδος στην κάρτα";
+    const url = this.workCardUrl(employeeAfm, dateIso, employeeName, {
+      retro: true,
+      retro_time: row.retro_time,
+      card_event: row.card_event,
+      retro_highlight: true,
+    });
+    return {
+      html:
+        `<a href="${this.escapeHtml(url)}" class="work-log-card-link work-log-card-link--required" ` +
+        `title="${this.escapeHtml(title)}" aria-label="${this.escapeHtml(title)}">` +
+        `${this.icon("credit-card-2-front")}</a>`,
+      isCard: true,
+    };
+  },
+
+  renderWorkLogHistoryTable(rows, ctx = {}) {
     if (!rows.length) {
       return (
         `<p style="color:var(--muted);">${this.icon("clock")}` +
         `<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές στη βάση για αυτόν τον εργαζόμενο.</span></p>`
       );
     }
-    const headers = ["Ημερομηνία", "Από", "Έως", "Συγχρονισμός"];
+    const headers = ["Ημερομηνία", "Ψηφ. ωράριο", "Από", "Έως", "Συγχρονισμός"];
     let html = `<table class="data work-log-history-table"><tr>${headers
       .map((h) => `<th>${this.escapeHtml(h)}</th>`)
       .join("")}</tr>`;
     rows.forEach((row) => {
+      const apoCell = this.renderWorkLogHistoryCardCell(row, ctx, "from");
+      const ewsCell = this.renderWorkLogHistoryCardCell(row, ctx, "to");
+      const sched = (row.schedule_label || "—").trim() || "—";
       html +=
         "<tr>" +
-        [
-          row.work_date || "",
-          row.hour_from || "",
-          row.hour_to || "",
-          this.formatSyncedAt(row.synced_at),
-        ]
-          .map((txt) => `<td>${this.escapeHtml(String(txt))}</td>`)
-          .join("") +
+        `<td>${this.escapeHtml(String(row.work_date || ""))}</td>` +
+        `<td>${this.escapeHtml(sched)}</td>` +
+        `<td${apoCell.isCard ? ' class="work-log-action-cell"' : ""}>${apoCell.html}</td>` +
+        `<td${ewsCell.isCard ? ' class="work-log-action-cell"' : ""}>${ewsCell.html}</td>` +
+        `<td>${this.escapeHtml(String(this.formatSyncedAt(row.synced_at)))}</td>` +
         "</tr>";
     });
     html += "</table>";
     return html;
+  },
+
+  async loadWorkLogHistory({ wrap, sub, afm, name = "" }) {
+    const employeeAfm = String(afm || "").trim();
+    if (!wrap || !employeeAfm) return;
+    const displayName = String(name || "").trim();
+    if (sub) {
+      sub.textContent = `${displayName || "Εργαζόμενος"} · ΑΦΜ ${employeeAfm}`;
+    }
+    wrap.innerHTML = `<p class="table-loading">${this.icon("arrow-repeat")}<span>Φόρτωση ιστορικού…</span></p>`;
+    try {
+      const res = await fetch(
+        `/api/work-log/history?employee_afm=${encodeURIComponent(employeeAfm)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(data.error || "Σφάλμα")}</p>`;
+        return;
+      }
+      const employeeName = displayName || data.employee_name || "";
+      if (sub && data.employee_name && !displayName) {
+        sub.textContent = `${data.employee_name} · ΑΦΜ ${employeeAfm}`;
+      }
+      const count = data.count || 0;
+      const meta =
+        count > 0
+          ? `<p class="table-meta" style="margin:0 0 0.5rem;">${this.icon("database")} <strong>${count}</strong> εγγραφές στη βάση (νεότερες πρώτα)</p>`
+          : "";
+      wrap.innerHTML =
+        meta +
+        this.renderWorkLogHistoryTable(data.work_log || [], {
+          employee_afm: employeeAfm,
+          employee_name: employeeName,
+        });
+    } catch (e) {
+      wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(String(e))}</p>`;
+    }
+  },
+
+  workLogHistoryUrl(employeeAfm, employeeName, from = "") {
+    const afm = String(employeeAfm || "").trim();
+    if (!afm) return "/ui/work-log/history";
+    const p = new URLSearchParams({ employee_afm: afm });
+    const n = String(employeeName || "").trim();
+    if (n) p.set("employee_name", n);
+    const src = String(from || "").trim();
+    if (src) p.set("from", src);
+    return `/ui/work-log/history?${p}`;
   },
 
   async openWorkLogHistoryModal(row, ids = {}) {
@@ -654,28 +837,7 @@ const Office = {
     sub.textContent = `${name || "Εργαζόμενος"} · ΑΦΜ ${afm}`;
     wrap.innerHTML = `<p class="table-loading">${this.icon("arrow-repeat")}<span>Φόρτωση ιστορικού…</span></p>`;
     modal.classList.remove("hidden");
-    try {
-      const res = await fetch(
-        `/api/work-log/history?employee_afm=${encodeURIComponent(afm)}`,
-        { cache: "no-store" }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(data.error || "Σφάλμα")}</p>`;
-        return;
-      }
-      if (data.employee_name && !name) {
-        sub.textContent = `${data.employee_name} · ΑΦΜ ${afm}`;
-      }
-      const count = data.count || 0;
-      const meta =
-        count > 0
-          ? `<p class="table-meta" style="margin:0 0 0.5rem;">${this.icon("database")} <strong>${count}</strong> εγγραφές στη βάση (νεότερες πρώτα)</p>`
-          : "";
-      wrap.innerHTML = meta + this.renderWorkLogHistoryTable(data.work_log || []);
-    } catch (e) {
-      wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(String(e))}</p>`;
-    }
+    await this.loadWorkLogHistory({ wrap, sub, afm, name });
   },
 
   appendWorkLogHistoryButton(td, row) {

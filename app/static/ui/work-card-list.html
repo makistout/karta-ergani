@@ -49,10 +49,17 @@
           <div id="workCardForm" class="work-card-form">
             <div class="form-row">
               <label for="wcEmployeeInput">Εργαζόμενος</label>
-              <div class="ac-wrap">
-                <input id="wcEmployeeInput" type="text" placeholder="ΑΦΜ, επώνυμο ή όνομα…" autocomplete="off"
-                  disabled role="combobox" aria-autocomplete="list" aria-controls="wcEmployeeList" aria-expanded="false">
-                <ul id="wcEmployeeList" class="ac-list" role="listbox"></ul>
+              <div class="work-card-employee-row">
+                <div class="ac-wrap">
+                  <input id="wcEmployeeInput" type="text" placeholder="ΑΦΜ, επώνυμο ή όνομα…" autocomplete="off"
+                    disabled role="combobox" aria-autocomplete="list" aria-controls="wcEmployeeList" aria-expanded="false">
+                  <ul id="wcEmployeeList" class="ac-list" role="listbox"></ul>
+                </div>
+                <a id="wcEmployeeHistoryLink" class="work-card-employee-history hidden"
+                  href="/ui/work-log/history" title="Ιστορικό πραγματικής απασχόλησης"
+                  aria-label="Ιστορικό πραγματικής απασχόλησης" tabindex="-1" aria-hidden="true">
+                  <i class="bi bi-clock-history" aria-hidden="true"></i>
+                </a>
               </div>
               <input type="hidden" id="wcEmployeeAfm">
             </div>
@@ -126,9 +133,9 @@
       </div>
     </main>
   </div>
-  <script src="/static/js/office-common.js"></script>
+  <script src="/static/js/office-common.js?v=20260617sched"></script>
   <script src="/static/js/office-autocomplete.js"></script>
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/work-card-list.js?v=20260605flex"></script>
+  <script src="/static/js/work-card-list.js?v=20260617sched"></script>
 </body>
 </html>
