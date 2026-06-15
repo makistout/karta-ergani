@@ -35,7 +35,9 @@
 
 - `.work-log-card-link--required` (κόκκινη κάρτα στο ιστορικό).
 - `.work-card-employee-row`, `.work-card-employee-history` (ευθυγράμμιση ύψους με input).
-- Ευρύτερο modal ιστορικού (`office-modal-panel--history`).
+- Modal ιστορικού: `.office-modal-panel.office-modal-panel--history` (πλάτος **1000px**, max 92vw) — διόρθωση override από το βασικό `.office-modal-panel` (400px).
+- **Κόκκινες γραμμές** έλλειψης εισόδου/εξόδου: `Office.workLogRowIsDeficient()`, κλάση `.work-log-row--deficient` στο modal, στη σελίδα ιστορικού και στον πίνακα πραγματικής της κάρτας (`table.data tbody tr.work-log-row--deficient td` — υψηλότερη προτεραιότητα από το γκρι κείμενο του πίνακα).
+- Cache-buster `office.css?v=…` στα HTML UI (ωράριο, πραγματική, κάρτα, ιστορικό).
 
 ---
 

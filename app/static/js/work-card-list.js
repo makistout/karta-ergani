@@ -351,6 +351,9 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   t.appendChild(hr);
   rows.forEach((row) => {
     const tr = document.createElement("tr");
+    if (Office.workLogRowIsDeficient(row)) {
+      tr.classList.add("work-log-row--deficient");
+    }
     [
       row.employee_afm,
       row.eponymo,

@@ -702,6 +702,12 @@ const Office = {
     document.getElementById(modalId)?.classList.add("hidden");
   },
 
+  workLogRowIsDeficient(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    return !hf || !ht;
+  },
+
   renderWorkLogHistoryCardCell(row, ctx, column) {
     const employeeAfm = (ctx.employee_afm || "").trim();
     const employeeName = (ctx.employee_name || "").trim();
@@ -761,8 +767,9 @@ const Office = {
       const apoCell = this.renderWorkLogHistoryCardCell(row, ctx, "from");
       const ewsCell = this.renderWorkLogHistoryCardCell(row, ctx, "to");
       const sched = (row.schedule_label || "—").trim() || "—";
+      const deficient = this.workLogRowIsDeficient(row);
       html +=
-        "<tr>" +
+        `<tr${deficient ? ' class="work-log-row--deficient"' : ""}>` +
         `<td>${this.escapeHtml(String(row.work_date || ""))}</td>` +
         `<td>${this.escapeHtml(sched)}</td>` +
         `<td${apoCell.isCard ? ' class="work-log-action-cell"' : ""}>${apoCell.html}</td>` +

@@ -1538,11 +1538,6 @@ table.data.report-table td.col-flex {
   background: rgba(15, 23, 42, 0.45);
 }
 
-.office-modal-panel--history {
-  width: min(100%, 1080px);
-  max-height: min(92vh, 640px);
-}
-
 .work-log-name-cell {
   display: flex;
   align-items: center;
@@ -1609,6 +1604,19 @@ table.data.report-table td.col-flex {
   white-space: nowrap;
 }
 
+tr.work-log-row--deficient td {
+  color: var(--err);
+}
+
+tr.work-log-row--deficient td strong {
+  color: var(--err);
+}
+
+table.data tbody tr.work-log-row--deficient td,
+table.data tbody tr.work-log-row--deficient td strong {
+  color: var(--err);
+}
+
 .office-modal-panel {
   position: relative;
   width: min(100%, 400px);
@@ -1622,6 +1630,12 @@ table.data.report-table td.col-flex {
   padding: 0.85rem 0.95rem 0.95rem;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
   font-size: 0.78rem;
+}
+
+.office-modal-panel.office-modal-panel--history {
+  width: min(100%, 1000px);
+  max-width: 92vw;
+  max-height: min(92vh, 680px);
 }
 
 .office-modal-title {
