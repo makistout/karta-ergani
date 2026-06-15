@@ -11,8 +11,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     onApply: () => loadWorkLog(),
   });
   document.getElementById("btnSyncWorkLog").onclick = () => runSync();
-  await maybeAutoSyncWorkLog();
-  await loadWorkLog();
+
+  const activeData = await Office.fetchActiveStore();
+  Office.applyActiveStoreChrome(activeData);
+  await loadWorkLog(activeData);
+
+  void maybeAutoSyncWorkLog(activeData).then(async (synced) => {
+    if (synced) {
+      await loadWorkLog(await Office.fetchActiveStore({ refresh: true }));
+    }
+  });
 });
 
 function getRange() {
@@ -24,7 +32,7 @@ function listQuery(r) {
   return `from=${encodeURIComponent(r.start)}&to=${encodeURIComponent(r.end)}`;
 }
 
-async function loadWorkLog() {
+async function loadWorkLog(cachedActive) {
   const wrap = document.getElementById("workLogWrap");
   const btn = document.getElementById("btnSyncWorkLog");
   const r = getRange();
@@ -33,8 +41,7 @@ async function loadWorkLog() {
   }
   Office.showTableLoading(wrap);
   try {
-    const activeRes = await fetch("/api/store/active", { cache: "no-store" });
-    const activeData = await activeRes.json();
+    const activeData = cachedActive || (await Office.fetchActiveStore());
     if (!activeData.store) {
       btn.disabled = true;
       wrap.innerHTML =
@@ -42,7 +49,6 @@ async function loadWorkLog() {
       return;
     }
     btn.disabled = false;
-    await Office.loadActiveStore();
     const res = await fetch(`/api/work-log/list?${listQuery(r)}`);
     let data = {};
     try {
@@ -59,7 +65,7 @@ async function loadWorkLog() {
       return;
     }
     renderTable(data.work_log || [], data.count || 0, data.store, r);
-    await Office.refreshActiveStoreSyncMeta("workLogSyncMeta", "worklog");
+    Office.updateSyncMetaLine("workLogSyncMeta", activeData.store, "worklog");
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -140,25 +146,24 @@ function renderTablePage() {
   }
 }
 
-async function maybeAutoSyncWorkLog() {
-  if (initialAutoSyncDone) return;
+async function maybeAutoSyncWorkLog(activeData) {
+  if (initialAutoSyncDone) return false;
   initialAutoSyncDone = true;
   try {
-    const activeRes = await fetch("/api/store/active", { cache: "no-store" });
-    const activeData = await activeRes.json();
-    const store = activeData.store;
-    if (!store) return;
+    const data = activeData || (await Office.fetchActiveStore());
+    const store = data.store;
+    if (!store) return false;
     if (
       !Office.workLogNeedsAutoSync(
         store.work_log_last_sync_at,
         store.work_log_sync_interval_minutes
       )
     ) {
-      return;
+      return false;
     }
-    await runSync({ date: Office.todayIsoLocal() }, { auto: true });
+    return await runSync({ date: Office.todayIsoLocal() }, { auto: true });
   } catch {
-    /* αγνόηση */
+    return false;
   }
 }
 
@@ -193,8 +198,9 @@ async function runSync(bodyOverride, opts = {}) {
     }
     if (result.ok) {
       await Office.recordStoreSync("work_log");
-      await Office.loadActiveStore();
-      await loadWorkLog();
+      const fresh = await Office.fetchActiveStore({ refresh: true });
+      Office.applyActiveStoreChrome(fresh);
+      await loadWorkLog(fresh);
     }
     Office.showMsg(
       "workLogMsg",

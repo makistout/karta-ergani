@@ -12,8 +12,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     onApply: () => loadSchedule(),
   });
   document.getElementById("btnSyncSchedule").onclick = () => runSync();
-  await maybeAutoSyncSchedule();
-  await loadSchedule();
+
+  const activeData = await Office.fetchActiveStore();
+  Office.applyActiveStoreChrome(activeData);
+  await loadSchedule(activeData);
+
+  void maybeAutoSyncSchedule(activeData).then(async (synced) => {
+    if (synced) {
+      await loadSchedule(await Office.fetchActiveStore({ refresh: true }));
+    }
+  });
 });
 
 function getRange() {
@@ -75,7 +83,7 @@ function sortScheduleRows(rows) {
   });
 }
 
-async function loadSchedule() {
+async function loadSchedule(cachedActive) {
   const wrap = document.getElementById("scheduleWrap");
   const btn = document.getElementById("btnSyncSchedule");
   const r = getRange();
@@ -84,8 +92,7 @@ async function loadSchedule() {
   }
   Office.showTableLoading(wrap);
   try {
-    const activeRes = await fetch("/api/store/active");
-    const activeData = await activeRes.json();
+    const activeData = cachedActive || (await Office.fetchActiveStore());
     if (!activeData.store) {
       btn.disabled = true;
       wrap.innerHTML =
@@ -93,7 +100,6 @@ async function loadSchedule() {
       return;
     }
     btn.disabled = false;
-    await Office.loadActiveStore();
     const res = await fetch(`/api/schedule/list?${listQuery(r)}`);
     let data = {};
     try {
@@ -116,7 +122,7 @@ async function loadSchedule() {
       r,
       data.work_dates
     );
-    await Office.refreshActiveStoreSyncMeta("scheduleSyncMeta", "schedule");
+    Office.updateSyncMetaLine("scheduleSyncMeta", activeData.store, "schedule");
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
@@ -199,17 +205,16 @@ function renderTablePage() {
   }
 }
 
-async function maybeAutoSyncSchedule() {
-  if (initialAutoSyncDone) return;
+async function maybeAutoSyncSchedule(activeData) {
+  if (initialAutoSyncDone) return false;
   initialAutoSyncDone = true;
   try {
-    const activeRes = await fetch("/api/store/active");
-    const activeData = await activeRes.json();
-    if (!activeData.store) return;
-    if (!Office.scheduleNeedsAutoSync(activeData.store.schedule_last_sync_at)) return;
-    await runSync({ date: Office.todayIsoLocal() }, { auto: true });
+    const data = activeData || (await Office.fetchActiveStore());
+    if (!data.store) return false;
+    if (!Office.scheduleNeedsAutoSync(data.store.schedule_last_sync_at)) return false;
+    return await runSync({ date: Office.todayIsoLocal() }, { auto: true });
   } catch {
-    /* αγνόηση — θα φορτώσει η λίστα */
+    return false;
   }
 }
 
@@ -244,8 +249,9 @@ async function runSync(bodyOverride, opts = {}) {
     }
     if (result.ok) {
       await Office.recordStoreSync("schedule");
-      await Office.loadActiveStore();
-      await loadSchedule();
+      const fresh = await Office.fetchActiveStore({ refresh: true });
+      Office.applyActiveStoreChrome(fresh);
+      await loadSchedule(fresh);
     }
     Office.showMsg(
       "schedMsg",

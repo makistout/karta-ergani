@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-06-15 — Απόδοση UI, διόρθωση αναφοράς, branding erganiOS
+
+### Απόδοση — φόρτωση σελίδων (ωράριο / πραγματική)
+
+- **`app/db.py`**: queue **connection pool** για MSSQL — επαναχρησιμοποίηση σύνδεσης pyodbc μεταξύ requests (αντί νέας σύνδεσης ~1 s στο remote `95.141.32.37`).
+- **`app/http_helpers.py`**: `resolve_active_store()` επιστρέφει sync metadata· **`active_store_payload()`** για JSON χωρίς διπλό query.
+- **`app/routes_store.py`**: `GET /api/store/active` — **1** query αντί 2 (`get_store_config` δεύτερη φορά αφαιρέθηκε).
+- **`office-common.js`**: `fetchActiveStore()` με dedup/cache, `invalidateActiveStoreCache()`, `applyActiveStoreChrome()`.
+- **`work-log-list.js`**, **`schedule-list.js`**: μία κλήση `/api/store/active` ανά φόρτωση· **πίνακας αμέσως από DB**· auto-sync **στο background** (δεν μπλοκάρει την πρώτη εμφάνιση).
+- **`stores-list.js`**: `invalidateActiveStoreCache()` μετά επιλογή καταστήματος.
+
+Αποτέλεσμα: ~5 API calls / ~10 DB connects → **2 calls / ~2 connects**· χρόνος φόρτωσης (warm pool) ~20 s → **~0,5–1 s**.
+
+### Backend — αναφορά κατάστασης κάρτας
+
+- **`app/card_report.py`**: διόρθωση **ψευδούς «Πρόωρη αποχώρηση»** όταν η πραγματική λήξη είναι **μετά τα μεσάνυχτα** (`00:36*` κ.λπ.) — timeline λεπτών με `+1440` για επόμενη μέρα (`*`, `is_end_date_different`, ή `hour_to < hour_from`).
+- **`app/ergani_parse.py`**: κατά portal sync, `is_end_date_different=1` όταν `hour_to` έχει `*` ή είναι πριν την `hour_from`.
+
+### UI — branding erganiOS
+
+- Logo sidebar: **`/static/img/erganios-logo.png`** (αντί κειμένου «Λογιστικό Γραφείο») — όλα τα HTML UI.
+- **`office.css`**: στυλ `.logo-img` (λευκό φόντο, rounded).
+- **`office-common.js`**: `initChrome()` δεν προσθέτει briefcase icon αν υπάρχει `.logo-img`.
+- **Titles σελίδων**: μορφή **`erganiOS - …`** (Αρχική, Εργαζόμενοι, Ψηφιακό ωράριο, κ.λπ.).
+- **Favicon**: `favicon.ico`, `favicon-16.png`, `favicon-32.png`, `apple-touch-icon.png` από εικονίδιο erganiOS· `<link rel="icon">` σε όλα τα UI HTML· route **`GET /favicon.ico`** στο Flask.
+
+### Τοπική εκκίνηση (dev)
+
+- Virtualenv `.venv/` + `python run.py` (port **5051**). Αρχείο `.env` από `.env.example` (δεν commit-άρεται).
+
+---
+
 ## 2026-06-11 — Συγχρονισμός περιόδου, αναφορά περιόδου, navigation & UI
 
 ### Backend — συγχρονισμός περιόδου

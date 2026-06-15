@@ -254,38 +254,12 @@ def delete_store(store_id: int):
 
 @store_bp.get("/active")
 def active_store():
-    from app.http_helpers import resolve_active_store
+    from app.http_helpers import active_store_payload, resolve_active_store
 
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"store": None})
-    cfg = repo.get_store_config(int(ctx["id"])) or {}
-
-    def _iso_dt(value: Any) -> str | None:
-        if value is None:
-            return None
-        if hasattr(value, "isoformat"):
-            return value.isoformat()
-        return str(value)
-
-    sched_at = repo.effective_schedule_sync_at(cfg)
-    wl_at = repo.effective_work_log_sync_at(cfg)
-    return jsonify({
-        "store": {
-            "id": ctx["id"],
-            "name": ctx["name"],
-            "employer_afm": ctx["employer_afm"],
-            "branch_aa": ctx["branch_aa"],
-            "ergani_env": ctx.get("ergani_env"),
-            "ergani_env_label": ctx.get("ergani_env_label"),
-            "api_base_url": ctx.get("api_base_url"),
-            "portal_base_url": ctx.get("portal_base_url"),
-            "schedule_last_sync_at": _iso_dt(sched_at),
-            "work_log_last_sync_at": _iso_dt(wl_at),
-            "work_log_sync_interval_minutes": cfg.get("work_log_sync_interval_minutes") or 30,
-            "sync_meta_columns": repo.sync_meta_columns_available(),
-        }
-    })
+    return jsonify({"store": active_store_payload(ctx)})
 
 
 @store_bp.post("/select")

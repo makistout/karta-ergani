@@ -67,4 +67,8 @@ def create_app() -> Flask:
     def health():
         return jsonify({"ok": True, "database": Config.DB_DATABASE})
 
+    @app.get("/favicon.ico")
+    def favicon():
+        return app.send_static_file("favicon.ico")
+
     return app

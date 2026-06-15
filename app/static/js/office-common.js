@@ -8,7 +8,7 @@ const Office = {
 
   initChrome() {
     document.querySelectorAll(".sidebar .logo").forEach((el) => {
-      if (el.querySelector(".logo-icon")) return;
+      if (el.querySelector(".logo-img") || el.querySelector(".logo-icon")) return;
       const text = el.innerHTML;
       el.innerHTML =
         `${this.icon("briefcase-fill")}<span class="logo-icon-wrap">${text}</span>`;
@@ -69,42 +69,75 @@ const Office = {
       .replace(/"/g, "&quot;");
   },
 
-  async loadActiveStore() {
+  _activeStoreCache: null,
+  _activeStoreInflight: null,
+
+  invalidateActiveStoreCache() {
+    this._activeStoreCache = null;
+    this._activeStoreInflight = null;
+  },
+
+  async fetchActiveStore({ refresh = false } = {}) {
+    if (!refresh && this._activeStoreCache) {
+      return this._activeStoreCache;
+    }
+    if (!refresh && this._activeStoreInflight) {
+      return this._activeStoreInflight;
+    }
+    const req = fetch("/api/store/active", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        this._activeStoreCache = data;
+        this._activeStoreInflight = null;
+        return data;
+      })
+      .catch((err) => {
+        this._activeStoreInflight = null;
+        throw err;
+      });
+    this._activeStoreInflight = req;
+    return req;
+  },
+
+  applyActiveStoreChrome(data) {
     const el =
       document.getElementById("sidebarActiveStore") ||
       document.getElementById("activeStoreBanner");
     if (!el) return;
-    try {
-      const res = await fetch("/api/store/active");
-      const data = await res.json();
-      if (data.store) {
-        el.classList.remove("hidden");
-        const s = data.store;
-        if (el.id === "sidebarActiveStore") {
-          el.innerHTML =
-            `${this.icon("shop-window")}<div class="sidebar-active-body">` +
-            `<strong>${this.escapeHtml(s.name)}</strong>` +
-            `<span>ΑΦΜ ${this.escapeHtml(s.employer_afm)}</span>` +
-            `<span>Παράρτημα ${this.escapeHtml(s.branch_aa)}</span>` +
-            (s.ergani_env_label
-              ? `<span class="env-badge env-${(s.ergani_env || "production").toLowerCase()}">${this.escapeHtml(s.ergani_env_label)}</span>`
-              : "") +
-            (s.portal_base_url
-              ? `<span style="font-size:0.7rem;opacity:0.85;">${this.escapeHtml(this.portalHostFromSync({ portal_base: s.portal_base_url }))}</span>`
-              : "") +
-            `</div>`;
-        } else {
-          el.innerHTML =
-            `${this.icon("check-circle-fill")}<span><strong>Ενεργό κατάστημα:</strong> ` +
-            `${this.escapeHtml(s.name)} (ΑΦΜ ${this.escapeHtml(s.employer_afm)}, ` +
-            `παράρτημα ${this.escapeHtml(s.branch_aa)})</span>`;
-        }
+    const s = data && data.store;
+    if (s) {
+      el.classList.remove("hidden");
+      if (el.id === "sidebarActiveStore") {
+        el.innerHTML =
+          `${this.icon("shop-window")}<div class="sidebar-active-body">` +
+          `<strong>${this.escapeHtml(s.name)}</strong>` +
+          `<span>ΑΦΜ ${this.escapeHtml(s.employer_afm)}</span>` +
+          `<span>Παράρτημα ${this.escapeHtml(s.branch_aa)}</span>` +
+          (s.ergani_env_label
+            ? `<span class="env-badge env-${(s.ergani_env || "production").toLowerCase()}">${this.escapeHtml(s.ergani_env_label)}</span>`
+            : "") +
+          (s.portal_base_url
+            ? `<span style="font-size:0.7rem;opacity:0.85;">${this.escapeHtml(this.portalHostFromSync({ portal_base: s.portal_base_url }))}</span>`
+            : "") +
+          `</div>`;
       } else {
-        el.classList.add("hidden");
-        el.innerHTML = "";
+        el.innerHTML =
+          `${this.icon("check-circle-fill")}<span><strong>Ενεργό κατάστημα:</strong> ` +
+          `${this.escapeHtml(s.name)} (ΑΦΜ ${this.escapeHtml(s.employer_afm)}, ` +
+          `παράρτημα ${this.escapeHtml(s.branch_aa)})</span>`;
       }
-    } catch {
+    } else {
       el.classList.add("hidden");
+      el.innerHTML = "";
+    }
+  },
+
+  async loadActiveStore({ refresh = false } = {}) {
+    try {
+      const data = await this.fetchActiveStore({ refresh });
+      this.applyActiveStoreChrome(data);
+    } catch {
+      this.applyActiveStoreChrome(null);
     }
   },
 
@@ -532,16 +565,20 @@ const Office = {
         body: JSON.stringify({ kind }),
         cache: "no-store",
       });
+      this.invalidateActiveStoreCache();
       return await this.parseJson(res);
     } catch (e) {
       return { success: false, error: String(e) };
     }
   },
 
-  async refreshActiveStoreSyncMeta(elId, kind) {
+  async refreshActiveStoreSyncMeta(elId, kind, store) {
     try {
-      const res = await fetch("/api/store/active", { cache: "no-store" });
-      const data = await res.json();
+      if (store) {
+        this.updateSyncMetaLine(elId, store, kind);
+        return store;
+      }
+      const data = await this.fetchActiveStore();
       if (data.store) {
         this.updateSyncMetaLine(elId, data.store, kind);
       }

@@ -191,6 +191,13 @@ def _normalize_portal_hour(value: str) -> str:
     return s[:16]
 
 
+def _portal_hm_minutes(value: str) -> int | None:
+    m = re.match(r"^(\d{1,2}):(\d{2})", (value or "").strip().rstrip("*"))
+    if not m:
+        return None
+    return int(m.group(1)) * 60 + int(m.group(2))
+
+
 def portal_rows_to_work_log_items(
     grid_rows: list[list[str]],
     *,
@@ -206,7 +213,16 @@ def portal_rows_to_work_log_items(
         onoma = (cells[3] or "").strip()[:200]
         wd = _normalize_portal_date(cells[4], default_work_date)
         hour_from = _normalize_portal_hour(cells[5])
-        hour_to = _normalize_portal_hour(cells[6])
+        hour_to_raw = _normalize_portal_hour(cells[6])
+        hour_to = hour_to_raw.rstrip("*").strip()
+        is_end_diff = 0
+        if hour_to_raw.endswith("*"):
+            is_end_diff = 1
+        elif hour_from and hour_to:
+            hf_m = _portal_hm_minutes(hour_from)
+            ht_m = _portal_hm_minutes(hour_to)
+            if hf_m is not None and ht_m is not None and ht_m < hf_m:
+                is_end_diff = 1
         out.append({
             "employee_afm": afm,
             "onoma": onoma,
@@ -215,7 +231,7 @@ def portal_rows_to_work_log_items(
             "hour_from": hour_from,
             "hour_to": hour_to,
             "source_aa": str(cells[0]).strip()[:32],
-            "is_end_date_different": 0,
+            "is_end_date_different": is_end_diff,
         })
     return out
 

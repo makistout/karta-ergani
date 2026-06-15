@@ -14,6 +14,32 @@ def bearer_from_request() -> str | None:
     return str(tok).strip() if tok else None
 
 
+def _iso_dt(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def active_store_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """JSON payload για GET /api/store/active — χωρίς επιπλέον query."""
+    return {
+        "id": ctx["id"],
+        "name": ctx["name"],
+        "employer_afm": ctx["employer_afm"],
+        "branch_aa": ctx["branch_aa"],
+        "ergani_env": ctx.get("ergani_env"),
+        "ergani_env_label": ctx.get("ergani_env_label"),
+        "api_base_url": ctx.get("api_base_url"),
+        "portal_base_url": ctx.get("portal_base_url"),
+        "schedule_last_sync_at": ctx.get("schedule_last_sync_at"),
+        "work_log_last_sync_at": ctx.get("work_log_last_sync_at"),
+        "work_log_sync_interval_minutes": ctx.get("work_log_sync_interval_minutes") or 30,
+        "sync_meta_columns": ctx.get("sync_meta_columns"),
+    }
+
+
 def resolve_active_store(*, refresh_session: bool = True) -> dict[str, Any] | None:
     """Ενεργό κατάστημα από session + DB (συμπληρώνει employer_afm αν λείπει)."""
     sid = session.get("active_store_id")
@@ -35,6 +61,10 @@ def resolve_active_store(*, refresh_session: bool = True) -> dict[str, Any] | No
     from app.ergani_env import store_api_context
 
     ctx = store_api_context(cfg)
+    ctx["schedule_last_sync_at"] = _iso_dt(repo.effective_schedule_sync_at(cfg))
+    ctx["work_log_last_sync_at"] = _iso_dt(repo.effective_work_log_sync_at(cfg))
+    ctx["work_log_sync_interval_minutes"] = cfg.get("work_log_sync_interval_minutes") or 30
+    ctx["sync_meta_columns"] = repo.sync_meta_columns_available()
     if refresh_session:
         session["employer_afm"] = ctx["employer_afm"]
         session["branch_aa"] = ctx["branch_aa"]

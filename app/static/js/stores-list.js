@@ -99,6 +99,7 @@ function buildStoreSelectMessage(payload) {
 }
 
 async function selectStore(id) {
+  Office.invalidateActiveStoreCache();
   Office.beginSyncPanel("storesListWrap", "listMsg");
   Office.showLoading("listMsg", "Σύνδεση Ergani και έναρξη συγχρονισμού…", 0, 5);
   try {
@@ -117,7 +118,7 @@ async function selectStore(id) {
       if (data.sync) {
         Office.endSyncPanel("storesListWrap", "listMsg");
         const legacy = buildStoreSelectMessage({ success: true, store: data.store, sync: data.sync });
-        await Office.loadActiveStore();
+        await Office.loadActiveStore({ refresh: true });
         Office.showMsg("listMsg", legacy.text, legacy.ok);
         return;
       }
@@ -138,7 +139,7 @@ async function selectStore(id) {
       sync: polled.sync,
     });
     if (result.ok) {
-      await Office.loadActiveStore();
+      await Office.loadActiveStore({ refresh: true });
     }
     Office.showMsg("listMsg", polled.error && !polled.success ? polled.error : result.text, result.ok);
   } catch (e) {
@@ -190,7 +191,7 @@ async function deleteStore(id) {
     const res = await fetch(`/api/store/${id}`, { method: "DELETE" });
     if (res.ok) {
       Office.showMsg("listMsg", "Διαγράφηκε.", true);
-      await Office.loadActiveStore();
+      await Office.loadActiveStore({ refresh: true });
       loadStoresList();
     } else {
       const data = await res.json();
