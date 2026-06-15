@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-06-17 — Ιστορικό πραγματικής, κάρτα από ελλείψεις, ψηφιακό ωράριο
+
+### Backend — πραγματική + ωράριο
+
+- **`app/repo_work_log.py`**:
+  - `enrich_work_log_rows_with_schedule()` — στήλη ψηφιακού ωραρίου στη λίστα πραγματικής (`schedule_label`).
+  - `enrich_work_log_history_with_card_punch()` — ιστορικό εργαζόμενου: `schedule_label`, `needs_card_punch`, `card_event`, `retro_time` από ψηφιακό ωράριο όταν λείπει είσοδος ή έξοδος.
+- **`app/routes_work_log.py`**: κλήση enrich στο `GET /api/work-log/list` και `GET /api/work-log/history` (ανθεκτικό σε missing πίνακα schedule).
+
+### UI — ιστορικό πραγματικής (`/ui/work-log/history`)
+
+- Νέα σελίδα **`work-log-history.html`** + **`work-log-history.js`** — ίδιος πίνακας με το modal (Ημερομηνία, Ψηφ. ωράριο, Από, Έως, Συγχρονισμός).
+- Στο modal και στη σελίδα: **κόκκινο εικονίδιο κάρτας** στη στήλη «Από» (έλλειψη εισόδου) ή «Έως» (έλλειψη εξόδου) → σύνδεσμος στην ψηφιακή κάρτα με προσυμπλήρωση.
+- **`office-common.js`**: `loadWorkLogHistory()`, `workLogHistoryUrl()`, `renderWorkLogHistoryCardCell()`, `workCardUrl()` με παραμέτρους `retro`, `retro_time`, `card_event`, `retro_highlight`.
+
+### UI — ψηφιακή κάρτα (`/ui/work-card`)
+
+- Εικονίδιο **ιστορικού** δίπλα στον εργαζόμενο → `/ui/work-log/history?…&from=work-card` (εμφανίζεται μόνο με επιλεγμένο ΑΦΜ).
+- Προσυμπλήρωση από URL: εργαζόμενος, ημερομηνία, προγενέστερη καταχώρηση (ημερομηνία/ώρα από ωράριο).
+- **Κόκκινο** διακεκομμένο πλαίσιο προγενέστερης (`work-card-retro--required`) και highlight αντίστοιχου κουμπιού Είσοδος/Έξοδος (`work-card-action--required`) όταν `retro_highlight=1` και `card_event`.
+- **Χωρίς συγχρονισμό Ergani** όταν `retro=1` και η ημέρα αναφοράς **δεν είναι σήμερα** — μόνο τοπικά δεδομένα + ενημερωτικό μήνυμα.
+- Πίνακας πραγματικής στη σελίδα: νέα στήλη **Ψηφ. ωράριο**.
+
+### UI — πραγματική απασχόληση (`/ui/work-log`)
+
+- Στήλες **Ψηφ. ωράριο** και **Κάρτα** (εικονίδιο → `/ui/work-card` με προεπιλογή εργαζόμενου/ημέρας).
+
+### CSS
+
+- `.work-log-card-link--required` (κόκκινη κάρτα στο ιστορικό).
+- `.work-card-employee-row`, `.work-card-employee-history` (ευθυγράμμιση ύψους με input).
+- Ευρύτερο modal ιστορικού (`office-modal-panel--history`).
+
+---
+
 ## 2026-06-15 — Απόδοση UI, διόρθωση αναφοράς, branding erganiOS
 
 ### Απόδοση — φόρτωση σελίδων (ωράριο / πραγματική)
