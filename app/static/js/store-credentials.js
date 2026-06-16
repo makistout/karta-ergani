@@ -1,20 +1,31 @@
 const MASKED = "********";
+let notifyRecipients = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("stores");
   const params = new URLSearchParams(location.search);
   const draft = Office.getDraft();
-  if (params.get("edit") === "1" && draft.id) {
+  const editStoreId = parseInt(params.get("id") || "", 10) || draft.id;
+  initNotifyRecipientButtons();
+  if (params.get("edit") === "1" && editStoreId) {
     document.querySelector(".page-title").textContent = "Επεξεργασία καταστήματος";
-    await loadStoreIntoForm(draft.id);
+    await loadStoreIntoForm(editStoreId);
   } else {
     fillFormFromDraft(draft);
+    if (Array.isArray(draft.notifyRecipients) && draft.notifyRecipients.length) {
+      notifyRecipients = draft.notifyRecipients.map((r) => ({
+        name: r.name || "",
+        mobile: r.mobile || "",
+        telegram_chat_id: r.telegram_chat_id || "",
+      }));
+      renderNotifyRecipients();
+    } else {
+      renderNotifyRecipients();
+    }
+    updateNotifyUiState();
   }
   document.getElementById("btnStep1Next").onclick = onStep1Next;
   document.getElementById("btnSaveSyncSettings")?.addEventListener("click", saveSyncSettingsOnly);
-  if (params.get("edit") === "1" && draft.id) {
-    document.getElementById("btnSaveSyncSettings")?.classList.remove("hidden");
-  }
 });
 
 function cleanSecret(value) {
@@ -42,6 +53,188 @@ function fillFormFromDraft(draft) {
   }
 }
 
+function updateNotifyUiState() {
+  const draft = Office.getDraft();
+  const hasId = Boolean(draft.id);
+  setNotifyButtonsEnabled(hasId);
+  document.getElementById("btnSaveSyncSettings")?.classList.toggle("hidden", !hasId);
+  document.getElementById("notifyRecipientsPendingHint")?.classList.toggle("hidden", hasId);
+}
+
+function initNotifyRecipientButtons() {
+  document.getElementById("btnAddNotifyRecipient").onclick = () => {
+    notifyRecipients.push({ name: "", mobile: "", telegram_chat_id: "" });
+    renderNotifyRecipients();
+  };
+  document.getElementById("btnSaveNotifyRecipients").onclick = () => saveNotifyRecipients();
+  document.getElementById("btnTestNotify").onclick = () => testNotifyRecipients();
+}
+
+function setNotifyButtonsEnabled(enabled) {
+  const saveBtn = document.getElementById("btnSaveNotifyRecipients");
+  const testBtn = document.getElementById("btnTestNotify");
+  if (saveBtn) saveBtn.disabled = !enabled;
+  if (testBtn) testBtn.disabled = !enabled;
+}
+
+function renderNotifyRecipients() {
+  const body = document.getElementById("notifyRecipientsBody");
+  const empty = document.getElementById("notifyRecipientsEmpty");
+  if (!body) return;
+  body.innerHTML = "";
+  if (!notifyRecipients.length) {
+    if (empty) empty.style.display = "";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  notifyRecipients.forEach((row, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><input type="text" class="notify-input-name" data-idx="${idx}" value="${Office.escapeHtml(row.name || "")}" placeholder="Όνομα"></td>` +
+      `<td><input type="text" class="notify-input-mobile" data-idx="${idx}" value="${Office.escapeHtml(row.mobile || "")}" placeholder="69XXXXXXXX"></td>` +
+      `<td><input type="text" class="notify-input-chat" data-idx="${idx}" value="${Office.escapeHtml(row.telegram_chat_id || "")}" placeholder="αυτόματα" readonly title="Συμπληρώνεται με /start στο bot"></td>` +
+      `<td class="table-actions"><button type="button" class="btn btn-danger btn-sm notify-remove" data-idx="${idx}">${Office.icon("trash3")}</button></td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll(".notify-input-name, .notify-input-mobile").forEach((inp) => {
+    inp.addEventListener("input", (e) => {
+      const i = parseInt(e.target.getAttribute("data-idx"), 10);
+      const field = e.target.classList.contains("notify-input-name") ? "name" : "mobile";
+      if (notifyRecipients[i]) notifyRecipients[i][field] = e.target.value;
+    });
+  });
+  body.querySelectorAll(".notify-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = parseInt(btn.getAttribute("data-idx"), 10);
+      notifyRecipients.splice(i, 1);
+      renderNotifyRecipients();
+    });
+  });
+}
+
+function collectNotifyRecipientsFromDom() {
+  const body = document.getElementById("notifyRecipientsBody");
+  if (!body) return notifyRecipients;
+  const rows = [];
+  body.querySelectorAll("tr").forEach((tr) => {
+    const name = (tr.querySelector(".notify-input-name")?.value || "").trim();
+    const mobile = (tr.querySelector(".notify-input-mobile")?.value || "").trim();
+    const telegram_chat_id = (tr.querySelector(".notify-input-chat")?.value || "").trim();
+    if (name || mobile) {
+      rows.push({ name, mobile, telegram_chat_id: telegram_chat_id || null });
+    }
+  });
+  notifyRecipients = rows;
+  return rows;
+}
+
+function persistNotifyRecipientsToDraft() {
+  const rows = collectNotifyRecipientsFromDom();
+  Office.setDraft({ ...Office.getDraft(), notifyRecipients: rows });
+  return rows;
+}
+
+async function loadNotifyRecipients(storeId) {
+  try {
+    const res = await fetch(`/api/store/${storeId}/notify-recipients`);
+    const data = await res.json();
+    if (!res.ok) {
+      Office.showMsg(
+        "stepMsg",
+        data.error || data.db_setup || `Σφάλμα ληπτών (HTTP ${res.status})`,
+        false
+      );
+      notifyRecipients = [];
+      renderNotifyRecipients();
+      return;
+    }
+    notifyRecipients = (data.recipients || []).map((r) => ({
+      name: r.name || "",
+      mobile: r.mobile || "",
+      telegram_chat_id: r.telegram_chat_id || "",
+    }));
+    renderNotifyRecipients();
+    updateNotifyUiState();
+  } catch (e) {
+    Office.showMsg("stepMsg", `Σφάλμα φόρτωσης ληπτών: ${e}`, false);
+    notifyRecipients = [];
+    renderNotifyRecipients();
+  }
+}
+
+async function saveNotifyRecipients(storeIdOverride) {
+  const draft = Office.getDraft();
+  const storeId = storeIdOverride || draft.id;
+  if (!storeId) {
+    Office.showMsg("stepMsg", "Για νέο κατάστημα, οι λήπτες αποθηκεύονται μετά την «Συνέχεια».", false);
+    return false;
+  }
+  const rows = collectNotifyRecipientsFromDom();
+  const btn = document.getElementById("btnSaveNotifyRecipients");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/store/${storeId}/notify-recipients`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients: rows }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ληπτών", false);
+      return false;
+    }
+    notifyRecipients = (data.recipients || []).map((r) => ({
+      name: r.name || "",
+      mobile: r.mobile || "",
+      telegram_chat_id: r.telegram_chat_id || "",
+    }));
+    renderNotifyRecipients();
+    Office.setDraft({ ...Office.getDraft(), id: storeId, notifyRecipients });
+    Office.showMsg("stepMsg", `Αποθηκεύτηκαν ${data.count || 0} λήπτες.`, true);
+    return true;
+  } catch (e) {
+    Office.showMsg("stepMsg", String(e), false);
+    return false;
+  } finally {
+    updateNotifyUiState();
+  }
+}
+
+async function testNotifyRecipients() {
+  const draft = Office.getDraft();
+  if (!draft.id) {
+    Office.showMsg("stepMsg", "Αποθηκεύστε πρώτα τους λήπτες.", false);
+    return;
+  }
+  await saveNotifyRecipients(draft.id);
+  const btn = document.getElementById("btnTestNotify");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/telegram/test/${draft.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποστολής", false);
+      return;
+    }
+    const err = (data.errors || []).join(" · ");
+    Office.showMsg(
+      "stepMsg",
+      err
+        ? `Στάλθηκαν ${data.sent}/${data.total}. ${err}`
+        : `Στάλθηκαν ${data.sent} δοκιμαστικά μηνύματα.`,
+      data.sent > 0
+    );
+  } catch (e) {
+    Office.showMsg("stepMsg", String(e), false);
+  } finally {
+    updateNotifyUiState();
+  }
+}
+
 async function loadStoreIntoForm(storeId) {
   try {
     const res = await fetch(`/api/store/${storeId}`);
@@ -51,8 +244,15 @@ async function loadStoreIntoForm(storeId) {
       return;
     }
     fillFormFromDraft(store);
-    Office.setDraft({ ...Office.getDraft(), ...store, accessToken: "", branches: null });
-    document.getElementById("btnSaveSyncSettings")?.classList.remove("hidden");
+    Office.setDraft({
+      ...Office.getDraft(),
+      ...store,
+      id: storeId,
+      accessToken: "",
+      branches: null,
+    });
+    await loadNotifyRecipients(storeId);
+    updateNotifyUiState();
   } catch (e) {
     Office.showMsg("stepMsg", String(e), false);
   }
@@ -152,6 +352,7 @@ async function onStep1Next() {
   }
   const btn = document.getElementById("btnStep1Next");
   const draft = Office.getDraft();
+  const pendingRecipients = persistNotifyRecipientsToDraft();
   btn.disabled = true;
   Office.showMsg(
     "stepMsg",
@@ -244,6 +445,9 @@ async function onStep1Next() {
       } catch {
         /* draft κρατά την τιμή για τελική αποθήκευση */
       }
+      if (pendingRecipients.length) {
+        await saveNotifyRecipients(storeId);
+      }
     }
     Office.setDraft({
       ...draft,
@@ -254,6 +458,7 @@ async function onStep1Next() {
       accessToken: token,
       employer_afm,
       branches: branchesData.branches || [],
+      notifyRecipients: pendingRecipients,
     });
     window.location.href = "/ui/stores/branch";
   } catch (e) {

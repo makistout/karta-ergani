@@ -13,6 +13,8 @@ from app.routes_period_sync import period_sync_bp
 from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
 from app.routes_leave import leave_bp
+from app.routes_monthly_status import monthly_status_bp
+from app.routes_telegram import telegram_bp
 from app.routes_work_card import work_card_bp
 
 
@@ -37,6 +39,8 @@ def create_app() -> Flask:
     app.register_blueprint(employees_bp)
     app.register_blueprint(schedule_bp)
     app.register_blueprint(work_log_bp)
+    app.register_blueprint(monthly_status_bp)
+    app.register_blueprint(telegram_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)
     register_ui_redirects(app)
@@ -52,6 +56,10 @@ def create_app() -> Flask:
             "employees": "/api/employees/list",
             "schedule": "/api/schedule/list",
             "work_log": "/api/work-log/list",
+            "monthly_status": "/api/monthly-status/list",
+            "monthly_status_sync": "POST /api/monthly-status/sync",
+            "telegram_webhook": "POST /api/telegram/webhook",
+            "telegram_test": "POST /api/telegram/test/<store_id>",
             "dashboard_card_report": "/api/dashboard/card-report",
             "sync": "POST /api/ergani/sync-all",
             "work_card": "/api/work-card/",

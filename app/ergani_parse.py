@@ -93,7 +93,20 @@ def extract_raw_list(payload: Any) -> list[dict[str, Any]]:
     return [x for x in raw if isinstance(x, dict)]
 
 
-def parse_work_log(payload: Any) -> list[dict[str, Any]]:
+def parse_authorized_service_names(payload: Any) -> list[str]:
+    """Ονόματα services από GET WebServices/ServicesList."""
+    data = unwrap_ergani_data(payload)
+    if not isinstance(data, list):
+        return []
+    out: list[str] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("Name") or item.get("serviceCode") or "").strip()
+        if name:
+            out.append(name)
+    return out
+
     out: list[dict[str, Any]] = []
     for item in extract_raw_list(payload):
         afm = str(item.get("Afm") or item.get("afm") or "").strip()
@@ -325,3 +338,30 @@ def parse_employer_afm(payload: Any) -> str | None:
         if data.get(key):
             return str(data[key]).strip()[:9]
     return None
+
+
+def parse_monthly_status(payload: Any) -> list[dict[str, Any]]:
+    """EX_BASE_04 — MiniaiaKatastash rows."""
+    out: list[dict[str, Any]] = []
+    for item in extract_raw_list(payload):
+        afm = str(item.get("f_afm") or item.get("Afm") or item.get("afm") or "").strip()
+        if not afm:
+            continue
+        out.append({
+            "ergodoti_id": str(item.get("f_ergodoti_id") or "").strip()[:32] or None,
+            "branch_aa": str(item.get("f_pararthma_aa") or "0").strip()[:32] or "0",
+            "report_year": str(item.get("f_year") or "").strip(),
+            "report_month": str(item.get("f_month") or "").strip(),
+            "employee_afm": afm[:9],
+            "days_work": item.get("f_arithmos_hmerwn_ergasias"),
+            "days_telework": item.get("f_arithmos_hmerwn_tilergasias"),
+            "days_repo": item.get("f_arithmos_hmerwn_anapaushs_repo"),
+            "days_no_work": item.get("f_arithmos_hmerwn_mh_ergasias"),
+            "days_normal_leave": item.get("f_arithmos_hmerwn_kanonikh_adeia"),
+            "overtime_minutes": item.get("f_lepta_yperorias"),
+            "overtime_days": item.get("f_arithmos_hmerwn_yperorias"),
+            "days_work_card": item.get("f_arithmos_hmerwn_karta_ergasias"),
+            "days_leave_insurance": item.get("f_synolo_hmerwn_adeias_asfalish"),
+            "days_sick_insurance": item.get("f_synolo_hmerwn_astheneias_asfalish"),
+        })
+    return out

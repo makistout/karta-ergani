@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 
 from config import Config
 
-_PUBLIC_API_PATHS = frozenset({"/health", "/api/local/health"})
+_PUBLIC_API_PATHS = frozenset({"/health", "/api/local/health", "/api/telegram/webhook"})
 
 
 def register_api_token_guard(app: Flask) -> None:

@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <title>erganiOS - Ψηφιακή κάρτα</title>
-  <link rel="stylesheet" href="/static/css/office.css?v=20260617fix3">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260618time24">
 </head>
 <body>
   <div class="layout">
@@ -22,6 +22,7 @@
         <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
         <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
         <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/missing-cards" data-nav="missingcards">Ελλειπή Χτυπήματα</a>
         <a href="/ui/work-card" data-nav="workcard" class="active">Ψηφιακή κάρτα</a>
         <a href="/ui/sync" data-nav="sync">Συγχρονισμός</a>
         <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
@@ -93,7 +94,8 @@
             </div>
             <div class="form-row">
               <label for="wcRetroTime">Ώρα κτυπήματος</label>
-              <input type="time" id="wcRetroTime" step="60" disabled>
+              <input type="text" id="wcRetroTime" class="input-time-24" inputmode="numeric"
+                placeholder="ΩΩ:ΛΛ" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" disabled>
             </div>
             <div class="work-card-actions work-card-actions-retro">
               <button type="button" class="btn btn-secondary" id="btnRetroCheckIn" disabled>
@@ -133,9 +135,9 @@
       </div>
     </main>
   </div>
-  <script src="/static/js/office-common.js?v=20260617fix3"></script>
+  <script src="/static/js/office-common.js?v=20260618time24"></script>
   <script src="/static/js/office-autocomplete.js"></script>
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/work-card-list.js?v=20260617fix3"></script>
+  <script src="/static/js/work-card-list.js?v=20260618time24"></script>
 </body>
 </html>

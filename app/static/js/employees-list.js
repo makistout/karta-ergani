@@ -49,7 +49,7 @@ function renderTable(rows, count, store) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Παράρτημα Ergani", "Κατάσταση"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Παράρτημα Ergani", "Κατάσταση", "Μηνιαία"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -81,6 +81,19 @@ function renderTable(rows, count, store) {
       ? `<span style="color:var(--ok);">${Office.icon("check-circle-fill")} Ενεργός</span>`
       : `<span style="color:var(--muted);">${Office.icon("dash-circle")} Ανενεργός</span>`;
     tr.appendChild(tdSt);
+    const tdMonthly = document.createElement("td");
+    tdMonthly.className = "work-log-action-cell";
+    const empAfm = (emp.afm || "").trim();
+    if (empAfm) {
+      const a = document.createElement("a");
+      a.href = `/ui/monthly-status?afm=${encodeURIComponent(empAfm)}`;
+      a.className = "work-log-card-link";
+      a.title = "Μηνιαία κατάσταση";
+      a.setAttribute("aria-label", `Μηνιαία κατάσταση — ${emp.eponymo || ""} ${emp.onoma || ""}`.trim());
+      a.innerHTML = Office.icon("calendar3");
+      tdMonthly.appendChild(a);
+    }
+    tr.appendChild(tdMonthly);
     t.appendChild(tr);
   });
   wrap.innerHTML =

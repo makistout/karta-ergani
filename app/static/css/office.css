@@ -395,12 +395,41 @@ input, select {
   line-height: 1.4;
 }
 
+.work-card-retro .form-row input.input-time-24 {
+  width: 100%;
+  max-width: none;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 .work-card-retro .form-row input[type="time"] {
   width: 100%;
   max-width: none;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.notify-recipients-wrap {
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.notify-recipients-table input {
+  width: 100%;
+  min-width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.88rem;
+}
+
+.notify-recipients-table input[readonly] {
+  background: #f8fafc;
+  color: var(--muted);
 }
 
 .work-card-actions-retro {
@@ -1091,6 +1120,30 @@ input[role="combobox"] {
   margin-top: 0.75rem;
 }
 
+.sync-hub-section-title {
+  font-size: 0.95rem;
+  margin: 0 0 0.65rem;
+  font-weight: 600;
+}
+
+.field-inline {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.input-select {
+  min-width: 7rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
 .sync-hub-log-title {
   font-size: 0.92rem;
   margin: 0 0 0.5rem;
@@ -1389,6 +1442,18 @@ input[role="combobox"] {
 .work-card-retro .dp-date-control {
   width: 100%;
   min-width: 0;
+}
+
+.store-id-badge {
+  display: inline-block;
+  min-width: 1.75rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
 }
 
 .env-badge {

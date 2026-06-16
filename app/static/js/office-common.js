@@ -507,12 +507,23 @@ const Office = {
     try {
       const d = new Date(String(fDate).replace("Z", "+00:00"));
       if (!Number.isNaN(d.getTime())) {
-        return d.toLocaleString("el-GR");
+        return d.toLocaleString("el-GR", { hour12: false });
       }
     } catch {
       /* fallback */
     }
     return this.formatFDateTime(fDate);
+  },
+
+  /** Ώρα HH:mm:ss — πάντα 24ωρη μορφή. */
+  formatTime24(date = new Date(), { seconds = true } = {}) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return "—";
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    if (!seconds) return `${h}:${m}`;
+    const s = String(d.getSeconds()).padStart(2, "0");
+    return `${h}:${m}:${s}`;
   },
 
   showTableLoading(wrapEl, text) {
@@ -706,6 +717,25 @@ const Office = {
     const hf = String(row?.hour_from || "").trim();
     const ht = String(row?.hour_to || "").trim();
     return !hf || !ht;
+  },
+
+  workLogRowIsComplete(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    return Boolean(hf && ht);
+  },
+
+  /** Εικονίδιο κάρτας μόνο όταν λείπει είσοδος ή έξοδος (όχι σε ολοκληρωμένη μέρα). */
+  shouldShowWorkCardLink(row) {
+    if (!row) return false;
+    if (String(row.status || "").trim() === "completed") return false;
+    if (row.work_log && typeof row.work_log === "object") {
+      const hf = String(row.work_log.hour_from || "").trim();
+      const ht = String(row.work_log.hour_to || "").trim();
+      if (hf && ht) return false;
+    }
+    if (this.workLogRowIsComplete(row)) return false;
+    return Boolean(String(row.employee_afm || row.afm || "").trim());
   },
 
   renderWorkLogHistoryCardCell(row, ctx, column) {

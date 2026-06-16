@@ -337,3 +337,52 @@ def select_store_status(job_id: str):
     if not job:
         return jsonify({"error": "Άγνωστο ή ολοκληρωμένο job"}), 404
     return jsonify(job)
+
+
+@store_bp.get("/<int:store_id>/notify-recipients")
+def get_notify_recipients(store_id: int):
+    cfg = repo.get_store_config(store_id)
+    if not cfg:
+        return jsonify({"error": "Δεν βρέθηκε κατάστημα", "recipients": []}), 404
+    from app.repo_notify_recipients import (
+        list_notify_recipients,
+        notify_recipients_table_missing_message,
+    )
+
+    try:
+        rows = list_notify_recipients(store_id)
+    except Exception as ex:
+        hint = notify_recipients_table_missing_message(ex)
+        if hint:
+            return jsonify({"error": hint, "recipients": [], "db_setup": hint}), 500
+        raise
+    return jsonify({
+        "store_id": store_id,
+        "recipients": _json_rows(rows),
+    })
+
+
+@store_bp.put("/<int:store_id>/notify-recipients")
+def put_notify_recipients(store_id: int):
+    cfg = repo.get_store_config(store_id)
+    if not cfg:
+        return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+    from app.repo_notify_recipients import (
+        list_notify_recipients,
+        notify_recipients_table_missing_message,
+        replace_notify_recipients,
+    )
+
+    data = request.get_json(silent=True) or {}
+    rows = data.get("recipients")
+    if not isinstance(rows, list):
+        return jsonify({"error": "Αναμενόταν recipients[]"}), 400
+    try:
+        n = replace_notify_recipients(store_id, rows)
+        saved = list_notify_recipients(store_id)
+    except Exception as ex:
+        hint = notify_recipients_table_missing_message(ex)
+        if hint:
+            return jsonify({"error": hint, "db_setup": hint}), 500
+        raise
+    return jsonify({"success": True, "count": n, "recipients": _json_rows(saved)})

@@ -7,6 +7,7 @@ from typing import Any
 from app.http_helpers import json_or_text
 
 _SERVICE_LABELS = {
+    "EX_BASE_04": "Μηνιαία κατάσταση (EX_BASE_04)",
     "EX_BASE_07": "Πραγματική απασχόληση (EX_BASE_07)",
     "EX_BASE_08": "Ψηφιακό ωράριο (EX_BASE_08)",
 }
@@ -24,10 +25,11 @@ def ergani_failure_detail(resp, service_code: str) -> str:
 
     if upstream and "not authenticate" in upstream.lower():
         return (
-            f"Ο λογαριασμός Ergani δεν έχει εξουσιοδότηση για {label}. "
-            "Στο e-ΕΦΚΑ / Εργάνη πρέπει να ενεργοποιηθούν οι αντίστοιχες υπηρεσίες "
-            "διαλειτουργικότητας για τον χρήστη API του εργοδότη, ή να χρησιμοποιηθούν "
-            "διαπιστευτήρια με πλήρη πρόσβαση (όχι μόνο βασικά στοιχεία/εργαζόμενους)."
+            f"Ergani API — {label}: «{upstream}». "
+            "Σύμφωνα με τον οδηγό, αυτό το μήνυμα εμφανίζεται και σε λάθος κλήση· "
+            "ελέγξτε ServiceCode/Parameters. "
+            "Αν η κλήση είναι σωστή, το service λείπει από το ServicesList του χρήστη API "
+            "(αίτημα ενεργοποίησης EX_BASE_04 στο e-ΕΦΚΑ / Εργάνη)."
         )
 
     if resp.status_code >= 500:

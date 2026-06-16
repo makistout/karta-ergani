@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from datetime import datetime
+
 import pyodbc
 from flask import Blueprint, jsonify, request
 
@@ -21,9 +24,11 @@ from app.repo_work_log import (
     work_log_table_missing_message,
     enrich_work_log_rows_with_schedule,
     enrich_work_log_history_with_card_punch,
+    enrich_work_log_rows_with_card_punch,
+    list_work_log_missing_cards_paged,
 )
 from app.repo_schedule import schedule_table_missing_message
-from app.work_card_payload import norm_afm
+from app.work_card_payload import norm_afm, tz_athens
 from app.work_log_sync import fetch_and_save_work_log_for_ctx
 
 work_log_bp = Blueprint("work_log", __name__, url_prefix="/api/work-log")
@@ -135,6 +140,69 @@ def work_log_history():
         },
         "employee_afm": employee_afm,
         "employee_name": employee_name,
+        "count": len(rows),
+        "work_log": rows,
+    })
+
+
+@work_log_bp.get("/missing-cards")
+def work_log_missing_cards():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα", "work_log": []}), 400
+    page = max(1, int(request.args.get("page") or 1))
+    page_size = max(1, min(int(request.args.get("page_size") or 20), 100))
+    today_ergani = datetime.now(tz_athens()).strftime("%d/%m/%Y")
+    try:
+        rows, total = list_work_log_missing_cards_paged(
+            ctx["employer_afm"],
+            ctx["branch_aa"],
+            today_ergani,
+            page=page,
+            page_size=page_size,
+        )
+    except pyodbc.Error as ex:
+        return _db_error(ex)
+    dates = list(
+        dict.fromkeys(
+            str(r.get("work_date") or "").strip()
+            for r in rows
+            if (r.get("work_date") or "").strip()
+        )
+    )
+    try:
+        enrich_work_log_rows_with_schedule(
+            rows, ctx["employer_afm"], ctx["branch_aa"], dates
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+        for r in rows:
+            r["schedule_label"] = "—"
+            r["schedule"] = None
+    try:
+        enrich_work_log_rows_with_card_punch(
+            rows, ctx["employer_afm"], ctx["branch_aa"]
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+    for r in rows:
+        if hasattr(r.get("synced_at"), "isoformat"):
+            r["synced_at"] = r["synced_at"].isoformat()
+    total_pages = max(1, math.ceil(total / page_size)) if total else 1
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx["branch_aa"],
+        },
+        "exclude_date": today_ergani,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
         "count": len(rows),
         "work_log": rows,
     })

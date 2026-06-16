@@ -1,5 +1,20 @@
 let syncDatePicker = null;
 
+const MONTH_LABELS = [
+  "Ιανουάριος",
+  "Φεβρουάριος",
+  "Μάρτιος",
+  "Απρίλιος",
+  "Μάιος",
+  "Ιούνιος",
+  "Ιούλιος",
+  "Αύγουστος",
+  "Σεπτέμβριος",
+  "Οκτώβριος",
+  "Νοέμβριος",
+  "Δεκέμβριος",
+];
+
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("sync");
   syncDatePicker = Office.createDatePicker({
@@ -12,23 +27,54 @@ document.addEventListener("DOMContentLoaded", async () => {
       last30: "Τελευταίος μήνας",
     },
   });
+  initMonthlySelectors();
   document.getElementById("btnPeriodSync").onclick = () => runPeriodSync();
-  await refreshSyncButton();
+  document.getElementById("btnMonthlySync").onclick = () => runMonthlySync();
+  await refreshSyncButtons();
 });
+
+function initMonthlySelectors() {
+  const yearSel = document.getElementById("monthlySyncYear");
+  const monthSel = document.getElementById("monthlySyncMonth");
+  if (!yearSel || !monthSel) return;
+  const now = new Date();
+  const curYear = now.getFullYear();
+  yearSel.innerHTML = "";
+  for (let y = curYear; y >= curYear - 5; y--) {
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = String(y);
+    yearSel.appendChild(opt);
+  }
+  monthSel.innerHTML = "";
+  MONTH_LABELS.forEach((label, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i + 1);
+    opt.textContent = label;
+    monthSel.appendChild(opt);
+  });
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const prevYear = now.getMonth() === 0 ? curYear - 1 : curYear;
+  yearSel.value = String(prevYear);
+  monthSel.value = String(prevMonth);
+}
 
 function getRange() {
   return syncDatePicker ? syncDatePicker.getRange() : { start: "", end: "" };
 }
 
-async function refreshSyncButton() {
-  const btn = document.getElementById("btnPeriodSync");
-  if (!btn) return;
+async function refreshSyncButtons() {
+  const btnPeriod = document.getElementById("btnPeriodSync");
+  const btnMonthly = document.getElementById("btnMonthlySync");
   try {
     const res = await fetch("/api/store/active", { cache: "no-store" });
     const data = await res.json();
-    btn.disabled = !data.store;
+    const ok = Boolean(data.store);
+    if (btnPeriod) btnPeriod.disabled = !ok;
+    if (btnMonthly) btnMonthly.disabled = !ok;
   } catch {
-    btn.disabled = true;
+    if (btnPeriod) btnPeriod.disabled = true;
+    if (btnMonthly) btnMonthly.disabled = true;
   }
 }
 
@@ -156,6 +202,56 @@ async function runPeriodSync() {
           created_at: entry.ts || "",
         }))
       );
+    }
+
+    const ok = Boolean(polled.success);
+    Office.showMsg(
+      "syncHubMsg",
+      polled.error && !ok ? polled.error : polled.message || (ok ? "Ολοκληρώθηκε." : "Αποτυχία."),
+      ok
+    );
+    await Office.loadActiveStore();
+  } catch (e) {
+    Office.showMsg("syncHubMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
+}
+
+async function runMonthlySync() {
+  const btn = document.getElementById("btnMonthlySync");
+  const year = parseInt(document.getElementById("monthlySyncYear")?.value || "0", 10);
+  const month = parseInt(document.getElementById("monthlySyncMonth")?.value || "0", 10);
+  if (!year || !month) {
+    Office.showMsg("syncHubMsg", "Επιλέξτε έτος και μήνα.", false);
+    return;
+  }
+
+  Office.setButtonLoading(btn, true);
+  showProgress(`Μηνιαία κατάσταση ${String(month).padStart(2, "0")}/${year}…`, 0, 1);
+  const msgEl = document.getElementById("syncHubMsg");
+  if (msgEl) {
+    msgEl.innerHTML = "";
+    msgEl.className = "msg";
+  }
+
+  try {
+    const res = await fetch("/api/monthly-status/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year, month, async: true }),
+    });
+    const start = await res.json();
+    if (!res.ok || !start.job_id) {
+      Office.showMsg("syncHubMsg", start.error || "Αποτυχία εκκίνησης", false);
+      return;
+    }
+
+    const statusUrl = `/api/monthly-status/sync/status/${encodeURIComponent(start.job_id)}`;
+    const polled = await pollPeriodJob(statusUrl);
+
+    if (polled.log_lines && polled.log_lines.length) {
+      renderLogLines(polled.log_lines);
     }
 
     const ok = Boolean(polled.success);

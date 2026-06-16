@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <title>erganiOS - Μηνιαία κατάσταση</title>
+  <link rel="stylesheet" href="/static/css/office.css?v=20260618month">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
+        <small>Ψηφιακή Κάρτα Εργασίας</small>
+      </div>
+      <nav>
+        <a href="/ui/" data-nav="home">Αρχική</a>
+        <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
+        <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
+        <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/missing-cards" data-nav="missingcards">Ελλειπή Χτυπήματα</a>
+        <a href="/ui/work-card" data-nav="workcard">Ψηφιακή κάρτα</a>
+        <a href="/ui/sync" data-nav="sync">Συγχρονισμός</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/sync-log" data-nav="synclog">Καταγραφές</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <h1 class="page-title"><i class="bi bi-calendar3" aria-hidden="true"></i> Μηνιαία κατάσταση</h1>
+      <p class="page-desc" id="monthlyStatusDesc">Στοιχεία μηνιαίας απασχόλησης (EX_BASE_04) ανά εργαζόμενο.</p>
+
+      <div class="toolbar-dates card" style="margin-bottom:1rem;">
+        <div class="toolbar-dates-row">
+          <label class="field-inline">
+            <span>Έτος</span>
+            <select id="filterYear" class="input-select"></select>
+          </label>
+          <label class="field-inline">
+            <span>Μήνας</span>
+            <select id="filterMonth" class="input-select">
+              <option value="">Όλοι</option>
+              <option value="1">Ιανουάριος</option>
+              <option value="2">Φεβρουάριος</option>
+              <option value="3">Μάρτιος</option>
+              <option value="4">Απρίλιος</option>
+              <option value="5">Μάιος</option>
+              <option value="6">Ιούνιος</option>
+              <option value="7">Ιούλιος</option>
+              <option value="8">Αύγουστος</option>
+              <option value="9">Σεπτέμβριος</option>
+              <option value="10">Οκτώβριος</option>
+              <option value="11">Νοέμβριος</option>
+              <option value="12">Δεκέμβριος</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary" id="btnFilterMonthly">
+            <i class="bi bi-funnel" aria-hidden="true"></i><span>Εμφάνιση</span>
+          </button>
+          <a href="/ui/employees" class="btn btn-secondary" id="btnBackEmployees" style="display:none;">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="card list-card">
+        <div id="monthlyStatusWrap" class="list-wrap">
+          <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+        </div>
+      </div>
+      <div id="monthlyStatusMsg" class="msg"></div>
+    </main>
+  </div>
+  <script src="/static/js/office-common.js?v=20260618month"></script>
+  <script src="/static/js/monthly-status-list.js?v=20260618month"></script>
+</body>
+</html>

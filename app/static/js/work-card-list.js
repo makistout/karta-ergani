@@ -38,8 +38,18 @@ document.addEventListener("DOMContentLoaded", () => {
   initPage();
 });
 
-function initRetroDefaults() {
+function setRetroTimeValue(hhmm) {
   const t = document.getElementById("wcRetroTime");
+  if (!t) return;
+  const norm = Office.normalizeHourMinute(hhmm);
+  t.value = norm || "";
+}
+
+function readRetroTimeValue() {
+  return Office.normalizeHourMinute(document.getElementById("wcRetroTime")?.value || "");
+}
+
+function initRetroDefaults() {
   const now = new Date();
   if (retroDatePicker) {
     const y = now.getFullYear();
@@ -47,16 +57,14 @@ function initRetroDefaults() {
     const day = String(now.getDate()).padStart(2, "0");
     retroDatePicker.setIso(`${y}-${m}-${day}`);
   }
-  if (t) {
-    t.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  }
+  setRetroTimeValue(Office.formatTime24(now, { seconds: false }));
 }
 
 function startTerminalClock() {
   const tick = () => {
     const clock = document.getElementById("terminalClock");
     if (clock) {
-      clock.textContent = new Date().toLocaleTimeString("el-GR");
+      clock.textContent = Office.formatTime24(new Date());
     }
   };
   tick();
@@ -442,7 +450,7 @@ async function submitCard(eventName, options = {}) {
       document.getElementById("wcRetroDate")?.dataset?.iso ||
       Office.parseDateGr(document.getElementById("wcRetroDate")?.value || "") ||
       "";
-    const retroTime = (document.getElementById("wcRetroTime")?.value || "").trim();
+    const retroTime = readRetroTimeValue();
     if (!referenceDate || !retroTime) {
       showWorkCardMsg("Συμπληρώστε ημερομηνία και ώρα προγενέστερης καταχώρησης.", false);
       return;

@@ -1,0 +1,34 @@
+[
+  {
+    "label": "store EKIBEN II",
+    "status": 400,
+    "year": 2026,
+    "month": 6,
+    "body": {
+      "message": "Service Code is not authenticate to specific User"
+    }
+  },
+  {
+    "label": "store EKIBEN II",
+    "status": 400,
+    "year": 2026,
+    "month": 5,
+    "body": {
+      "message": "Service Code is not authenticate to specific User"
+    }
+  },
+  {
+    "label": "store Training Room Ίλιον",
+    "status": 200,
+    "year": 2026,
+    "month": 6,
+    "body": null
+  },
+  {
+    "label": "store Training Room Ίλιον",
+    "status": 200,
+    "year": 2026,
+    "month": 5,
+    "body": null
+  }
+]

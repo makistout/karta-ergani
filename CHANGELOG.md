@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-06-18 — Μηνιαία κατάσταση, ελλειπείς κάρτες, Telegram λήπτες
+
+### Μηνιαία κατάσταση (EX_BASE_04)
+
+- **`sql/alter_add_karta_monthly_status.sql`**: πίνακας `karta_monthly_status` (έτος, μήνας, ΑΦΜ, ημέρες εργασίας/τηλεργασίας/ρεπό/κάρτας/υπερωρίες κ.λπ.).
+- **`app/repo_monthly_status.py`**, **`app/monthly_status_sync.py`**, **`app/routes_monthly_status.py`**: sync `EX_BASE_04` ανά μήνα/έτος, `GET /api/monthly-status/list`.
+- **`app/ergani_parse.py`**: `parse_monthly_status()`, `parse_authorized_service_names()` — προέλεγχος `ServicesList` πριν την κλήση.
+- UI **Συγχρονισμός**: block «Μηνιαία κατάσταση» με επιλογή έτους/μήνα.
+- UI **`/ui/monthly-status`**: πίνακας μηνιαίων στοιχείων· στήλη **Μηνιαία** (ημερολόγιο) στη λίστα εργαζομένων.
+
+### Ελλειπείς κάρτες
+
+- Σελίδα **`/ui/missing-cards`** (όχι `missing-punches`): λίστα ελλιπών εισόδων/εξόδων πριν από σήμερα, paging, στήλη Κάρτα (χωρίς ΑΑ).
+
+### UI — κάρτα & ώρες
+
+- **Ψηφιακή κάρτα**: ώρα προγενέστερης σε **24ωρη** μορφή (`HH:mm`, όχι AM/PM)· ρολόι τερματικού `Office.formatTime24()`.
+- **Αρχική / πραγματική / ελλειπείς κάρτες**: κρύβεται εικονίδιο κάρτας σε **ολοκληρωμένη μέρα** (`Office.shouldShowWorkCardLink()`).
+
+### Telegram — λήπτες ειδοποιήσεων
+
+- **`sql/alter_add_store_notify_recipients.sql`**: `karta_store_notify_recipient` (όνομα, κινητό, `telegram_chat_id`).
+- **`app/repo_notify_recipients.py`**, **`app/telegram_notify.py`**, **`app/routes_telegram.py`**.
+- API: `GET/PUT /api/store/<id>/notify-recipients`, `POST /api/telegram/webhook` (`/start 69…` → σύνδεση chat), `POST /api/telegram/test/<id>`.
+- **Επεξεργασία καταστήματος** (βήμα 1 **Διαπιστευτήρια**): πίνακας ληπτών (όνομα + κινητό), αποθήκευση, δοκιμαστική αποστολή.
+- **`.env` / `.env.example`**: `TELEGRAM_BOT_TOKEN` (BotFather).
+- **Σύνδεση λήπτη:** ο χρήστης ανοίγει το bot και στέλνει `/start ΑΡΙΘΜΟΣ_ΚΙΝΗΤΟΥ` (ίδιο με καταχώρηση)· το `telegram_chat_id` συμπληρώνεται αυτόματα μέσω webhook.
+- **Τοπική ανάπτυξη:** το webhook απαιτεί **δημόσιο HTTPS URL** (π.χ. ngrok → `https://…/api/telegram/webhook`)· χωρίς αυτό δουλεύει μόνο χειροκίνητο ID ή δοκιμαστική αποστολή αν υπάρχει ήδη chat_id.
+- **UI καταστημάτων** (`/ui/stores`): στήλη **ID** (από `karta_store_config`) για αναγνώριση καταστήματος στη βάση.
+- **Επεξεργασία:** URL `?edit=1&id=<store_id>`· redirect `/ui/store/edit/<id>`.
+- **Fix DB:** αφαίρεση `created_at` (DATETIMEOFFSET) από SELECT ληπτών — αποφυγή σφάλματος pyodbc `SQL type -155`.
+
+### Τεκμηρίωση EX_BASE_04
+
+- `documentation/ex_base_04_*.json`, `documentation/services_list_ekiben.json`
+- `scripts/verify_ex_base_04_call.py`, `scripts/probe_ex_base_04.py`
+
+---
+
 ## 2026-06-17 — Ιστορικό πραγματικής, κάρτα από ελλείψεις, ψηφιακό ωράριο
 
 ### Backend — πραγματική + ωράριο

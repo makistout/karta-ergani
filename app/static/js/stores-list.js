@@ -21,7 +21,7 @@ async function loadStoresList() {
     const t = document.createElement("table");
     t.className = "data";
     const hr = document.createElement("tr");
-    ["Όνομα", "API", "ΑΦΜ", "Παράρτημα", "ΚΑΔ / ΤΕΕΣ / ΟΑΕΔ", "Ενέργειες"].forEach((h) => {
+    ["ID", "Όνομα", "API", "ΑΦΜ", "Παράρτημα", "ΚΑΔ / ΤΕΕΣ / ΟΑΕΔ", "Ενέργειες"].forEach((h) => {
       const th = document.createElement("th");
       th.textContent = h;
       hr.appendChild(th);
@@ -29,6 +29,9 @@ async function loadStoresList() {
     t.appendChild(hr);
     stores.forEach((store) => {
       const tr = document.createElement("tr");
+      const tdId = document.createElement("td");
+      tdId.innerHTML = `<code class="store-id-badge">${Office.escapeHtml(String(store.id ?? ""))}</code>`;
+      tr.appendChild(tdId);
       const tdName = document.createElement("td");
       tdName.innerHTML =
         `<strong>${Office.escapeHtml(store.name)}</strong><br>` +
@@ -179,7 +182,7 @@ async function editStore(id) {
       accessToken: "",
       branches: null,
     });
-    window.location.href = "/ui/stores/credentials?edit=1";
+    window.location.href = `/ui/stores/credentials?edit=1&id=${id}`;
   } catch (e) {
     Office.showMsg("listMsg", String(e), false);
   }

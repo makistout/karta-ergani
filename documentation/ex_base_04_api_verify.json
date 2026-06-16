@@ -1,0 +1,116 @@
+{
+  "store": "EKIBEN II",
+  "checks": [
+    {
+      "label": "pdf_exact",
+      "request": {
+        "ServiceCode": "EX_BASE_04",
+        "Parameters": [
+          {
+            "ParameterName": "ReportYear",
+            "ParameterValue": "2024"
+          },
+          {
+            "ParameterName": "ReportMonth",
+            "ParameterValue": "10"
+          }
+        ]
+      },
+      "status": 400,
+      "response": {
+        "message": "Service Code is not authenticate to specific User"
+      }
+    },
+    {
+      "label": "month_padded",
+      "request": {
+        "ServiceCode": "EX_BASE_04",
+        "Parameters": [
+          {
+            "ParameterName": "ReportYear",
+            "ParameterValue": "2024"
+          },
+          {
+            "ParameterName": "ReportMonth",
+            "ParameterValue": "10"
+          }
+        ]
+      },
+      "status": 400,
+      "response": {
+        "message": "Service Code is not authenticate to specific User"
+      }
+    },
+    {
+      "label": "month_no_pad",
+      "request": {
+        "ServiceCode": "EX_BASE_04",
+        "Parameters": [
+          {
+            "ParameterName": "ReportYear",
+            "ParameterValue": "2024"
+          },
+          {
+            "ParameterName": "ReportMonth",
+            "ParameterValue": "10"
+          }
+        ]
+      },
+      "status": 400,
+      "response": {
+        "message": "Service Code is not authenticate to specific User"
+      }
+    },
+    {
+      "label": "reversed_order",
+      "request": {
+        "ServiceCode": "EX_BASE_04",
+        "Parameters": [
+          {
+            "ParameterName": "ReportMonth",
+            "ParameterValue": "10"
+          },
+          {
+            "ParameterName": "ReportYear",
+            "ParameterValue": "2024"
+          }
+        ]
+      },
+      "status": 400,
+      "response": {
+        "message": "Service Code is not authenticate to specific User"
+      }
+    },
+    {
+      "label": "recent_2025_05",
+      "request": {
+        "ServiceCode": "EX_BASE_04",
+        "Parameters": [
+          {
+            "ParameterName": "ReportYear",
+            "ParameterValue": "2025"
+          },
+          {
+            "ParameterName": "ReportMonth",
+            "ParameterValue": "5"
+          }
+        ]
+      },
+      "status": 400,
+      "response": {
+        "message": "Service Code is not authenticate to specific User"
+      }
+    }
+  ],
+  "ex_base_04_in_services_list": false,
+  "ex_base_04_service_meta": null,
+  "sample_service_codes": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ]
+}

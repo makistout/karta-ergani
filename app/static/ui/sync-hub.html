@@ -22,6 +22,7 @@
         <a href="/ui/employees" data-nav="employees">Εργαζόμενοι</a>
         <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
         <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/missing-cards" data-nav="missingcards">Ελλειπή Χτυπήματα</a>
         <a href="/ui/work-card" data-nav="workcard">Ψηφιακή κάρτα</a>
         <a href="/ui/sync" data-nav="sync" class="active">Συγχρονισμός</a>
         <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
@@ -30,13 +31,32 @@
     </aside>
     <main class="main">
       <h1 class="page-title"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Συγχρονισμός</h1>
-      <p class="page-desc">Πλήρης συγχρονισμός Ergani για επιλεγμένη περίοδο: εργαζόμενοι (API), ψηφιακό ωράριο και πραγματική απασχόληση (portal).</p>
+      <p class="page-desc">Πλήρης συγχρονισμός Ergani για επιλεγμένη περίοδο: εργαζόμενοι (API), ψηφιακό ωράριο και πραγματική απασχόληση (portal). Μηνιαία κατάσταση (EX_BASE_04) ανά μήνα/έτος.</p>
 
       <div class="toolbar-dates card">
+        <h2 class="sync-hub-section-title">Ημερήσιος συγχρονισμός</h2>
         <div class="toolbar-dates-row">
           <div id="syncHubDatePicker"></div>
           <button type="button" class="btn" id="btnPeriodSync" disabled>
             <i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-dates card" style="margin-top:1rem;">
+        <h2 class="sync-hub-section-title">Μηνιαία κατάσταση (EX_BASE_04)</h2>
+        <p class="page-desc" style="margin-top:0;margin-bottom:0.75rem;">Ενημέρωση βάσης για προγενέστερους μήνες.</p>
+        <div class="toolbar-dates-row">
+          <label class="field-inline">
+            <span>Έτος</span>
+            <select id="monthlySyncYear" class="input-select"></select>
+          </label>
+          <label class="field-inline">
+            <span>Μήνας</span>
+            <select id="monthlySyncMonth" class="input-select"></select>
+          </label>
+          <button type="button" class="btn" id="btnMonthlySync" disabled>
+            <i class="bi bi-calendar-month" aria-hidden="true"></i><span>Συγχρονισμός μήνα</span>
           </button>
         </div>
       </div>
@@ -52,6 +72,6 @@
   </div>
   <script src="/static/js/office-common.js?v=20260611gr3"></script>
   <script src="/static/js/office-date-picker.js?v=20260611gr3"></script>
-  <script src="/static/js/sync-hub.js?v=20260611home"></script>
+  <script src="/static/js/sync-hub.js?v=20260618month"></script>
 </body>
 </html>

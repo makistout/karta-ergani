@@ -151,8 +151,8 @@ function renderTablePage() {
 function appendWorkCardLinkCell(tr, row, range) {
   const td = document.createElement("td");
   td.className = "work-log-action-cell";
-  const afm = (row.employee_afm || "").trim();
-  if (afm) {
+  if (Office.shouldShowWorkCardLink(row)) {
+    const afm = (row.employee_afm || "").trim();
     const dateIso =
       Office.erganiDateToIso(row.work_date) || range?.start || "";
     const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim();

@@ -25,6 +25,12 @@ def ui_store_credentials():
     return send_from_directory(_UI_DIR, "store-credentials.html")
 
 
+@ui_bp.get("/store/edit/<int:store_id>")
+def ui_store_edit_redirect(store_id: int):
+    """Συμβατότητα με URL /ui/store/edit/<id> → διαπιστευτήρια."""
+    return redirect(f"/ui/stores/credentials?edit=1&id={store_id}")
+
+
 @ui_bp.get("/stores/branch")
 def ui_store_branch():
     return send_from_directory(_UI_DIR, "store-branch.html")
@@ -53,6 +59,16 @@ def ui_work_log_list():
 @ui_bp.get("/work-log/history")
 def ui_work_log_history():
     return send_from_directory(_UI_DIR, "work-log-history.html")
+
+
+@ui_bp.get("/missing-cards")
+def ui_missing_cards():
+    return send_from_directory(_UI_DIR, "missing-cards-list.html")
+
+
+@ui_bp.get("/monthly-status")
+def ui_monthly_status():
+    return send_from_directory(_UI_DIR, "monthly-status-list.html")
 
 
 @ui_bp.get("/work-card")

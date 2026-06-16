@@ -356,8 +356,8 @@ function fmtWorkLogHtml(block) {
 }
 
 function buildCardLinkCell(r) {
+  if (!Office.shouldShowWorkCardLink(r)) return "";
   const afm = (r.employee_afm || "").trim();
-  if (!afm) return "";
   const dateIso = Office.erganiDateToIso(r.work_date) || "";
   const name = `${r.eponymo || ""} ${r.onoma || ""}`.trim();
   const url = Office.workCardUrl(afm, dateIso, name);

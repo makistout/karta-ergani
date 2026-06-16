@@ -1,0 +1,90 @@
+{
+  "table_suggestion": "karta_monthly_status",
+  "unique_key": ["store_id", "report_year", "report_month", "employee_afm", "branch_aa"],
+  "column_groups": {
+    "keys": [
+      "f_year",
+      "f_month",
+      "f_pararthma_aa",
+      "f_afm",
+      "f_ergodoti_id"
+    ],
+    "employee_identity": [
+      "f_eponimo",
+      "f_onoma",
+      "f_onoma_patera",
+      "f_onoma_miteras",
+      "f_date_birth",
+      "f_sex",
+      "f_nationality",
+      "f_marital_status",
+      "f_ar_teknwn",
+      "f_amka",
+      "f_education_level",
+      "f_ergazomenos_type"
+    ],
+    "employment": [
+      "f_xarakthsismos",
+      "f_sxesh_apasxolhshs",
+      "f_kathestos",
+      "f_step",
+      "f_apodoxes",
+      "f_week_wres",
+      "f_hour_apodoxes",
+      "f_programma",
+      "f_responsible",
+      "f_date_proslipsis"
+    ],
+    "work_days": [
+      "f_arithmos_hmerwn_ergasias",
+      "f_arithmos_hmerwn_tilergasias",
+      "f_arithmos_hmerwn_anapaushs_repo",
+      "f_arithmos_hmerwn_mh_ergasias",
+      "f_arithmos_hmerwn_karta_ergasias",
+      "f_arithmos_kyriakwn_karta",
+      "f_arithmos_kyriakwn_psoxe"
+    ],
+    "overtime": [
+      "f_arithmos_hmerwn_yperorias",
+      "f_lepta_yperorias",
+      "f_arithmos_leptwn"
+    ],
+    "leave_days_all": "47 πεδία f_arithmos_hmerwn_adeia_* / astheneias / apousia / κ.λπ. — δες ex_base_04_schema_from_pdf.json",
+    "insurance_totals": [
+      "f_synolo_hmerwn_adeias_asfalish",
+      "f_synolo_hmerwn_astheneias_asfalish"
+    ]
+  },
+  "ui_columns_minimal": [
+    "ΑΦΜ",
+    "Επώνυμο",
+    "Όνομα",
+    "Έτος",
+    "Μήνας",
+    "Παράρτημα",
+    "Ημέρες εργασίας",
+    "Ημέρες τηλεργασίας",
+    "Ρεπό",
+    "Ημέρες κάρτας",
+    "Υπερωρίες (ημέρες)",
+    "Υπερωρίες (λεπτά)",
+    "Κανονική άδεια",
+    "Ασθένεια (σύνολο ασφ.)"
+  ],
+  "field_map_ui": {
+    "ΑΦΜ": "f_afm",
+    "Επώνυμο": "f_eponimo",
+    "Όνομα": "f_onoma",
+    "Έτος": "f_year",
+    "Μήνας": "f_month",
+    "Παράρτημα": "f_pararthma_aa",
+    "Ημέρες εργασίας": "f_arithmos_hmerwn_ergasias",
+    "Ημέρες τηλεργασίας": "f_arithmos_hmerwn_tilergasias",
+    "Ρεπό": "f_arithmos_hmerwn_anapaushs_repo",
+    "Ημέρες κάρτας": "f_arithmos_hmerwn_karta_ergasias",
+    "Υπερωρίες (ημέρες)": "f_arithmos_hmerwn_yperorias",
+    "Υπερωρίες (λεπτά)": "f_lepta_yperorias",
+    "Κανονική άδεια": "f_arithmos_hmerwn_kanonikh_adeia",
+    "Ασθένεια (σύνολο ασφ.)": "f_synolo_hmerwn_astheneias_asfalish"
+  }
+}

@@ -63,6 +63,8 @@ class Config:
     # Προαιρετικό: αν οριστεί, όλα τα /api/* (εκτός health) απαιτούν X-Office-Token
     OFFICE_API_TOKEN = (os.environ.get("KARTA_OFFICE_TOKEN") or "").strip()
 
+    TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+
     CATALOG_DATABASE = (os.environ.get("CATALOG_DATABASE") or "").strip() or "ergani_ii"
 
     @staticmethod
