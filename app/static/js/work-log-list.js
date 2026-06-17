@@ -119,6 +119,8 @@ function renderTablePage() {
     );
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
+      const colHourFrom = multi ? 6 : 5;
+      const colHourTo = multi ? 7 : 6;
       if (i === 1) {
         td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
       } else if (i === 2) {
@@ -127,6 +129,14 @@ function renderTablePage() {
         span.textContent = txt;
         td.appendChild(span);
         Office.appendWorkLogHistoryButton(td, row);
+      } else if (i === colHourFrom) {
+        td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
+      } else if (i === colHourTo) {
+        const pending = Office.workLogExitStillPending(row);
+        td.innerHTML = Office.formatWorkLogTimeCell(
+          txt,
+          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+        ).html;
       } else {
         td.textContent = txt;
       }

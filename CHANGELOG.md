@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-06-19 — Login προστασία UI
+
+- **`KARTA_OFFICE_LOGIN_USER` / `KARTA_OFFICE_LOGIN_PASSWORD`** στο `.env` — session login για όλο το UI και τα `/api/*`.
+- Σε **`FLASK_DEBUG=1`** χωρίς ρυθμίσεις: προεπιλογή `admin` / `ergani`.
+- Σελίδα **`/ui/login`**, API `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/status`.
+- Χωρίς σύνδεση: redirect σε login (UI) ή `401` (API).
+- **Δημόσια** (χωρίς login): `/static/*`, `/health`, `/api/telegram/webhook`, `POST /api/work-card/event` (με δικό του API key).
+- Κουμπί **Αποσύνδεση** στο sidebar.
+
+### Πραγματική απασχόληση — ελλιπείς ώρες
+
+- Εικονίδιο **ρολογιού** αντί για «—» όταν λείπει ώρα εισόδου/εξόδου.
+- **Όχι κόκκινη γραμμή** σήμερα αν έχει είσοδο, λείπει έξοδος και η τρέχουσα ώρα είναι πριν το τέλος βάρδιας (ψηφ. ωράριο).
+- Fix σύγκρισης ημερομηνίας `dd/mm/yyyy` ↔ `yyyy-mm-dd` (`workDateToIso`).
+
+---
+
 ## 2026-06-18 — Μηνιαία κατάσταση, ελλειπείς κάρτες, Telegram λήπτες
 
 ### Μηνιαία κατάσταση (EX_BASE_04)

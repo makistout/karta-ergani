@@ -1697,6 +1697,18 @@ tr.work-log-row--deficient td strong {
   color: var(--err);
 }
 
+.work-log-time-missing {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+tr.work-log-row--deficient .work-log-time-missing {
+  color: var(--err);
+}
+
 table.data tbody tr.work-log-row--deficient td,
 table.data tbody tr.work-log-row--deficient td strong {
   color: var(--err);
@@ -1842,4 +1854,70 @@ table.data tbody tr.work-log-row--deficient td strong {
   .dp-date-control { width: 100%; }
   .dp-text { width: 100%; flex: 1; min-width: 0; }
   .dp-period { width: 100%; }
+}
+
+body.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: linear-gradient(160deg, #1e4d6b 0%, #0f2d42 55%, #0d3d4a 100%);
+}
+
+.login-shell {
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-card {
+  padding: 1.75rem;
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.login-brand .logo-img {
+  max-width: 180px;
+  height: auto;
+  margin: 0 auto 0.5rem;
+  display: block;
+}
+
+.login-subtitle {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.login-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.login-card label {
+  display: block;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.sidebar nav a[data-nav="logout"] {
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 0.75rem;
+  opacity: 0.9;
 }

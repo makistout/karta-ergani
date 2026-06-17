@@ -578,6 +578,15 @@ const Office = {
     return `${m[3]}-${month}-${day}`;
   },
 
+  /** Ημερομηνία εργασίας σε YYYY-MM-DD (ISO ή dd/mm/yyyy). */
+  workDateToIso(workDate) {
+    const s = String(workDate || "").trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const iso = this.erganiDateToIso(s);
+    return iso || null;
+  },
+
   normalizeHourMinute(timeStr) {
     const m = String(timeStr || "").trim().match(/^(\d{1,2}):(\d{2})/);
     if (!m) return "";
@@ -713,10 +722,66 @@ const Office = {
     document.getElementById(modalId)?.classList.add("hidden");
   },
 
+  parseClockToMinutes(value) {
+    const s = String(value || "").trim();
+    if (!s) return null;
+    const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return null;
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+    return h * 60 + min;
+  },
+
+  scheduleEndMinutesFromRow(row) {
+    const sched = row?.schedule;
+    if (sched && sched.hour_to) {
+      const parsed = this.parseClockToMinutes(sched.hour_to);
+      if (parsed != null) return parsed;
+    }
+    const label = String(row?.schedule_label || "").trim();
+    if (!label || label === "—" || /ρεπο|ανάπαυση/i.test(label)) return null;
+    const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
+    const last = parts[parts.length - 1] || label;
+    const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
+    if (match) return this.parseClockToMinutes(match[1]);
+    return null;
+  },
+
+  /** Σήμερα, έχει είσοδο, λείπει έξοδος, ακόμα πριν το τέλος βάρδιας (ψηφ. ωράριο). */
+  workLogExitStillPending(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    if (!hf || ht) return false;
+    const wd = this.workDateToIso(row?.work_date);
+    if (wd !== this.todayIsoLocal()) return false;
+    const endMin = this.scheduleEndMinutesFromRow(row);
+    if (endMin == null) return false;
+    const nowMin = this.parseClockToMinutes(this.formatTime24(new Date(), { seconds: false }));
+    if (nowMin == null) return false;
+    return nowMin < endMin;
+  },
+
+  formatWorkLogTimeCell(value, title = "Λείπει ώρα") {
+    const txt = String(value || "").trim();
+    if (txt) {
+      return { html: this.escapeHtml(txt), isMissing: false };
+    }
+    return {
+      html:
+        `<span class="work-log-time-missing" title="${this.escapeHtml(title)}">` +
+        `${this.icon("clock")}</span>`,
+      isMissing: true,
+    };
+  },
+
   workLogRowIsDeficient(row) {
     const hf = String(row?.hour_from || "").trim();
     const ht = String(row?.hour_to || "").trim();
-    return !hf || !ht;
+    if (hf && ht) return false;
+    if (!hf) return true;
+    if (!ht && this.workLogExitStillPending(row)) return false;
+    return !ht;
   },
 
   workLogRowIsComplete(row) {
@@ -751,7 +816,7 @@ const Office = {
         !row.retro_time ||
         !employeeAfm
       ) {
-        return { html: "—", isCard: false };
+        return { html: this.formatWorkLogTimeCell("", "Λείπει ώρα εισόδου").html, isCard: false };
       }
     } else {
       if (ht) return { html: this.escapeHtml(ht), isCard: false };
@@ -761,7 +826,14 @@ const Office = {
         !row.retro_time ||
         !employeeAfm
       ) {
-        return { html: "—", isCard: false };
+        const pending = this.workLogExitStillPending(row);
+        return {
+          html: this.formatWorkLogTimeCell(
+            "",
+            pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+          ).html,
+          isCard: false,
+        };
       }
     }
     const dateIso = this.erganiDateToIso(row.work_date) || "";
@@ -913,9 +985,51 @@ const Office = {
       ` · Αυτόματη ανανέωση κάθε <strong>${mins}</strong> λεπτά` +
       ` (<a href="/ui/stores">ρυθμίσεις καταστήματος</a>).`;
   },
+
+  installFetchAuthGuard() {
+    if (window.__officeFetchGuard) return;
+    window.__officeFetchGuard = true;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const res = await nativeFetch(...args);
+      if (res.status === 401 && !window.location.pathname.startsWith("/ui/login")) {
+        const data = await res.clone().json().catch(() => ({}));
+        if (data.login || data.error === "Απαιτείται σύνδεση") {
+          const next = encodeURIComponent(location.pathname + location.search);
+          window.location.href = `/ui/login?next=${next}`;
+        }
+      }
+      return res;
+    };
+  },
+
+  ensureLogoutLink() {
+    document.querySelectorAll(".sidebar nav").forEach((nav) => {
+      if (nav.querySelector('[data-nav="logout"]')) return;
+      const a = document.createElement("a");
+      a.href = "#";
+      a.dataset.nav = "logout";
+      a.innerHTML = `${this.icon("box-arrow-right")}<span>Αποσύνδεση</span>`;
+      a.addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          await fetch("/api/auth/logout", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+        } catch {
+          /* ignore */
+        }
+        window.location.href = "/ui/login";
+      });
+      nav.appendChild(a);
+    });
+  },
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  Office.installFetchAuthGuard();
   Office.initChrome();
+  Office.ensureLogoutLink();
   Office.loadActiveStore();
 });

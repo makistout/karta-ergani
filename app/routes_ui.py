@@ -15,6 +15,11 @@ def ui_home():
     return send_from_directory(_UI_DIR, "home.html")
 
 
+@ui_bp.get("/login")
+def ui_login():
+    return send_from_directory(_UI_DIR, "login.html")
+
+
 @ui_bp.get("/stores")
 def ui_stores_list():
     return send_from_directory(_UI_DIR, "stores-list.html")

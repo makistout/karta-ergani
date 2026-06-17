@@ -122,6 +122,14 @@ function renderTablePage(rows) {
         span.textContent = txt;
         td.appendChild(span);
         Office.appendWorkLogHistoryButton(td, row);
+      } else if (i === 6) {
+        td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
+      } else if (i === 7) {
+        const pending = Office.workLogExitStillPending(row);
+        td.innerHTML = Office.formatWorkLogTimeCell(
+          txt,
+          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+        ).html;
       } else {
         td.textContent = txt;
       }

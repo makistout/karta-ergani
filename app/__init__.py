@@ -15,6 +15,7 @@ from app.routes_ui import register_ui_redirects, ui_bp
 from app.routes_leave import leave_bp
 from app.routes_monthly_status import monthly_status_bp
 from app.routes_telegram import telegram_bp
+from app.routes_auth import auth_bp
 from app.routes_work_card import work_card_bp
 
 
@@ -25,9 +26,10 @@ def create_app() -> Flask:
     app.secret_key = Config.SECRET_KEY
     app.url_map.strict_slashes = False
 
-    from app.security import register_api_token_guard
+    from app.security import register_security
 
-    register_api_token_guard(app)
+    register_security(app)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)
     app.register_blueprint(local_bp)

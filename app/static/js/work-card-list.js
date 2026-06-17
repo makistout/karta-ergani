@@ -369,14 +369,22 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
       row.schedule_label || "—",
       Office.formatFlexMinutes(row.flex_arrival_minutes),
       row.work_date,
-      row.hour_from || "—",
-      row.hour_to || "—",
+      row.hour_from,
+      row.hour_to,
     ].forEach((txt, i) => {
       const td = document.createElement("td");
       if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
       else if (i === 4) {
         td.className = "col-flex";
         td.textContent = txt || "";
+      } else if (i === 6) {
+        td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
+      } else if (i === 7) {
+        const pending = Office.workLogExitStillPending(row);
+        td.innerHTML = Office.formatWorkLogTimeCell(
+          txt,
+          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+        ).html;
       } else td.textContent = txt || "";
       tr.appendChild(td);
     });

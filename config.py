@@ -67,6 +67,18 @@ class Config:
 
     CATALOG_DATABASE = (os.environ.get("CATALOG_DATABASE") or "").strip() or "ergani_ii"
 
+    KARTA_OFFICE_LOGIN_USER = (os.environ.get("KARTA_OFFICE_LOGIN_USER") or "").strip()
+    KARTA_OFFICE_LOGIN_PASSWORD = (os.environ.get("KARTA_OFFICE_LOGIN_PASSWORD") or "").strip()
+
+    @staticmethod
+    def office_login_credentials() -> tuple[str, str]:
+        """Username/password για σύνδεση UI — σε debug προεπιλογή αν λείπουν από .env."""
+        user = Config.KARTA_OFFICE_LOGIN_USER
+        pwd = Config.KARTA_OFFICE_LOGIN_PASSWORD
+        if not user and not pwd and Config.FLASK_DEBUG:
+            return "admin", "ergani"
+        return user, pwd
+
     @staticmethod
     def pyodbc_connection_string() -> str:
         """Σύνδεση αποκλειστικά για pyodbc (χωρίς SQLAlchemy)."""
@@ -96,6 +108,9 @@ class Config:
                 missing.append("FLASK_SECRET_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
             if not Config.WORK_CARD_API_KEY:
                 missing.append("WORK_CARD_API_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
+            user, pwd = Config.office_login_credentials()
+            if not user or not pwd:
+                missing.append("KARTA_OFFICE_LOGIN_USER / KARTA_OFFICE_LOGIN_PASSWORD")
         if missing:
             raise RuntimeError(
                 "Λείπουν ρυθμίσεις περιβάλλοντος (.env):\n- "
