@@ -153,20 +153,30 @@ function renderTablePage() {
 
   const t = document.createElement("table");
   t.className = "data";
-  const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
+  const headers = ["ΑΦΜ", "", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
   headers.push("Ευελ. (λεπτά)", "Από", "Έως", "Τύπος", "Διάλειμμα");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
-    th.textContent = h;
+    if (h === "") {
+      th.className = "col-history";
+      th.setAttribute("aria-label", "Ιστορικό");
+    } else {
+      th.textContent = h;
+    }
     hr.appendChild(th);
   });
   t.appendChild(hr);
 
   pg.items.forEach((row) => {
     const tr = document.createElement("tr");
-    const cells = [row.employee_afm || "", row.eponymo || "", row.onoma || ""];
+    const tdAfm = document.createElement("td");
+    tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
+    tr.appendChild(tdAfm);
+    tr.appendChild(Office.createWorkLogHistoryCell(row));
+
+    const cells = [row.eponymo || "", row.onoma || ""];
     if (multi) cells.push(row.work_date || "");
     cells.push(
       Office.formatFlexMinutes(row.flex_arrival_minutes),
@@ -177,14 +187,8 @@ function renderTablePage() {
     );
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
-      if (i === 1) {
+      if (i === 0) {
         td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
-      } else if (i === 2) {
-        td.className = "work-log-name-cell";
-        const span = document.createElement("span");
-        span.textContent = txt;
-        td.appendChild(span);
-        Office.appendWorkLogHistoryButton(td, row);
       } else {
         td.textContent = txt;
       }

@@ -9,6 +9,7 @@ const RETRO_AITIOLOGIA_LABEL =
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("workcard");
+  Office.initWorkLogHistoryModal();
   startTerminalClock();
   employeeAc = Office.createAutocomplete({
     inputId: "wcEmployeeInput",
@@ -350,10 +351,16 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   wrap.innerHTML = `<p class="table-meta">${count} εγγραφές · portal → karta_work_log</p>`;
   const t = document.createElement("table");
   t.className = "data";
+  const headers = ["ΑΦΜ", "", "Επώνυμο", "Όνομα", "Ψηφ. ωράριο", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"];
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ψηφ. ωράριο", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"].forEach((h) => {
+  headers.forEach((h) => {
     const th = document.createElement("th");
-    th.textContent = h;
+    if (h === "") {
+      th.className = "col-history";
+      th.setAttribute("aria-label", "Ιστορικό");
+    } else {
+      th.textContent = h;
+    }
     hr.appendChild(th);
   });
   t.appendChild(hr);
@@ -362,8 +369,12 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
     if (Office.workLogRowIsDeficient(row)) {
       tr.classList.add("work-log-row--deficient");
     }
-    [
-      row.employee_afm,
+    const tdAfm = document.createElement("td");
+    tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
+    tr.appendChild(tdAfm);
+    tr.appendChild(Office.createWorkLogHistoryCell(row));
+
+    const cells = [
       row.eponymo,
       row.onoma,
       row.schedule_label || "—",
@@ -371,15 +382,16 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
       row.work_date,
       row.hour_from,
       row.hour_to,
-    ].forEach((txt, i) => {
+    ];
+    cells.forEach((txt, i) => {
       const td = document.createElement("td");
       if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
-      else if (i === 4) {
+      else if (i === 3) {
         td.className = "col-flex";
         td.textContent = txt || "";
-      } else if (i === 6) {
+      } else if (i === 5) {
         td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
-      } else if (i === 7) {
+      } else if (i === 6) {
         const pending = Office.workLogExitStillPending(row);
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,

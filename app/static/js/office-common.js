@@ -43,6 +43,34 @@ const Office = {
     });
   },
 
+  initPageBackButton() {
+    if (document.body.classList.contains("login-page")) return;
+    const main = document.querySelector("main.main");
+    const title = main?.querySelector(":scope > .page-title");
+    if (!main || !title || title.closest(".page-title-bar")) return;
+    if (main.querySelector(":scope > .page-back, :scope > .page-back-link")) return;
+
+    const bar = document.createElement("div");
+    bar.className = "page-title-bar";
+    title.parentNode.insertBefore(bar, title);
+    bar.appendChild(title);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "page-back-btn";
+    btn.title = "Πίσω";
+    btn.setAttribute("aria-label", "Πίσω στην προηγούμενη σελίδα");
+    btn.innerHTML = this.icon("arrow-left");
+    btn.addEventListener("click", () => {
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/ui/";
+    });
+    bar.appendChild(btn);
+  },
+
   getDraft() {
     try {
       return JSON.parse(sessionStorage.getItem(this.draftKey) || "{}");
@@ -587,6 +615,17 @@ const Office = {
     return iso || null;
   },
 
+  addDaysIso(iso, days) {
+    const p = String(iso || "").split("-");
+    if (p.length !== 3) return null;
+    const y = parseInt(p[0], 10);
+    const m = parseInt(p[1], 10);
+    const d = parseInt(p[2], 10);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    const dt = new Date(y, m - 1, d + days);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  },
+
   normalizeHourMinute(timeStr) {
     const m = String(timeStr || "").trim().match(/^(\d{1,2}):(\d{2})/);
     if (!m) return "";
@@ -733,19 +772,41 @@ const Office = {
     return h * 60 + min;
   },
 
-  scheduleEndMinutesFromRow(row) {
+  scheduleStartMinutesFromRow(row) {
     const sched = row?.schedule;
-    if (sched && sched.hour_to) {
-      const parsed = this.parseClockToMinutes(sched.hour_to);
+    if (sched && sched.hour_from) {
+      const parsed = this.parseClockToMinutes(sched.hour_from);
       if (parsed != null) return parsed;
     }
     const label = String(row?.schedule_label || "").trim();
     if (!label || label === "—" || /ρεπο|ανάπαυση/i.test(label)) return null;
     const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
     const last = parts[parts.length - 1] || label;
-    const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
+    const match = last.match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*[–\-]/);
     if (match) return this.parseClockToMinutes(match[1]);
     return null;
+  },
+
+  scheduleEndMinutesFromRow(row) {
+    let endMin = null;
+    const sched = row?.schedule;
+    if (sched && sched.hour_to) {
+      endMin = this.parseClockToMinutes(sched.hour_to);
+    }
+    if (endMin == null) {
+      const label = String(row?.schedule_label || "").trim();
+      if (!label || label === "—" || /ρεπο|ανάπαυση/i.test(label)) return null;
+      const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
+      const last = parts[parts.length - 1] || label;
+      const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
+      if (match) endMin = this.parseClockToMinutes(match[1]);
+    }
+    if (endMin == null) return null;
+    const startMin = this.scheduleStartMinutesFromRow(row);
+    if (startMin != null && endMin <= startMin) {
+      endMin += 24 * 60;
+    }
+    return endMin;
   },
 
   /** Σήμερα, έχει είσοδο, λείπει έξοδος, ακόμα πριν το τέλος βάρδιας (ψηφ. ωράριο). */
@@ -754,12 +815,23 @@ const Office = {
     const ht = String(row?.hour_to || "").trim();
     if (!hf || ht) return false;
     const wd = this.workDateToIso(row?.work_date);
-    if (wd !== this.todayIsoLocal()) return false;
+    if (!wd) return false;
     const endMin = this.scheduleEndMinutesFromRow(row);
     if (endMin == null) return false;
+    const today = this.todayIsoLocal();
     const nowMin = this.parseClockToMinutes(this.formatTime24(new Date(), { seconds: false }));
     if (nowMin == null) return false;
-    return nowMin < endMin;
+
+    const spansMidnight = endMin >= 24 * 60;
+    let timelineNow = null;
+    if (wd === today) {
+      timelineNow = nowMin;
+    } else if (spansMidnight && this.addDaysIso(wd, 1) === today) {
+      timelineNow = nowMin + 24 * 60;
+    } else {
+      return false;
+    }
+    return timelineNow < endMin;
   },
 
   formatWorkLogTimeCell(value, title = "Λείπει ώρα") {
@@ -949,6 +1021,13 @@ const Office = {
     await this.loadWorkLogHistory({ wrap, sub, afm, name });
   },
 
+  createWorkLogHistoryCell(row) {
+    const td = document.createElement("td");
+    td.className = "col-history work-log-history-cell";
+    this.appendWorkLogHistoryButton(td, row);
+    return td;
+  },
+
   appendWorkLogHistoryButton(td, row) {
     const afm = (row.employee_afm || "").trim();
     if (!afm) return;
@@ -1030,6 +1109,7 @@ const Office = {
 document.addEventListener("DOMContentLoaded", () => {
   Office.installFetchAuthGuard();
   Office.initChrome();
+  Office.initPageBackButton();
   Office.ensureLogoutLink();
   Office.loadActiveStore();
 });

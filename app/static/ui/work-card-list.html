@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="el">
 <head>
   <meta charset="UTF-8">
@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <title>erganiOS - Ψηφιακή κάρτα</title>
-  <link rel="stylesheet" href="/static/css/office.css?v=20260619pendingexit">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260619back">
 </head>
 <body>
   <div class="layout">
@@ -133,11 +133,25 @@
         <p class="work-card-section-desc">Τι έχουμε υποβάλει στο Ergani API (WRKCardSE) και αποθηκεύσει τοπικά.</p>
         <div id="workCardWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
       </div>
+
+      <div id="workLogHistoryModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="workLogHistoryTitle">
+        <div class="office-modal-backdrop" data-history-close></div>
+        <div class="office-modal-panel office-modal-panel--history">
+          <h2 id="workLogHistoryTitle" class="office-modal-title">Ιστορικό πραγματικής απασχόλησης</h2>
+          <p id="workLogHistoryEmployee" class="office-modal-sub"></p>
+          <div id="workLogHistoryWrap" class="work-log-history-wrap">
+            <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+          </div>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" data-history-close>Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
-  <script src="/static/js/office-common.js?v=20260619datefix"></script>
+  <script src="/static/js/office-common.js?v=20260619wcard"></script>
   <script src="/static/js/office-autocomplete.js"></script>
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/work-card-list.js?v=20260619datefix"></script>
+  <script src="/static/js/work-card-list.js?v=20260619wcard"></script>
 </body>
 </html>

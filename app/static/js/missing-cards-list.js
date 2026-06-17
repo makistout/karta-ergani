@@ -80,6 +80,7 @@ function renderTablePage(rows) {
   t.className = "data";
   const headers = [
     "ΑΦΜ",
+    "",
     "Επώνυμο",
     "Όνομα",
     "Ημερομηνία",
@@ -92,7 +93,12 @@ function renderTablePage(rows) {
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
-    th.textContent = h;
+    if (h === "") {
+      th.className = "col-history";
+      th.setAttribute("aria-label", "Ιστορικό");
+    } else {
+      th.textContent = h;
+    }
     hr.appendChild(th);
   });
   t.appendChild(hr);
@@ -102,8 +108,12 @@ function renderTablePage(rows) {
     if (Office.workLogRowIsDeficient(row)) {
       tr.classList.add("work-log-row--deficient");
     }
+    const tdAfm = document.createElement("td");
+    tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
+    tr.appendChild(tdAfm);
+    tr.appendChild(Office.createWorkLogHistoryCell(row));
+
     const cells = [
-      row.employee_afm || "",
       row.eponymo || "",
       row.onoma || "",
       row.work_date || "",
@@ -114,17 +124,11 @@ function renderTablePage(rows) {
     ];
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
-      if (i === 1) {
+      if (i === 0) {
         td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
-      } else if (i === 2) {
-        td.className = "work-log-name-cell";
-        const span = document.createElement("span");
-        span.textContent = txt;
-        td.appendChild(span);
-        Office.appendWorkLogHistoryButton(td, row);
-      } else if (i === 6) {
+      } else if (i === 5) {
         td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
-      } else if (i === 7) {
+      } else if (i === 6) {
         const pending = Office.workLogExitStillPending(row);
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,

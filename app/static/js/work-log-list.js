@@ -95,40 +95,46 @@ function renderTablePage() {
 
   const t = document.createElement("table");
   t.className = "data";
-  const headers = ["ΑΦΜ", "Επώνυμο", "Όνομα"];
+  const headers = ["ΑΦΜ", "", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
-  headers.push("Ευελ. (λεπτά)", "Ψηφ. ωράριο", "Από", "Έως", "ΑΑ", "Κάρτα");
+  headers.push("Ευελ. (λεπτά)", "Ψηφ. ωράριο", "Από", "Έως", "Κάρτα");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
-    th.textContent = h;
+    if (h === "") {
+      th.className = "col-history";
+      th.setAttribute("aria-label", "Ιστορικό");
+    } else {
+      th.textContent = h;
+    }
     hr.appendChild(th);
   });
   t.appendChild(hr);
 
   pg.items.forEach((row) => {
     const tr = document.createElement("tr");
-    const cells = [row.employee_afm || "", row.eponymo || "", row.onoma || ""];
+    if (Office.workLogRowIsDeficient(row)) {
+      tr.classList.add("work-log-row--deficient");
+    }
+    const tdAfm = document.createElement("td");
+    tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
+    tr.appendChild(tdAfm);
+    tr.appendChild(Office.createWorkLogHistoryCell(row));
+
+    const cells = [row.eponymo || "", row.onoma || ""];
     if (multi) cells.push(row.work_date || "");
     cells.push(
       Office.formatFlexMinutes(row.flex_arrival_minutes),
       row.schedule_label || "—",
       row.hour_from || "",
-      row.hour_to || "",
-      row.source_aa || "0"
+      row.hour_to || ""
     );
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
-      const colHourFrom = multi ? 6 : 5;
-      const colHourTo = multi ? 7 : 6;
-      if (i === 1) {
+      const colHourFrom = multi ? 5 : 4;
+      const colHourTo = multi ? 6 : 5;
+      if (i === 0) {
         td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
-      } else if (i === 2) {
-        td.className = "work-log-name-cell";
-        const span = document.createElement("span");
-        span.textContent = txt;
-        td.appendChild(span);
-        Office.appendWorkLogHistoryButton(td, row);
       } else if (i === colHourFrom) {
         td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
       } else if (i === colHourTo) {
