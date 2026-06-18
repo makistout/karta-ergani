@@ -1,6 +1,5 @@
 let datePicker = null;
 let tableState = { rows: [], page: 1, count: 0, store: null, range: null };
-let initialAutoSyncDone = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("worklog");
@@ -15,12 +14,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const activeData = await Office.fetchActiveStore();
   Office.applyActiveStoreChrome(activeData);
   await loadWorkLog(activeData);
-
-  void maybeAutoSyncWorkLog(activeData).then(async (synced) => {
-    if (synced) {
-      await loadWorkLog(await Office.fetchActiveStore({ refresh: true }));
-    }
-  });
 });
 
 function getRange() {
@@ -184,27 +177,6 @@ function appendWorkCardLinkCell(tr, row, range) {
     td.appendChild(a);
   }
   tr.appendChild(td);
-}
-
-async function maybeAutoSyncWorkLog(activeData) {
-  if (initialAutoSyncDone) return false;
-  initialAutoSyncDone = true;
-  try {
-    const data = activeData || (await Office.fetchActiveStore());
-    const store = data.store;
-    if (!store) return false;
-    if (
-      !Office.workLogNeedsAutoSync(
-        store.work_log_last_sync_at,
-        store.work_log_sync_interval_minutes
-      )
-    ) {
-      return false;
-    }
-    return await runSync({ date: Office.todayIsoLocal() }, { auto: true });
-  } catch {
-    return false;
-  }
 }
 
 async function runSync(bodyOverride, opts = {}) {

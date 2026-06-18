@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-06-18 (β) — Αφαίρεση per-store auto-sync πραγματικής (30 λεπτά)
+
+- **Αφαιρέθηκε** το διάστημα `work_log_sync_interval_minutes` — UI ρυθμίσεων καταστήματος, `POST /api/store/<id>/sync-settings`, auto-sync στο άνοιγμα **Πραγματικής απασχόλησης**.
+- **Κρατήθηκε** συγχρονισμός Ergani κατά το **άνοιγμα Ψηφιακής κάρτας** (`work-card-list.js` → `refreshDayData`).
+- **Πραγματική απασχόληση**: εμφανίζει μόνο τελευταίο sync + «Αυτόματος συγχρονισμός server κάθε 10 λεπτά».
+- **Ψηφιακή κάρτα**: «Συγχρονισμός Ergani κατά το άνοιγμα της σελίδας».
+- **Βάση**: `sql/alter_drop_work_log_sync_interval.sql`, script `run_migration_drop_work_log_sync_interval.py`.
+
+---
+
 ## 2026-06-18 — Αυτόματος συγχρονισμός κάθε 10 λεπτά
 
 ### Υποδομή scheduler

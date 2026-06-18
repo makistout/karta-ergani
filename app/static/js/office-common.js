@@ -588,14 +588,6 @@ const Office = {
     return !last || last < today;
   },
 
-  workLogNeedsAutoSync(workLogLastSyncAt, intervalMinutes) {
-    const mins = Math.max(5, parseInt(intervalMinutes, 10) || 30);
-    if (!workLogLastSyncAt) return true;
-    const t = Date.parse(String(workLogLastSyncAt).replace(" ", "T"));
-    if (!Number.isFinite(t)) return true;
-    return Date.now() - t >= mins * 60 * 1000;
-  },
-
   erganiDateToIso(workDate) {
     const m = String(workDate || "")
       .trim()
@@ -1092,12 +1084,17 @@ const Office = {
         ` · Αυτόματη ανανέωση σήμερα αν λείπει.`;
       return;
     }
-    const mins = store.work_log_sync_interval_minutes || 30;
+    if (kind === "worklog-open") {
+      const last = this.formatSyncTimestamp(store.work_log_last_sync_at);
+      el.innerHTML =
+        `Τελευταίος συγχρονισμός πραγματικής: <strong>${this.escapeHtml(last)}</strong>` +
+        ` · Συγχρονισμός Ergani κατά το άνοιγμα της σελίδας.`;
+      return;
+    }
     const last = this.formatSyncTimestamp(store.work_log_last_sync_at);
     el.innerHTML =
       `Τελευταίος συγχρονισμός πραγματικής: <strong>${this.escapeHtml(last)}</strong>` +
-      ` · Αυτόματη ανανέωση κάθε <strong>${mins}</strong> λεπτά` +
-      ` (<a href="/ui/stores">ρυθμίσεις καταστήματος</a>).`;
+      ` · Αυτόματος συγχρονισμός server κάθε 10 λεπτά.`;
   },
 
   installFetchAuthGuard() {

@@ -178,7 +178,6 @@ async function editStore(id) {
       kad_desc: store.kad_desc,
       kallikratis_code: store.kallikratis_code,
       kallikratis_desc: store.kallikratis_desc,
-      work_log_sync_interval_minutes: store.work_log_sync_interval_minutes || 30,
       accessToken: "",
       branches: null,
     });

@@ -165,7 +165,6 @@ def save_store():
         return jsonify({"error": "Υποχρευτικά admin username και password (portal)"}), 400
     if not fields["employer_afm"]:
         return jsonify({"error": "Υποχρεωτικό employer_afm"}), 400
-    wl_interval = data.get("work_log_sync_interval_minutes")
     saved = repo.save_store_config(
         name=fields["name"],
         username=fields["username"],
@@ -184,7 +183,6 @@ def save_store():
         kad_desc=data.get("kad_desc"),
         kallikratis_code=data.get("kallikratis_code"),
         kallikratis_desc=data.get("kallikratis_desc"),
-        work_log_sync_interval_minutes=wl_interval,
         store_id=fields["store_id"],
     )
     return jsonify({"success": True, "id": saved})
@@ -224,20 +222,6 @@ def record_store_sync():
         "schedule_last_sync_at": _iso_dt(sched_at),
         "work_log_last_sync_at": _iso_dt(wl_at),
     })
-
-
-@store_bp.post("/<int:store_id>/sync-settings")
-def update_store_sync_settings(store_id: int):
-    cfg = repo.get_store_config(store_id)
-    if not cfg:
-        return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
-    data = request.get_json(silent=True) or {}
-    if "work_log_sync_interval_minutes" not in data:
-        return jsonify({"error": "Λείπει work_log_sync_interval_minutes"}), 400
-    mins = repo.update_work_log_sync_interval(
-        store_id, data.get("work_log_sync_interval_minutes")
-    )
-    return jsonify({"success": True, "work_log_sync_interval_minutes": mins})
 
 
 @store_bp.delete("/<int:store_id>")

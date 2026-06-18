@@ -1,4 +1,4 @@
-"""Εκτέλεση sql/alter_add_store_sync_timestamps.sql (idempotent)."""
+"""Εκτέλεση sql/alter_drop_work_log_sync_interval.sql (idempotent)."""
 from __future__ import annotations
 
 import sys
@@ -12,30 +12,23 @@ if str(_ROOT) not in sys.path:
 
 from config import Config
 
-_COLS = (
-    "schedule_last_sync_at",
-    "work_log_last_sync_at",
-)
 
-
-def col_exists(cur: pyodbc.Cursor, name: str) -> bool:
+def col_exists(cur: pyodbc.Cursor) -> bool:
     cur.execute(
-        "SELECT COL_LENGTH(N'dbo.karta_store_config', ?)",
-        name,
+        "SELECT COL_LENGTH(N'dbo.karta_store_config', N'work_log_sync_interval_minutes')"
     )
     row = cur.fetchone()
     return row is not None and row[0] is not None
 
 
 def main() -> None:
-    sql_path = _ROOT / "sql" / "alter_add_store_sync_timestamps.sql"
+    sql_path = _ROOT / "sql" / "alter_drop_work_log_sync_interval.sql"
     conn = pyodbc.connect(Config.pyodbc_connection_string(), autocommit=True)
     cur = conn.cursor()
-    before = {c: col_exists(cur, c) for c in _COLS}
-    print("BEFORE:", before)
-    if all(before.values()):
+    if not col_exists(cur):
         print("ALREADY_APPLIED")
         return
+    print("BEFORE: work_log_sync_interval_minutes exists")
     raw = sql_path.read_text(encoding="utf-8")
     batches = [b.strip() for b in raw.split("\nGO\n") if b.strip()]
     for i, batch in enumerate(batches, 1):
@@ -43,11 +36,9 @@ def main() -> None:
             continue
         print(f"Batch {i}...")
         cur.execute(batch)
-    after = {c: col_exists(cur, c) for c in _COLS}
-    print("AFTER:", after)
-    if not all(after.values()):
-        raise SystemExit("Migration incomplete")
-    print("OK")
+    if col_exists(cur):
+        raise SystemExit("Migration incomplete — column still exists")
+    print("OK: work_log_sync_interval_minutes removed")
 
 
 if __name__ == "__main__":

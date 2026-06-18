@@ -120,7 +120,6 @@ async function onSave() {
     kad_desc: kad.label,
     kallikratis_code: kall.code,
     kallikratis_desc: kall.label,
-    work_log_sync_interval_minutes: draft.work_log_sync_interval_minutes || 30,
   };
   const btn = document.getElementById("btnSaveStore");
   btn.disabled = true;

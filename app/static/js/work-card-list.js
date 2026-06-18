@@ -192,7 +192,7 @@ async function initPage() {
     return;
   }
   await Office.loadActiveStore();
-  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog");
+  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog-open");
   await loadEmployees();
   const prefill = Office.applyWorkCardQueryPrefill(
     datePicker,
@@ -302,7 +302,7 @@ async function loadDayData() {
   const date = cardDate();
   if (!date || !logWrap || !cardWrap) return;
 
-  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog");
+  await Office.refreshActiveStoreSyncMeta("workCardWorkLogSyncMeta", "worklog-open");
 
   Office.showTableLoading(logWrap, "Φόρτωση πραγματικής απασχόλησης…");
   Office.showTableLoading(cardWrap, "Φόρτωση δηλώσεων κάρτας…");

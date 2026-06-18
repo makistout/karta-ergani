@@ -7,7 +7,6 @@ from typing import Any
 from app.db import cursor
 from app.row_util import row_to_dict, rows_to_dicts
 
-_DEFAULT_WL_SYNC_INTERVAL = 30
 _sync_meta_cols: bool | None = None
 
 
@@ -23,30 +22,20 @@ def sync_meta_columns_available() -> bool:
             )
             row = cur.fetchone()
             _sync_meta_cols = row is not None and row[0] is not None
-    except pyodbc.Error:
+    except Exception:
         _sync_meta_cols = False
     return _sync_meta_cols
-
-
-def normalize_work_log_sync_interval_minutes(value: Any) -> int:
-    try:
-        mins = int(value)
-    except (TypeError, ValueError):
-        mins = _DEFAULT_WL_SYNC_INTERVAL
-    return max(5, min(mins, 24 * 60))
 
 
 def _store_sync_select_extra() -> str:
     if sync_meta_columns_available():
         return """
                CAST(schedule_last_sync_at AS datetime2) AS schedule_last_sync_at,
-               CAST(work_log_last_sync_at AS datetime2) AS work_log_last_sync_at,
-               ISNULL(work_log_sync_interval_minutes, 30) AS work_log_sync_interval_minutes
+               CAST(work_log_last_sync_at AS datetime2) AS work_log_last_sync_at
         """
     return """
                CAST(last_sync_at AS datetime2) AS schedule_last_sync_at,
-               CAST(last_sync_at AS datetime2) AS work_log_last_sync_at,
-               CAST(30 AS int) AS work_log_sync_interval_minutes
+               CAST(last_sync_at AS datetime2) AS work_log_last_sync_at
     """
 
 
@@ -192,7 +181,6 @@ def save_store_config(
     ergani_env: str = "production",
     web_username: str | None = None,
     web_password: str | None = None,
-    work_log_sync_interval_minutes: int | None = None,
     store_id: int | None = None,
 ) -> int:
     wu = (web_username or "").strip() or None
@@ -200,11 +188,6 @@ def save_store_config(
     existing: dict[str, Any] | None = None
     if store_id:
         existing = get_store_config(int(store_id))
-    wl_interval = normalize_work_log_sync_interval_minutes(
-        work_log_sync_interval_minutes
-        if work_log_sync_interval_minutes is not None
-        else (existing or {}).get("work_log_sync_interval_minutes")
-    )
     if store_id:
         if existing:
             if not wp:
@@ -220,7 +203,6 @@ def save_store_config(
                 oaed_code = ?, oaed_desc = ?,
                 kad_code = ?, kad_desc = ?,
                 kallikratis_code = ?, kallikratis_desc = ?,
-                work_log_sync_interval_minutes = ?,
                 updated_at = SYSDATETIMEOFFSET()
             WHERE id = ?
         """
@@ -228,7 +210,7 @@ def save_store_config(
             name, username, password, usertype, wu, wp,
             employer_afm, branch_aa, ergani_env,
             sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
-            kallikratis_code, kallikratis_desc, wl_interval, int(store_id),
+            kallikratis_code, kallikratis_desc, int(store_id),
         )
         with cursor() as cur:
             cur.execute(sql, params)
@@ -239,17 +221,16 @@ def save_store_config(
             web_username, web_password,
             employer_afm, branch_aa, ergani_env,
             sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
-            kallikratis_code, kallikratis_desc,
-            work_log_sync_interval_minutes
+            kallikratis_code, kallikratis_desc
         )
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     params = (
         name, username, password, usertype, wu, wp,
         employer_afm, branch_aa, ergani_env,
         sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
-        kallikratis_code, kallikratis_desc, wl_interval,
+        kallikratis_code, kallikratis_desc,
     )
     with cursor() as cur:
         cur.execute(sql, params)
@@ -308,23 +289,6 @@ def touch_work_log_sync(store_id: int) -> None:
             )
     else:
         touch_last_sync(sid)
-
-
-def update_work_log_sync_interval(store_id: int, minutes: int) -> int:
-    wl_interval = normalize_work_log_sync_interval_minutes(minutes)
-    if not sync_meta_columns_available():
-        return wl_interval
-    with cursor() as cur:
-        cur.execute(
-            """
-            UPDATE dbo.karta_store_config
-            SET work_log_sync_interval_minutes = ?,
-                updated_at = SYSDATETIMEOFFSET()
-            WHERE id = ?
-            """,
-            (wl_interval, int(store_id)),
-        )
-    return wl_interval
 
 
 def effective_schedule_sync_at(cfg: dict[str, Any]) -> Any:

@@ -35,7 +35,6 @@ def active_store_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "portal_base_url": ctx.get("portal_base_url"),
         "schedule_last_sync_at": ctx.get("schedule_last_sync_at"),
         "work_log_last_sync_at": ctx.get("work_log_last_sync_at"),
-        "work_log_sync_interval_minutes": ctx.get("work_log_sync_interval_minutes") or 30,
         "sync_meta_columns": ctx.get("sync_meta_columns"),
     }
 
@@ -63,7 +62,6 @@ def resolve_active_store(*, refresh_session: bool = True) -> dict[str, Any] | No
     ctx = store_api_context(cfg)
     ctx["schedule_last_sync_at"] = _iso_dt(repo.effective_schedule_sync_at(cfg))
     ctx["work_log_last_sync_at"] = _iso_dt(repo.effective_work_log_sync_at(cfg))
-    ctx["work_log_sync_interval_minutes"] = cfg.get("work_log_sync_interval_minutes") or 30
     ctx["sync_meta_columns"] = repo.sync_meta_columns_available()
     if refresh_session:
         session["employer_afm"] = ctx["employer_afm"]
