@@ -18,6 +18,7 @@
 
 - **`list_work_log_missing_cards_paged`**: εμφανίζει μόνο εργαζόμενους με **ενεργή απασχόληση** στο παράρτημα (ίδιο κριτήριο με λίστα προσωπικού).
 - **`delete_work_log_without_active_employment()`**: αφαίρεση «ορφανών» εγγραφών πραγματικής (ιστορικά δεδομένα Excel χωρίς τρέχον δυναμικό).
+- Fix **SQL Server 4104** (`w.employee_afm could not be bound`): στο `DELETE` το correlated `EXISTS` χρησιμοποιεί `karta_work_log.*` (χωρίς alias `w` — το alias δεν ισχύει εκτός `FROM`).
 
 ### Wizard καταστήματος — EX_BASE_02 & credentials
 
