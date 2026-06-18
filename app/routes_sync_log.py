@@ -15,6 +15,7 @@ _OPERATION_LABELS = {
     "schedule_sync": "Ψηφιακό ωράριο",
     "period_sync": "Συγχρονισμός περιόδου",
     "work_log_sync": "Πραγματική απασχόληση",
+    "scheduled_today_sync": "Αυτόματος συγχρονισμός",
 }
 
 

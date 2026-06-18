@@ -441,10 +441,15 @@ def sync_work_log_from_portal(
     to_iso: str | None = None,
     *,
     max_days: int = 31,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     portal_base = _portal_base(ctx)
     for ev in iter_work_log_sync_events(
-        ctx, from_iso=from_iso, to_iso=to_iso, max_days=max_days
+        ctx,
+        from_iso=from_iso,
+        to_iso=to_iso,
+        max_days=max_days,
+        run_id=run_id,
     ):
         if ev.get("event") == "done":
             return ev.get("sync") or {

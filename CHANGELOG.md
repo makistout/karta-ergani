@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-06-18 — Αυτόματος συγχρονισμός κάθε 10 λεπτά
+
+### Υποδομή scheduler
+
+- **`app/scheduled_sync.py`**: συγχρονισμός **όλων των καταστημάτων** με portal credentials για **σήμερα** — ψηφιακό ωράριο + πραγματική απασχόληση.
+- **`scripts/run_scheduled_sync.py`**: CLI για Task Scheduler (`--dry-run`, `--store-id`, `--date`, `--force`).
+- **`scripts/setup_scheduled_sync_task.ps1`**: εγκατάσταση Windows task **`ErganiOS-ScheduledSync10Min`** (μέσω `schtasks`: καθημερινά 00:00, επανάληψη κάθε **10 λεπτά**, `:00` / `:10` / `:20` …).
+- **`.env`**: `KARTA_SCHEDULED_SYNC_ENABLED=1` (`0` για απενεργοποίηση).
+
+### Καταγραφές sync (`/ui/sync-log`)
+
+- Operation **`scheduled_today_sync`** — ετικέτα UI **«Αυτόματος συγχρονισμός»** (`routes_sync_log.py`).
+- **Ξεχωριστό run ανά κατάστημα** (`store_id` + όνομα): φάσεις ωραρίου/πραγματικής, αποτελέσματα (πλήθος, πηγή excel/portal), σφάλματα.
+- **Συνολική εγγραφή κύκλου** όταν συγχρονίζονται 2+ καταστήματα (`[OK]` / `[FAIL]` ανά κατάστημα).
+- Καταγραφή **παράλειψης** (ήδη τρέχει sync)· dry-run **δεν** γράφει στη βάση.
+- Portal sync με **`run_id`** κοινό — λεπτομέρειες portal στο ίδιο run, χωρίς ξεχωριστά orphan runs (`portal_schedule_sync.py`, `portal_work_log_sync.py`).
+
+### Timestamps καταστήματος
+
+- Μετά **επιτυχημένη** φάση: `touch_schedule_sync` / `touch_work_log_sync` → `schedule_last_sync_at`, `work_log_last_sync_at`, `last_sync_at` στο `karta_store_config` (ίδια λογική με χειροκίνητο sync).
+- Στις καταγραφές: γραμμές `Ενημερώθηκε schedule_last_sync_at` / `work_log_last_sync_at` ή προειδοποίηση αν απέτυχε η φάση.
+- Αν αποτύχει μία φάση (π.χ. SQL 4104 στην πραγματική), **δεν** ενημερώνεται το αντίστοιχο timestamp.
+
+### Επόμενο (planned)
+
+- Έλεγχοι ψηφιακής κάρτας vs ηλεκτρονικού ωραρίου και alerts (Telegram κ.λπ.) μετά τον sync.
+
+---
+
 ## 2026-06-20 — Excel πραγματικής, wizard παραρτήματος, Telegram χτύπημα, καθαρισμός δεδομένων
 
 ### Πραγματική απασχόληση — Excel export (κύρια μέθοδος)
