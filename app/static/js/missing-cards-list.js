@@ -78,26 +78,30 @@ function renderTablePage(rows) {
 
   const t = document.createElement("table");
   t.className = "data";
-  const headers = [
-    "ΑΦΜ",
-    "",
-    "Επώνυμο",
-    "Όνομα",
-    "Ημερομηνία",
-    "Ευελ. (λεπτά)",
-    "Ψηφ. ωράριο",
-    "Από",
-    "Έως",
-    "Κάρτα",
+  const columns = [
+    { text: "ΑΦΜ" },
+    { aria: "Ιστορικό", className: "col-history" },
+    { text: "Επώνυμο" },
+    { text: "Όνομα" },
+    { text: "Ημερομηνία" },
+    { text: "Ευελ. (λεπτά)" },
+    { text: "Ψηφ. ωράριο" },
+    { text: "Από" },
+    { text: "Έως" },
+    { text: "Κάρτα" },
+    { aria: "Ειδοποίηση", className: "work-log-action-cell--notify", icon: "bell" },
   ];
   const hr = document.createElement("tr");
-  headers.forEach((h) => {
+  columns.forEach((col) => {
     const th = document.createElement("th");
-    if (h === "") {
-      th.className = "col-history";
-      th.setAttribute("aria-label", "Ιστορικό");
+    if (col.className) th.className = col.className;
+    if (col.icon) {
+      th.innerHTML = Office.icon(col.icon);
+      th.setAttribute("aria-label", col.aria || "");
+    } else if (col.aria) {
+      th.setAttribute("aria-label", col.aria);
     } else {
-      th.textContent = h;
+      th.textContent = col.text || "";
     }
     hr.appendChild(th);
   });
@@ -140,6 +144,7 @@ function renderTablePage(rows) {
       tr.appendChild(td);
     });
     appendWorkCardLinkCell(tr, row);
+    appendNotifyCell(tr, row);
     t.appendChild(tr);
   });
 
@@ -162,21 +167,82 @@ function appendWorkCardLinkCell(tr, row) {
   const afm = (row.employee_afm || "").trim();
   const dateIso = Office.erganiDateToIso(row.work_date) || "";
   const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
-  const opts = {};
-  if (row.needs_card_punch && row.retro_time) {
-    opts.retro = true;
-    opts.retro_time = row.retro_time;
-    opts.card_event = row.card_event || "check_out";
-    opts.retro_highlight = true;
-  }
+  const opts = Office.workCardUrlOptsFromRow(row);
   const a = document.createElement("a");
   a.href = Office.workCardUrl(afm, dateIso, name, opts);
-  a.className = row.needs_card_punch
+  a.className = opts.retro
     ? "work-log-card-link work-log-card-link--required"
     : "work-log-card-link";
   a.title = "Ψηφιακή κάρτα";
   a.setAttribute("aria-label", `Ψηφιακή κάρτα — ${name || afm}`);
   a.innerHTML = Office.icon("credit-card-2-front");
   td.appendChild(a);
+  tr.appendChild(td);
+}
+
+async function sendMissingPunchNotify(row, btn) {
+  const summary = Office.workLogMissingPunchSummary(row);
+  if (!summary || summary === "έξοδος εκκρεμεί") {
+    Office.showMsg(
+      "missingCardsMsg",
+      "Δεν αποστέλλεται ειδοποίηση όταν η έξοδος εκκρεμεί (βάρδια σε εξέλιξη).",
+      false
+    );
+    return;
+  }
+  const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim() || row.employee_afm;
+  if (btn) btn.disabled = true;
+  Office.showLoading("missingCardsMsg", `Αποστολή ειδοποίησης για ${name}…`);
+  try {
+    const res = await fetch("/api/telegram/notify/missing-punch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employee_afm: row.employee_afm,
+        work_date: row.work_date,
+        eponymo: row.eponymo,
+        onoma: row.onoma,
+        hour_from: row.hour_from,
+        hour_to: row.hour_to,
+      }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok || !data.success) {
+      Office.showMsg(
+        "missingCardsMsg",
+        data.error || data.errors?.join(" · ") || "Αποτυχία αποστολής",
+        false
+      );
+      return;
+    }
+    const n = data.sent || 0;
+    Office.showMsg(
+      "missingCardsMsg",
+      `Εστάλη σε ${n} λήπτη/ες — ${summary} (${row.work_date})`,
+      true
+    );
+  } catch (e) {
+    Office.showMsg("missingCardsMsg", String(e), false);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function appendNotifyCell(tr, row) {
+  const td = document.createElement("td");
+  td.className = "work-log-action-cell work-log-action-cell--notify";
+  const summary = Office.workLogMissingPunchSummary(row);
+  if (!summary) {
+    tr.appendChild(td);
+    return;
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "work-log-notify-btn";
+  btn.title = `Ειδοποίηση Telegram — ${summary}`;
+  btn.setAttribute("aria-label", `Ειδοποίηση — ${summary}`);
+  btn.innerHTML = Office.icon("bell");
+  btn.addEventListener("click", () => sendMissingPunchNotify(row, btn));
+  td.appendChild(btn);
   tr.appendChild(td);
 }

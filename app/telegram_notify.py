@@ -68,3 +68,55 @@ def notify_store_recipients(
         except Exception as ex:
             errors.append(f"{row.get('name')}: {ex}")
     return {"sent": sent, "total": len(rows), "errors": errors}
+
+
+def format_missing_punch_notification(
+    *,
+    store_name: str,
+    employee_afm: str,
+    eponymo: str | None,
+    onoma: str | None,
+    work_date: str,
+    hour_from: str | None,
+    hour_to: str | None,
+    retro_time: str | None = None,
+    card_event: str | None = None,
+    punch_url: str | None = None,
+    has_pin: bool = False,
+) -> str:
+    """Κείμενο ειδοποίησης για ελλιπή είσοδο/έξοδο πραγματικής απασχόλησης."""
+    name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
+    hf = (hour_from or "").strip()
+    ht = (hour_to or "").strip()
+    missing: list[str] = []
+    if not hf:
+        missing.append("είσοδο")
+    if not ht:
+        missing.append("έξοδο")
+    if len(missing) >= 2:
+        defect = "ελλιπή είσοδο και έξοδο"
+        punch_label = "είσοδο/έξοδο"
+    elif missing and missing[0] == "είσοδο":
+        defect = "ελλιπή είσοδο"
+        punch_label = "είσοδο"
+    else:
+        defect = "ελλιπή έξοδο"
+        punch_label = "έξοδο"
+    store = (store_name or "").strip()
+    prefix = f"erganiOS — {store}\n" if store else "erganiOS\n"
+    lines = [
+        f"{prefix}Ο εργαζόμενος {name} (ΑΦΜ {employee_afm}) "
+        f"έχει {defect} την {work_date}."
+    ]
+    rt = (retro_time or "").strip()
+    if rt and card_event:
+        lines.append(f"Θα έπρεπε να χτυπήσει κάρτα {punch_label} στις {rt}.")
+    if punch_url:
+        lines.append(
+            f"\nΑυτόματο χτύπημα (απαιτείται ο προσωπικός PIN σας):\n{punch_url}"
+        )
+    elif has_pin is False and rt:
+        lines.append(
+            "\nΓια σύνδεσμο αυτόματου χτυπήματος, ορίστε PIN λήπτη στο κατάστημα."
+        )
+    return "\n".join(lines)

@@ -820,6 +820,44 @@ table.data tr:hover > td {
   line-height: 1.35;
 }
 
+.branch-details-card {
+  margin-top: 0.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.branch-details-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--brand);
+}
+
+.branch-details {
+  display: grid;
+  grid-template-columns: minmax(9rem, 34%) 1fr;
+  gap: 0.45rem 1rem;
+  margin: 0;
+}
+
+.branch-details dt {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.branch-details dd {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
 .ac-wrap { position: relative; }
 
 .ac-list {
@@ -1724,6 +1762,35 @@ table.data td.col-history {
   width: 2.75rem;
   text-align: center;
   white-space: nowrap;
+}
+
+.work-log-notify-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--brand-light);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.work-log-notify-btn:hover:not(:disabled) {
+  color: var(--brand);
+}
+
+.work-log-notify-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.work-log-notify-btn .bi {
+  font-size: 1.1rem;
+}
+
+.work-log-action-cell--notify {
+  width: 2.5rem;
 }
 
 .work-log-history-wrap {

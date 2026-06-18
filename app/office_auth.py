@@ -17,6 +17,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/local/health",
     "/api/telegram/webhook",
     "/ui/login",
+    "/ui/telegram-punch",
     "/api/auth/login",
     "/api/auth/status",
     "/api/auth/logout",
@@ -67,6 +68,8 @@ def _path_is_public(path: str, method: str) -> bool:
         if path.startswith(prefix):
             return True
     if path == "/api/work-card/event" and method == "POST":
+        return True
+    if path.startswith("/api/telegram/punch/"):
         return True
     return False
 

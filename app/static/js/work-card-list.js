@@ -35,7 +35,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelector(".work-card-form .ac-wrap.field-err")?.classList.remove("field-err");
     updateWorkCardEmployeeHistoryLink();
   });
-  initRetroDefaults();
+  if (!Office.readWorkCardQueryPrefill().retro) {
+    initRetroDefaults();
+  }
   initPage();
 });
 

@@ -4,6 +4,49 @@
 
 ---
 
+## 2026-06-20 — Excel πραγματικής, wizard παραρτήματος, Telegram χτύπημα, καθαρισμός δεδομένων
+
+### Πραγματική απασχόληση — Excel export (κύρια μέθοδος)
+
+- **`app/portal_excel.py`**: μετά την αναζήτηση portal, postback `ExcelExport$1` → λήψη `.xlsx`· parsing με **openpyxl** (`read_only=False` — το export Ergani έχει λανθασμένο `dimension`).
+- **`app/portal_work_log_sync.py`**: **μία** αναζήτηση για όλο το διάστημα Από–Έως (όχι ημέρα-ημέρα)· **Excel πρώτα**, HTML grid + `Page$Next` ως fallback.
+- Εισαγωγή πραγματικής **μόνο για ΑΦΜ στο τρέχον προσωπικό** (EX_BASE_05 / `karta_employment`)· μετά τον sync αφαίρεση εγγραφών εκτός δυναμικού.
+- **`requirements.txt`**: `openpyxl`, `xlrd`.
+- Scripts: `scripts/test_work_log_excel.py`, `scripts/debug_ex_base_02.py`.
+
+### Ελλειπή χτυπήματα & συνέπεια με προσωπικό
+
+- **`list_work_log_missing_cards_paged`**: εμφανίζει μόνο εργαζόμενους με **ενεργή απασχόληση** στο παράρτημα (ίδιο κριτήριο με λίστα προσωπικού).
+- **`delete_work_log_without_active_employment()`**: αφαίρεση «ορφανών» εγγραφών πραγματικής (ιστορικά δεδομένα Excel χωρίς τρέχον δυναμικό).
+
+### Wizard καταστήματος — EX_BASE_02 & credentials
+
+- **`GET /api/store/<id>`**: επιστρέφει **πλήρη passwords** για φόρμα επεξεργασίας (η λίστα `/api/store/list` συνεχίζει masked).
+- **`app/ergani_parse.py`**: βελτιωμένο parsing EX_BASE_02 (μονό `Pararthma` αντικείμενο, `Address`, `YpiresiaSepe`, κ.λπ.)· `_branch_item()` με πλήρη πεδία.
+- **Βήμα 2 παράρτημα** (`store-branch.html/js`): πίνακας στοιχείων EX_BASE_02· προ-συμπλήρωση ΣΕΠΕ/ΟΑΕΔ/ΚΑΔ/Καλλικράτη στο βήμα 3.
+- **Δεν** χρησιμοποιείται πλέον fallback παραρτημάτων από portal admin — κάθε **web user = ένα παράρτημα = ξεχωριστό κατάστημα**.
+
+### Telegram — ασφαλές χτύπημα & ειδοποίηση ελλειπών
+
+- **`sql/alter_add_notify_pin_and_punch_token.sql`**: `notify_pin_hash` ανά λήπτη, πίνακας `karta_telegram_punch_token`.
+- **`app/notify_pin.py`**, **`app/repo_telegram_punch.py`**, **`app/telegram_punch_service.py`**.
+- PIN 4–8 ψηφία στη φόρμα καταστήματος· δημόσια σελίδα **`/ui/telegram-punch`**, API confirm με token.
+- **`POST /api/telegram/notify/missing-punch`**: ειδοποίηση ληπτών από σελίδα ελλειπών χτυπημάτων (κουδούνι).
+- **`config.py`**: `PUBLIC_BASE_URL` (προεπιλογή `https://erganios.gr`).
+- Scripts: `scripts/setup_telegram_webhook.py`, `scripts/run_migration_telegram_punch.py`, `scripts/run_migration_notify_recipients.py`.
+
+### Άλλες διορθώσεις
+
+- **`app/card_report.py`**: `leave_eligible = false` όταν έχει αναχώρηση χωρίς άφιξη.
+- **Προγενέστερη κάρτα / λίστες**: `Office.workCardUrlOptsFromRow()`, enrich `card_event`/`retro_time` στο API work-log· skip `initRetroDefaults` αν `retro=1` στο URL.
+- **`scripts/purge_store_data.py`**: διαγραφή operational δεδομένων ενός καταστήματος (ωράριο, πραγματική, employment, sync logs) — διατήρηση `karta_store_config`.
+
+### IIS / παραγωγή (τοπικά)
+
+- **`web.config`**, **`wsgi.py`**: ανάπτυξη με Waitress στο IIS.
+
+---
+
 ## 2026-06-19 — Login προστασία UI
 
 - **`KARTA_OFFICE_LOGIN_USER` / `KARTA_OFFICE_LOGIN_PASSWORD`** στο `.env` — session login για όλο το UI και τα `/api/*`.

@@ -62,6 +62,7 @@ def create_app() -> Flask:
             "monthly_status_sync": "POST /api/monthly-status/sync",
             "telegram_webhook": "POST /api/telegram/webhook",
             "telegram_test": "POST /api/telegram/test/<store_id>",
+            "telegram_notify_missing": "POST /api/telegram/notify/missing-punch",
             "dashboard_card_report": "/api/dashboard/card-report",
             "sync": "POST /api/ergani/sync-all",
             "work_card": "/api/work-card/",

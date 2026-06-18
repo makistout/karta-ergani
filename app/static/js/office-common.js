@@ -632,6 +632,39 @@ const Office = {
     return `${m[1].padStart(2, "0")}:${m[2]}`;
   },
 
+  workCardUrlOptsFromRow(row) {
+    const opts = {};
+    if (!row) return opts;
+    if (row.needs_card_punch && row.retro_time) {
+      opts.retro = true;
+      opts.retro_time = row.retro_time;
+      opts.card_event = row.card_event || "check_out";
+      opts.retro_highlight = true;
+      return opts;
+    }
+    const wl =
+      row.work_log && typeof row.work_log === "object" ? row.work_log : row;
+    const sched =
+      row.schedule && typeof row.schedule === "object" ? row.schedule : null;
+    const hf = String(wl.hour_from || row.hour_from || "").trim();
+    const ht = String(wl.hour_to || row.hour_to || "").trim();
+    if (hf && ht) return opts;
+    const schedFrom = sched ? String(sched.hour_from || "").trim() : "";
+    const schedTo = sched ? String(sched.hour_to || "").trim() : "";
+    if (hf && !ht && schedTo) {
+      opts.retro = true;
+      opts.card_event = "check_out";
+      opts.retro_time = schedTo;
+      opts.retro_highlight = true;
+    } else if (!hf && schedFrom) {
+      opts.retro = true;
+      opts.card_event = "check_in";
+      opts.retro_time = schedFrom;
+      opts.retro_highlight = true;
+    }
+    return opts;
+  },
+
   workCardUrl(employeeAfm, dateIso, employeeName, opts = {}) {
     const afm = String(employeeAfm || "").trim();
     if (!afm) return "/ui/work-card";
@@ -862,6 +895,16 @@ const Office = {
     return Boolean(hf && ht);
   },
 
+  workLogMissingPunchSummary(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    if (!hf && !ht) return "ελλιπή είσοδο και έξοδο";
+    if (!hf) return "ελλιπή είσοδο";
+    if (!ht && !this.workLogExitStillPending(row)) return "ελλιπή έξοδο";
+    if (!ht) return "έξοδος εκκρεμεί";
+    return "";
+  },
+
   /** Εικονίδιο κάρτας μόνο όταν λείπει είσοδος ή έξοδος (όχι σε ολοκληρωμένη μέρα). */
   shouldShowWorkCardLink(row) {
     if (!row) return false;
@@ -880,43 +923,35 @@ const Office = {
     const employeeName = (ctx.employee_name || "").trim();
     const hf = (row.hour_from || "").trim();
     const ht = (row.hour_to || "").trim();
-    if (column === "from") {
-      if (hf) return { html: this.escapeHtml(hf), isCard: false };
-      if (
-        !row.needs_card_punch ||
-        row.card_event !== "check_in" ||
-        !row.retro_time ||
-        !employeeAfm
-      ) {
+    if (column === "from" && hf) {
+      return { html: this.escapeHtml(hf), isCard: false };
+    }
+    if (column !== "from" && ht) {
+      return { html: this.escapeHtml(ht), isCard: false };
+    }
+    const opts = this.workCardUrlOptsFromRow(row);
+    const wantsCheckIn = column === "from";
+    if (
+      !employeeAfm ||
+      !opts.retro ||
+      (wantsCheckIn ? opts.card_event !== "check_in" : opts.card_event !== "check_out")
+    ) {
+      if (wantsCheckIn) {
         return { html: this.formatWorkLogTimeCell("", "Λείπει ώρα εισόδου").html, isCard: false };
       }
-    } else {
-      if (ht) return { html: this.escapeHtml(ht), isCard: false };
-      if (
-        !row.needs_card_punch ||
-        row.card_event !== "check_out" ||
-        !row.retro_time ||
-        !employeeAfm
-      ) {
-        const pending = this.workLogExitStillPending(row);
-        return {
-          html: this.formatWorkLogTimeCell(
-            "",
-            pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
-          ).html,
-          isCard: false,
-        };
-      }
+      const pending = this.workLogExitStillPending(row);
+      return {
+        html: this.formatWorkLogTimeCell(
+          "",
+          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+        ).html,
+        isCard: false,
+      };
     }
     const dateIso = this.erganiDateToIso(row.work_date) || "";
-    const isCheckIn = row.card_event === "check_in";
+    const isCheckIn = opts.card_event === "check_in";
     const title = isCheckIn ? "Είσοδος στην κάρτα" : "Έξοδος στην κάρτα";
-    const url = this.workCardUrl(employeeAfm, dateIso, employeeName, {
-      retro: true,
-      retro_time: row.retro_time,
-      card_event: row.card_event,
-      retro_highlight: true,
-    });
+    const url = this.workCardUrl(employeeAfm, dateIso, employeeName, opts);
     return {
       html:
         `<a href="${this.escapeHtml(url)}" class="work-log-card-link work-log-card-link--required" ` +

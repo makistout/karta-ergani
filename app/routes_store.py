@@ -63,11 +63,11 @@ def list_stores():
 
 @store_bp.get("/<int:store_id>")
 def get_store(store_id: int):
-    """Στοιχεία καταστήματος για φόρμα — passwords μόνο masked."""
+    """Στοιχεία καταστήματος για φόρμα επεξεργασίας — πλήρη passwords (απαιτείται login)."""
     cfg = repo.get_store_config(store_id)
     if not cfg:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
-    return jsonify(_json_rows([mask_store_secrets(cfg)])[0])
+    return jsonify(_json_rows([cfg])[0])
 
 
 def _resolve_wizard_secrets(data: dict, existing: dict | None) -> dict[str, str]:

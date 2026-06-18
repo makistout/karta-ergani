@@ -360,9 +360,13 @@ function buildCardLinkCell(r) {
   const afm = (r.employee_afm || "").trim();
   const dateIso = Office.erganiDateToIso(r.work_date) || "";
   const name = `${r.eponymo || ""} ${r.onoma || ""}`.trim();
-  const url = Office.workCardUrl(afm, dateIso, name);
+  const opts = Office.workCardUrlOptsFromRow(r);
+  const url = Office.workCardUrl(afm, dateIso, name, opts);
+  const cls = opts.retro
+    ? "work-log-card-link work-log-card-link--required"
+    : "work-log-card-link";
   return (
-    `<a href="${Office.escapeHtml(url)}" class="work-log-card-link" ` +
+    `<a href="${Office.escapeHtml(url)}" class="${cls}" ` +
     `title="Ψηφιακή κάρτα" aria-label="Ψηφιακή κάρτα — ${Office.escapeHtml(name || afm)}">` +
     `${Office.icon("credit-card-2-front")}</a>`
   );

@@ -44,28 +44,105 @@ def unwrap_ergani_data(payload: Any) -> Any:
     return payload
 
 
-def parse_branches(payload: Any) -> list[dict[str, str]]:
+def _branch_aa(item: dict[str, Any]) -> str:
+    for key in ("Aa", "aa", "f_aa", "f_aa_pararthmatos", "AA"):
+        val = item.get(key)
+        if val is not None and str(val).strip() != "":
+            return str(val).strip()
+    return "0"
+
+
+def _branch_description(item: dict[str, Any]) -> str:
+    for key in (
+        "Perigrafi",
+        "perigrafi",
+        "Diethynsi",
+        "diethynsi",
+        "Titlos",
+        "DiakritikosTitlos",
+        "Eponimia",
+        "Address",
+        "address",
+        "Kad",
+        "StatusDescription",
+        "f_comments",
+        "Comments",
+    ):
+        val = item.get(key)
+        if val and str(val).strip():
+            return str(val).strip()[:200]
+    return "Παράρτημα"
+
+
+def _extract_ex_base_02_branch_items(data: dict[str, Any]) -> list[dict[str, Any]]:
+    block = data.get("EX_BASE_02") if "EX_BASE_02" in data else data
+    if isinstance(block, list):
+        return [x for x in block if isinstance(x, dict)]
+    if not isinstance(block, dict):
+        return []
+
+    par = block.get("Pararthma") or block.get("pararthma")
+    if isinstance(par, list):
+        return [x for x in par if isinstance(x, dict)]
+    if isinstance(par, dict):
+        for val in par.values():
+            if isinstance(val, list):
+                return [x for x in val if isinstance(x, dict)]
+        if _branch_aa(par) != "0" or any(k in par for k in ("Aa", "aa", "f_aa", "Diethynsi")):
+            return [par]
+
+    for val in block.values():
+        if isinstance(val, list) and val and isinstance(val[0], dict):
+            if any(k in val[0] for k in ("Aa", "aa", "f_aa", "Diethynsi", "Perigrafi")):
+                return [x for x in val if isinstance(x, dict)]
+    return []
+
+
+def _pick_str(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        val = item.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    return ""
+
+
+def _branch_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Κανονικοποίηση εγγραφής παραρτήματος από EX_BASE_02."""
+    return {
+        "aa": _branch_aa(item),
+        "description": _branch_description(item),
+        "address": _pick_str(item, "Address", "Diethynsi", "address", "diethynsi"),
+        "ypiresia_sepe": _pick_str(item, "YpiresiaSepe", "ypiresiaSepe"),
+        "ypiresia_oaed": _pick_str(item, "YpiresiaOaed", "ypiresiaOaed"),
+        "kad": _pick_str(item, "Kad", "kad"),
+        "kallikratis": _pick_str(item, "Kallikratis", "kallikratis"),
+        "status_description": _pick_str(item, "StatusDescription", "statusDescription"),
+    }
+
+
+def parse_branches(payload: Any) -> list[dict[str, Any]]:
     data = unwrap_ergani_data(payload)
-    raw: list[Any] = []
+    raw: list[dict[str, Any]] = []
     if isinstance(data, dict):
-        for key in data:
-            if isinstance(data[key], list):
-                raw = data[key]
-                break
-            if isinstance(data[key], dict):
-                for sub in data[key]:
-                    if isinstance(data[key][sub], list):
-                        raw = data[key][sub]
-                        break
-    items: list[dict[str, str]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        aa = str(item.get("Aa") or item.get("aa") or "0")
-        desc = str(item.get("Perigrafi") or item.get("perigrafi") or "Παράρτημα")
-        items.append({"aa": aa, "description": desc})
+        raw = _extract_ex_base_02_branch_items(data)
+        if not raw:
+            raw = [
+                x
+                for x in extract_raw_list(data)
+                if isinstance(x, dict) and any(k in x for k in ("Aa", "aa", "f_aa"))
+            ]
+    items = [_branch_item(item) for item in raw]
     if not items:
-        items.append({"aa": "0", "description": "Κεντρικό (προεπιλογή)"})
+        items.append({
+            "aa": "0",
+            "description": "Κεντρικό (προεπιλογή)",
+            "address": "",
+            "ypiresia_sepe": "",
+            "ypiresia_oaed": "",
+            "kad": "",
+            "kallikratis": "",
+            "status_description": "",
+        })
     return items
 
 

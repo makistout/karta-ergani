@@ -12,7 +12,7 @@ from app.date_util import format_date_for_ergani, format_f_date_time
 from app.repo_card import list_card_events_for_store_date
 from app.repo_entities import flex_arrival_map_for_employer
 from app.repo_schedule import list_schedule_for_store
-from app.repo_work_log import list_work_log_for_store
+from app.repo_work_log import _attach_card_punch_hint, list_work_log_for_store
 from app.work_card_payload import tz_athens
 
 # Πρώτα όσοι δουλεύουν / ολοκλήρωσαν βάρδια, στο τέλος ρεπό και λοιποί.
@@ -148,6 +148,7 @@ def _is_leave_eligible(
     sched: dict[str, Any] | None,
     wl: dict[str, Any] | None,
     card_in: dict[str, Any] | None,
+    card_out: dict[str, Any] | None,
     s_start: int | None,
     now_min: int,
     tol: int,
@@ -159,9 +160,11 @@ def _is_leave_eligible(
     sched_to = (sched or {}).get("hour_to")
     if _is_rest_day(shift_type, sched_from, sched_to):
         return False
-    if (wl or {}).get("hour_from"):
+    has_arrival = bool(card_in) or bool((wl or {}).get("hour_from"))
+    has_departure = bool(card_out) or bool((wl or {}).get("hour_to"))
+    if has_departure and not has_arrival:
         return False
-    if card_in:
+    if has_arrival:
         return False
     if s_start is None:
         return False
@@ -219,6 +222,7 @@ def _evaluate_row(
         sched=sched,
         wl=wl,
         card_in=card_in,
+        card_out=card_out,
         s_start=s_start,
         now_min=now_min,
         tol=tol,
@@ -335,6 +339,26 @@ def _evaluate_row(
         "notes": notes,
         "card": card_block,
         "leave_eligible": False,
+    }
+
+
+def _card_punch_fields(
+    sched: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Ένδειξη προγενέστερου χτυπήματος κάρτας από ψηφιακό ωράριο."""
+    punch_row: dict[str, Any] = {
+        "hour_from": (wl or {}).get("hour_from"),
+        "hour_to": (wl or {}).get("hour_to"),
+    }
+    slots = [sched] if sched else []
+    _attach_card_punch_hint(punch_row, slots)
+    if not punch_row.get("needs_card_punch"):
+        return {}
+    return {
+        "needs_card_punch": True,
+        "card_event": punch_row.get("card_event"),
+        "retro_time": punch_row.get("retro_time"),
     }
 
 
@@ -463,6 +487,7 @@ def build_card_status_report(
             "action": ev["action"],
             "notes": ev["notes"],
             "leave_eligible": bool(ev.get("leave_eligible")),
+            **_card_punch_fields(sched, wl),
         })
 
     rows_out.sort(

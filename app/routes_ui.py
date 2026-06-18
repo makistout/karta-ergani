@@ -81,6 +81,11 @@ def ui_work_card():
     return send_from_directory(_UI_DIR, "work-card-list.html")
 
 
+@ui_bp.get("/telegram-punch")
+def ui_telegram_punch():
+    return send_from_directory(_UI_DIR, "telegram-punch.html")
+
+
 @ui_bp.get("/sync")
 def ui_sync_hub():
     return send_from_directory(_UI_DIR, "sync-hub.html")

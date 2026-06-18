@@ -82,6 +82,13 @@ def work_log_list():
         for r in rows:
             r["schedule_label"] = "—"
             r["schedule"] = None
+    try:
+        enrich_work_log_rows_with_card_punch(
+            rows, ctx["employer_afm"], ctx["branch_aa"]
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()

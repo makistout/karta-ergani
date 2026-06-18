@@ -172,9 +172,12 @@ function appendWorkCardLinkCell(tr, row, range) {
     const dateIso =
       Office.erganiDateToIso(row.work_date) || range?.start || "";
     const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
+    const opts = Office.workCardUrlOptsFromRow(row);
     const a = document.createElement("a");
-    a.href = Office.workCardUrl(afm, dateIso, name);
-    a.className = "work-log-card-link";
+    a.href = Office.workCardUrl(afm, dateIso, name, opts);
+    a.className = opts.retro
+      ? "work-log-card-link work-log-card-link--required"
+      : "work-log-card-link";
     a.title = "Ψηφιακή κάρτα";
     a.setAttribute("aria-label", `Ψηφιακή κάρτα — ${name || afm}`);
     a.innerHTML = Office.icon("credit-card-2-front");

@@ -17,6 +17,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         name: r.name || "",
         mobile: r.mobile || "",
         telegram_chat_id: r.telegram_chat_id || "",
+        notify_pin: r.notify_pin || "",
+        has_notify_pin: Boolean(r.has_notify_pin),
       }));
       renderNotifyRecipients();
     } else {
@@ -63,7 +65,7 @@ function updateNotifyUiState() {
 
 function initNotifyRecipientButtons() {
   document.getElementById("btnAddNotifyRecipient").onclick = () => {
-    notifyRecipients.push({ name: "", mobile: "", telegram_chat_id: "" });
+    notifyRecipients.push({ name: "", mobile: "", telegram_chat_id: "", notify_pin: "" });
     renderNotifyRecipients();
   };
   document.getElementById("btnSaveNotifyRecipients").onclick = () => saveNotifyRecipients();
@@ -89,17 +91,21 @@ function renderNotifyRecipients() {
   if (empty) empty.style.display = "none";
   notifyRecipients.forEach((row, idx) => {
     const tr = document.createElement("tr");
+    const pinVal = row.notify_pin || (row.has_notify_pin ? MASKED : "");
     tr.innerHTML =
       `<td><input type="text" class="notify-input-name" data-idx="${idx}" value="${Office.escapeHtml(row.name || "")}" placeholder="Όνομα"></td>` +
       `<td><input type="text" class="notify-input-mobile" data-idx="${idx}" value="${Office.escapeHtml(row.mobile || "")}" placeholder="69XXXXXXXX"></td>` +
       `<td><input type="text" class="notify-input-chat" data-idx="${idx}" value="${Office.escapeHtml(row.telegram_chat_id || "")}" placeholder="αυτόματα" readonly title="Συμπληρώνεται με /start στο bot"></td>` +
+      `<td><input type="password" class="notify-input-pin" data-idx="${idx}" value="${Office.escapeHtml(pinVal)}" placeholder="PIN" inputmode="numeric" maxlength="8" title="Προσωπικός κωδικός για αυτόματο χτύπημα"></td>` +
       `<td class="table-actions"><button type="button" class="btn btn-danger btn-sm notify-remove" data-idx="${idx}">${Office.icon("trash3")}</button></td>`;
     body.appendChild(tr);
   });
-  body.querySelectorAll(".notify-input-name, .notify-input-mobile").forEach((inp) => {
+  body.querySelectorAll(".notify-input-name, .notify-input-mobile, .notify-input-pin").forEach((inp) => {
     inp.addEventListener("input", (e) => {
       const i = parseInt(e.target.getAttribute("data-idx"), 10);
-      const field = e.target.classList.contains("notify-input-name") ? "name" : "mobile";
+      let field = "mobile";
+      if (e.target.classList.contains("notify-input-name")) field = "name";
+      else if (e.target.classList.contains("notify-input-pin")) field = "notify_pin";
       if (notifyRecipients[i]) notifyRecipients[i][field] = e.target.value;
     });
   });
@@ -120,8 +126,14 @@ function collectNotifyRecipientsFromDom() {
     const name = (tr.querySelector(".notify-input-name")?.value || "").trim();
     const mobile = (tr.querySelector(".notify-input-mobile")?.value || "").trim();
     const telegram_chat_id = (tr.querySelector(".notify-input-chat")?.value || "").trim();
+    const notify_pin = (tr.querySelector(".notify-input-pin")?.value || "").trim();
     if (name || mobile) {
-      rows.push({ name, mobile, telegram_chat_id: telegram_chat_id || null });
+      rows.push({
+        name,
+        mobile,
+        telegram_chat_id: telegram_chat_id || null,
+        notify_pin: notify_pin || "",
+      });
     }
   });
   notifyRecipients = rows;
@@ -152,6 +164,8 @@ async function loadNotifyRecipients(storeId) {
       name: r.name || "",
       mobile: r.mobile || "",
       telegram_chat_id: r.telegram_chat_id || "",
+      notify_pin: r.notify_pin || "",
+      has_notify_pin: Boolean(r.has_notify_pin),
     }));
     renderNotifyRecipients();
     updateNotifyUiState();
@@ -187,6 +201,8 @@ async function saveNotifyRecipients(storeIdOverride) {
       name: r.name || "",
       mobile: r.mobile || "",
       telegram_chat_id: r.telegram_chat_id || "",
+      notify_pin: r.notify_pin || "",
+      has_notify_pin: Boolean(r.has_notify_pin),
     }));
     renderNotifyRecipients();
     Office.setDraft({ ...Office.getDraft(), id: storeId, notifyRecipients });

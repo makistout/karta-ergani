@@ -65,6 +65,10 @@ class Config:
 
     TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
 
+    PUBLIC_BASE_URL = (
+        os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
+    ).strip().rstrip("/")
+
     CATALOG_DATABASE = (os.environ.get("CATALOG_DATABASE") or "").strip() or "ergani_ii"
 
     KARTA_OFFICE_LOGIN_USER = (os.environ.get("KARTA_OFFICE_LOGIN_USER") or "").strip()

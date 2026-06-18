@@ -8,6 +8,7 @@ from typing import Any
 import pyodbc
 
 from app.db import cursor
+from app.notify_pin import hash_notify_pin, is_pin_mask, pin_mask
 from app.row_util import rows_to_dicts
 
 
@@ -31,14 +32,36 @@ def notify_recipients_table_missing_message(exc: BaseException) -> str | None:
     return None
 
 
+def mask_recipient_for_api(row: dict[str, Any]) -> dict[str, Any]:
+    has_pin = bool((row.get("notify_pin_hash") or "").strip())
+    out = {k: v for k, v in row.items() if k != "notify_pin_hash"}
+    out["has_notify_pin"] = has_pin
+    out["notify_pin"] = pin_mask() if has_pin else ""
+    return out
+
+
 def list_notify_recipients(store_id: int) -> list[dict[str, Any]]:
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT id, store_id, name, mobile, telegram_chat_id, active
+            SELECT id, store_id, name, mobile, telegram_chat_id, active, notify_pin_hash
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ?
             ORDER BY name, mobile, id
+            """,
+            (int(store_id),),
+        )
+        rows = rows_to_dicts(cur)
+    return [mask_recipient_for_api(r) for r in rows]
+
+
+def _list_notify_recipients_raw(store_id: int) -> list[dict[str, Any]]:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT id, store_id, name, mobile, telegram_chat_id, active, notify_pin_hash
+            FROM dbo.karta_store_notify_recipient
+            WHERE store_id = ?
             """,
             (int(store_id),),
         )
@@ -50,27 +73,38 @@ def replace_notify_recipients(
     rows: list[dict[str, Any]],
 ) -> int:
     sid = int(store_id)
-    cleaned: list[tuple[str, str, str | None]] = []
+    old_pins = {
+        normalize_mobile(r.get("mobile")): (r.get("notify_pin_hash") or "").strip() or None
+        for r in _list_notify_recipients_raw(sid)
+    }
+    cleaned: list[tuple[str, str, str | None, str | None]] = []
     for row in rows:
         name = str(row.get("name") or "").strip()[:128]
         mobile = normalize_mobile(row.get("mobile"))
         if not name or not mobile:
             continue
         chat_id = str(row.get("telegram_chat_id") or "").strip()[:64] or None
-        cleaned.append((name, mobile, chat_id))
+        pin_raw = str(row.get("notify_pin") or "").strip()
+        if is_pin_mask(pin_raw):
+            pin_hash = old_pins.get(mobile)
+        elif pin_raw:
+            pin_hash = hash_notify_pin(store_id=sid, mobile=mobile, pin=pin_raw)
+        else:
+            pin_hash = None
+        cleaned.append((name, mobile, chat_id, pin_hash))
     with cursor() as cur:
         cur.execute(
             "DELETE FROM dbo.karta_store_notify_recipient WHERE store_id = ?",
             (sid,),
         )
-        for name, mobile, chat_id in cleaned:
+        for name, mobile, chat_id, pin_hash in cleaned:
             cur.execute(
                 """
                 INSERT INTO dbo.karta_store_notify_recipient (
-                    store_id, name, mobile, telegram_chat_id, active
-                ) VALUES (?, ?, ?, ?, 1)
+                    store_id, name, mobile, telegram_chat_id, notify_pin_hash, active
+                ) VALUES (?, ?, ?, ?, ?, 1)
                 """,
-                (sid, name, mobile, chat_id),
+                (sid, name, mobile, chat_id, pin_hash),
             )
         return len(cleaned)
 
@@ -96,7 +130,7 @@ def list_deliverable_recipients(store_id: int) -> list[dict[str, Any]]:
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT id, name, mobile, telegram_chat_id
+            SELECT id, name, mobile, telegram_chat_id, notify_pin_hash
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ? AND active = 1
               AND telegram_chat_id IS NOT NULL

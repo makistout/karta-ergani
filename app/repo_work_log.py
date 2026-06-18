@@ -12,6 +12,51 @@ from app.row_util import rows_to_dicts
 from app.work_card_payload import norm_afm
 
 
+def _sql_active_employment_for_work_log(alias: str = "w") -> str:
+    """Μόνο εγγραφές εργαζομένων με ενεργή απασχόληση στο ίδιο παράρτημα."""
+    a = alias
+    return f"""
+        EXISTS (
+            SELECT 1 FROM dbo.karta_employment e
+            INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
+            INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
+            WHERE emp.afm = {a}.employee_afm
+              AND em.afm = {a}.employer_afm
+              AND e.active = 1
+              AND (p.code_aa = {a}.branch_aa OR p.code_aa IS NULL)
+        )
+    """
+
+
+def delete_work_log_without_active_employment(
+    employer_afm: str,
+    branch_aa: str,
+) -> int:
+    """Αφαίρεση πραγματικής για ΑΦΜ που δεν είναι στο τρέχον προσωπικό παραρτήματος."""
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM dbo.karta_work_log
+            WHERE employer_afm = ? AND branch_aa = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM dbo.karta_employment e
+                INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
+                INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
+                LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
+                WHERE emp.afm = karta_work_log.employee_afm
+                  AND em.afm = karta_work_log.employer_afm
+                  AND e.active = 1
+                  AND (p.code_aa = karta_work_log.branch_aa OR p.code_aa IS NULL)
+              )
+            """,
+            (afm, aa),
+        )
+        return int(cur.rowcount)
+
+
 def work_log_table_missing_message(exc: BaseException) -> str | None:
     if isinstance(exc, pyodbc.Error):
         err = exc.args[0] if exc.args else ""
@@ -333,9 +378,10 @@ def list_work_log_missing_cards_paged(
     afm = norm_afm(employer_afm)
     aa = str(branch_aa or "0").strip()[:32] or "0"
     excl = str(exclude_work_date or "").strip()
-    where = """
+    where = f"""
         w.employer_afm = ? AND w.branch_aa = ?
         AND w.work_date <> ?
+        AND ({_sql_active_employment_for_work_log("w")})
         AND (
             NULLIF(LTRIM(RTRIM(ISNULL(w.hour_from, ''))), '') IS NULL
             OR NULLIF(LTRIM(RTRIM(ISNULL(w.hour_to, ''))), '') IS NULL
