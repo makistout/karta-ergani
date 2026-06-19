@@ -634,6 +634,33 @@ const Office = {
     return `${m[1].padStart(2, "0")}:${m[2]}`;
   },
 
+  /** Μορφοποίηση ώρας κατά την πληκτρολόγηση (π.χ. 1030 → 10:30). */
+  formatHourMinuteInput(value) {
+    let s = String(value || "").replace(/[^\d:]/g, "");
+    if (s.includes(":")) {
+      const parts = s.split(":", 2);
+      const h = parts[0].replace(/\D/g, "").slice(0, 2);
+      const m = (parts[1] || "").replace(/\D/g, "").slice(0, 2);
+      return m.length ? `${h}:${m}` : h;
+    }
+    const digits = s.replace(/\D/g, "").slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  },
+
+  bindHourMinuteInput(inputId) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const formatted = this.formatHourMinuteInput(el.value || "");
+      if (el.value !== formatted) el.value = formatted;
+    });
+    el.addEventListener("blur", () => {
+      const norm = this.normalizeHourMinute(el.value || "");
+      if (norm) el.value = norm;
+    });
+  },
+
   workCardUrlOptsFromRow(row) {
     const opts = {};
     if (!row) return opts;
@@ -662,6 +689,14 @@ const Office = {
       opts.retro = true;
       opts.card_event = "check_in";
       opts.retro_time = schedFrom;
+      opts.retro_highlight = true;
+    } else if (!hf) {
+      opts.retro = true;
+      opts.card_event = "check_in";
+      opts.retro_highlight = true;
+    } else if (!ht && !this.workLogExitStillPending(row)) {
+      opts.retro = true;
+      opts.card_event = "check_out";
       opts.retro_highlight = true;
     }
     return opts;
@@ -913,6 +948,22 @@ const Office = {
     return !(v === false || v === 0 || v === "0");
   },
 
+  clientDeviceInfo() {
+    let timezone = "";
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      timezone = "";
+    }
+    return {
+      screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`,
+      viewport: `${window.innerWidth || 0}x${window.innerHeight || 0}`,
+      platform: navigator.platform || "",
+      language: navigator.language || "",
+      timezone,
+    };
+  },
+
   workLogInactiveBadgeHtml() {
     return (
       `<span class="status-badge status-muted work-log-inactive-badge" ` +
@@ -951,43 +1002,24 @@ const Office = {
     return Boolean(String(row.employee_afm || row.afm || "").trim());
   },
 
-  renderWorkLogHistoryCardCell(row, ctx, column) {
-    const employeeAfm = (ctx.employee_afm || "").trim();
-    const employeeName = (ctx.employee_name || "").trim();
-    const hf = (row.hour_from || "").trim();
-    const ht = (row.hour_to || "").trim();
-    if (column === "from" && hf) {
-      return { html: this.escapeHtml(hf), isCard: false };
-    }
-    if (column !== "from" && ht) {
-      return { html: this.escapeHtml(ht), isCard: false };
-    }
-    const opts = this.workCardUrlOptsFromRow(row);
-    const wantsCheckIn = column === "from";
-    if (
-      !employeeAfm ||
-      !opts.retro ||
-      (wantsCheckIn ? opts.card_event !== "check_in" : opts.card_event !== "check_out")
-    ) {
-      if (wantsCheckIn) {
-        return { html: this.formatWorkLogTimeCell("", "Λείπει ώρα εισόδου").html, isCard: false };
-      }
-      const pending = this.workLogExitStillPending(row);
-      return {
-        html: this.formatWorkLogTimeCell(
-          "",
-          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
-        ).html,
-        isCard: false,
-      };
+  renderWorkLogHistoryCardLinkCell(row, ctx) {
+    const employeeAfm = String(ctx.employee_afm || row.employee_afm || "").trim();
+    const employeeName = String(ctx.employee_name || "").trim();
+    if (!this.shouldShowWorkCardLink(row) || !employeeAfm) {
+      return { html: "", isCard: false };
     }
     const dateIso = this.erganiDateToIso(row.work_date) || "";
-    const isCheckIn = opts.card_event === "check_in";
-    const title = isCheckIn ? "Είσοδος στην κάρτα" : "Έξοδος στην κάρτα";
-    const url = this.workCardUrl(employeeAfm, dateIso, employeeName, opts);
+    const name =
+      employeeName || `${row.eponymo || ""} ${row.onoma || ""}`.trim();
+    const opts = this.workCardUrlOptsFromRow(row);
+    const url = this.workCardUrl(employeeAfm, dateIso, name, opts);
+    const cls = opts.retro
+      ? "work-log-card-link work-log-card-link--required"
+      : "work-log-card-link";
+    const title = opts.retro ? "Προγενέστερο χτύπημα — ψηφιακή κάρτα" : "Ψηφιακή κάρτα";
     return {
       html:
-        `<a href="${this.escapeHtml(url)}" class="work-log-card-link work-log-card-link--required" ` +
+        `<a href="${this.escapeHtml(url)}" class="${cls}" ` +
         `title="${this.escapeHtml(title)}" aria-label="${this.escapeHtml(title)}">` +
         `${this.icon("credit-card-2-front")}</a>`,
       isCard: true,
@@ -1001,22 +1033,30 @@ const Office = {
         `<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές στη βάση για αυτόν τον εργαζόμενο.</span></p>`
       );
     }
-    const headers = ["Ημερομηνία", "Ψηφ. ωράριο", "Από", "Έως", "Συγχρονισμός"];
+    const headers = ["Ημερομηνία", "Ψηφ. ωράριο", "Από", "Έως", "Συγχρονισμός", "Κάρτα"];
     let html = `<table class="data work-log-history-table"><tr>${headers
       .map((h) => `<th>${this.escapeHtml(h)}</th>`)
       .join("")}</tr>`;
     rows.forEach((row) => {
-      const apoCell = this.renderWorkLogHistoryCardCell(row, ctx, "from");
-      const ewsCell = this.renderWorkLogHistoryCardCell(row, ctx, "to");
+      const hf = String(row.hour_from || "").trim();
+      const ht = String(row.hour_to || "").trim();
+      const pending = this.workLogExitStillPending(row);
+      const apoCell = this.formatWorkLogTimeCell(hf, "Λείπει ώρα εισόδου");
+      const ewsCell = this.formatWorkLogTimeCell(
+        ht,
+        pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+      );
+      const cardCell = this.renderWorkLogHistoryCardLinkCell(row, ctx);
       const sched = (row.schedule_label || "—").trim() || "—";
       const deficient = this.workLogRowIsDeficient(row);
       html +=
         `<tr${deficient ? ' class="work-log-row--deficient"' : ""}>` +
         `<td>${this.escapeHtml(String(row.work_date || ""))}</td>` +
         `<td>${this.escapeHtml(sched)}</td>` +
-        `<td${apoCell.isCard ? ' class="work-log-action-cell"' : ""}>${apoCell.html}</td>` +
-        `<td${ewsCell.isCard ? ' class="work-log-action-cell"' : ""}>${ewsCell.html}</td>` +
+        `<td>${apoCell.html}</td>` +
+        `<td>${ewsCell.html}</td>` +
         `<td>${this.escapeHtml(String(this.formatSyncedAt(row.synced_at)))}</td>` +
+        `<td${cardCell.isCard ? ' class="work-log-action-cell"' : ""}>${cardCell.html}</td>` +
         "</tr>";
     });
     html += "</table>";
@@ -1142,9 +1182,19 @@ const Office = {
     if (window.__officeFetchGuard) return;
     window.__officeFetchGuard = true;
     const nativeFetch = window.fetch.bind(window);
+    const skipLoginRedirect = () => {
+      const path = window.location.pathname || "";
+      return (
+        path.startsWith("/ui/login") ||
+        path.startsWith("/ui/telegram-hit") ||
+        path.startsWith("/ui/telegram-punch") ||
+        path.startsWith("/ui/retro-hit") ||
+        path.startsWith("/ui/retro-punch")
+      );
+    };
     window.fetch = async (...args) => {
       const res = await nativeFetch(...args);
-      if (res.status === 401 && !window.location.pathname.startsWith("/ui/login")) {
+      if (res.status === 401 && !skipLoginRedirect()) {
         const data = await res.clone().json().catch(() => ({}));
         if (data.login || data.error === "Απαιτείται σύνδεση") {
           const next = encodeURIComponent(location.pathname + location.search);

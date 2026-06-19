@@ -41,17 +41,28 @@ function renderTable(rows, count, store) {
       `<p style="color:var(--muted);">${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν εργαζόμενοι. Πατήστε «Συγχρονισμός Ergani».</span></p>`;
     return;
   }
+  const branchAa = store?.branch_aa ?? rows[0]?.parartima_aa ?? "—";
+  const branchDesc = rows.find((r) => r.parartima_desc)?.parartima_desc || "";
+  const branchText = branchDesc
+    ? `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))} — ${Office.escapeHtml(branchDesc)}`
+    : `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))}`;
   const storeLine = store
-    ? `<p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;">` +
-      `${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ` +
-      `ΑΦΜ εργοδότη ${Office.escapeHtml(store.employer_afm)} · παράρτημα ${Office.escapeHtml(store.branch_aa)}</p>`
+    ? `<div class="employees-store-meta" style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;line-height:1.45;">` +
+      `<div>${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ` +
+      `ΑΦΜ εργοδότη ${Office.escapeHtml(store.employer_afm)}</div>` +
+      `<div style="margin-top:0.15rem;padding-left:1.35rem;">${branchText}</div></div>`
     : "";
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Παράρτημα Ergani", "Κατάσταση", "Μηνιαία"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "Μηνιαία", "__history__"].forEach((h) => {
     const th = document.createElement("th");
-    th.textContent = h;
+    if (h === "__history__") {
+      th.className = "col-history work-log-action-cell";
+      th.setAttribute("aria-label", "Πραγματική απασχόληση");
+    } else {
+      th.textContent = h;
+    }
     hr.appendChild(th);
   });
   t.appendChild(hr);
@@ -70,11 +81,6 @@ function renderTable(rows, count, store) {
     tdFlex.className = "col-flex";
     tdFlex.textContent = Office.formatFlexMinutes(emp.flex_arrival_minutes);
     tr.appendChild(tdFlex);
-    const tdAa = document.createElement("td");
-    const aa = emp.parartima_aa ?? "—";
-    const pd = emp.parartima_desc ? ` — ${emp.parartima_desc}` : "";
-    tdAa.textContent = `${aa}${pd}`;
-    tr.appendChild(tdAa);
     const tdSt = document.createElement("td");
     const active = emp.active !== false && emp.active !== 0;
     tdSt.innerHTML = active
@@ -84,16 +90,29 @@ function renderTable(rows, count, store) {
     const tdMonthly = document.createElement("td");
     tdMonthly.className = "work-log-action-cell";
     const empAfm = (emp.afm || "").trim();
+    const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
     if (empAfm) {
       const a = document.createElement("a");
       a.href = `/ui/monthly-status?afm=${encodeURIComponent(empAfm)}`;
       a.className = "work-log-card-link";
       a.title = "Μηνιαία κατάσταση";
-      a.setAttribute("aria-label", `Μηνιαία κατάσταση — ${emp.eponymo || ""} ${emp.onoma || ""}`.trim());
+      a.setAttribute("aria-label", `Μηνιαία κατάσταση — ${empName}`);
       a.innerHTML = Office.icon("calendar3");
       tdMonthly.appendChild(a);
     }
     tr.appendChild(tdMonthly);
+    const tdHistory = document.createElement("td");
+    tdHistory.className = "col-history work-log-history-cell work-log-action-cell";
+    if (empAfm) {
+      const historyLink = document.createElement("a");
+      historyLink.href = Office.workLogHistoryUrl(empAfm, empName, "employees");
+      historyLink.className = "btn btn-sm btn-secondary work-log-history-btn";
+      historyLink.title = "Πραγματική απασχόληση — ιστορικό";
+      historyLink.setAttribute("aria-label", `Πραγματική απασχόληση — ${empName}`);
+      historyLink.innerHTML = Office.icon("clock-history");
+      tdHistory.appendChild(historyLink);
+    }
+    tr.appendChild(tdHistory);
     t.appendChild(tr);
   });
   wrap.innerHTML =

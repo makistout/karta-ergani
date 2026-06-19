@@ -81,42 +81,43 @@ def format_missing_punch_notification(
     hour_to: str | None,
     retro_time: str | None = None,
     card_event: str | None = None,
+    hit_url: str | None = None,
     punch_url: str | None = None,
     has_pin: bool = False,
 ) -> str:
-    """Κείμενο ειδοποίησης για ελλιπή είσοδο/έξοδο πραγματικής απασχόλησης."""
+    """Κείμενο ειδοποίησης τύπου 1 — ελλιπές χτύπημα παρελθόντος."""
+    link = (hit_url or punch_url or "").strip()
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
     hf = (hour_from or "").strip()
     ht = (hour_to or "").strip()
-    missing: list[str] = []
-    if not hf:
-        missing.append("είσοδο")
-    if not ht:
-        missing.append("έξοδο")
-    if len(missing) >= 2:
+    event = (card_event or "").strip()
+    if event == "check_in":
+        defect = "ελλιπές χτύπημα εισόδου"
+    elif event == "check_out":
+        defect = "ελλιπές χτύπημα εξόδου"
+    elif not hf and not ht:
         defect = "ελλιπή είσοδο και έξοδο"
-        punch_label = "είσοδο/έξοδο"
-    elif missing and missing[0] == "είσοδο":
-        defect = "ελλιπή είσοδο"
-        punch_label = "είσοδο"
+    elif not hf:
+        defect = "ελλιπές χτύπημα εισόδου"
     else:
-        defect = "ελλιπή έξοδο"
-        punch_label = "έξοδο"
+        defect = "ελλιπές χτύπημα εξόδου"
     store = (store_name or "").strip()
     prefix = f"erganiOS — {store}\n" if store else "erganiOS\n"
     lines = [
-        f"{prefix}Ο εργαζόμενος {name} (ΑΦΜ {employee_afm}) "
-        f"έχει {defect} την {work_date}."
+        f"{prefix}Για τον εργαζόμενο {name} (ΑΦΜ {employee_afm}) "
+        f"υπάρχει {defect} την {work_date}."
     ]
     rt = (retro_time or "").strip()
-    if rt and card_event:
-        lines.append(f"Θα έπρεπε να χτυπήσει κάρτα {punch_label} στις {rt}.")
-    if punch_url:
+    if rt and event == "check_in":
+        lines.append(f"Προτεινόμενη ώρα εισόδου (ψηφ. ωράριο): {rt}.")
+    elif rt and event == "check_out":
+        lines.append(f"Προτεινόμενη ώρα εξόδου (ψηφ. ωράριο): {rt}.")
+    if link:
         lines.append(
-            f"\nΑυτόματο χτύπημα (απαιτείται ο προσωπικός PIN σας):\n{punch_url}"
+            f"\nΆνοιγμα προγενέστερης καταχώρησης (απαιτείται ο προσωπικός PIN σας):\n{link}"
         )
-    elif has_pin is False and rt:
+    elif not has_pin:
         lines.append(
-            "\nΓια σύνδεσμο αυτόματου χτυπήματος, ορίστε PIN λήπτη στο κατάστημα."
+            "\nΓια σύνδεσμο με PIN, ορίστε PIN λήπτη στο κατάστημα."
         )
     return "\n".join(lines)

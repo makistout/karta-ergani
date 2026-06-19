@@ -91,7 +91,9 @@ def _sync_employees_api(
                     upsert_employment(cur, employer_id, emp_id, part_id)
                     synced += 1
             if active_afms:
-                deactivate_stale_employments(cur, employer_id, active_afms)
+                deactivate_stale_employments(
+                    cur, employer_id, active_afms, parartima_id=part_id
+                )
         log.info(f"Προσωπικό: αποθηκεύτηκαν {synced} εργαζόμενοι (EX_BASE_05)", count=synced)
         return {"success": True, "detail": f"{synced} εργαζόμενοι", "count": synced}
     except Exception as ex:

@@ -10,6 +10,14 @@ ui_bp = Blueprint("ui", __name__, url_prefix="/ui")
 _UI_DIR = Path(__file__).resolve().parent / "static" / "ui"
 
 
+@ui_bp.after_request
+def _ui_no_cache(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 @ui_bp.get("/")
 def ui_home():
     return send_from_directory(_UI_DIR, "home.html")
@@ -81,9 +89,26 @@ def ui_work_card():
     return send_from_directory(_UI_DIR, "work-card-list.html")
 
 
+@ui_bp.get("/telegram-hit")
+def ui_telegram_hit():
+    return send_from_directory(_UI_DIR, "telegram-hit.html")
+
+
 @ui_bp.get("/telegram-punch")
-def ui_telegram_punch():
-    return send_from_directory(_UI_DIR, "telegram-punch.html")
+def ui_telegram_punch_redirect():
+    """Παλιός σύνδεσμος → telegram-hit."""
+    return redirect("/ui/telegram-hit")
+
+
+@ui_bp.get("/retro-hit")
+def ui_retro_hit():
+    return send_from_directory(_UI_DIR, "retro-hit.html")
+
+
+@ui_bp.get("/retro-punch")
+def ui_retro_punch_redirect():
+    """Παλιός σύνδεσμος → retro-hit."""
+    return redirect("/ui/retro-hit")
 
 
 @ui_bp.get("/sync")

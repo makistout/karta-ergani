@@ -376,7 +376,7 @@ def build_card_status_report(
     card_events = list_card_events_for_store_date(
         employer_afm, branch_aa, ref_iso
     )
-    flex_by_afm = flex_arrival_map_for_employer(employer_afm)
+    flex_by_afm = flex_arrival_map_for_employer(employer_afm, branch_aa)
 
     sched_by_afm: dict[str, dict[str, Any]] = {}
     for row in schedule_rows:

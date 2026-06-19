@@ -3,6 +3,10 @@ let tableState = {
   total: 0,
   totalPages: 1,
   pageSize: Office.TABLE_PAGE_SIZE,
+  closedPage: 1,
+  closedTotal: 0,
+  closedTotalPages: 1,
+  closedPageSize: Office.TABLE_PAGE_SIZE,
   store: null,
   excludeDate: "",
 };
@@ -12,33 +16,43 @@ document.addEventListener("DOMContentLoaded", async () => {
   Office.initWorkLogHistoryModal();
   const activeData = await Office.fetchActiveStore();
   Office.applyActiveStoreChrome(activeData);
-  await loadMissingCards(1, activeData);
+  await loadMissingCards(1, 1, activeData);
 });
 
-async function loadMissingCards(page, cachedActive) {
+async function loadMissingCards(page, closedPage = 1, cachedActive) {
   const wrap = document.getElementById("missingCardsWrap");
+  const closedWrap = document.getElementById("missingCardsClosedWrap");
   const desc = document.getElementById("missingCardsDesc");
   Office.showTableLoading(wrap);
+  Office.showTableLoading(closedWrap);
   try {
     const activeData = cachedActive || (await Office.fetchActiveStore());
     if (!activeData.store) {
-      wrap.innerHTML =
+      const noStore =
         `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Επιλέξτε ενεργό κατάστημα (sidebar).</span></p>`;
+      wrap.innerHTML = noStore;
+      if (closedWrap) closedWrap.innerHTML = noStore;
       return;
     }
-    const res = await fetch(
-      `/api/work-log/missing-cards?page=${encodeURIComponent(page)}&page_size=${Office.TABLE_PAGE_SIZE}`,
-      { cache: "no-store" }
-    );
+    const qs = new URLSearchParams({
+      page: String(page),
+      page_size: String(Office.TABLE_PAGE_SIZE),
+      closed_page: String(closedPage),
+      closed_page_size: String(Office.TABLE_PAGE_SIZE),
+    });
+    const res = await fetch(`/api/work-log/missing-cards?${qs}`, { cache: "no-store" });
     let data = {};
     try {
       data = await res.json();
     } catch {
       wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα διακομιστή (HTTP ${res.status}).</p>`;
+      if (closedWrap) closedWrap.innerHTML = "";
       return;
     }
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      const err = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = err;
+      if (closedWrap) closedWrap.innerHTML = err;
       if (data.db_setup) {
         wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;">${Office.escapeHtml(data.db_setup)}</p>`;
       }
@@ -49,16 +63,22 @@ async function loadMissingCards(page, cachedActive) {
       total: data.total || 0,
       totalPages: data.total_pages || 1,
       pageSize: data.page_size || Office.TABLE_PAGE_SIZE,
+      closedPage: data.closed_page || closedPage,
+      closedTotal: data.closed_total || 0,
+      closedTotalPages: data.closed_total_pages || 1,
+      closedPageSize: data.closed_page_size || Office.TABLE_PAGE_SIZE,
       store: data.store,
       excludeDate: data.exclude_date || "",
     };
     if (desc && data.exclude_date) {
       desc.textContent =
-        `Εγγραφές πριν από σήμερα (${data.exclude_date}) με έλλειψη ώρας εισόδου ή εξόδου — από πραγματική portal ή από δήλωση κάρτας χωρίς αντίστοιχη γραμμή (νεότερες πρώτα).`;
+        `Εγγραφές πριν από σήμερα (${data.exclude_date}) με έλλειψη στην πραγματική portal — χωρίς αντίστοιχη δήλωση κάρτας στη βάση erganiOS (νεότερες πρώτα).`;
     }
     renderTablePage(data.work_log || []);
+    renderClosedTablePage(data.closed_work_log || []);
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    if (closedWrap) closedWrap.innerHTML = "";
   }
 }
 
@@ -68,14 +88,25 @@ function renderTablePage(rows) {
 
   if (!total) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("check-circle")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ελλιπή χτυπήματα πριν από σήμερα.</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("check-circle")}<span style="margin-left:0.35rem;">Δεν υπάρχουν εκκρεμή ελλιπή χτυπήματα πριν από σήμερα.</span></p>`;
     return;
   }
 
   const storeLine = store
-    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${total} εγγραφές συνολικά</p>`
+    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${total} εκκρεμείς</p>`
     : "";
 
+  const t = buildPendingTable(rows);
+  wrap.innerHTML = storeLine;
+  wrap.appendChild(t);
+  if (totalPages > 1) {
+    wrap.appendChild(
+      Office.buildTablePager(page, totalPages, total, (p) => loadMissingCards(p, tableState.closedPage), pageSize)
+    );
+  }
+}
+
+function buildPendingTable(rows) {
   const t = document.createElement("table");
   t.className = "data";
   const columns = [
@@ -145,12 +176,115 @@ function renderTablePage(rows) {
     appendNotifyCell(tr, row);
     t.appendChild(tr);
   });
+  return t;
+}
+
+function formatCardDbCell(entry) {
+  if (!entry || !entry.time) return "—";
+  let html = `<span class="missing-cards-db-time">${Office.escapeHtml(entry.time)}</span>`;
+  if (entry.protocol) {
+    html += `<br><span class="table-meta">${Office.escapeHtml(entry.protocol)}</span>`;
+  } else if (entry.from_token) {
+    html += `<br><span class="table-meta">ολοκλ. retro-hit</span>`;
+  }
+  const recorded = String(entry.recorded_at || "").trim();
+  if (recorded) {
+    html += `<span class="missing-cards-recorded-at">καταγραφή ${Office.escapeHtml(recorded)}</span>`;
+  }
+  return html;
+}
+
+function renderClosedTablePage(rows) {
+  const wrap = document.getElementById("missingCardsClosedWrap");
+  if (!wrap) return;
+  const { store, closedPage, closedTotal, closedTotalPages, closedPageSize } = tableState;
+
+  if (!closedTotal) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ολοκληρωμένα χτυπήματα στη βάση για ελλιπή πραγματική.</span></p>`;
+    return;
+  }
+
+  const storeLine = store
+    ? `<p class="table-meta">${Office.icon("check-circle")} <strong>${Office.escapeHtml(store.name)}</strong> · ${closedTotal} ολοκληρωμένα χτυπήματα</p>`
+    : "";
+
+  const t = document.createElement("table");
+  t.className = "data missing-cards-closed-table";
+  const headers = [
+    "ΑΦΜ",
+    "Ιστορικό",
+    "Επώνυμο",
+    "Όνομα",
+    "Ημερομηνία",
+    "Πραγμ. Από",
+    "Πραγμ. Έως",
+    "Καταχ. είσοδος",
+    "Καταχ. έξοδος",
+  ];
+  const hr = document.createElement("tr");
+  headers.forEach((h, i) => {
+    const th = document.createElement("th");
+    if (i === 1) {
+      th.className = "col-history";
+      th.setAttribute("aria-label", "Ιστορικό");
+    } else {
+      th.textContent = h;
+    }
+    hr.appendChild(th);
+  });
+  t.appendChild(hr);
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.classList.add("work-log-row--resolved-db");
+    const tdAfm = document.createElement("td");
+    tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
+    tr.appendChild(tdAfm);
+    tr.appendChild(Office.createWorkLogHistoryCell(row));
+
+    const tdName = document.createElement("td");
+    tdName.innerHTML = Office.formatWorkLogEponymoCell(row);
+    tr.appendChild(tdName);
+
+    const tdOnoma = document.createElement("td");
+    tdOnoma.textContent = row.onoma || "";
+    tr.appendChild(tdOnoma);
+
+    const tdDate = document.createElement("td");
+    tdDate.textContent = row.work_date || "";
+    tr.appendChild(tdDate);
+
+    const tdFrom = document.createElement("td");
+    tdFrom.innerHTML = Office.formatWorkLogTimeCell(row.hour_from || "", "Λείπει στην πραγματική").html;
+    tr.appendChild(tdFrom);
+
+    const tdTo = document.createElement("td");
+    tdTo.innerHTML = Office.formatWorkLogTimeCell(row.hour_to || "", "Λείπει στην πραγματική").html;
+    tr.appendChild(tdTo);
+
+    const tdDbIn = document.createElement("td");
+    tdDbIn.innerHTML = formatCardDbCell(row.card_db_in);
+    tr.appendChild(tdDbIn);
+
+    const tdDbOut = document.createElement("td");
+    tdDbOut.innerHTML = formatCardDbCell(row.card_db_out);
+    tr.appendChild(tdDbOut);
+
+    t.appendChild(tr);
+  });
 
   wrap.innerHTML = storeLine;
   wrap.appendChild(t);
-  if (totalPages > 1) {
+  if (closedTotalPages > 1) {
     wrap.appendChild(
-      Office.buildTablePager(page, totalPages, total, (p) => loadMissingCards(p), pageSize)
+      Office.buildTablePager(
+        closedPage,
+        closedTotalPages,
+        closedTotal,
+        (p) => loadMissingCards(tableState.page, p),
+        closedPageSize
+      )
     );
   }
 }

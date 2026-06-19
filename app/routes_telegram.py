@@ -15,7 +15,13 @@ from app.telegram_notify import (
     send_telegram_message,
 )
 from app.notify_pin import is_valid_notify_pin
-from app.telegram_punch_service import confirm_punch_with_pin, punch_preview, send_missing_punch_notifications
+from app.telegram_punch_service import (
+    confirm_punch_with_pin,
+    get_retro_hit_context,
+    punch_preview,
+    send_missing_punch_notifications,
+    submit_retro_hit_from_session,
+)
 
 telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
 logger = logging.getLogger(__name__)
@@ -114,6 +120,17 @@ def telegram_notify_missing_punch():
         return jsonify({"error": str(ex)}), 400
     ok = result["sent"] > 0
     payload = {"success": ok, **result}
+    if result.get("skipped") == "already_submitted":
+        payload["success"] = False
+        payload["error"] = (
+            "Υπάρχει ήδη δήλωση κάρτας στη βάση για αυτό το χτύπημα — "
+            "δεν αποστέλλεται ξανά ειδοποίηση."
+        )
+        return jsonify(payload), 400
+    if result.get("skipped") and not ok:
+        payload["success"] = False
+        payload["error"] = "Δεν ορίστηκε ενέργεια ειδοποίησης για αυτή τη γραμμή."
+        return jsonify(payload), 400
     if not ok and not result["total"]:
         payload["error"] = (
             "Δεν υπάρχουν λήπτες με συνδεδεμένο Telegram. "
@@ -124,16 +141,18 @@ def telegram_notify_missing_punch():
     return jsonify(payload), (200 if ok else 400)
 
 
+@telegram_bp.get("/hit/<token>")
 @telegram_bp.get("/punch/<token>")
-def telegram_punch_preview(token: str):
+def telegram_hit_preview(token: str):
     preview, err = punch_preview(token)
     if err:
         return jsonify({"error": err}), 400
     return jsonify({"ok": True, "preview": preview})
 
 
+@telegram_bp.post("/hit/<token>/confirm")
 @telegram_bp.post("/punch/<token>/confirm")
-def telegram_punch_confirm(token: str):
+def telegram_hit_confirm(token: str):
     data = request.get_json(silent=True) or {}
     pin = str(data.get("pin") or "").strip()
     if not pin:
@@ -141,4 +160,31 @@ def telegram_punch_confirm(token: str):
     if not is_valid_notify_pin(pin):
         return jsonify({"error": "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία"}), 400
     result, status = confirm_punch_with_pin(token, pin)
+    return jsonify(result), status
+
+
+@telegram_bp.get("/retro-hit/context")
+def telegram_retro_hit_context():
+    token = str(request.args.get("t") or "").strip() or None
+    ctx, err = get_retro_hit_context(token=token)
+    if err or not ctx:
+        return jsonify({"error": err or "Λήξη συνεδρίας"}), 401
+    return jsonify({"ok": True, "context": ctx})
+
+
+@telegram_bp.post("/retro-hit/submit")
+def telegram_retro_hit_submit():
+    data = request.get_json(silent=True) or {}
+    event = str(data.get("event") or "").strip()
+    reference_date = str(data.get("reference_date") or "").strip()
+    retro_time = str(data.get("retro_time") or "").strip()
+    aitiologia = str(data.get("aitiologia") or "001").strip() or "001"
+    token = str(data.get("token") or "").strip() or None
+    result, status = submit_retro_hit_from_session(
+        event=event,
+        reference_date=reference_date,
+        retro_time=retro_time,
+        aitiologia=aitiologia,
+        token=token,
+    )
     return jsonify(result), status

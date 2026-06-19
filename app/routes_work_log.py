@@ -159,32 +159,38 @@ def work_log_missing_cards():
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα", "work_log": []}), 400
     page = max(1, int(request.args.get("page") or 1))
     page_size = max(1, min(int(request.args.get("page_size") or 20), 100))
+    closed_page = max(1, int(request.args.get("closed_page") or 1))
+    closed_page_size = max(1, min(int(request.args.get("closed_page_size") or 20), 100))
     today_ergani = datetime.now(tz_athens()).strftime("%d/%m/%Y")
     try:
-        rows, total = list_work_log_missing_cards_paged(
+        rows, total, closed_rows, closed_total = list_work_log_missing_cards_paged(
             ctx["employer_afm"],
             ctx["branch_aa"],
             today_ergani,
             page=page,
             page_size=page_size,
+            closed_page=closed_page,
+            closed_page_size=closed_page_size,
+            store_id=int(ctx["id"]),
         )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    all_rows = rows + closed_rows
     dates = list(
         dict.fromkeys(
             str(r.get("work_date") or "").strip()
-            for r in rows
+            for r in all_rows
             if (r.get("work_date") or "").strip()
         )
     )
     try:
         enrich_work_log_rows_with_schedule(
-            rows, ctx["employer_afm"], ctx["branch_aa"], dates
+            all_rows, ctx["employer_afm"], ctx["branch_aa"], dates
         )
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
-        for r in rows:
+        for r in all_rows:
             r["schedule_label"] = "—"
             r["schedule"] = None
     try:
@@ -194,10 +200,13 @@ def work_log_missing_cards():
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
-    for r in rows:
+    for r in all_rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()
     total_pages = max(1, math.ceil(total / page_size)) if total else 1
+    closed_total_pages = (
+        max(1, math.ceil(closed_total / closed_page_size)) if closed_total else 1
+    )
     return jsonify({
         "store": {
             "id": ctx["id"],
@@ -212,6 +221,12 @@ def work_log_missing_cards():
         "total_pages": total_pages,
         "count": len(rows),
         "work_log": rows,
+        "closed_page": closed_page,
+        "closed_page_size": closed_page_size,
+        "closed_total": closed_total,
+        "closed_total_pages": closed_total_pages,
+        "closed_count": len(closed_rows),
+        "closed_work_log": closed_rows,
     })
 
 

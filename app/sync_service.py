@@ -161,7 +161,9 @@ def iter_store_sync_events(
                         upsert_employment(cur, employer_id, emp_id, part_id)
                         synced += 1
                 if active_afms:
-                    deactivate_stale_employments(cur, employer_id, active_afms)
+                    deactivate_stale_employments(
+                        cur, employer_id, active_afms, parartima_id=part_id
+                    )
             results["employees"] = _step(True, f"{synced} εργαζόμενοι", count=synced)
             log.info(f"Αποθηκεύτηκαν {synced} εργαζόμενοι", count=synced)
         else:

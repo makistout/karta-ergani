@@ -550,6 +550,7 @@ async function submitCard(eventName, options = {}) {
     };
     if (eventAt) body.event_at = eventAt;
     if (aitiologia) body.aitiologia = aitiologia;
+    body.device_info = Office.clientDeviceInfo();
 
     const res = await fetch("/api/work-card/submit", {
       method: "POST",

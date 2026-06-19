@@ -396,6 +396,62 @@ input, select {
   margin: 0.25rem 0 0;
 }
 
+.missing-cards-closed-title {
+  margin: 2rem 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ok, #15803d);
+}
+
+.missing-cards-closed-desc {
+  margin-top: 0;
+}
+
+.list-card--closed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.missing-cards-closed-table .data tbody tr {
+  background: #fff;
+}
+
+.missing-cards-db-time {
+  color: var(--ok, #15803d);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.retro-hit-page .retro-hit-main {
+  max-width: 28rem;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+.retro-hit-card {
+  padding: 1.25rem;
+}
+
+.retro-hit-page-title {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.retro-hit-employee {
+  margin: 0.75rem 0 1rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.retro-hit-afm {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.retro-hit-page .work-card-retro {
+  margin-top: 0.5rem;
+}
+
 .work-card-retro {
   border: 2px dashed #cbd5e1;
   border-radius: 8px;
@@ -840,10 +896,121 @@ a.btn {
   flex-shrink: 0;
 }
 
-.table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+table.data td.table-actions {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.table-actions-inner {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.table-actions-inner .btn-icon-only {
+  padding: 0;
+  gap: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.table-actions-inner .btn-icon-only .bi {
+  font-size: 1.35rem;
+  line-height: 1;
+  margin: 0;
+  display: block;
+}
+
+.table-actions-inner .btn-select.btn-icon-only {
+  border-color: #99f6e4;
+  background: #fff;
+  color: var(--accent);
+}
+
+.table-actions-inner .btn-select.btn-icon-only .bi {
+  color: var(--accent);
+}
+
+.table-actions-inner .btn-select.btn-icon-only:hover:not(:disabled) {
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.table-actions-inner .btn-select.btn-icon-only:hover:not(:disabled) .bi {
+  color: #0f766e;
+}
+
+.table-actions-inner .btn-select-active.btn-icon-only,
+.table-actions-inner .btn-select-active.btn-icon-only .bi {
+  color: #047857;
+}
+
+.table-actions-inner .btn-select-active.btn-icon-only {
+  background: #a7f3d0;
+  border-color: #059669;
+}
+
+.table-actions-inner .btn-select-active.btn-icon-only:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.table-actions-inner .btn-select-active.btn-icon-only:disabled,
+.table-actions-inner .btn-select-active.btn-icon-only:disabled .bi {
+  color: #047857;
+}
+
+.table-actions-inner .btn:not(.btn-select):not(.btn-danger).btn-icon-only {
+  border-color: #bfdbfe;
+  background: #fff;
+  color: var(--brand-light);
+}
+
+.table-actions-inner .btn:not(.btn-select):not(.btn-danger).btn-icon-only .bi {
+  color: var(--brand-light);
+}
+
+.table-actions-inner .btn:not(.btn-select):not(.btn-danger).btn-icon-only:hover {
+  background: #eff6ff;
+  border-color: var(--brand-light);
+  color: var(--brand);
+}
+
+.table-actions-inner .btn:not(.btn-select):not(.btn-danger).btn-icon-only:hover .bi {
+  color: var(--brand);
+}
+
+.table-actions-inner .btn-danger.btn-icon-only {
+  border-color: #fecaca;
+  background: #fff;
+  color: var(--err);
+}
+
+.table-actions-inner .btn-danger.btn-icon-only .bi {
+  color: var(--err);
+}
+
+.table-actions-inner .btn-danger.btn-icon-only:hover {
+  background: var(--err);
+  border-color: var(--err);
+  color: #fff;
+}
+
+.table-actions-inner .btn-danger.btn-icon-only:hover .bi {
+  color: #fff;
 }
 
 .actions {
@@ -1262,6 +1429,23 @@ input[role="combobox"] {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+td .table-meta {
+  display: block;
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+td .missing-cards-recorded-at {
+  display: block;
+  margin: 0;
+  padding: 0;
+  font-size: 0.65rem;
+  line-height: 1.1;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 /* Inline date range */
@@ -1829,6 +2013,15 @@ table.data td.col-history {
 .work-log-history-btn {
   flex-shrink: 0;
   padding: 0.12rem 0.32rem;
+  line-height: 1;
+}
+
+#employeesWrap .work-log-history-btn {
+  padding: 0.08rem 0.22rem;
+}
+
+#employeesWrap .work-log-history-btn .bi {
+  font-size: 0.95rem;
   line-height: 1;
 }
 

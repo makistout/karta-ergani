@@ -288,12 +288,27 @@ def _portal_hm_minutes(value: str) -> int | None:
     return int(m.group(1)) * 60 + int(m.group(2))
 
 
+def filter_portal_items_for_branch(
+    items: list[dict[str, Any]],
+    branch_aa: str,
+) -> list[dict[str, Any]]:
+    """Κρατά μόνο γραμμές portal του συγκεκριμένου παραρτήματος (ΑΑ)."""
+    aa = str(branch_aa or "0").strip() or "0"
+    return [
+        it
+        for it in items
+        if (str(it.get("source_aa") or "").strip() or "0") == aa
+    ]
+
+
 def portal_rows_to_work_log_items(
     grid_rows: list[list[str]],
     *,
     default_work_date: str,
+    default_branch_aa: str = "",
 ) -> list[dict[str, Any]]:
     """Μετατροπή γραμμών grid portal → karta_work_log."""
+    branch_aa = str(default_branch_aa or "").strip()
     out: list[dict[str, Any]] = []
     for cells in grid_rows:
         if len(cells) < 7:
@@ -313,6 +328,9 @@ def portal_rows_to_work_log_items(
             ht_m = _portal_hm_minutes(hour_to)
             if hf_m is not None and ht_m is not None and ht_m < hf_m:
                 is_end_diff = 1
+        source_aa = str(cells[0] or "").strip()[:32]
+        if not source_aa and branch_aa:
+            source_aa = branch_aa
         out.append({
             "employee_afm": afm,
             "onoma": onoma,
@@ -320,7 +338,7 @@ def portal_rows_to_work_log_items(
             "work_date": wd,
             "hour_from": hour_from,
             "hour_to": hour_to,
-            "source_aa": str(cells[0]).strip()[:32],
+            "source_aa": source_aa,
             "is_end_date_different": is_end_diff,
         })
     return out

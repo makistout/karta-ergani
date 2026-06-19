@@ -128,15 +128,12 @@ def _has_next_grid_page(html: str) -> bool:
 
 
 def _pick_pararthma(html: str, branch_aa: str) -> str:
-    aa = str(branch_aa or "0").strip()
+    aa = str(branch_aa or "0").strip() or "0"
     for m in re.finditer(r'<option[^>]+value="([^"]*)"[^>]*>([^<]+)</option>', html, re.I):
         val, label = m.group(1), m.group(2)
         if val == aa or label.strip().startswith(f"{aa} -"):
             return val
-    for m in re.finditer(r'<option[^>]+value="(\d+)"', html):
-        if m.group(1) != "":
-            return m.group(1)
-    return aa or "0"
+    return aa
 
 
 def _parse_grid_rows(html: str) -> list[list[str]]:
@@ -232,33 +229,6 @@ def _open_current_status(session: requests.Session, portal_base: str) -> tuple[s
     return r.text, r.url
 
 
-def _merge_schedule_grid_rows(
-    primary: list[list[str]],
-    secondary: list[list[str]],
-) -> list[list[str]]:
-    """Ένωση γραμμών portal — κλειδί ΑΦΜ + ημερομηνία (κανονικοποιημένη)."""
-    from app.ergani_parse import _normalize_portal_date
-
-    out: list[list[str]] = []
-    seen: set[tuple[str, str]] = set()
-    for rows in (primary, secondary):
-        for cells in rows:
-            if len(cells) < 9:
-                continue
-            afm = str(cells[1]).strip()
-            wd = _normalize_portal_date(str(cells[4]).strip(), str(cells[4]).strip())
-            if not afm or not wd:
-                continue
-            key = (afm, wd)
-            if key in seen:
-                continue
-            seen.add(key)
-            norm_cells = cells[:9]
-            norm_cells[4] = wd
-            out.append(norm_cells)
-    return out
-
-
 def _search_schedule(
     session: requests.Session,
     page_html: str,
@@ -298,17 +268,24 @@ def _search_schedule(
             f"Σφάλμα portal κατά την αναζήτηση για {date_from} – {date_to}"
         )
 
-    # Excel πρώτα — το HTML pagination (Page$Next) ακυρώνει το ViewState για export.
+    # Excel πρώτα — αν πετύχει, μόνο Excel (openpyxl/xlrd). HTML grid μόνο σε αποτυχία.
     excel_rows: list[list[str]] = []
     excel_err: str | None = None
     try:
         from app.portal_excel import fetch_schedule_rows_via_excel
 
         excel_rows = fetch_schedule_rows_via_excel(
-            session, r.text, r.url, grid_event_target=GRID_EVENT_TARGET
+            session,
+            r.text,
+            r.url,
+            grid_event_target=GRID_EVENT_TARGET,
+            default_branch_aa=branch_aa,
         )
     except Exception as ex:
         excel_err = str(ex)
+
+    if excel_rows:
+        return excel_rows, "excel"
 
     html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
@@ -318,13 +295,6 @@ def _search_schedule(
             + (f" — Excel: {excel_err}" if excel_err else "")
         )
 
-    if excel_rows and html_rows:
-        merged = _merge_schedule_grid_rows(excel_rows, html_rows)
-        if len(merged) > len(excel_rows) or len(merged) > len(html_rows):
-            return merged, "excel+html"
-        return excel_rows, "excel"
-    if excel_rows:
-        return excel_rows, "excel"
     if html_rows:
         src = "html"
         if excel_err:
@@ -342,6 +312,9 @@ def _persist_schedule_items(
 ) -> int:
     employer_afm = str(ctx["employer_afm"]).strip()
     branch_aa = str(ctx.get("branch_aa") or "0").strip()
+    from app.ergani_parse import filter_portal_items_for_branch
+
+    items = filter_portal_items_for_branch(items, branch_aa)
     by_day: dict[str, list[dict[str, Any]]] = {}
     for it in items:
         wd = str(it.get("work_date") or "").strip()

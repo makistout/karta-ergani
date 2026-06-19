@@ -51,7 +51,7 @@ def list_employees_for_employer(
     if active_only:
         sql += " AND e.active = 1"
     if branch_aa is not None:
-        sql += " AND (p.code_aa = ? OR p.code_aa IS NULL)"
+        sql += " AND p.code_aa = ?"
         params.append(str(branch_aa).strip()[:32])
     sql += " ORDER BY emp.eponymo, emp.onoma, emp.afm"
     with cursor(commit=False) as cur:
@@ -127,16 +127,20 @@ def deactivate_stale_employments(
     cur: pyodbc.Cursor,
     employer_id: int,
     active_afms: set[str],
+    *,
+    parartima_id: int | None = None,
 ) -> int:
-    cur.execute(
-        """
+    sql = """
         SELECT e.id, emp.afm
         FROM dbo.karta_employment e
         JOIN dbo.karta_employee emp ON e.employee_id = emp.id
         WHERE e.employer_id = ? AND e.active = 1
-        """,
-        (employer_id,),
-    )
+    """
+    params: list[Any] = [employer_id]
+    if parartima_id is not None:
+        sql += " AND e.parartima_id = ?"
+        params.append(int(parartima_id))
+    cur.execute(sql, params)
     n = 0
     for row in cur.fetchall():
         emp_afm = norm_afm(str(row[1]))
@@ -169,20 +173,26 @@ def upsert_employee_by_afm(
         return upsert_employee(cur, afm, ep, on)
 
 
-def flex_arrival_map_for_employer(employer_afm: str) -> dict[str, int | None]:
-    """ΑΦΜ εργαζόμενου → ευέλικτη προσέλευση (λεπτά)."""
+def flex_arrival_map_for_employer(
+    employer_afm: str,
+    branch_aa: str | None = None,
+) -> dict[str, int | None]:
+    """ΑΦΜ εργαζόμενου → ευέλικτη προσέλευση (λεπτά) — προαιρετικά ανά παράρτημα."""
     afm = norm_afm(employer_afm)
-    with cursor(commit=False) as cur:
-        cur.execute(
-            """
+    sql = """
             SELECT emp.afm, emp.flex_arrival_minutes
             FROM dbo.karta_employee emp
             JOIN dbo.karta_employment e ON emp.id = e.employee_id
             JOIN dbo.karta_employer em ON e.employer_id = em.id
+            LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
             WHERE em.afm = ? AND e.active = 1
-            """,
-            (afm,),
-        )
+    """
+    params: list[Any] = [afm]
+    if branch_aa is not None:
+        sql += " AND p.code_aa = ?"
+        params.append(str(branch_aa).strip()[:32])
+    with cursor(commit=False) as cur:
+        cur.execute(sql, params)
         out: dict[str, int | None] = {}
         for row in cur.fetchall():
             emp_afm = str(row[0]).strip()
@@ -248,8 +258,12 @@ def upsert_employment(
         """
         SELECT id FROM dbo.karta_employment
         WHERE employer_id = ? AND employee_id = ?
+          AND (
+            (parartima_id = ? AND ? IS NOT NULL)
+            OR (parartima_id IS NULL AND ? IS NULL)
+          )
         """,
-        (employer_id, employee_id),
+        (employer_id, employee_id, parartima_id, parartima_id, parartima_id),
     )
     row = cur.fetchone()
     if row:

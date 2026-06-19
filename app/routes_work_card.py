@@ -102,6 +102,8 @@ def _submit_work_card(
     aa_s: str,
     bearer: str,
     api_base_url: str | None = None,
+    client_ip: str | None = None,
+    client_device: str | None = None,
 ) -> tuple[Any, int]:
     emp_afm = (body.get("employee_afm") or "").strip()
     last = (body.get("employee_last_name") or body.get("eponymo") or "").strip()
@@ -184,6 +186,8 @@ def _submit_work_card(
         protocol,
         submit_date,
         ergani_id,
+        client_ip=client_ip,
+        client_device=client_device,
     )
 
     err_msg = None
@@ -280,12 +284,17 @@ def work_card_submit_office():
     if not bearer:
         return jsonify({"error": "Αποτυχία σύνδεσης Ergani API (web user)"}), 401
 
+    from app.client_request import capture_client_context
+
+    client_ctx = capture_client_context("office_ui")
     return _submit_work_card(
         body=body,
         erg_s=str(ctx["employer_afm"]).strip(),
         aa_s=str(ctx.get("branch_aa") or "0").strip(),
         bearer=bearer,
         api_base_url=ctx.get("api_base_url"),
+        client_ip=client_ctx.get("client_ip"),
+        client_device=client_ctx.get("client_device"),
     )
 
 
@@ -317,10 +326,15 @@ def work_card_post_event():
 
         api_base = store_api_context(cfg).get("api_base_url")
 
+    from app.client_request import capture_client_context
+
+    client_ctx = capture_client_context("api_event")
     return _submit_work_card(
         body=body,
         erg_s=erg_s,
         aa_s=aa_s,
         bearer=bearer,
         api_base_url=api_base,
+        client_ip=client_ctx.get("client_ip"),
+        client_device=client_ctx.get("client_device"),
     )

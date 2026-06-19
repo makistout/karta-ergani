@@ -10,6 +10,13 @@ async function loadStoresList() {
   const wrap = document.getElementById("storesListWrap");
   if (!wrap) return;
   try {
+    let activeId = null;
+    try {
+      const activeData = await Office.fetchActiveStore();
+      activeId = activeData?.store?.id ?? null;
+    } catch {
+      /* λίστα χωρίς ενεργό */
+    }
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stores = await res.json();
@@ -58,9 +65,17 @@ async function loadStoresList() {
       tr.appendChild(tdDet);
       const tdAct = document.createElement("td");
       tdAct.className = "table-actions";
-      tdAct.appendChild(mkBtn("Επιλογή", "btn btn-select btn-sm", "check-circle", () => selectStore(store.id)));
-      tdAct.appendChild(mkBtn("Επεξεργασία", "btn btn-sm", "pencil-square", () => editStore(store.id)));
-      tdAct.appendChild(mkBtn("Διαγραφή", "btn btn-danger btn-sm", "trash3", () => deleteStore(store.id)));
+      const actInner = document.createElement("div");
+      actInner.className = "table-actions-inner";
+      const isActive = activeId != null && Number(store.id) === Number(activeId);
+      const selectCls = isActive ? "btn btn-select btn-select-active" : "btn btn-select";
+      const selectLabel = isActive ? "Ενεργό κατάστημα" : "Επιλογή";
+      actInner.appendChild(
+        mkBtn(selectLabel, selectCls, "check-circle", () => selectStore(store.id), { disabled: isActive })
+      );
+      actInner.appendChild(mkBtn("Επεξεργασία", "btn", "pencil-square", () => editStore(store.id)));
+      actInner.appendChild(mkBtn("Διαγραφή", "btn btn-danger", "trash3", () => deleteStore(store.id)));
+      tdAct.appendChild(actInner);
       tr.appendChild(tdAct);
       t.appendChild(tr);
     });
@@ -71,11 +86,18 @@ async function loadStoresList() {
   }
 }
 
-function mkBtn(label, cls, iconName, fn) {
+function mkBtn(label, cls, iconName, fn, { disabled = false } = {}) {
   const b = document.createElement("button");
-  b.className = cls;
-  b.innerHTML = `${Office.icon(iconName)}<span>${label}</span>`;
-  b.onclick = fn;
+  b.type = "button";
+  b.className = `${cls} btn-icon-only`;
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.innerHTML = Office.icon(iconName);
+  if (disabled) {
+    b.disabled = true;
+  } else {
+    b.onclick = fn;
+  }
   return b;
 }
 
@@ -122,6 +144,7 @@ async function selectStore(id) {
         Office.endSyncPanel("storesListWrap", "listMsg");
         const legacy = buildStoreSelectMessage({ success: true, store: data.store, sync: data.sync });
         await Office.loadActiveStore({ refresh: true });
+        loadStoresList();
         Office.showMsg("listMsg", legacy.text, legacy.ok);
         return;
       }
@@ -143,6 +166,7 @@ async function selectStore(id) {
     });
     if (result.ok) {
       await Office.loadActiveStore({ refresh: true });
+      loadStoresList();
     }
     Office.showMsg("listMsg", polled.error && !polled.success ? polled.error : result.text, result.ok);
   } catch (e) {

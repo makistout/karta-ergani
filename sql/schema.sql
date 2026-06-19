@@ -150,6 +150,8 @@ BEGIN
         success BIT NOT NULL CONSTRAINT DF_karta_declaration_success DEFAULT (0),
         request_json NVARCHAR(MAX) NULL,
         response_json NVARCHAR(MAX) NULL,
+        client_ip NVARCHAR(45) NULL,
+        client_device NVARCHAR(2000) NULL,
         created_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_declaration_created DEFAULT (SYSDATETIMEOFFSET())
     );
     CREATE INDEX IX_karta_declaration_code_created ON dbo.karta_declaration (submission_code, created_at DESC);

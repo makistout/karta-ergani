@@ -11,7 +11,7 @@ import pyodbc
 
 from app.db import cursor
 from app.row_util import rows_to_dicts
-from app.work_card_payload import tz_athens
+from app.work_card_payload import norm_afm, tz_athens
 
 _MAX_PIN_ATTEMPTS = 5
 _TOKEN_TTL_HOURS = 72
@@ -68,14 +68,47 @@ def get_punch_token_row(token: str) -> dict[str, Any] | None:
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT t.*, r.mobile, r.notify_pin_hash, r.name AS recipient_name,
-                   s.name AS store_name, s.employer_afm, s.branch_aa
+            SELECT
+                t.id, t.token_hash, t.recipient_id, t.store_id, t.employee_afm,
+                t.eponymo, t.onoma, t.work_date_ergani, t.reference_date_iso,
+                t.card_event, t.retro_time, t.pin_attempts,
+                CAST(t.pin_verified_at AS datetime2) AS pin_verified_at,
+                CAST(t.created_at AS datetime2) AS created_at,
+                CAST(t.expires_at AS datetime2) AS expires_at,
+                CAST(t.used_at AS datetime2) AS used_at,
+                r.mobile, r.notify_pin_hash, r.name AS recipient_name,
+                s.name AS store_name, s.employer_afm, s.branch_aa
             FROM dbo.karta_telegram_punch_token t
             INNER JOIN dbo.karta_store_notify_recipient r ON r.id = t.recipient_id
             INNER JOIN dbo.karta_store_config s ON s.id = t.store_id
             WHERE t.token_hash = ?
             """,
             (th,),
+        )
+        rows = rows_to_dicts(cur)
+    return rows[0] if rows else None
+
+
+def get_punch_token_row_by_id(token_id: int) -> dict[str, Any] | None:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT
+                t.id, t.token_hash, t.recipient_id, t.store_id, t.employee_afm,
+                t.eponymo, t.onoma, t.work_date_ergani, t.reference_date_iso,
+                t.card_event, t.retro_time, t.pin_attempts,
+                CAST(t.pin_verified_at AS datetime2) AS pin_verified_at,
+                CAST(t.created_at AS datetime2) AS created_at,
+                CAST(t.expires_at AS datetime2) AS expires_at,
+                CAST(t.used_at AS datetime2) AS used_at,
+                r.mobile, r.notify_pin_hash, r.name AS recipient_name,
+                s.name AS store_name, s.employer_afm, s.branch_aa
+            FROM dbo.karta_telegram_punch_token t
+            INNER JOIN dbo.karta_store_notify_recipient r ON r.id = t.recipient_id
+            INNER JOIN dbo.karta_store_config s ON s.id = t.store_id
+            WHERE t.id = ?
+            """,
+            (int(token_id),),
         )
         rows = rows_to_dicts(cur)
     return rows[0] if rows else None
@@ -96,16 +129,99 @@ def increment_pin_attempts(token_id: int) -> int:
         return int(row[0] if row else 0)
 
 
-def mark_token_used(token_id: int) -> None:
+def mark_pin_verified(token_id: int) -> None:
     with cursor() as cur:
         cur.execute(
             """
             UPDATE dbo.karta_telegram_punch_token
-            SET used_at = SYSDATETIMEOFFSET()
-            WHERE id = ? AND used_at IS NULL
+            SET pin_verified_at = SYSDATETIMEOFFSET()
+            WHERE id = ? AND pin_verified_at IS NULL
             """,
             (int(token_id),),
         )
+
+
+def mark_token_used(token_id: int, *, retro_time: str | None = None) -> None:
+    rt = (retro_time or "").strip()[:8] or None
+    with cursor() as cur:
+        if rt:
+            cur.execute(
+                """
+                UPDATE dbo.karta_telegram_punch_token
+                SET used_at = SYSDATETIMEOFFSET(), retro_time = ?
+                WHERE id = ? AND used_at IS NULL
+                """,
+                (rt, int(token_id)),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE dbo.karta_telegram_punch_token
+                SET used_at = SYSDATETIMEOFFSET()
+                WHERE id = ? AND used_at IS NULL
+                """,
+                (int(token_id),),
+            )
+
+
+def _card_event_to_f_type(card_event: str) -> str | None:
+    ev = (card_event or "").strip().lower()
+    if ev in ("check_in", "0"):
+        return "0"
+    if ev in ("check_out", "1"):
+        return "1"
+    return None
+
+
+def list_completed_punch_tokens_by_employee_date(
+    store_id: int,
+    work_dates: list[str],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Ολοκληρωμένα retro-hit (used_at) ανά εργαζόμενο/ημέρα."""
+    dates = [str(d or "").strip() for d in work_dates if str(d or "").strip()]
+    if not dates:
+        return {}
+    placeholders = ",".join("?" * len(dates))
+    sql = f"""
+        SELECT
+            t.employee_afm, t.work_date_ergani, t.card_event, t.retro_time,
+            CAST(t.used_at AS datetime2) AS used_at
+        FROM dbo.karta_telegram_punch_token t
+        WHERE t.store_id = ? AND t.used_at IS NOT NULL
+          AND t.work_date_ergani IN ({placeholders})
+    """
+    params: list[Any] = [int(store_id), *dates]
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    from app.repo_work_log import _format_recorded_at
+
+    with cursor(commit=False) as cur:
+        cur.execute(sql, params)
+        for row in rows_to_dicts(cur):
+            afm = norm_afm(row.get("employee_afm") or "")
+            wd = str(row.get("work_date_ergani") or "").strip()
+            ft = _card_event_to_f_type(str(row.get("card_event") or ""))
+            if not afm or not wd or not ft:
+                continue
+            slot = out.setdefault(
+                (afm, wd),
+                {"types": set(), "check_in": None, "check_out": None},
+            )
+            rt = str(row.get("retro_time") or "").strip()
+            entry = {
+                "time": rt or None,
+                "protocol": None,
+                "from_token": True,
+                "recorded_at": _format_recorded_at(row.get("used_at")),
+            }
+            if ft == "1":
+                prev = slot.get("check_out")
+                if not prev or (rt and not prev.get("time")):
+                    slot["check_out"] = entry
+            else:
+                prev = slot.get("check_in")
+                if not prev or (rt and not prev.get("time")):
+                    slot["check_in"] = entry
+    return out
 
 
 def token_is_valid(row: dict[str, Any] | None) -> tuple[bool, str | None]:

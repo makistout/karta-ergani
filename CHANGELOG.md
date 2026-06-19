@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-06-20 (δ) — UI καταστημάτων & εργαζομένων, ιστορικό πραγματικής, sync ανά παράρτημα, audit χτυπημάτων
+
+### UI — Καταστήματα (`/ui/stores`)
+
+- Στήλη **Ενέργειες**: μόνο εικονίδια (επιλογή, επεξεργασία, διαγραφή) σε ομοιόμορφα κουμπιά `2.5×2.5rem`.
+- **Ενεργό κατάστημα**: πράσινο `check-circle`, κουμπί **disabled** (δεν ξαναεπιλέγεται).
+- Διόρθωση «σκαλοπατιού» ευθυγράμμισης: `display:flex` αφαιρέθηκε από `<td>`· εσωτερικό `table-actions-inner` + `vertical-align: middle`.
+
+### UI — Εργαζόμενοι (`/ui/employees`)
+
+- Αφαιρέθηκε στήλη **Παράρτημα Ergani**· η πληροφορία εμφανίζεται κάτω από τη γραμμή καταστήματος (όνομα · ΑΦΜ εργοδότη).
+- Νέα στήλη δεξιά με εικονίδιο **`clock-history`** → `/ui/work-log/history?…&from=employees` (ιστορικό πραγματικής ανά εργαζόμενο).
+- Μικρότερο μέγεθος εικονιδίου `clock-history` μόνο στη σελίδα εργαζομένων.
+
+### UI — Ιστορικό πραγματικής (`/ui/work-log/history`)
+
+- **Κουμπί πίσω** (βέλος δίπλα στον τίτλο): διόρθωση — το κρυφό `.page-back` έμπαινε στον δρόμο του `initPageBackButton`.
+- Έξυπνη πλοήγηση πίσω ανά `from`: `employees` → `/ui/employees`, `work-card` → ψηφιακή κάρτα με προεπιλογή εργαζομένου, `worklog` → `/ui/work-log`.
+- Νέα στήλη **Κάρτα** (`credit-card-2-front`) — ίδια λογική με τη λίστα πραγματικής· σύνδεσμος σε προγενέστερο χτύπημα.
+- **`Office.workCardUrlOptsFromRow()`**: fallback retro `check_in`/`check_out` ακόμα κι όταν λείπει ώρα από ψηφιακό ωράριο (π.χ. ΡΕΠΟ).
+
+### UI — Ελλιπή χτυπήματα (`/ui/missing-cards`)
+
+- Δεύτερος πίνακας **«Ολοκληρωμένα χτυπήματα από erganiOS»** με ξεχωριστή σελιδοποίηση (`closed_page`).
+- Στη στήλη πρωτοκόλλου: **καταγραφή ηη/μμ/εεεε ΩΩ:ΛΛ** (`recorded_at`) αντί για «προγ. 001».
+- Αφαιρέθηκε η περιγραφική πρόταση κάτω από τον τίτλο ολοκληρωμένων.
+
+### Συγχρονισμός portal — διόρθωση διπλότυπων / λάθος παραρτήματος
+
+- **`portal_work_log_sync.py`**, **`portal_schedule_sync.py`**: αν το Excel πετύχει → **μόνο** δεδομένα Excel (όχι ένωση με HTML pagination που έφερνε γραμμές άλλων παραρτημάτων).
+- **`portal_excel.py`**: parsing μόνο `.xlsx`/`.xls`· αφαίρεση HTML parse από excel module· `default_branch_aa` στο export.
+- **`ergani_parse.py`**: `filter_portal_items_for_branch()` — φιλτράρισμα ανά `source_aa` / `branch_aa`.
+- **`repo_work_log.py`**: αυστηρό `p.code_aa = branch_aa` στο `employee_active`· `_format_recorded_at` για UI.
+- **`repo_entities.py`**: αυστηρό φιλτράρισμα προσωπικού ανά παράρτημα· `deactivate_stale_employments(parartima_id=…)`· `upsert_employment` / `flex_arrival_map` ανά παράρτημα.
+
+### Audit χτυπημάτων κάρτας (IP & συσκευή)
+
+- **`app/client_request.py`**: `capture_client_context()` — IP (`X-Forwarded-For` / `X-Real-IP`) + JSON συσκευής (οθόνη, viewport, platform, γλώσσα, timezone).
+- **`sql/alter_add_declaration_client_audit.sql`**: στήλες `client_ip`, `client_device` στο `karta_declaration`.
+- **`repo_card.py`**, **`routes_work_card.py`**, **`telegram_punch_service.py`**: αποθήκευση κατά υποβολή.
+- **Frontend**: `Office.clientDeviceInfo()` στο `office-common.js`· αποστολή από `work-card-list.js`, `missing-cards-list.js`, `retro-hit.js`.
+
+### Telegram — νέες σελίδες χτυπήματος (αντικατάσταση `telegram-punch`)
+
+- **`/ui/telegram-hit`** (+ redirect από `/ui/telegram-punch`): επαλήθευση PIN λήπτη για ειδοποίηση ελλιπούς χτυπήματος.
+- **`/ui/retro-hit`** (+ redirect από `/ui/retro-punch`): μόνο panel προγενέστερης καταχώρησης μετά το PIN.
+- **`sql/alter_add_tg_punch_pin_verified.sql`**: `pin_verified_at` στο `karta_telegram_punch_token` (λειτουργία χωρίς session cookie σε κινητό).
+- **`app/repo_telegram_punch.py`**: `mark_pin_verified`, βελτιωμένο `get_punch_token_row` (CAST `datetime2`).
+- **`app/telegram_punch_service.py`**: session `telegram_punch_ctx`, `resolve_missing_punch_action`, skip reasons για ειδοποίηση.
+- **`app/office_auth.py`**: δημόσιες διαδρομές `/ui/telegram-hit`, `/ui/retro-hit`, API `/api/telegram/hit/*`, `/api/telegram/retro-hit/*`.
+- **`app/routes_ui.py`**: `Cache-Control: no-cache` σε όλες τις σελίδες UI.
+
+### Άλλα
+
+- **`app/static/css/office.css`**: στυλ `table-actions-inner`, `employees-store-meta`, `#employeesWrap .work-log-history-btn`, ελλιπών χτυπημάτων (`missing-cards-recorded-at`).
+- **`schema.sql`**: ενημέρωση για `client_ip`/`client_device`, `pin_verified_at`.
+
+---
+
+## 2026-06-19 — Ειδοποίηση τύπου 1: ελλιπές χτύπημα (παρελθόν)
+
+- **Telegram**: μήνυμα «ελλιπές χτύπημα εισόδου/εξόδου» για συγκεκριμένο εργαζόμενο και ημέρα.
+- **Σύνδεσμος** `/ui/telegram-punch?t=…` — επαλήθευση **PIN λήπτη** (4 ψηφία).
+- Μετά επιτυχία PIN: **ξεχωριστή σελίδα** `/ui/retro-punch` — μόνο το panel **Προγενέστερη καταχώρηση** (όχι πλήρης ψηφιακή κάρτα).
+- Ενεργοποίηση session καταστήματος + bearer Ergani κατά την επιβεβαίωση PIN (για λήπτες χωρίς login στο γραφείο).
+- **Διόρθωση**: `get_punch_token_row` — `CAST` σε `datetime2` για `expires_at`/`used_at` (pyodbc -155 → Internal Server Error στη σελίδα PIN).
+
+---
+
 ## 2026-06-18 (γ) — Excel πρώτα & μία αναζήτηση Από–Έως (ωράριο + πραγματική)
 
 - **Ψηφιακό ωράριο**: Excel export πρώτα (όπως πραγματική), ένωση με HTML grid, fallback σε HTML.

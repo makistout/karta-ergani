@@ -1,11 +1,9 @@
-"""Εξαγωγή & parsing Excel από ASP.NET grid portal Ergani."""
+"""Εξαγωγή & parsing Excel από ASP.NET grid portal Ergani (μόνο .xlsx/.xls)."""
 
 from __future__ import annotations
 
 import io
 import re
-from html.parser import HTMLParser
-from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -16,37 +14,14 @@ EXCEL_EXPORT_TIMEOUT = 300
 EXCEL_EXPORT_ARGUMENT = "ExcelExport$1"
 
 
-class _TableParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.rows: list[list[str]] = []
-        self._cur_row: list[str] | None = None
-        self._cell_buf: list[str] = []
-        self._in_cell = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        t = tag.lower()
-        if t == "tr":
-            self._cur_row = []
-        elif t in ("td", "th") and self._cur_row is not None:
-            self._in_cell = True
-            self._cell_buf = []
-
-    def handle_endtag(self, tag: str) -> None:
-        t = tag.lower()
-        if t in ("td", "th") and self._in_cell and self._cur_row is not None:
-            text = re.sub(r"\s+", " ", "".join(self._cell_buf)).strip()
-            self._cur_row.append(text)
-            self._in_cell = False
-            self._cell_buf = []
-        elif t == "tr" and self._cur_row is not None:
-            if any(c.strip() for c in self._cur_row):
-                self.rows.append(self._cur_row)
-            self._cur_row = None
-
-    def handle_data(self, data: str) -> None:
-        if self._in_cell:
-            self._cell_buf.append(data)
+def _is_excel_content(content: bytes, content_type: str) -> bool:
+    ctype = (content_type or "").lower()
+    head = content[:8]
+    if head.startswith(b"PK"):
+        return True
+    if head.startswith(b"\xd0\xcf\x11\xe0"):
+        return True
+    return "spreadsheetml" in ctype or "openxmlformats" in ctype or "ms-excel" in ctype
 
 
 def download_grid_excel(
@@ -84,14 +59,8 @@ def download_grid_excel(
     body = resp.content
     if not body:
         raise RuntimeError("Κενό αρχείο Excel export")
-    if "text/html" in ctype:
-        snippet = resp.text[:4000]
-        if (
-            "DailyWorkTimesSearchControl" in snippet
-            or "ErgazomenosWorkingSearchControl" in snippet
-        ):
-            if "MovableElement" not in resp.text and "<table" not in resp.text.lower():
-                raise RuntimeError("Το Excel export επέστρεψε HTML σελίδα χωρίς πίνακα")
+    if not _is_excel_content(body, ctype):
+        raise RuntimeError("Το Excel export δεν επέστρεψε αρχείο Excel (.xlsx/.xls)")
     return body, ctype
 
 
@@ -125,11 +94,15 @@ def _parse_xls(content: bytes) -> list[list[str]]:
     return rows
 
 
-def _parse_html_table(content: bytes) -> list[list[str]]:
-    text = content.decode("utf-8", errors="replace")
-    parser = _TableParser()
-    parser.feed(text)
-    return parser.rows
+def _parse_excel_bytes(content: bytes, content_type: str = "") -> list[list[str]]:
+    """Ανάγνωση μόνο πραγματικού Excel — όχι HTML."""
+    ctype = (content_type or "").lower()
+    head = content[:8]
+    if head.startswith(b"PK") or "spreadsheetml" in ctype or "openxmlformats" in ctype:
+        return _parse_xlsx(content)
+    if head.startswith(b"\xd0\xcf\x11\xe0") or "ms-excel" in ctype:
+        return _parse_xls(content)
+    raise RuntimeError("Μη αναγνωρισμένο αρχείο Excel")
 
 
 def _header_index(headers: list[str], *needles: str) -> int | None:
@@ -141,12 +114,22 @@ def _header_index(headers: list[str], *needles: str) -> int | None:
     return None
 
 
-def _work_log_row_from_cells(cells: list[str], col: dict[str, int]) -> list[str] | None:
+def _work_log_row_from_cells(
+    cells: list[str],
+    col: dict[str, int],
+    *,
+    default_branch_aa: str = "",
+) -> list[str] | None:
     def pick(key: str, default: int) -> str:
         idx = col.get(key, default)
+        if idx < 0:
+            return ""
         return (cells[idx] if idx < len(cells) else "").strip()
 
-    aa = pick("aa", 0)
+    if "aa" in col:
+        aa = pick("aa", 0)
+    else:
+        aa = str(default_branch_aa or "").strip()
     afm = re.sub(r"\D", "", pick("afm", 1))
     if not re.fullmatch(r"\d{8,11}", afm):
         return None
@@ -161,7 +144,7 @@ def _work_log_row_from_cells(cells: list[str], col: dict[str, int]) -> list[str]
 def _detect_work_log_columns(header: list[str]) -> dict[str, int]:
     col: dict[str, int] = {}
     mapping = {
-        "aa": ("ΑΑΠΑΡΑΡΤΗΜΑΤΟΣ", "ΑΑ", "AA"),
+        "aa": ("ΑΑΠΑΡΑΡΤΗΜΑΤΟΣ",),
         "afm": ("ΑΦΜ", "AFM"),
         "eponymo": ("ΕΠΩΝΥΜΟ", "EPONIMO"),
         "onoma": ("ΟΝΟΜΑ", "ONOMA"),
@@ -176,8 +159,12 @@ def _detect_work_log_columns(header: list[str]) -> dict[str, int]:
     return col
 
 
-def normalize_work_log_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
-    """Μετατροπή γραμμών export → ίδια μορφή 7 κελιών με HTML grid."""
+def normalize_work_log_grid_rows(
+    raw_rows: list[list[str]],
+    *,
+    default_branch_aa: str = "",
+) -> list[list[str]]:
+    """Μετατροπή γραμμών Excel → μορφή 7 κελιών (ίδια με HTML grid fallback)."""
     if not raw_rows:
         return []
 
@@ -192,7 +179,7 @@ def normalize_work_log_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
             break
 
     if not col:
-        col = {"aa": 0, "afm": 1, "eponymo": 2, "onoma": 3, "date": 4, "from": 5, "to": 6}
+        col = {"afm": 0, "eponymo": 1, "onoma": 2, "date": 3, "from": 4, "to": 5}
 
     out: list[list[str]] = []
     for row in raw_rows[start:]:
@@ -200,37 +187,23 @@ def normalize_work_log_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
             continue
         if header_row and row == header_row:
             continue
-        norm = _work_log_row_from_cells(row, col)
+        norm = _work_log_row_from_cells(
+            row, col, default_branch_aa=default_branch_aa
+        )
         if norm:
             out.append(norm)
     return out
 
 
-def parse_work_log_export(content: bytes, content_type: str = "") -> list[list[str]]:
-    """Parse Excel/HTML export πραγματικής απασχόλησης → grid rows."""
-    ctype = (content_type or "").lower()
-    head = content[:16]
-    raw: list[list[str]] = []
-
-    if head.startswith(b"PK") or "spreadsheetml" in ctype or "openxmlformats" in ctype:
-        raw = _parse_xlsx(content)
-    elif head.startswith(b"\xd0\xcf\x11\xe0") or "ms-excel" in ctype:
-        try:
-            raw = _parse_xls(content)
-        except Exception:
-            raw = _parse_html_table(content)
-    elif b"<" in head or "html" in ctype:
-        raw = _parse_html_table(content)
-    else:
-        for parser in (_parse_xlsx, _parse_xls, _parse_html_table):
-            try:
-                raw = parser(content)
-                if raw:
-                    break
-            except Exception:
-                continue
-
-    return normalize_work_log_grid_rows(raw)
+def parse_work_log_export(
+    content: bytes,
+    content_type: str = "",
+    *,
+    default_branch_aa: str = "",
+) -> list[list[str]]:
+    """Parse μόνο Excel export πραγματικής απασχόλησης → grid rows."""
+    raw = _parse_excel_bytes(content, content_type)
+    return normalize_work_log_grid_rows(raw, default_branch_aa=default_branch_aa)
 
 
 def fetch_work_log_rows_via_excel(
@@ -239,22 +212,35 @@ def fetch_work_log_rows_via_excel(
     page_url: str,
     *,
     grid_event_target: str,
+    default_branch_aa: str = "",
 ) -> list[list[str]]:
     content, ctype = download_grid_excel(
         session, html, page_url, grid_event_target=grid_event_target
     )
-    rows = parse_work_log_export(content, ctype)
+    rows = parse_work_log_export(
+        content, ctype, default_branch_aa=default_branch_aa
+    )
     if not rows:
         raise RuntimeError("Το Excel export δεν περιέχει εγγραφές πραγματικής")
     return rows
 
 
-def _schedule_row_from_cells(cells: list[str], col: dict[str, int]) -> list[str] | None:
+def _schedule_row_from_cells(
+    cells: list[str],
+    col: dict[str, int],
+    *,
+    default_branch_aa: str = "",
+) -> list[str] | None:
     def pick(key: str, default: int) -> str:
         idx = col.get(key, default)
+        if idx < 0:
+            return ""
         return (cells[idx] if idx < len(cells) else "").strip()
 
-    aa = pick("aa", 0)
+    if "aa" in col:
+        aa = pick("aa", 0)
+    else:
+        aa = str(default_branch_aa or "").strip()
     afm = re.sub(r"\D", "", pick("afm", 1))
     if not re.fullmatch(r"\d{8,11}", afm):
         return None
@@ -271,7 +257,7 @@ def _schedule_row_from_cells(cells: list[str], col: dict[str, int]) -> list[str]
 def _detect_schedule_columns(header: list[str]) -> dict[str, int]:
     col: dict[str, int] = {}
     mapping = {
-        "aa": ("ΑΑΠΑΡΑΡΤΗΜΑΤΟΣ", "ΑΑ", "AA"),
+        "aa": ("ΑΑΠΑΡΑΡΤΗΜΑΤΟΣ",),
         "afm": ("ΑΦΜ", "AFM"),
         "onoma": ("ΟΝΟΜΑ", "ONOMA"),
         "eponymo": ("ΕΠΩΝΥΜΟ", "EPONIMO"),
@@ -288,8 +274,12 @@ def _detect_schedule_columns(header: list[str]) -> dict[str, int]:
     return col
 
 
-def normalize_schedule_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
-    """Μετατροπή γραμμών export → ίδια μορφή 9 κελιών με HTML grid ωραρίου."""
+def normalize_schedule_grid_rows(
+    raw_rows: list[list[str]],
+    *,
+    default_branch_aa: str = "",
+) -> list[list[str]]:
+    """Μετατροπή γραμμών Excel → μορφή 9 κελιών (ίδια με HTML grid fallback)."""
     if not raw_rows:
         return []
 
@@ -305,15 +295,14 @@ def normalize_schedule_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
 
     if not col:
         col = {
-            "aa": 0,
-            "afm": 1,
-            "onoma": 2,
-            "eponymo": 3,
-            "date": 4,
-            "po": 5,
-            "card": 6,
-            "break": 7,
-            "employment": 8,
+            "afm": 0,
+            "onoma": 1,
+            "eponymo": 2,
+            "date": 3,
+            "po": 4,
+            "card": 5,
+            "break": 6,
+            "employment": 7,
         }
 
     out: list[list[str]] = []
@@ -322,37 +311,23 @@ def normalize_schedule_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
             continue
         if header_row and row == header_row:
             continue
-        norm = _schedule_row_from_cells(row, col)
+        norm = _schedule_row_from_cells(
+            row, col, default_branch_aa=default_branch_aa
+        )
         if norm:
             out.append(norm)
     return out
 
 
-def parse_schedule_export(content: bytes, content_type: str = "") -> list[list[str]]:
-    """Parse Excel/HTML export ψηφιακού ωραρίου → grid rows."""
-    ctype = (content_type or "").lower()
-    head = content[:16]
-    raw: list[list[str]] = []
-
-    if head.startswith(b"PK") or "spreadsheetml" in ctype or "openxmlformats" in ctype:
-        raw = _parse_xlsx(content)
-    elif head.startswith(b"\xd0\xcf\x11\xe0") or "ms-excel" in ctype:
-        try:
-            raw = _parse_xls(content)
-        except Exception:
-            raw = _parse_html_table(content)
-    elif b"<" in head or "html" in ctype:
-        raw = _parse_html_table(content)
-    else:
-        for parser in (_parse_xlsx, _parse_xls, _parse_html_table):
-            try:
-                raw = parser(content)
-                if raw:
-                    break
-            except Exception:
-                continue
-
-    return normalize_schedule_grid_rows(raw)
+def parse_schedule_export(
+    content: bytes,
+    content_type: str = "",
+    *,
+    default_branch_aa: str = "",
+) -> list[list[str]]:
+    """Parse μόνο Excel export ψηφιακού ωραρίου → grid rows."""
+    raw = _parse_excel_bytes(content, content_type)
+    return normalize_schedule_grid_rows(raw, default_branch_aa=default_branch_aa)
 
 
 def fetch_schedule_rows_via_excel(
@@ -361,11 +336,12 @@ def fetch_schedule_rows_via_excel(
     page_url: str,
     *,
     grid_event_target: str,
+    default_branch_aa: str = "",
 ) -> list[list[str]]:
     content, ctype = download_grid_excel(
         session, html, page_url, grid_event_target=grid_event_target
     )
-    rows = parse_schedule_export(content, ctype)
+    rows = parse_schedule_export(content, ctype, default_branch_aa=default_branch_aa)
     if not rows:
         raise RuntimeError("Το Excel export δεν περιέχει εγγραφές ωραρίου")
     return rows

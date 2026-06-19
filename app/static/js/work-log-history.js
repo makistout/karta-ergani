@@ -7,16 +7,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const name = (params.get("employee_name") || "").trim();
   const from = (params.get("from") || "").trim();
 
-  const backWrap = document.getElementById("workLogHistoryBackWrap");
-  const backLink = document.getElementById("workLogHistoryBack");
-  if (from === "work-card" && backWrap && backLink) {
-    backWrap.classList.remove("hidden");
-    const returnUrl = new URLSearchParams();
-    if (afm) returnUrl.set("employee_afm", afm);
-    if (name) returnUrl.set("employee_name", name);
-    const qs = returnUrl.toString();
-    backLink.href = qs ? `/ui/work-card?${qs}` : "/ui/work-card";
-  }
+  configureWorkLogHistoryBack(from, afm, name);
 
   const wrap = document.getElementById("workLogHistoryPageWrap");
   const sub = document.getElementById("workLogHistoryPageEmployee");
@@ -30,3 +21,40 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await Office.loadWorkLogHistory({ wrap, sub, afm, name });
 });
+
+function configureWorkLogHistoryBack(from, afm, name) {
+  const btn = document.querySelector("main.main .page-back-btn");
+  if (!btn) return;
+
+  const workCardUrl = () => {
+    const p = new URLSearchParams();
+    if (afm) p.set("employee_afm", afm);
+    if (name) p.set("employee_name", name);
+    const qs = p.toString();
+    return qs ? `/ui/work-card?${qs}` : "/ui/work-card";
+  };
+
+  const routes = {
+    employees: {
+      href: "/ui/employees",
+      label: "Πίσω στους εργαζομένους",
+    },
+    "work-card": {
+      href: workCardUrl(),
+      label: "Πίσω στην ψηφιακή κάρτα",
+    },
+    worklog: {
+      href: "/ui/work-log",
+      label: "Πίσω στην πραγματική απασχόληση",
+    },
+  };
+
+  const route = routes[from];
+  if (route) {
+    btn.title = route.label;
+    btn.setAttribute("aria-label", route.label);
+    btn.onclick = () => {
+      window.location.href = route.href;
+    };
+  }
+}
