@@ -1,4 +1,20 @@
 const MASKED = "********";
+
+function normalizeNotifyPinInput(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 4);
+}
+
+function cleanNotifyPin(value) {
+  const v = String(value || "").trim();
+  if (!v || v === MASKED) return "";
+  return normalizeNotifyPinInput(v);
+}
+
+function isValidNotifyPin(value) {
+  const pin = cleanNotifyPin(value);
+  return !pin || /^\d{4}$/.test(pin);
+}
+
 let notifyRecipients = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -17,8 +33,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         name: r.name || "",
         mobile: r.mobile || "",
         telegram_chat_id: r.telegram_chat_id || "",
-        notify_pin: r.notify_pin || "",
+        notify_pin: cleanNotifyPin(r.notify_pin),
         has_notify_pin: Boolean(r.has_notify_pin),
+        active: r.active !== false && r.active !== 0,
       }));
       renderNotifyRecipients();
     } else {
@@ -51,9 +68,21 @@ function updateNotifyUiState() {
   document.getElementById("notifyRecipientsPendingHint")?.classList.toggle("hidden", hasId);
 }
 
+function notifyRecipientIsActive(row) {
+  if (!row) return true;
+  const v = row.active;
+  return !(v === false || v === 0 || v === "0");
+}
+
 function initNotifyRecipientButtons() {
   document.getElementById("btnAddNotifyRecipient").onclick = () => {
-    notifyRecipients.push({ name: "", mobile: "", telegram_chat_id: "", notify_pin: "" });
+    notifyRecipients.push({
+      name: "",
+      mobile: "",
+      telegram_chat_id: "",
+      notify_pin: "",
+      active: true,
+    });
     renderNotifyRecipients();
   };
   document.getElementById("btnSaveNotifyRecipients").onclick = () => saveNotifyRecipients();
@@ -79,13 +108,29 @@ function renderNotifyRecipients() {
   if (empty) empty.style.display = "none";
   notifyRecipients.forEach((row, idx) => {
     const tr = document.createElement("tr");
-    const pinVal = row.notify_pin || (row.has_notify_pin ? MASKED : "");
+    const isActive = notifyRecipientIsActive(row);
+    if (!isActive) tr.classList.add("notify-recipient-row--paused");
+    const pinVal = cleanNotifyPin(row.notify_pin);
+    const pinPlaceholder = "4 ψηφία";
+    const pinTitle = row.has_notify_pin && !pinVal
+      ? "Υπάρχει PIN — πληκτρολογήστε ξανά και αποθηκεύστε για εμφάνιση"
+      : "4 αριθμητικά ψηφία";
+    const toggleIcon = isActive ? "stop-circle-fill" : "play-circle-fill";
+    const toggleTitle = isActive
+      ? "Παύση ειδοποιήσεων (stop) — δεν θα λαμβάνει μηνύματα"
+      : "Ενεργοποίηση ειδοποιήσεων (play)";
+    const toggleClass = isActive
+      ? "notify-toggle-btn notify-toggle-btn--on"
+      : "notify-toggle-btn notify-toggle-btn--off";
     tr.innerHTML =
       `<td><input type="text" class="notify-input-name" data-idx="${idx}" value="${Office.escapeHtml(row.name || "")}" placeholder="Όνομα"></td>` +
       `<td><input type="text" class="notify-input-mobile" data-idx="${idx}" value="${Office.escapeHtml(row.mobile || "")}" placeholder="69XXXXXXXX"></td>` +
       `<td><input type="text" class="notify-input-chat" data-idx="${idx}" value="${Office.escapeHtml(row.telegram_chat_id || "")}" placeholder="αυτόματα" readonly title="Συμπληρώνεται με /start στο bot"></td>` +
-      `<td><input type="password" class="notify-input-pin" data-idx="${idx}" value="${Office.escapeHtml(pinVal)}" placeholder="PIN" inputmode="numeric" maxlength="8" title="Προσωπικός κωδικός για αυτόματο χτύπημα"></td>` +
-      `<td class="table-actions"><button type="button" class="btn btn-danger btn-sm notify-remove" data-idx="${idx}">${Office.icon("trash3")}</button></td>`;
+      `<td><input type="text" class="notify-input-pin${row.has_notify_pin && !pinVal ? " notify-input-pin--restored" : ""}" data-idx="${idx}" value="${Office.escapeHtml(pinVal)}" placeholder="${pinPlaceholder}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" title="${Office.escapeHtml(pinTitle)}"></td>` +
+      `<td class="col-notify-actions"><div class="notify-recipients-actions-inner">` +
+      `<button type="button" class="btn btn-secondary ${toggleClass} notify-toggle" data-idx="${idx}" title="${Office.escapeHtml(toggleTitle)}" aria-label="${Office.escapeHtml(toggleTitle)}">${Office.icon(toggleIcon)}</button>` +
+      `<button type="button" class="btn btn-danger notify-remove" data-idx="${idx}" title="Διαγραφή λήπτη" aria-label="Διαγραφή λήπτη">${Office.icon("trash3")}</button>` +
+      `</div></td>`;
     body.appendChild(tr);
   });
   body.querySelectorAll(".notify-input-name, .notify-input-mobile, .notify-input-pin").forEach((inp) => {
@@ -93,8 +138,22 @@ function renderNotifyRecipients() {
       const i = parseInt(e.target.getAttribute("data-idx"), 10);
       let field = "mobile";
       if (e.target.classList.contains("notify-input-name")) field = "name";
-      else if (e.target.classList.contains("notify-input-pin")) field = "notify_pin";
+      else if (e.target.classList.contains("notify-input-pin")) {
+        field = "notify_pin";
+        const cleaned = normalizeNotifyPinInput(e.target.value);
+        if (e.target.value !== cleaned) e.target.value = cleaned;
+        if (notifyRecipients[i]) notifyRecipients[i][field] = cleaned;
+        return;
+      }
       if (notifyRecipients[i]) notifyRecipients[i][field] = e.target.value;
+    });
+  });
+  body.querySelectorAll(".notify-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = parseInt(btn.getAttribute("data-idx"), 10);
+      if (!notifyRecipients[i]) return;
+      notifyRecipients[i].active = !notifyRecipientIsActive(notifyRecipients[i]);
+      renderNotifyRecipients();
     });
   });
   body.querySelectorAll(".notify-remove").forEach((btn) => {
@@ -110,17 +169,18 @@ function collectNotifyRecipientsFromDom() {
   const body = document.getElementById("notifyRecipientsBody");
   if (!body) return notifyRecipients;
   const rows = [];
-  body.querySelectorAll("tr").forEach((tr) => {
+  body.querySelectorAll("tr").forEach((tr, idx) => {
     const name = (tr.querySelector(".notify-input-name")?.value || "").trim();
     const mobile = (tr.querySelector(".notify-input-mobile")?.value || "").trim();
     const telegram_chat_id = (tr.querySelector(".notify-input-chat")?.value || "").trim();
-    const notify_pin = (tr.querySelector(".notify-input-pin")?.value || "").trim();
+    const notify_pin = normalizeNotifyPinInput(tr.querySelector(".notify-input-pin")?.value || "");
     if (name || mobile) {
       rows.push({
         name,
         mobile,
         telegram_chat_id: telegram_chat_id || null,
         notify_pin: notify_pin || "",
+        active: notifyRecipientIsActive(notifyRecipients[idx]),
       });
     }
   });
@@ -152,8 +212,9 @@ async function loadNotifyRecipients(storeId) {
       name: r.name || "",
       mobile: r.mobile || "",
       telegram_chat_id: r.telegram_chat_id || "",
-      notify_pin: r.notify_pin || "",
+      notify_pin: cleanNotifyPin(r.notify_pin),
       has_notify_pin: Boolean(r.has_notify_pin),
+      active: r.active !== false && r.active !== 0,
     }));
     renderNotifyRecipients();
     updateNotifyUiState();
@@ -172,6 +233,12 @@ async function saveNotifyRecipients(storeIdOverride) {
     return false;
   }
   const rows = collectNotifyRecipientsFromDom();
+  for (const row of rows) {
+    if (row.notify_pin && !isValidNotifyPin(row.notify_pin)) {
+      Office.showMsg("stepMsg", "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία.", false);
+      return false;
+    }
+  }
   const btn = document.getElementById("btnSaveNotifyRecipients");
   if (btn) btn.disabled = true;
   try {
@@ -189,8 +256,9 @@ async function saveNotifyRecipients(storeIdOverride) {
       name: r.name || "",
       mobile: r.mobile || "",
       telegram_chat_id: r.telegram_chat_id || "",
-      notify_pin: r.notify_pin || "",
+      notify_pin: cleanNotifyPin(r.notify_pin),
       has_notify_pin: Boolean(r.has_notify_pin),
+      active: r.active !== false && r.active !== 0,
     }));
     renderNotifyRecipients();
     Office.setDraft({ ...Office.getDraft(), id: storeId, notifyRecipients });

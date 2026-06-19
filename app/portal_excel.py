@@ -84,9 +84,14 @@ def download_grid_excel(
     body = resp.content
     if not body:
         raise RuntimeError("Κενό αρχείο Excel export")
-    if "text/html" in ctype and "DailyWorkTimesSearchControl" in resp.text[:4000]:
-        if "MovableElement" not in resp.text and "<table" not in resp.text.lower():
-            raise RuntimeError("Το Excel export επέστρεψε HTML σελίδα χωρίς πίνακα")
+    if "text/html" in ctype:
+        snippet = resp.text[:4000]
+        if (
+            "DailyWorkTimesSearchControl" in snippet
+            or "ErgazomenosWorkingSearchControl" in snippet
+        ):
+            if "MovableElement" not in resp.text and "<table" not in resp.text.lower():
+                raise RuntimeError("Το Excel export επέστρεψε HTML σελίδα χωρίς πίνακα")
     return body, ctype
 
 
@@ -241,4 +246,126 @@ def fetch_work_log_rows_via_excel(
     rows = parse_work_log_export(content, ctype)
     if not rows:
         raise RuntimeError("Το Excel export δεν περιέχει εγγραφές πραγματικής")
+    return rows
+
+
+def _schedule_row_from_cells(cells: list[str], col: dict[str, int]) -> list[str] | None:
+    def pick(key: str, default: int) -> str:
+        idx = col.get(key, default)
+        return (cells[idx] if idx < len(cells) else "").strip()
+
+    aa = pick("aa", 0)
+    afm = re.sub(r"\D", "", pick("afm", 1))
+    if not re.fullmatch(r"\d{8,11}", afm):
+        return None
+    onoma = pick("onoma", 2)
+    eponymo = pick("eponymo", 3)
+    work_date = pick("date", 4)
+    po = pick("po", 5)
+    card = pick("card", 6)
+    break_txt = pick("break", 7)
+    employment = pick("employment", 8)
+    return [aa, afm, onoma, eponymo, work_date, po, card, break_txt, employment]
+
+
+def _detect_schedule_columns(header: list[str]) -> dict[str, int]:
+    col: dict[str, int] = {}
+    mapping = {
+        "aa": ("ΑΑΠΑΡΑΡΤΗΜΑΤΟΣ", "ΑΑ", "AA"),
+        "afm": ("ΑΦΜ", "AFM"),
+        "onoma": ("ΟΝΟΜΑ", "ONOMA"),
+        "eponymo": ("ΕΠΩΝΥΜΟ", "EPONIMO"),
+        "date": ("ΗΜ/ΝΙΑ", "ΗΜΕΡΟΜΗΝΙΑ", "DATE"),
+        "po": ("ΨΗΦΙΑΚΗΟΡΓΑΝΩΣΗ", "ΨΗΦΙΑΚΗ", "ΨΟ"),
+        "card": ("ΚΑΡΤΑΕΡΓΑΣΙΑΣ", "ΚΑΡΤΑ"),
+        "break": ("ΔΙΑΛΕΙΜΜΑ", "BREAK"),
+        "employment": ("ΑΠΑΣΧΟΛΗΣΗ", "EMPLOYMENT"),
+    }
+    for key, needles in mapping.items():
+        idx = _header_index(header, *needles)
+        if idx is not None:
+            col[key] = idx
+    return col
+
+
+def normalize_schedule_grid_rows(raw_rows: list[list[str]]) -> list[list[str]]:
+    """Μετατροπή γραμμών export → ίδια μορφή 9 κελιών με HTML grid ωραρίου."""
+    if not raw_rows:
+        return []
+
+    header_row: list[str] | None = None
+    col: dict[str, int] = {}
+    start = 0
+    for i, row in enumerate(raw_rows[:5]):
+        if _header_index(row, "ΑΦΜ", "AFM") is not None:
+            header_row = row
+            col = _detect_schedule_columns(row)
+            start = i + 1
+            break
+
+    if not col:
+        col = {
+            "aa": 0,
+            "afm": 1,
+            "onoma": 2,
+            "eponymo": 3,
+            "date": 4,
+            "po": 5,
+            "card": 6,
+            "break": 7,
+            "employment": 8,
+        }
+
+    out: list[list[str]] = []
+    for row in raw_rows[start:]:
+        if not row or all(not (c or "").strip() for c in row):
+            continue
+        if header_row and row == header_row:
+            continue
+        norm = _schedule_row_from_cells(row, col)
+        if norm:
+            out.append(norm)
+    return out
+
+
+def parse_schedule_export(content: bytes, content_type: str = "") -> list[list[str]]:
+    """Parse Excel/HTML export ψηφιακού ωραρίου → grid rows."""
+    ctype = (content_type or "").lower()
+    head = content[:16]
+    raw: list[list[str]] = []
+
+    if head.startswith(b"PK") or "spreadsheetml" in ctype or "openxmlformats" in ctype:
+        raw = _parse_xlsx(content)
+    elif head.startswith(b"\xd0\xcf\x11\xe0") or "ms-excel" in ctype:
+        try:
+            raw = _parse_xls(content)
+        except Exception:
+            raw = _parse_html_table(content)
+    elif b"<" in head or "html" in ctype:
+        raw = _parse_html_table(content)
+    else:
+        for parser in (_parse_xlsx, _parse_xls, _parse_html_table):
+            try:
+                raw = parser(content)
+                if raw:
+                    break
+            except Exception:
+                continue
+
+    return normalize_schedule_grid_rows(raw)
+
+
+def fetch_schedule_rows_via_excel(
+    session: requests.Session,
+    html: str,
+    page_url: str,
+    *,
+    grid_event_target: str,
+) -> list[list[str]]:
+    content, ctype = download_grid_excel(
+        session, html, page_url, grid_event_target=grid_event_target
+    )
+    rows = parse_schedule_export(content, ctype)
+    if not rows:
+        raise RuntimeError("Το Excel export δεν περιέχει εγγραφές ωραρίου")
     return rows

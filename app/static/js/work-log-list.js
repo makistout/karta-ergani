@@ -11,9 +11,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("btnSyncWorkLog").onclick = () => runSync();
 
-  const activeData = await Office.fetchActiveStore();
-  Office.applyActiveStoreChrome(activeData);
-  await loadWorkLog(activeData);
+  try {
+    const activeData = await Office.fetchActiveStore();
+    Office.applyActiveStoreChrome(activeData);
+    await loadWorkLog(activeData);
+  } catch (e) {
+    const wrap = document.getElementById("workLogWrap");
+    if (wrap) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    }
+  }
 });
 
 function getRange() {
@@ -106,9 +113,7 @@ function renderTablePage() {
 
   pg.items.forEach((row) => {
     const tr = document.createElement("tr");
-    if (Office.workLogRowIsDeficient(row)) {
-      tr.classList.add("work-log-row--deficient");
-    }
+    Office.decorateWorkLogTableRow(tr, row);
     const tdAfm = document.createElement("td");
     tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
     tr.appendChild(tdAfm);
@@ -127,7 +132,7 @@ function renderTablePage() {
       const colHourFrom = multi ? 5 : 4;
       const colHourTo = multi ? 6 : 5;
       if (i === 0) {
-        td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
+        td.innerHTML = Office.formatWorkLogEponymoCell(row);
       } else if (i === colHourFrom) {
         td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
       } else if (i === colHourTo) {

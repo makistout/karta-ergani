@@ -37,9 +37,7 @@ _WORKLOG_DATE_TO_FALLBACK = (
     "ctl00_ctl00_ContentHolder_ContentHolder_DailyWorkTimesSearchControl_DateToEdit",
 )
 from app.repo_entities import upsert_employee_by_afm
-from app.repo_work_log import delete_work_log_without_active_employment
 from app.repo_work_log import replace_work_log_for_day
-from app.work_card_payload import norm_afm
 
 DAILY_WORK_TIMES_PATH = "WTO/Workcard/DailyWorkTimesSearch.aspx"
 GRID_EVENT_TARGET = (
@@ -137,6 +135,33 @@ def _open_daily_work_times(session: requests.Session, portal_base: str) -> tuple
     return r.text, r.url
 
 
+def _merge_work_log_grid_rows(
+    primary: list[list[str]],
+    secondary: list[list[str]],
+) -> list[list[str]]:
+    """Ένωση γραμμών portal — κλειδί ΑΦΜ + ημερομηνία (κανονικοποιημένη)."""
+    from app.ergani_parse import _normalize_portal_date
+
+    out: list[list[str]] = []
+    seen: set[tuple[str, str]] = set()
+    for rows in (primary, secondary):
+        for cells in rows:
+            if len(cells) < 7:
+                continue
+            afm = str(cells[1]).strip()
+            wd = _normalize_portal_date(str(cells[4]).strip(), str(cells[4]).strip())
+            if not afm or not wd:
+                continue
+            key = (afm, wd)
+            if key in seen:
+                continue
+            seen.add(key)
+            norm_cells = cells[:7]
+            norm_cells[4] = wd
+            out.append(norm_cells)
+    return out
+
+
 def _search_work_log(
     session: requests.Session,
     page_html: str,
@@ -176,45 +201,41 @@ def _search_work_log(
             f"Σφάλμα portal κατά την αναζήτηση για {date_from} – {date_to}"
         )
 
+    # Excel πρώτα — το HTML pagination (Page$Next) ακυρώνει το ViewState για export.
+    excel_rows: list[list[str]] = []
+    excel_err: str | None = None
     try:
-        rows = fetch_work_log_rows_via_excel(
+        excel_rows = fetch_work_log_rows_via_excel(
             session, r.text, r.url, grid_event_target=GRID_EVENT_TARGET
         )
-        return rows, "excel"
-    except Exception:
-        rows = _collect_all_grid_rows(session, r.url, r.text)
-        if not rows:
-            raise RuntimeError(
-                f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
-            )
-        return rows, "html"
+    except Exception as ex:
+        excel_err = str(ex)
 
+    html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
-def _active_staff_afms(ctx: dict[str, Any]) -> set[str] | None:
-    from app.repo_entities import list_employees_for_employer
+    if not excel_rows and not html_rows:
+        raise RuntimeError(
+            f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
+            + (f" — Excel: {excel_err}" if excel_err else "")
+        )
 
-    rows = list_employees_for_employer(
-        str(ctx["employer_afm"]),
-        str(ctx.get("branch_aa") or "0"),
-        active_only=True,
+    if excel_rows and html_rows:
+        merged = _merge_work_log_grid_rows(excel_rows, html_rows)
+        if len(merged) > len(excel_rows):
+            return merged, "excel+html"
+        if len(merged) > len(html_rows):
+            return merged, "excel+html"
+        return excel_rows, "excel"
+    if excel_rows:
+        return excel_rows, "excel"
+    if html_rows:
+        src = "html"
+        if excel_err:
+            src = f"html (Excel απέτυχε: {excel_err[:120]})"
+        return html_rows, src
+    raise RuntimeError(
+        f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
     )
-    if not rows:
-        return None
-    return {norm_afm(r["afm"]) for r in rows if r.get("afm")}
-
-
-def _filter_work_log_items_for_staff(
-    ctx: dict[str, Any],
-    items: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    staff = _active_staff_afms(ctx)
-    if not staff:
-        return items
-    return [
-        it
-        for it in items
-        if norm_afm(it.get("employee_afm") or "") in staff
-    ]
 
 
 def _persist_work_log_items(
@@ -224,7 +245,6 @@ def _persist_work_log_items(
 ) -> int:
     employer_afm = str(ctx["employer_afm"]).strip()
     branch_aa = str(ctx.get("branch_aa") or "0").strip()
-    items = _filter_work_log_items_for_staff(ctx, items)
     by_day: dict[str, list[dict[str, Any]]] = {}
     for it in items:
         wd = str(it.get("work_date") or "").strip()
@@ -354,13 +374,20 @@ def iter_work_log_sync_events(
         grid_rows, fetch_source = _search_work_log(
             session, page_html, page_url, ctx, date_from, date_to
         )
-        log.info(
-            f"Πραγματική απασχόληση: {len(grid_rows)} γραμμές από {fetch_source}",
-            source=fetch_source,
-            count=len(grid_rows),
+        range_msg = (
+            f"Πραγματική απασχόληση: {date_from} – {date_to} — "
+            f"{len(grid_rows)} γραμμές ({fetch_source})"
         )
+        log.info(range_msg, source=fetch_source, count=len(grid_rows))
+        yield {
+            "event": "range_ok",
+            "message": range_msg,
+            "date_from": date_from,
+            "date_to": date_to,
+            "count": len(grid_rows),
+            "source": fetch_source,
+        }
         items = portal_rows_to_work_log_items(grid_rows, default_work_date=date_from)
-        items = _filter_work_log_items_for_staff(ctx, items)
         by_day: dict[str, int] = {}
         for it in items:
             wd = str(it.get("work_date") or "").strip()
@@ -368,35 +395,16 @@ def iter_work_log_sync_events(
                 by_day[wd] = by_day.get(wd, 0) + 1
 
         total = _persist_work_log_items(ctx, dates, items)
-        removed = delete_work_log_without_active_employment(
-            str(ctx["employer_afm"]),
-            str(ctx.get("branch_aa") or "0"),
-        )
-        if removed:
-            log.info(
-                f"Αφαιρέθηκαν {removed} εγγραφές πραγματικής εκτός τρέχοντος προσωπικού",
-                count=removed,
-            )
         for i, wd in enumerate(dates):
             n = by_day.get(wd, 0)
             if n > 0:
                 days_synced += 1
-            log.info(
-                f"Πραγματική απασχόληση: {n} εγγραφές για {wd}",
-                work_date=wd,
-                count=n,
-            )
-            yield {
-                "event": "day_ok" if n > 0 else "day_skip",
-                "message": (
-                    f"Πραγματική απασχόληση: {wd} — {n} εγγραφές ({fetch_source})"
-                    if n > 0
-                    else f"Πραγματική απασχόληση: {wd} — χωρίς εγγραφές"
-                ),
-                "work_date": wd,
-                "count": n,
-                "source": fetch_source,
-            }
+                yield {
+                    "event": "day_ok",
+                    "message": f"Πραγματική απασχόληση: {wd} — {n} εγγραφές",
+                    "work_date": wd,
+                    "count": n,
+                }
     except (requests.RequestException, ValueError, RuntimeError) as ex:
         err = f"{date_from} – {date_to}: {ex}"
         errors.append(err)

@@ -232,6 +232,33 @@ def _open_current_status(session: requests.Session, portal_base: str) -> tuple[s
     return r.text, r.url
 
 
+def _merge_schedule_grid_rows(
+    primary: list[list[str]],
+    secondary: list[list[str]],
+) -> list[list[str]]:
+    """Ένωση γραμμών portal — κλειδί ΑΦΜ + ημερομηνία (κανονικοποιημένη)."""
+    from app.ergani_parse import _normalize_portal_date
+
+    out: list[list[str]] = []
+    seen: set[tuple[str, str]] = set()
+    for rows in (primary, secondary):
+        for cells in rows:
+            if len(cells) < 9:
+                continue
+            afm = str(cells[1]).strip()
+            wd = _normalize_portal_date(str(cells[4]).strip(), str(cells[4]).strip())
+            if not afm or not wd:
+                continue
+            key = (afm, wd)
+            if key in seen:
+                continue
+            seen.add(key)
+            norm_cells = cells[:9]
+            norm_cells[4] = wd
+            out.append(norm_cells)
+    return out
+
+
 def _search_schedule(
     session: requests.Session,
     page_html: str,
@@ -239,8 +266,8 @@ def _search_schedule(
     ctx: dict[str, Any],
     date_from: str,
     date_to: str | None = None,
-) -> list[list[str]]:
-    """Αναζήτηση ωραρίου portal (μία ημέρα ή διάστημα Από–Έως)."""
+) -> tuple[list[list[str]], str]:
+    """Αναζήτηση ωραρίου — επιστρέφει (grid_rows, source: excel|html)."""
     date_to = date_to or date_from
     form = _find_search_form(page_html)
     if not form:
@@ -271,7 +298,41 @@ def _search_schedule(
             f"Σφάλμα portal κατά την αναζήτηση για {date_from} – {date_to}"
         )
 
-    return _collect_all_grid_rows(session, r.url, r.text)
+    # Excel πρώτα — το HTML pagination (Page$Next) ακυρώνει το ViewState για export.
+    excel_rows: list[list[str]] = []
+    excel_err: str | None = None
+    try:
+        from app.portal_excel import fetch_schedule_rows_via_excel
+
+        excel_rows = fetch_schedule_rows_via_excel(
+            session, r.text, r.url, grid_event_target=GRID_EVENT_TARGET
+        )
+    except Exception as ex:
+        excel_err = str(ex)
+
+    html_rows = _collect_all_grid_rows(session, r.url, r.text)
+
+    if not excel_rows and not html_rows:
+        raise RuntimeError(
+            f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
+            + (f" — Excel: {excel_err}" if excel_err else "")
+        )
+
+    if excel_rows and html_rows:
+        merged = _merge_schedule_grid_rows(excel_rows, html_rows)
+        if len(merged) > len(excel_rows) or len(merged) > len(html_rows):
+            return merged, "excel+html"
+        return excel_rows, "excel"
+    if excel_rows:
+        return excel_rows, "excel"
+    if html_rows:
+        src = "html"
+        if excel_err:
+            src = f"html (Excel απέτυχε: {excel_err[:120]})"
+        return html_rows, src
+    raise RuntimeError(
+        f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
+    )
 
 
 def _persist_schedule_items(
@@ -311,11 +372,12 @@ def _schedule_sync_result(
     days_synced: int,
     portal_base: str,
     log: KartaLogger,
+    fetch_source: str = "excel",
 ) -> dict[str, Any]:
     ok = days_synced > 0 and len(errors) < len(dates)
     single = len(dates) == 1
     detail = (
-        f"{total} εγγραφές portal ({len(dates)} ημέρες)"
+        f"{total} εγγραφές portal ({len(dates)} ημέρες, {fetch_source})"
         + (f" — {len(errors)} αποτυχίες" if errors else "")
     )
     log.info(
@@ -335,6 +397,7 @@ def _schedule_sync_result(
         "errors": errors[:20],
         "logs": log.tail(100),
         "source": "portal",
+        "fetch_source": fetch_source,
         "portal_base": portal_base,
     }
 
@@ -395,39 +458,60 @@ def iter_schedule_sync_events(
     total = 0
     errors: list[str] = []
     days_synced = 0
+    date_from, date_to = dates[0], dates[-1]
+    fetch_source = "excel"
 
-    for i, wd in enumerate(dates):
-        msg = f"Ψηφιακό ωράριο: ενημέρωση {wd} ({i + 1}/{len(dates)})…"
-        log.info(msg, work_date=wd, step=i + 1, total=len(dates))
+    yield {
+        "event": "progress",
+        "message": f"Ψηφιακό ωράριο: αναζήτηση {date_from} – {date_to}…",
+        "step": 1,
+        "total": len(dates),
+    }
+    try:
+        log.info(
+            f"Ψηφιακό ωράριο: αναζήτηση στο portal για {date_from} – {date_to}",
+            date_from=date_from,
+            date_to=date_to,
+        )
+        grid_rows, fetch_source = _search_schedule(
+            session, page_html, page_url, ctx, date_from, date_to
+        )
+        range_msg = (
+            f"Ψηφιακό ωράριο: {date_from} – {date_to} — "
+            f"{len(grid_rows)} γραμμές ({fetch_source})"
+        )
+        log.info(range_msg, source=fetch_source, count=len(grid_rows))
         yield {
-            "event": "progress",
-            "message": msg,
-            "step": i + 1,
-            "total": len(dates),
-            "work_date": wd,
+            "event": "range_ok",
+            "message": range_msg,
+            "date_from": date_from,
+            "date_to": date_to,
+            "count": len(grid_rows),
+            "source": fetch_source,
         }
-        try:
-            r_reload = session.get(page_url, timeout=REQUEST_TIMEOUT)
-            page_html = r_reload.text
-            page_url = r_reload.url
-            log.info(f"Ψηφιακό ωράριο: αναζήτηση στο portal για {wd}", work_date=wd)
-            grid_rows = _search_schedule(session, page_html, page_url, ctx, wd, wd)
-            items = portal_rows_to_schedule_items(grid_rows, default_work_date=wd)
-            n = _persist_schedule_items(ctx, [wd], items)
-            total += n
-            days_synced += 1
-            log.info(f"Ψηφιακό ωράριο: αποθηκεύτηκαν {n} εγγραφές για {wd}", work_date=wd, count=n)
-            yield {
-                "event": "day_ok",
-                "message": f"Ψηφιακό ωράριο: {wd} — {n} εγγραφές",
-                "work_date": wd,
-                "count": n,
-            }
-        except (requests.RequestException, ValueError, RuntimeError) as ex:
-            err = f"{wd}: {ex}"
-            errors.append(err)
-            log.error(str(ex), work_date=wd)
-            yield {"event": "day_err", "message": err, "work_date": wd}
+        items = portal_rows_to_schedule_items(grid_rows, default_work_date=date_from)
+        by_day: dict[str, int] = {}
+        for it in items:
+            wd = str(it.get("work_date") or "").strip()
+            if wd:
+                by_day[wd] = by_day.get(wd, 0) + 1
+
+        total = _persist_schedule_items(ctx, dates, items)
+        for i, wd in enumerate(dates):
+            n = by_day.get(wd, 0)
+            if n > 0:
+                days_synced += 1
+                yield {
+                    "event": "day_ok",
+                    "message": f"Ψηφιακό ωράριο: {wd} — {n} εγγραφές",
+                    "work_date": wd,
+                    "count": n,
+                }
+    except (requests.RequestException, ValueError, RuntimeError) as ex:
+        err = f"{date_from} – {date_to}: {ex}"
+        errors.append(err)
+        log.error(str(ex), date_from=date_from, date_to=date_to)
+        yield {"event": "day_err", "message": err, "work_date": date_from}
 
     result = _schedule_sync_result(
         dates=dates,
@@ -436,6 +520,7 @@ def iter_schedule_sync_events(
         days_synced=days_synced,
         portal_base=portal_base,
         log=log,
+        fetch_source=fetch_source,
     )
     if finalize_run:
         from app import repo_sync_log
@@ -468,7 +553,7 @@ def sync_schedule_from_portal(
     max_days: int = 31,
     run_id: str | None = None,
 ) -> dict[str, Any]:
-    """Parse portal ανά ημέρα — αποθήκευση karta_schedule (χωρίς streaming)."""
+    """Συγχρονισμός portal — μία αναζήτηση Από–Έως, Excel πρώτα (χωρίς streaming events)."""
     portal_base = _portal_base(ctx)
     for ev in iter_schedule_sync_events(
         ctx,

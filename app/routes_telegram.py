@@ -14,6 +14,7 @@ from app.telegram_notify import (
     notify_store_recipients,
     send_telegram_message,
 )
+from app.notify_pin import is_valid_notify_pin
 from app.telegram_punch_service import confirm_punch_with_pin, punch_preview, send_missing_punch_notifications
 
 telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
@@ -137,5 +138,7 @@ def telegram_punch_confirm(token: str):
     pin = str(data.get("pin") or "").strip()
     if not pin:
         return jsonify({"error": "Λείπει PIN"}), 400
+    if not is_valid_notify_pin(pin):
+        return jsonify({"error": "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία"}), 400
     result, status = confirm_punch_with_pin(token, pin)
     return jsonify(result), status

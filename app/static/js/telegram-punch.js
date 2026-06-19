@@ -38,9 +38,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function confirmPunch() {
-    const pin = (pinInput?.value || "").trim();
+    const pin = String(pinInput?.value || "").replace(/\D/g, "").slice(0, 4);
+    if (pinInput && pinInput.value !== pin) pinInput.value = pin;
     if (!pin) {
       Office.showMsg("tgPunchMsg", "Συμπληρώστε τον PIN σας.", false);
+      return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      Office.showMsg("tgPunchMsg", "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία.", false);
       return;
     }
     if (btn) btn.disabled = true;
@@ -72,6 +77,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   btn?.addEventListener("click", confirmPunch);
+  pinInput?.addEventListener("input", () => {
+    if (!pinInput) return;
+    const cleaned = String(pinInput.value || "").replace(/\D/g, "").slice(0, 4);
+    if (pinInput.value !== cleaned) pinInput.value = cleaned;
+  });
   pinInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") confirmPunch();
   });

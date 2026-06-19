@@ -108,6 +108,13 @@ def _forward_portal(
         kind = ev.get("event")
         if kind == "progress" and ev.get("message"):
             yield {**ev, "message": f"{prefix}: {ev['message']}"}
+        elif kind == "range_ok":
+            log.info(
+                ev.get("message") or f"{prefix} OK",
+                count=ev.get("count"),
+                source=ev.get("source"),
+            )
+            yield ev
         elif kind == "day_ok":
             log.info(
                 ev.get("message") or f"{prefix} OK",

@@ -364,6 +364,8 @@ def put_notify_recipients(store_id: int):
     try:
         n = replace_notify_recipients(store_id, rows)
         saved = list_notify_recipients(store_id)
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 400
     except Exception as ex:
         hint = notify_recipients_table_missing_message(ex)
         if hint:

@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-06-18 (γ) — Excel πρώτα & μία αναζήτηση Από–Έως (ωράριο + πραγματική)
+
+- **Ψηφιακό ωράριο**: Excel export πρώτα (όπως πραγματική), ένωση με HTML grid, fallback σε HTML.
+- **Ωράριο + πραγματική**: **μία** αναζήτηση portal για όλο το διάστημα Από–Έως — **όχι** ημέρα-ημέρα· **ένα** Excel download ανά φάση sync.
+- **`portal_excel.py`**: `fetch_schedule_rows_via_excel`, `parse_schedule_export` (9 στήλες ωραρίου).
+- **Σειρά λήψης**: Excel **πριν** από HTML pagination (`Page$Next`) — το pagination ακύρωνε το ViewState και το export απέτυχε ψευδώς.
+- **Log συγχρονισμού** (`period_sync`, `iter_*_sync_events`): event `range_ok` — μία γραμμή ανά διάστημα με πηγή `excel` / `excel+html` / `html`· ανά ημέρα μόνο όταν υπάρχουν εγγραφές (χωρίς επανάληψη «Excel απέτυχε» σε κάθε μέρα).
+- Scripts δοκιμής: `scripts/test_schedule_excel.py`, `scripts/probe_schedule_excel.py`, `scripts/probe_excel_order.py`.
+
+---
+
+## 2026-06-17 (δ) — Ελλιπή χτυπήματα & sync πραγματικής
+
+- **Ελλιπή χτυπήματα**: εμφανίζονται και μέρες με **δήλωση κάρτας (WRKCardSE)** χωρίς γραμμή πραγματικής (π.χ. ΒΗΧΟΣ 04/06 11:38) — `repo_work_log._missing_rows_from_card_events`.
+- **Sync πραγματικής**: Excel export + ένωση με HTML grid· `fetch_source` στο αποτέλεσμα sync.
+
+---
+
+## 2026-06-17 (γ) — PIN λήπτη: ορατό, 4 ψηφία
+
+- **PIN λήπτη Telegram**: ορατό πεδίο (όχι password), **ακριβώς 4 αριθμητικά ψηφία** (UI + backend).
+- **Βάση**: στήλη `notify_pin` (`sql/alter_add_notify_pin_plain.sql`) για εμφάνιση στη φόρμα· το hash παραμένει για επαλήθευση punch.
+- Σελίδα **`/ui/telegram-punch`**: ίδιος κανόνας 4 ψηφίων.
+
+---
+
+## 2026-06-17 (β) — Telegram λήπτες: play/stop & στοίχιση
+
+- **UI καταστήματος**: κουμπί **play/stop** ανά λήπτη (πεδίο `active` στη βάση)· μηνύματα μόνο σε ενεργούς (`list_deliverable_recipients`).
+- Διόρθωση **στοίχισης** στήλης ενεργειών (ίδιο ύψος με τα πεδία, flex κουμπιών).
+
+---
+
+## 2026-06-17 — Πραγματική: διατήρηση ιστορικών εγγραφών ανενεργών
+
+- **Δεν διαγράφονται πλέον** εγγραφές πραγματικής για εργαζόμενους εκτός τρέχοντος προσωπικού μετά τον sync (αφαιρέθηκε `delete_work_log_without_active_employment`).
+- **Sync portal**: εισαγωγή **όλων** των γραμμών από Ergani (χωρίς φιλτράρισμα μόνο στο τρέχον EX_BASE_05).
+- **API / UI**: πεδίο `employee_active` στις λίστες πραγματικής· badge **«Ανενεργός»**· χωρίς σύνδεσμο κάρτας / Telegram ειδοποίηση για ανενεργούς.
+
+---
+
 ## 2026-06-18 (β) — Αφαίρεση per-store auto-sync πραγματικής (30 λεπτά)
 
 - **Αφαιρέθηκε** το διάστημα `work_log_sync_interval_minutes` — UI ρυθμίσεων καταστήματος, `POST /api/store/<id>/sync-settings`, auto-sync στο άνοιγμα **Πραγματικής απασχόλησης**.

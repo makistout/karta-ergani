@@ -210,7 +210,15 @@ async function loadCardReport() {
 
   try {
     const activeRes = await fetch("/api/store/active");
-    const activeData = await activeRes.json();
+    let activeData = {};
+    try {
+      activeData = await activeRes.json();
+    } catch {
+      throw new Error(`Σφάλμα διακομιστή (HTTP ${activeRes.status}). Δοκιμάστε επανεκκίνηση του site.`);
+    }
+    if (!activeRes.ok) {
+      throw new Error(activeData.error || `HTTP ${activeRes.status}`);
+    }
     if (!activeData.store) {
       const syncMeta = document.getElementById("homeWorkLogSyncMeta");
       if (syncMeta) syncMeta.innerHTML = "";

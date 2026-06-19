@@ -54,7 +54,7 @@ async function loadMissingCards(page, cachedActive) {
     };
     if (desc && data.exclude_date) {
       desc.textContent =
-        `Εγγραφές πριν από σήμερα (${data.exclude_date}) με έλλειψη ώρας εισόδου ή εξόδου στην πραγματική απασχόληση (νεότερες πρώτα).`;
+        `Εγγραφές πριν από σήμερα (${data.exclude_date}) με έλλειψη ώρας εισόδου ή εξόδου — από πραγματική portal ή από δήλωση κάρτας χωρίς αντίστοιχη γραμμή (νεότερες πρώτα).`;
     }
     renderTablePage(data.work_log || []);
   } catch (e) {
@@ -109,9 +109,7 @@ function renderTablePage(rows) {
 
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    if (Office.workLogRowIsDeficient(row)) {
-      tr.classList.add("work-log-row--deficient");
-    }
+    Office.decorateWorkLogTableRow(tr, row);
     const tdAfm = document.createElement("td");
     tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
     tr.appendChild(tdAfm);
@@ -129,7 +127,7 @@ function renderTablePage(rows) {
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
       if (i === 0) {
-        td.innerHTML = `<strong>${Office.escapeHtml(txt)}</strong>`;
+        td.innerHTML = Office.formatWorkLogEponymoCell(row);
       } else if (i === 5) {
         td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
       } else if (i === 6) {
@@ -232,7 +230,7 @@ function appendNotifyCell(tr, row) {
   const td = document.createElement("td");
   td.className = "work-log-action-cell work-log-action-cell--notify";
   const summary = Office.workLogMissingPunchSummary(row);
-  if (!summary) {
+  if (!summary || !Office.workLogEmployeeActive(row)) {
     tr.appendChild(td);
     return;
   }

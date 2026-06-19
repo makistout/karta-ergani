@@ -7,16 +7,17 @@ from typing import Any
 import pyodbc
 
 from app.db import cursor
+from app.date_util import format_date_for_ergani, format_f_date_time
 from app.repo_schedule import list_schedule_for_range, list_schedule_for_store
 from app.row_util import rows_to_dicts
 from app.work_card_payload import norm_afm
 
 
-def _sql_active_employment_for_work_log(alias: str = "w") -> str:
-    """Μόνο εγγραφές εργαζομένων με ενεργή απασχόληση στο ίδιο παράρτημα."""
+def _sql_employee_active_column(alias: str = "w") -> str:
+    """1 αν ο εργαζόμενος έχει ενεργή απασχόληση στο ίδιο παράρτημα."""
     a = alias
     return f"""
-        EXISTS (
+        CAST(CASE WHEN EXISTS (
             SELECT 1 FROM dbo.karta_employment e
             INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
             INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
@@ -25,36 +26,8 @@ def _sql_active_employment_for_work_log(alias: str = "w") -> str:
               AND em.afm = {a}.employer_afm
               AND e.active = 1
               AND (p.code_aa = {a}.branch_aa OR p.code_aa IS NULL)
-        )
+        ) THEN 1 ELSE 0 END AS bit) AS employee_active
     """
-
-
-def delete_work_log_without_active_employment(
-    employer_afm: str,
-    branch_aa: str,
-) -> int:
-    """Αφαίρεση πραγματικής για ΑΦΜ που δεν είναι στο τρέχον προσωπικό παραρτήματος."""
-    afm = norm_afm(employer_afm)
-    aa = str(branch_aa or "0").strip()[:32] or "0"
-    with cursor() as cur:
-        cur.execute(
-            """
-            DELETE FROM dbo.karta_work_log
-            WHERE employer_afm = ? AND branch_aa = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM dbo.karta_employment e
-                INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
-                INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
-                LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
-                WHERE emp.afm = karta_work_log.employee_afm
-                  AND em.afm = karta_work_log.employer_afm
-                  AND e.active = 1
-                  AND (p.code_aa = karta_work_log.branch_aa OR p.code_aa IS NULL)
-              )
-            """,
-            (afm, aa),
-        )
-        return int(cur.rowcount)
 
 
 def work_log_table_missing_message(exc: BaseException) -> str | None:
@@ -127,7 +100,8 @@ def list_work_log_for_store(
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-                CAST(w.synced_at AS datetime2) AS synced_at
+                CAST(w.synced_at AS datetime2) AS synced_at,
+                {_sql_employee_active_column("w")}
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
             WHERE w.employer_afm = ? AND w.branch_aa = ? AND w.work_date = ?
@@ -158,7 +132,8 @@ def list_work_log_for_range(
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-                CAST(w.synced_at AS datetime2) AS synced_at
+                CAST(w.synced_at AS datetime2) AS synced_at,
+                {_sql_employee_active_column("w")}
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
             WHERE w.employer_afm = ? AND w.branch_aa = ? AND w.work_date IN ({placeholders})
@@ -364,43 +339,42 @@ def enrich_work_log_rows_with_card_punch(
     return rows
 
 
-def list_work_log_missing_cards_paged(
-    employer_afm: str,
-    branch_aa: str,
-    exclude_work_date: str,
-    page: int = 1,
-    page_size: int = 20,
-) -> tuple[list[dict[str, Any]], int]:
-    """Πραγματική με έλλειψη εισόδου ή εξόδου, εκτός συγκεκριμένης ημέρας (σήμερα)."""
-    pg = max(1, int(page))
-    size = max(1, min(int(page_size), 100))
-    offset = (pg - 1) * size
-    afm = norm_afm(employer_afm)
-    aa = str(branch_aa or "0").strip()[:32] or "0"
-    excl = str(exclude_work_date or "").strip()
-    where = f"""
+def _work_log_missing_where_sql() -> str:
+    return """
         w.employer_afm = ? AND w.branch_aa = ?
         AND w.work_date <> ?
-        AND ({_sql_active_employment_for_work_log("w")})
         AND (
             NULLIF(LTRIM(RTRIM(ISNULL(w.hour_from, ''))), '') IS NULL
             OR NULLIF(LTRIM(RTRIM(ISNULL(w.hour_to, ''))), '') IS NULL
         )
     """
+
+
+def _card_event_time_hm(f_date: Any) -> str:
+    raw = format_f_date_time(str(f_date or ""))
+    if len(raw) >= 5:
+        return raw[:5]
+    return raw
+
+
+def _list_work_log_missing_from_db(
+    employer_afm: str,
+    branch_aa: str,
+    exclude_work_date: str,
+) -> list[dict[str, Any]]:
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    excl = str(exclude_work_date or "").strip()
+    where = _work_log_missing_where_sql()
     with cursor(commit=False) as cur:
-        cur.execute(
-            f"SELECT COUNT(*) AS n FROM dbo.karta_work_log w WHERE {where}",
-            (afm, aa, excl),
-        )
-        row = cur.fetchone()
-        total = int(row[0] if row else 0)
         cur.execute(
             f"""
             SELECT
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-                CAST(w.synced_at AS datetime2) AS synced_at
+                CAST(w.synced_at AS datetime2) AS synced_at,
+                {_sql_employee_active_column("w")}
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
             WHERE {where}
@@ -408,11 +382,163 @@ def list_work_log_missing_cards_paged(
                 TRY_CONVERT(date, w.work_date, 103) DESC,
                 w.hour_from DESC,
                 w.id DESC
-            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
             """,
-            (afm, aa, excl, offset, size),
+            (afm, aa, excl),
         )
-        return rows_to_dicts(cur), total
+        return rows_to_dicts(cur)
+
+
+def _missing_rows_from_card_events(
+    employer_afm: str,
+    branch_aa: str,
+    exclude_work_date: str,
+) -> list[dict[str, Any]]:
+    """Ελλιπή όταν υπάρχει δήλωση κάρτας αλλά λείπει/άδεια η γραμμή πραγματικής."""
+    from datetime import datetime, timedelta
+
+    from app.repo_card import list_card_events_for_store_range
+    from app.work_card_payload import tz_athens
+
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    excl = str(exclude_work_date or "").strip()
+    today = datetime.now(tz_athens()).date()
+    start_iso = (today - timedelta(days=120)).isoformat()
+    end_iso = today.isoformat()
+    cards = list_card_events_for_store_range(
+        afm, aa, start_iso, end_iso, limit=5000
+    )
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for card in cards:
+        ref_iso = str(card.get("f_reference_date") or "").strip()[:10]
+        if not ref_iso:
+            continue
+        wd = format_date_for_ergani(ref_iso)
+        if wd == excl:
+            continue
+        e_afm = norm_afm(card.get("f_afm") or "")
+        if not e_afm:
+            continue
+        key = (e_afm, wd)
+        slot = by_key.setdefault(
+            key,
+            {
+                "check_in": "",
+                "check_out": "",
+                "eponymo": card.get("f_eponymo"),
+                "onoma": card.get("f_onoma"),
+                "flex_arrival_minutes": card.get("flex_arrival_minutes"),
+            },
+        )
+        hm = _card_event_time_hm(card.get("f_date"))
+        if str(card.get("f_type") or "").strip() == "1":
+            if hm:
+                slot["check_out"] = hm
+        else:
+            if hm:
+                slot["check_in"] = hm
+        if card.get("f_eponymo"):
+            slot["eponymo"] = card.get("f_eponymo")
+        if card.get("f_onoma"):
+            slot["onoma"] = card.get("onoma")
+        if card.get("flex_arrival_minutes") is not None:
+            slot["flex_arrival_minutes"] = card.get("flex_arrival_minutes")
+
+    gaps: list[dict[str, Any]] = []
+    for (e_afm, wd), slot in by_key.items():
+        wl_rows = [
+            r
+            for r in list_work_log_for_store(afm, aa, wd, limit=20)
+            if norm_afm(r.get("employee_afm") or "") == e_afm
+        ]
+        wl = wl_rows[0] if wl_rows else None
+        hf = str(wl.get("hour_from") or "").strip() if wl else ""
+        ht = str(wl.get("hour_to") or "").strip() if wl else ""
+        if hf and ht:
+            continue
+        if wl and (not hf or not ht):
+            continue
+        gaps.append(
+            {
+                "id": None,
+                "employee_afm": e_afm,
+                "hour_from": hf or slot.get("check_in") or "",
+                "hour_to": ht or slot.get("check_out") or "",
+                "work_date": wd,
+                "source_aa": "",
+                "is_end_date_different": 0,
+                "eponymo": slot.get("eponymo"),
+                "onoma": slot.get("onoma"),
+                "flex_arrival_minutes": slot.get("flex_arrival_minutes"),
+                "synced_at": None,
+                "employee_active": True,
+                "from_card_event": True,
+            }
+        )
+    return gaps
+
+
+def _merge_missing_card_rows(
+    work_log_rows: list[dict[str, Any]],
+    card_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in work_log_rows:
+        e_afm = norm_afm(row.get("employee_afm") or "")
+        wd = str(row.get("work_date") or "").strip()
+        if e_afm and wd:
+            by_key[(e_afm, wd)] = row
+    for row in card_rows:
+        e_afm = norm_afm(row.get("employee_afm") or "")
+        wd = str(row.get("work_date") or "").strip()
+        if not e_afm or not wd:
+            continue
+        key = (e_afm, wd)
+        if key not in by_key:
+            by_key[key] = row
+            continue
+        existing = by_key[key]
+        if not str(existing.get("hour_from") or "").strip() and row.get("hour_from"):
+            existing["hour_from"] = row["hour_from"]
+        if not str(existing.get("hour_to") or "").strip() and row.get("hour_to"):
+            existing["hour_to"] = row["hour_to"]
+    merged = list(by_key.values())
+
+    def _sort_key(r: dict[str, Any]) -> tuple:
+        wd = str(r.get("work_date") or "")
+        try:
+            parts = wd.split("/")
+            if len(parts) == 3:
+                dkey = (int(parts[2]), int(parts[1]), int(parts[0]))
+            else:
+                dkey = (0, 0, 0)
+        except ValueError:
+            dkey = (0, 0, 0)
+        return (dkey, str(r.get("hour_from") or ""), int(r.get("id") or 0))
+
+    merged.sort(key=_sort_key, reverse=True)
+    return merged
+
+
+def list_work_log_missing_cards_paged(
+    employer_afm: str,
+    branch_aa: str,
+    exclude_work_date: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict[str, Any]], int]:
+    """Πραγματική με έλλειψη εισόδου/εξόδου + κενές γραμμές πραγματικής με δήλωση κάρτας."""
+    pg = max(1, int(page))
+    size = max(1, min(int(page_size), 100))
+    offset = (pg - 1) * size
+    wl_rows = _list_work_log_missing_from_db(employer_afm, branch_aa, exclude_work_date)
+    card_rows = _missing_rows_from_card_events(
+        employer_afm, branch_aa, exclude_work_date
+    )
+    merged = _merge_missing_card_rows(wl_rows, card_rows)
+    total = len(merged)
+    page_rows = merged[offset : offset + size]
+    return page_rows, total
 
 
 def list_work_log_history_for_employee(
@@ -434,7 +560,8 @@ def list_work_log_history_for_employee(
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-                CAST(w.synced_at AS datetime2) AS synced_at
+                CAST(w.synced_at AS datetime2) AS synced_at,
+                {_sql_employee_active_column("w")}
             FROM dbo.karta_work_log w
             LEFT JOIN dbo.karta_employee emp ON emp.afm = w.employee_afm
             WHERE w.employer_afm = ? AND w.branch_aa = ? AND w.employee_afm = ?

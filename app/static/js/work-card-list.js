@@ -17,7 +17,10 @@ document.addEventListener("DOMContentLoaded", () => {
     hiddenId: "wcEmployeeAfm",
     maxItems: 40,
     labelFn: (row) => row.label || `${row.value} — ${row.description || ""}`.trim(),
-    onSelect: () => updateWorkCardEmployeeHistoryLink(),
+    onSelect: () => {
+      updateWorkCardEmployeeHistoryLink();
+      loadDayData().catch(() => {});
+    },
   });
   datePicker = Office.createDatePicker({
     mountId: "workCardDatePicker",
@@ -91,11 +94,12 @@ function formatIsoDateGr(iso) {
   return `${p[2]}/${p[1]}/${p[0]}`;
 }
 
-function shouldSkipErganiSyncForRetro(dateIso) {
-  const prefill = Office.readWorkCardQueryPrefill();
-  if (!prefill.retro) return false;
-  const d = String(dateIso || cardDate() || prefill.date || "").trim();
-  return Boolean(d && d !== todayIsoLocal());
+function shouldSkipErganiPortalSync(dateIso) {
+  const d = String(dateIso || cardDate() || "").trim();
+  if (!d) return false;
+  // Προηγούμενες ημέρες: χωρίς portal sync — φέρνει όλους τους εργαζόμενους,
+  // όχι μόνο αυτόν που μόλις χτυπήσατε· το WRKCardSE εμφανίζεται στον πίνακα κάρτας.
+  return d !== todayIsoLocal();
 }
 
 function showWorkCardInfo(text) {
@@ -108,6 +112,15 @@ function showWorkCardInfo(text) {
 
 function selectedEmployeeAfm() {
   return employeeAc ? employeeAc.getValue().code : "";
+}
+
+function filterForSelectedEmployee(rows, afmField = "employee_afm") {
+  const afm = String(selectedEmployeeAfm() || "").trim();
+  if (!afm) {
+    return { rows, filtered: false, total: rows.length };
+  }
+  const filtered = rows.filter((r) => String(r[afmField] || "").trim() === afm);
+  return { rows: filtered, filtered: true, total: rows.length };
 }
 
 function selectedEmployeeName() {
@@ -240,14 +253,14 @@ async function refreshDayData(options = {}) {
     return;
   }
 
-  if (shouldSkipErganiSyncForRetro(date)) {
+  if (shouldSkipErganiPortalSync(date)) {
     if (logWrap) Office.showTableLoading(logWrap, "Φόρτωση τοπικών δεδομένων…");
     if (cardWrap) Office.showTableLoading(cardWrap, "Φόρτωση τοπικών δεδομένων…");
     try {
       await loadDayData();
       showWorkCardInfo(
-        `Προγενέστερη καταχώρηση για ${formatIsoDateGr(date)} — δεν εκτελείται συγχρονισμός με Ergani. ` +
-          "Εμφανίζονται μόνο τα δεδομένα από τη βάση."
+        `Ημερομηνία ${formatIsoDateGr(date)} — χωρίς συγχρονισμό portal (προηγούμενη ημέρα). ` +
+          "Η πραγματική portal αφορά όλους τους εργαζόμενους· το χτύπημά σας εμφανίζεται στον πίνακα «Δηλώσεις κάρτας»."
       );
     } catch (e) {
       if (!auto) Office.showMsg("wcMsg", String(e), false);
@@ -327,7 +340,15 @@ async function loadDayData() {
   }
 
   if (logRes.ok) {
-    renderWorkLogTable(logWrap, logData.work_log || [], logData.count || 0, date, logData.db_setup);
+    const wl = filterForSelectedEmployee(logData.work_log || [], "employee_afm");
+    renderWorkLogTable(
+      logWrap,
+      wl.rows,
+      wl.rows.length,
+      date,
+      logData.db_setup,
+      wl
+    );
   } else {
     logWrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(logData.error || "Σφάλμα")}</p>`;
     if (logData.db_setup) {
@@ -336,21 +357,37 @@ async function loadDayData() {
   }
 
   if (cardRes.ok) {
-    renderCardTable(cardWrap, cardData.events || [], cardData.count || 0, date);
+    const ce = filterForSelectedEmployee(cardData.events || [], "f_afm");
+    renderCardTable(cardWrap, ce.rows, ce.rows.length, date, ce);
   } else {
     cardWrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(cardData.error || "Σφάλμα")}</p>`;
   }
 }
 
-function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
+function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup, filterInfo = null) {
+  const empName = selectedEmployeeName();
+  const filterLine =
+    filterInfo?.filtered && empName
+      ? `<p class="table-meta">${Office.icon("person")} Μόνο <strong>${Office.escapeHtml(empName)}</strong>` +
+        (filterInfo.total > filterInfo.rows.length
+          ? ` · ${filterInfo.rows.length} από ${filterInfo.total} εγγραφές portal`
+          : ` · ${filterInfo.rows.length} εγγραφή/ές`) +
+        `</p>`
+      : "";
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχει πραγματική απασχόληση για ${Office.escapeHtml(dateIso)}. ` +
-      `Συγχρονίστε από <a href="/ui/work-log">Πραγματική απασχόληση</a>.</span></p>` +
+      filterLine +
+      (filterInfo?.filtered
+        ? `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">` +
+          `Δεν υπάρχει πραγματική στο portal Ergani για ${Office.escapeHtml(empName || "αυτόν τον εργαζόμενο")} την ${Office.escapeHtml(dateIso)}. ` +
+          `Το χτύπημα κάρτας (WRKCardSE) εμφανίζεται στον πίνακα «Δηλώσεις ψηφιακής κάρτας» παρακάτω.</span></p>`
+        : `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχει πραγματική απασχόληση για ${Office.escapeHtml(dateIso)}. ` +
+          `Συγχρονίστε από <a href="/ui/work-log">Πραγματική απασχόληση</a>.</span></p>`) +
       (dbSetup ? `<p style="font-size:0.85rem;color:var(--muted);">${Office.escapeHtml(dbSetup)}</p>` : "");
     return;
   }
-  wrap.innerHTML = `<p class="table-meta">${count} εγγραφές · portal → karta_work_log</p>`;
+  wrap.innerHTML =
+    filterLine + `<p class="table-meta">${count} εγγραφές · portal → karta_work_log</p>`;
   const t = document.createElement("table");
   t.className = "data";
   const headers = ["ΑΦΜ", "", "Επώνυμο", "Όνομα", "Ψηφ. ωράριο", "Ευελ. (λεπτά)", "Ημ/νία", "Ώρα από", "Ώρα έως"];
@@ -368,9 +405,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   t.appendChild(hr);
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    if (Office.workLogRowIsDeficient(row)) {
-      tr.classList.add("work-log-row--deficient");
-    }
+    Office.decorateWorkLogTableRow(tr, row);
     const tdAfm = document.createElement("td");
     tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
     tr.appendChild(tdAfm);
@@ -387,7 +422,7 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
     ];
     cells.forEach((txt, i) => {
       const td = document.createElement("td");
-      if (i === 0) td.innerHTML = `<strong>${Office.escapeHtml(txt || "")}</strong>`;
+      if (i === 0) td.innerHTML = Office.formatWorkLogEponymoCell(row);
       else if (i === 3) {
         td.className = "col-flex";
         td.textContent = txt || "";
@@ -407,13 +442,27 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup) {
   wrap.appendChild(t);
 }
 
-function renderCardTable(wrap, rows, count, dateIso) {
+function renderCardTable(wrap, rows, count, dateIso, filterInfo = null) {
+  const empName = selectedEmployeeName();
+  const filterLine =
+    filterInfo?.filtered && empName
+      ? `<p class="table-meta">${Office.icon("person")} Μόνο <strong>${Office.escapeHtml(empName)}</strong>` +
+        (filterInfo.total > filterInfo.rows.length
+          ? ` · ${filterInfo.rows.length} από ${filterInfo.total} δηλώσεις`
+          : ` · ${filterInfo.rows.length} δήλωση/ες`) +
+        `</p>`
+      : "";
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("inbox")}<span style="margin-left:0.35rem;">Δεν υπάρχουν δηλώσεις κάρτας για ${Office.escapeHtml(dateIso)}.</span></p>`;
+      filterLine +
+      `<p style="color:var(--muted);">${Office.icon("inbox")}<span style="margin-left:0.35rem;">` +
+      (filterInfo?.filtered
+        ? `Δεν υπάρχουν δηλώσεις κάρτας για ${Office.escapeHtml(empName || "αυτόν τον εργαζόμενο")} την ${Office.escapeHtml(dateIso)}.`
+        : `Δεν υπάρχουν δηλώσεις κάρτας για ${Office.escapeHtml(dateIso)}.`) +
+      `</span></p>`;
     return;
   }
-  wrap.innerHTML = `<p class="table-meta">${count} δηλώσεις · WRKCardSE → karta_card_event</p>`;
+  wrap.innerHTML = filterLine + `<p class="table-meta">${count} δηλώσεις · WRKCardSE → karta_card_event</p>`;
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
@@ -530,6 +579,7 @@ async function submitCard(eventName, options = {}) {
     if (data.protocol) okMsg += ` · ${data.protocol}`;
     showWorkCardMsg(okMsg, true);
     await loadDayData();
+    document.getElementById("workCardWrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     showWorkCardMsg(String(e), false);
   } finally {

@@ -16,8 +16,8 @@
       <p id="tgPunchIntro" class="page-desc" style="margin-top:0;">Φόρτωση…</p>
       <div id="tgPunchDetails" class="hidden" style="margin:1rem 0;font-size:0.95rem;line-height:1.5;"></div>
       <label class="field-label" for="tgPunchPin">Προσωπικός PIN λήπτη</label>
-      <input type="password" id="tgPunchPin" class="field-input" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="••••" disabled>
-      <p class="field-hint">Ο PIN ορίζεται από το λογιστικό γραφείο στη φόρμα ληπτών Telegram.</p>
+      <input type="text" id="tgPunchPin" class="field-input" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="1234" disabled>
+      <p class="field-hint">4 αριθμητικά ψηφία — ορίζονται από το λογιστικό γραφείο στη φόρμα ληπτών Telegram.</p>
       <button type="button" id="btnTgPunchConfirm" class="btn" style="width:100%;margin-top:1rem;" disabled>
         <i class="bi bi-check2-circle" aria-hidden="true"></i><span>Ολοκλήρωση χτυπήματος</span>
       </button>

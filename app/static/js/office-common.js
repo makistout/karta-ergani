@@ -113,8 +113,18 @@ const Office = {
       return this._activeStoreInflight;
     }
     const req = fetch("/api/store/active", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error(
+            `Σφάλμα διακομιστή (HTTP ${res.status}). Δοκιμάστε επανεκκίνηση του site.`
+          );
+        }
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
         this._activeStoreCache = data;
         this._activeStoreInflight = null;
         return data;
@@ -897,9 +907,40 @@ const Office = {
     return "";
   },
 
+  workLogEmployeeActive(row) {
+    if (!row) return true;
+    const v = row.employee_active;
+    return !(v === false || v === 0 || v === "0");
+  },
+
+  workLogInactiveBadgeHtml() {
+    return (
+      `<span class="status-badge status-muted work-log-inactive-badge" ` +
+      `title="Δεν είναι πλέον στο τρέχον προσωπικό">Ανενεργός</span>`
+    );
+  },
+
+  formatWorkLogEponymoCell(row) {
+    const name = this.escapeHtml(row?.eponymo || "");
+    if (!this.workLogEmployeeActive(row)) {
+      return `<strong>${name}</strong> ${this.workLogInactiveBadgeHtml()}`;
+    }
+    return `<strong>${name}</strong>`;
+  },
+
+  decorateWorkLogTableRow(tr, row) {
+    if (this.workLogRowIsDeficient(row)) {
+      tr.classList.add("work-log-row--deficient");
+    }
+    if (!this.workLogEmployeeActive(row)) {
+      tr.classList.add("work-log-row--inactive");
+    }
+  },
+
   /** Εικονίδιο κάρτας μόνο όταν λείπει είσοδος ή έξοδος (όχι σε ολοκληρωμένη μέρα). */
   shouldShowWorkCardLink(row) {
     if (!row) return false;
+    if (!this.workLogEmployeeActive(row)) return false;
     if (String(row.status || "").trim() === "completed") return false;
     if (row.work_log && typeof row.work_log === "object") {
       const hf = String(row.work_log.hour_from || "").trim();

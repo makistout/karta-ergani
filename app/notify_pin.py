@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 
 from config import Config
 
 _PIN_MASK = "********"
+_PIN_RE = re.compile(r"^\d{4}$")
 
 
 def pin_mask() -> str:
@@ -16,6 +18,18 @@ def pin_mask() -> str:
 
 def is_pin_mask(value: str | None) -> bool:
     return str(value or "").strip() == _PIN_MASK
+
+
+def is_valid_notify_pin(pin: str | None) -> bool:
+    return bool(_PIN_RE.fullmatch(str(pin or "").strip()))
+
+
+def validate_notify_pin(pin: str | None) -> str:
+    """Επιστρέφει κανονικοποιημένο 4ψήφιο PIN ή ValueError."""
+    value = str(pin or "").strip()
+    if not is_valid_notify_pin(value):
+        raise ValueError("Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία")
+    return value
 
 
 def hash_notify_pin(*, store_id: int, mobile: str, pin: str) -> str:
