@@ -2077,12 +2077,70 @@ table.data td.col-history {
   cursor: wait;
 }
 
+.work-log-notify-btn--snoozed:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
 .work-log-notify-btn .bi {
   font-size: 1.1rem;
 }
 
 .work-log-action-cell--notify {
   width: 2.5rem;
+}
+
+.today-action-main {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+.today-action-card {
+  padding: 1.25rem;
+}
+
+.today-action-title {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.today-action-details {
+  margin: 1rem 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.today-action-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.today-action-choice {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.today-leave-panel {
+  margin-top: 1rem;
+}
+
+.today-leave-title {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.today-leave-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .work-log-history-wrap {

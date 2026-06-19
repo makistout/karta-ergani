@@ -121,3 +121,38 @@ def format_missing_punch_notification(
             "\nΓια σύνδεσμο με PIN, ορίστε PIN λήπτη στο κατάστημα."
         )
     return "\n".join(lines)
+
+
+def format_today_alert_notification(
+    *,
+    store_name: str,
+    employee_afm: str,
+    eponymo: str | None,
+    onoma: str | None,
+    work_date: str,
+    notify_kind: str,
+    hit_url: str | None = None,
+    has_pin: bool = False,
+) -> str:
+    """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
+    from app.today_notify_logic import KIND_LABELS
+
+    link = (hit_url or "").strip()
+    name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
+    kind = (notify_kind or "").strip()
+    problem = KIND_LABELS.get(kind, "πρόβλημα στην πραγματική απασχόληση")
+    store = (store_name or "").strip()
+    prefix = f"erganiOS — {store}\n" if store else "erganiOS\n"
+    lines = [
+        f"{prefix}Υπάρχει πρόβλημα με τον εργαζόμενο {name} (ΑΦΜ {employee_afm}) "
+        f"για σήμερα ({work_date}): {problem}.",
+        "",
+        "Προχωρήστε σε ενέργεια:",
+    ]
+    if link:
+        lines.append(link)
+    elif not has_pin:
+        lines.append(
+            "(Ορίστε PIN λήπτη στο κατάστημα για σύνδεσμο με επιλογές ενέργειας.)"
+        )
+    return "\n".join(lines)

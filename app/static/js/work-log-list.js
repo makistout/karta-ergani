@@ -76,10 +76,17 @@ function renderTable(rows, count, store, range) {
   renderTablePage();
 }
 
+function rangeIncludesToday(range) {
+  if (!range?.start || !range?.end) return false;
+  const today = Office.todayIsoLocal();
+  return range.start <= today && today <= range.end;
+}
+
 function renderTablePage() {
   const wrap = document.getElementById("workLogWrap");
   const { rows, store, range } = tableState;
   const multi = range.start !== range.end;
+  const showTodayNotify = rangeIncludesToday(range);
   if (!rows.length) {
     wrap.innerHTML =
       `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές. Πατήστε «Συγχρονισμός Ergani».</span></p>`;
@@ -98,12 +105,18 @@ function renderTablePage() {
   const headers = ["ΑΦΜ", "", "Επώνυμο", "Όνομα"];
   if (multi) headers.push("Ημερομηνία");
   headers.push("Ευελ. (λεπτά)", "Ψηφ. ωράριο", "Από", "Έως", "Κάρτα");
+  if (showTodayNotify) headers.push("__notify_today__");
   const hr = document.createElement("tr");
   headers.forEach((h) => {
     const th = document.createElement("th");
     if (h === "") {
       th.className = "col-history";
       th.setAttribute("aria-label", "Ιστορικό");
+    } else if (h === "__notify_today__") {
+      th.className = "work-log-action-cell work-log-action-cell--notify";
+      th.innerHTML = Office.icon("bell");
+      th.setAttribute("aria-label", "Ειδοποίηση σήμερα");
+      th.title = "Ειδοποίηση τρέχουσας ημέρας";
     } else {
       th.textContent = h;
     }
@@ -147,6 +160,7 @@ function renderTablePage() {
       tr.appendChild(td);
     });
     appendWorkCardLinkCell(tr, row, range);
+    if (showTodayNotify) appendTodayNotifyCell(tr, row);
     t.appendChild(tr);
   });
 
@@ -182,6 +196,80 @@ function appendWorkCardLinkCell(tr, row, range) {
     td.appendChild(a);
   }
   tr.appendChild(td);
+}
+
+function appendTodayNotifyCell(tr, row) {
+  const td = document.createElement("td");
+  td.className = "work-log-action-cell work-log-action-cell--notify";
+  const notify = Office.workLogTodayNotify(row);
+  if (!notify) {
+    tr.appendChild(td);
+    return;
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  const snoozed = Boolean(row.today_notify_snoozed);
+  btn.className =
+    "work-log-notify-btn work-log-notify-btn--today" +
+    (snoozed ? " work-log-notify-btn--snoozed" : "");
+  btn.dataset.notifyKind = notify.kind;
+  btn.innerHTML = Office.icon("bell");
+  if (snoozed) {
+    btn.disabled = true;
+    btn.title = "Snoozed";
+    btn.setAttribute("aria-label", "Snoozed");
+  } else {
+    btn.title = `Ειδοποίηση σήμερα — ${notify.label}`;
+    btn.setAttribute("aria-label", `Ειδοποίηση σήμερα — ${notify.label}`);
+    btn.addEventListener("click", () => sendTodayPunchNotify(row, notify, btn));
+  }
+  td.appendChild(btn);
+  tr.appendChild(td);
+}
+
+function sendTodayPunchNotify(row, notify, btn) {
+  const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim() || row.employee_afm;
+  if (btn) btn.disabled = true;
+  Office.showLoading("workLogMsg", `Αποστολή ειδοποίησης για ${name}…`);
+  fetch("/api/telegram/notify/today-punch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      employee_afm: row.employee_afm,
+      work_date: row.work_date,
+      eponymo: row.eponymo,
+      onoma: row.onoma,
+      hour_from: row.hour_from,
+      hour_to: row.hour_to,
+      notify_kind: notify.kind,
+    }),
+  })
+    .then((res) => Office.parseJson(res).then((data) => ({ res, data })))
+    .then(({ res, data }) => {
+      if (!res.ok || !data.success) {
+        Office.showMsg(
+          "workLogMsg",
+          data.error ||
+            data._parseError ||
+            data.errors?.join(" · ") ||
+            "Αποτυχία αποστολής",
+          false
+        );
+        if (btn) btn.disabled = false;
+        return;
+      }
+      const n = data.sent || 0;
+      Office.showMsg(
+        "workLogMsg",
+        `Εστάλη σε ${n} λήπτη/ες — ${notify.label} (${row.work_date})`,
+        true
+      );
+    })
+    .catch((e) => {
+      Office.showMsg("workLogMsg", String(e), false);
+      if (btn) btn.disabled = false;
+    });
 }
 
 async function runSync(bodyOverride, opts = {}) {

@@ -89,6 +89,15 @@ def work_log_list():
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
+    try:
+        from app.repo_today_alert import enrich_work_log_rows_with_today_notify_snooze
+
+        enrich_work_log_rows_with_today_notify_snooze(
+            rows, int(ctx["id"]), ergani_dates
+        )
+    except pyodbc.Error:
+        for r in rows:
+            r.setdefault("today_notify_snoozed", False)
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()

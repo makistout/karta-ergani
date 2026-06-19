@@ -4,6 +4,54 @@
 
 ---
 
+## 2026-06-20 (ε) — Ειδοποίηση τύπου 2 (τρέχουσα ημέρα), snooze & audit
+
+### Ειδοποίηση τύπου 2 — `/ui/work-log`
+
+Νέα στήλη **κουδούνι** για σημερινές εγγραφές όταν ισχύει μία από τις συνθήκες:
+
+1. **Εξόδος χωρίς είσοδο** (`exit_without_entry`) — ανεξάρτητα από ωράριο.
+2. **Καθυστέρηση εισόδου** (`late_check_in`) — ψηφ. ωράριο + >10′ από επίσημη έναρξη, χωρίς είσοδο.
+3. **Έλλειψη εξόδου** (`missing_exit_8h`) — >8 ώρες από πραγματική είσοδο, χωρίς έξοδο.
+
+- **`app/today_notify_logic.py`**: κανόνες `resolve_today_notify_kind`, `today_leave_eligible`, `card_action_for_today_kind` (κοινά Python + JS).
+- **`app/static/js/office-common.js`**: `workLogTodayNotify()`, `workLogRowIsToday()` κ.λπ.
+- **`app/static/js/work-log-list.js`**: κουμπί αποστολής → `POST /api/telegram/notify/today-punch`· βελτιωμένα μηνύματα σφάλματος (`_parseError`).
+
+### Telegram & ροή ενεργειών
+
+- **`POST /api/telegram/notify/today-punch`**: αποστολή μηνύματος «υπάρχει πρόβλημα…» + σύνδεσμος.
+- **`/ui/today-hit?t=TOKEN`**: επαλήθευση PIN λήπτη.
+- **`/ui/today-action?t=TOKEN`**: επιλογές μετά το PIN:
+  - **Αναβολή (snooze)** — δεν ξαναστέλνεται ειδοποίηση για την ίδια περίπτωση σήμερα.
+  - **Καταχώριση άδειας** — **μόνο** σε `late_check_in` (χωρίς κάρτα ενώ υπάρχει ψηφ. ωράριο)· όχι σε εξόδου χωρίς είσοδο / έλλειψη εξόδου.
+  - **Χτύπημα κάρτας** → `/ui/retro-hit` (προγενέστερη είσοδος/έξοδος ανά περίπτωση).
+
+Αρχεία: `app/today_alert_service.py`, `app/repo_today_alert.py`, `app/telegram_notify.py`, `app/routes_telegram.py`, `today-hit.js/html`, `today-action.js/html`, `app/office_auth.py`, `app/routes_ui.py`.
+
+### Snooze — απενεργοποίηση κουδουνιού & audit
+
+- Πίνακας **`karta_today_notify_snooze`** (`sql/alter_add_today_alert.sql`): μοναδική εγγραφή ανά κατάστημα + ΑΦΜ + ημέρα + `notify_kind`.
+- Στο work-log: αν υπάρχει snooze, το κουδούνι είναι **disabled**, `title`/`aria-label` = **Snoozed** (`today_notify_snoozed` από `/api/work-log/list`).
+- **`sql/alter_add_today_snooze_audit.sql`**: στήλες audit στο snooze — `acted_by_name`, `acted_by_mobile`, `acted_via`, `office_user`, `client_ip`, `client_device`, `created_at`.
+- Κατά την αναβολή: `capture_client_context()` (IP, User-Agent, γλώσσα, referer κ.λπ.) + όνομα λήπτη Telegram.
+- Script: `python scripts/run_migration_today_snooze_audit.py`.
+
+### Βάση & migrations
+
+- **`sql/alter_add_today_alert.sql`**: `karta_telegram_today_alert_token`, `karta_today_notify_snooze`.
+- **`scripts/run_migration_today_snooze_audit.py`**: idempotent εφαρμογή audit στηλών.
+
+### UI / CSS
+
+- **`office.css`**: `.work-log-notify-btn--today`, `.work-log-notify-btn--snoozed`, `.today-action-*`.
+
+### Σημείωση λειτουργίας
+
+Μετά από deploy νέου Python κώδικα απαιτείται **recycle** του IIS app pool `erganios.gr` ώστε να φορτωθούν τα νέα API endpoints.
+
+---
+
 ## 2026-06-20 (δ) — UI καταστημάτων & εργαζομένων, ιστορικό πραγματικής, sync ανά παράρτημα, audit χτυπημάτων
 
 ### UI — Καταστήματα (`/ui/stores`)

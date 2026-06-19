@@ -111,6 +111,16 @@ def ui_retro_punch_redirect():
     return redirect("/ui/retro-hit")
 
 
+@ui_bp.get("/today-hit")
+def ui_today_hit():
+    return send_from_directory(_UI_DIR, "today-hit.html")
+
+
+@ui_bp.get("/today-action")
+def ui_today_action():
+    return send_from_directory(_UI_DIR, "today-action.html")
+
+
 @ui_bp.get("/sync")
 def ui_sync_hub():
     return send_from_directory(_UI_DIR, "sync-hub.html")

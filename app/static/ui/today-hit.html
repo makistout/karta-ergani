@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <title>erganiOS - Ειδοποίηση σήμερα</title>
+  <link rel="stylesheet" href="/static/css/office.css?v=20260620today1">
+</head>
+<body class="login-page">
+  <main class="login-main" style="max-width:420px;margin:2rem auto;padding:1rem;">
+    <div class="card" style="padding:1.25rem;">
+      <h1 class="page-title" style="font-size:1.15rem;margin-bottom:0.5rem;">
+        <i class="bi bi-bell" aria-hidden="true"></i> Ειδοποίηση σήμερα
+      </h1>
+      <p id="todayHitIntro" class="page-desc" style="margin-top:0;">Φόρτωση…</p>
+      <div id="todayHitDetails" class="hidden" style="margin:1rem 0;font-size:0.95rem;line-height:1.5;"></div>
+      <label class="field-label" for="todayHitPin">Προσωπικός PIN λήπτη</label>
+      <input type="text" id="todayHitPin" class="field-input" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="4 ψηφία" disabled>
+      <p class="field-hint">Μετά την επιβεβαίωση επιλέγετε ενέργεια (αναβολή, χτύπημα κάρτας ή — όπου ισχύει — άδεια).</p>
+      <button type="button" id="btnTodayHitConfirm" class="btn" style="width:100%;margin-top:1rem;" disabled>
+        <i class="bi bi-arrow-right-circle" aria-hidden="true"></i><span>Προχωρήστε σε ενέργεια</span>
+      </button>
+      <div id="todayHitMsg" class="msg" style="margin-top:1rem;"></div>
+    </div>
+  </main>
+  <script src="/static/js/office-common.js?v=20260620today1"></script>
+  <script src="/static/js/today-hit.js?v=20260620today1"></script>
+</body>
+</html>

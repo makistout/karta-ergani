@@ -942,6 +942,66 @@ const Office = {
     return "";
   },
 
+  workLogRowIsToday(row) {
+    const wd = this.workDateToIso(row?.work_date);
+    return Boolean(wd && wd === this.todayIsoLocal());
+  },
+
+  elapsedWorkDayMinutes(fromMin, toMin) {
+    if (fromMin == null || toMin == null) return null;
+    let elapsed = toMin - fromMin;
+    if (elapsed < 0) elapsed += 24 * 60;
+    return elapsed;
+  },
+
+  workLogHasDigitalSchedule(row) {
+    return this.scheduleStartMinutesFromRow(row) != null;
+  },
+
+  /** Ειδοποίηση τύπου 2 — μόνο για σημερινές εγγραφές. */
+  workLogTodayNotify(row) {
+    if (!row || !this.workLogRowIsToday(row)) return null;
+    if (!this.workLogEmployeeActive(row)) return null;
+
+    const hf = String(row.hour_from || "").trim();
+    const ht = String(row.hour_to || "").trim();
+    const nowMin = this.parseClockToMinutes(
+      this.formatTime24(new Date(), { seconds: false })
+    );
+    if (nowMin == null) return null;
+
+    if (!hf && ht) {
+      return {
+        kind: "exit_without_entry",
+        label: "εξόδος χωρίς είσοδο",
+      };
+    }
+
+    if (!hf && this.workLogHasDigitalSchedule(row)) {
+      const schedStart = this.scheduleStartMinutesFromRow(row);
+      const elapsed = this.elapsedWorkDayMinutes(schedStart, nowMin);
+      if (elapsed != null && elapsed >= 10) {
+        return {
+          kind: "late_check_in",
+          label: "καθυστέρηση εισόδου (>10' από ωράριο)",
+        };
+      }
+    }
+
+    if (hf && !ht) {
+      const startMin = this.parseClockToMinutes(hf);
+      const elapsed = this.elapsedWorkDayMinutes(startMin, nowMin);
+      if (elapsed != null && elapsed >= 8 * 60) {
+        return {
+          kind: "missing_exit_8h",
+          label: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
+        };
+      }
+    }
+
+    return null;
+  },
+
   workLogEmployeeActive(row) {
     if (!row) return true;
     const v = row.employee_active;
