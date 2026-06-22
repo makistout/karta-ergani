@@ -59,6 +59,11 @@ def ui_employees_list():
     return send_from_directory(_UI_DIR, "employees-list.html")
 
 
+@ui_bp.get("/employees/weekly-schedule")
+def ui_employee_weekly_schedule():
+    return send_from_directory(_UI_DIR, "employee-weekly-schedule.html")
+
+
 @ui_bp.get("/schedule")
 def ui_schedule_list():
     return send_from_directory(_UI_DIR, "schedule-list.html")

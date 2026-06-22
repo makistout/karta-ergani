@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <title>erganiOS - Εβδομαδιαίο ωράριο</title>
+  <link rel="stylesheet" href="/static/css/office.css?v=20260623wtoweek2">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
+        <small>Ψηφιακή Κάρτα Εργασίας</small>
+      </div>
+      <nav>
+        <a href="/ui/" data-nav="home">Αρχική</a>
+        <a href="/ui/employees" data-nav="employees" class="active">Εργαζόμενοι</a>
+        <a href="/ui/schedule" data-nav="schedule">Ψηφιακό ωράριο</a>
+        <a href="/ui/work-log" data-nav="worklog">Πραγματική απασχόληση</a>
+        <a href="/ui/missing-cards" data-nav="missingcards">Ελλειπή Χτυπήματα</a>
+        <a href="/ui/work-card" data-nav="workcard">Ψηφιακή κάρτα</a>
+        <a href="/ui/sync" data-nav="sync">Συγχρονισμός</a>
+        <a href="/ui/stores" data-nav="stores">Καταστήματα</a>
+        <a href="/ui/sync-log" data-nav="synclog">Καταγραφές</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <h1 class="page-title">
+        <i class="bi bi-calendar-week" aria-hidden="true"></i>
+        Σταθερό εβδομαδιαίο ωράριο
+      </h1>
+      <p class="page-desc">
+        Υποβολή δήλωσης <strong>WTOWeek</strong> για έναν εργαζόμενο. Δηλώνονται υποχρεωτικά και οι επτά ημέρες.
+      </p>
+
+      <section class="card weekly-schedule-card" aria-labelledby="weeklyEmployeeTitle">
+        <div class="weekly-employee-head">
+          <div>
+            <span class="weekly-eyebrow">Εργαζόμενος</span>
+            <h2 id="weeklyEmployeeTitle">Φόρτωση…</h2>
+            <p id="weeklyEmployeeMeta"></p>
+          </div>
+          <span id="weeklyAvailability" class="weekly-availability weekly-availability--checking">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i> Έλεγχος WTOWeek…
+          </span>
+        </div>
+      </section>
+
+      <section class="card weekly-schedule-card">
+        <div class="weekly-period-grid">
+          <label>
+            <span>Ισχύς από</span>
+            <input id="weeklyFromDate" type="date" required>
+          </label>
+          <label>
+            <span>Ισχύς έως <small>(προαιρετικό)</small></span>
+            <input id="weeklyToDate" type="date">
+          </label>
+          <label class="weekly-comments-field">
+            <span>Παρατηρήσεις <small>(προαιρετικό)</small></span>
+            <input id="weeklyComments" type="text" maxlength="200" placeholder="π.χ. Σταθερό εβδομαδιαίο πρόγραμμα">
+          </label>
+        </div>
+        <p class="weekly-period-hint">
+          Αν η ημερομηνία λήξης μείνει κενή, το εβδομαδιαίο πρόγραμμα δηλώνεται χωρίς προκαθορισμένη λήξη.
+        </p>
+      </section>
+
+      <section class="card weekly-schedule-card">
+        <div class="weekly-toolbar">
+          <div>
+            <h2>Πρόγραμμα εβδομάδας</h2>
+            <p>Εργασία/τηλεργασία απαιτεί ώρες. Ρεπό και μη εργασία αποστέλλονται χωρίς ώρες.</p>
+          </div>
+          <button type="button" class="btn btn-secondary" id="btnCopyMonday">
+            <i class="bi bi-copy" aria-hidden="true"></i><span>Αντιγραφή Δευτέρας Τρ.–Παρ.</span>
+          </button>
+        </div>
+        <div id="weeklyDays" class="weekly-days"></div>
+      </section>
+
+      <div class="weekly-submit-bar">
+        <a href="/ui/employees" class="btn btn-secondary">
+          <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+        </a>
+        <button type="button" class="btn" id="btnSubmitWeekly" disabled>
+          <i class="bi bi-send-check" aria-hidden="true"></i><span>Υποβολή WTOWeek</span>
+        </button>
+      </div>
+      <div id="weeklyMsg" class="msg"></div>
+    </main>
+  </div>
+  <script src="/static/js/office-common.js?v=20260623time24h1"></script>
+  <script src="/static/js/employee-weekly-schedule.js?v=20260623wtoweek2"></script>
+</body>
+</html>

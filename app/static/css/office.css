@@ -2463,3 +2463,237 @@ body.login-page {
   padding-top: 0.75rem;
   opacity: 0.9;
 }
+
+.employee-name-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.employee-weekly-schedule-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.employee-weekly-schedule-link:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.weekly-schedule-card {
+  margin-bottom: 1rem;
+}
+
+.weekly-employee-head,
+.weekly-toolbar,
+.weekly-submit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.weekly-eyebrow {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.weekly-employee-head h2,
+.weekly-toolbar h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.weekly-employee-head p,
+.weekly-toolbar p,
+.weekly-period-hint {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.weekly-availability {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.weekly-availability--checking {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.weekly-availability--ok {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.weekly-availability--error {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.weekly-period-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(150px, 0.7fr) minmax(260px, 1.6fr);
+  gap: 0.85rem;
+}
+
+.weekly-period-grid label,
+.weekly-type-field,
+.weekly-interval label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.weekly-period-grid input,
+.weekly-type-field select,
+.weekly-interval input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.weekly-interval input.input-time-24 {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.weekly-days {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.weekly-day {
+  display: grid;
+  grid-template-columns: 120px 180px minmax(260px, 1fr) 100px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.weekly-day-name {
+  display: grid;
+}
+
+.weekly-day-name span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.weekly-intervals {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.weekly-interval {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(100px, 1fr) 2rem;
+  align-items: end;
+  gap: 0.45rem;
+}
+
+.weekly-interval:not(:has(.weekly-remove-interval)) {
+  grid-template-columns: minmax(100px, 1fr) minmax(100px, 1fr);
+  padding-right: 2.45rem;
+}
+
+.weekly-add-interval,
+.weekly-remove-interval {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 0;
+  color: var(--brand);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.weekly-remove-interval {
+  width: 2rem;
+  height: 2.25rem;
+  color: var(--err);
+}
+
+.weekly-submit-bar {
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 980px) {
+  .weekly-period-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .weekly-comments-field {
+    grid-column: 1 / -1;
+  }
+
+  .weekly-day {
+    grid-template-columns: 100px 160px minmax(220px, 1fr);
+  }
+
+  .weekly-add-interval {
+    grid-column: 3;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .weekly-employee-head,
+  .weekly-toolbar,
+  .weekly-submit-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .weekly-period-grid,
+  .weekly-day {
+    grid-template-columns: 1fr;
+  }
+
+  .weekly-comments-field,
+  .weekly-add-interval {
+    grid-column: auto;
+  }
+
+  .weekly-submit-bar .btn {
+    justify-content: center;
+  }
+}

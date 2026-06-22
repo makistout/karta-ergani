@@ -660,6 +660,7 @@ const Office = {
     }
     const digits = s.replace(/\D/g, "").slice(0, 4);
     if (digits.length <= 2) return digits;
+    if (digits.length === 3) return `0${digits.slice(0, 1)}:${digits.slice(1)}`;
     return `${digits.slice(0, 2)}:${digits.slice(2)}`;
   },
 

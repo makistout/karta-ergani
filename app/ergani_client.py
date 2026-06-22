@@ -37,6 +37,16 @@ class ErganiClient:
             timeout=self.timeout,
         )
 
+    def submissions_list(self, bearer: str) -> requests.Response:
+        return requests.get(
+            self._url("Lookup", "Submissions"),
+            headers={
+                "Authorization": f"Bearer {bearer}",
+                "Accept": "application/json",
+            },
+            timeout=self.timeout,
+        )
+
     def execute_service(
         self,
         service_code: str,

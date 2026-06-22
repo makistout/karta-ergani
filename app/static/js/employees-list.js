@@ -72,7 +72,22 @@ function renderTable(rows, count, store) {
     tdAfm.textContent = emp.afm || "";
     tr.appendChild(tdAfm);
     const tdEp = document.createElement("td");
-    tdEp.innerHTML = `<strong>${Office.escapeHtml(emp.eponymo || "")}</strong>`;
+    tdEp.innerHTML = `<span class="employee-name-actions"><strong>${Office.escapeHtml(emp.eponymo || "")}</strong></span>`;
+    const empAfm = (emp.afm || "").trim();
+    const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
+    const active = emp.active !== false && emp.active !== 0;
+    if (empAfm && active) {
+      const weeklyLink = document.createElement("a");
+      weeklyLink.href =
+        `/ui/employees/weekly-schedule?afm=${encodeURIComponent(empAfm)}` +
+        `&eponymo=${encodeURIComponent(emp.eponymo || "")}` +
+        `&onoma=${encodeURIComponent(emp.onoma || "")}`;
+      weeklyLink.className = "employee-weekly-schedule-link";
+      weeklyLink.title = "Δήλωση σταθερού εβδομαδιαίου ωραρίου";
+      weeklyLink.setAttribute("aria-label", `Εβδομαδιαίο ωράριο — ${empName}`);
+      weeklyLink.innerHTML = Office.icon("calendar-week");
+      tdEp.querySelector(".employee-name-actions")?.appendChild(weeklyLink);
+    }
     tr.appendChild(tdEp);
     const tdOn = document.createElement("td");
     tdOn.textContent = emp.onoma || "";
@@ -82,15 +97,12 @@ function renderTable(rows, count, store) {
     tdFlex.textContent = Office.formatFlexMinutes(emp.flex_arrival_minutes);
     tr.appendChild(tdFlex);
     const tdSt = document.createElement("td");
-    const active = emp.active !== false && emp.active !== 0;
     tdSt.innerHTML = active
       ? `<span style="color:var(--ok);">${Office.icon("check-circle-fill")} Ενεργός</span>`
       : `<span style="color:var(--muted);">${Office.icon("dash-circle")} Ανενεργός</span>`;
     tr.appendChild(tdSt);
     const tdMonthly = document.createElement("td");
     tdMonthly.className = "work-log-action-cell";
-    const empAfm = (emp.afm || "").trim();
-    const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
     if (empAfm) {
       const a = document.createElement("a");
       a.href = `/ui/monthly-status?afm=${encodeURIComponent(empAfm)}`;
