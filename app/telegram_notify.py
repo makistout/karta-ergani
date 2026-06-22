@@ -133,9 +133,11 @@ def format_today_alert_notification(
     notify_kind: str,
     hit_url: str | None = None,
     has_pin: bool = False,
+    wto_hour_from: str | None = None,
+    wto_hour_to: str | None = None,
 ) -> str:
     """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
-    from app.today_notify_logic import KIND_LABELS
+    from app.today_notify_logic import KIND_LABELS, WTO_DAILY_NOTIFY_KINDS
 
     link = (hit_url or "").strip()
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
@@ -146,9 +148,16 @@ def format_today_alert_notification(
     lines = [
         f"{prefix}Υπάρχει πρόβλημα με τον εργαζόμενο {name} (ΑΦΜ {employee_afm}) "
         f"για σήμερα ({work_date}): {problem}.",
-        "",
-        "Προχωρήστε σε ενέργεια:",
     ]
+    if kind in WTO_DAILY_NOTIFY_KINDS:
+        hf = (wto_hour_from or "").strip()
+        ht = (wto_hour_to or "").strip()
+        if hf:
+            sched_line = f"Προτεινόμενο ωράριο: {hf}"
+            if ht:
+                sched_line += f" – {ht}"
+            lines.append(sched_line)
+    lines.extend(["", "Προχωρήστε σε ενέργεια:"])
     if link:
         lines.append(link)
     elif not has_pin:

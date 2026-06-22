@@ -9,14 +9,30 @@ from typing import Any
 from app.work_card_payload import tz_athens
 
 TODAY_NOTIFY_KINDS = frozenset(
-    {"exit_without_entry", "late_check_in", "missing_exit_8h"}
+    {
+        "exit_without_entry",
+        "late_check_in",
+        "missing_exit_8h",
+        "rest_with_card",
+        "rest_day",
+        "early_card",
+        "no_schedule_work",
+        "no_schedule",
+    }
 )
 
 KIND_LABELS = {
     "exit_without_entry": "εξόδος χωρίς είσοδο",
     "late_check_in": "καθυστέρηση εισόδου (>10' από ωράριο)",
     "missing_exit_8h": "έλλειψη εξόδου (>8 ώρες από είσοδο)",
+    "rest_with_card": "ρεπό/ανάπαυση με καταγραφή εργασίας",
+    "rest_day": "ημέρα ρεπό/ανάπαυση",
+    "early_card": "κάρτα/πραγματική ≥1 ώρα πριν το ωράριο",
+    "no_schedule_work": "καταγραφή εργασίας χωρίς ψηφιακό ωράριο",
+    "no_schedule": "δεν υπάρχει ψηφιακό ωράριο",
 }
+
+WTO_DAILY_NOTIFY_KINDS = frozenset()
 
 
 def _parse_clock_minutes(value: str | None) -> int | None:
@@ -124,6 +140,10 @@ def card_action_for_today_kind(
     if k == "missing_exit_8h":
         return {"card_event": "check_out", "retro_time": ""}
     return {"card_event": "check_in", "retro_time": ""}
+
+
+def today_wto_daily_eligible(notify_kind: str) -> bool:
+    return (notify_kind or "").strip() in WTO_DAILY_NOTIFY_KINDS
 
 
 def today_leave_eligible(

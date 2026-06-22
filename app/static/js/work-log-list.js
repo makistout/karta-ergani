@@ -228,48 +228,7 @@ function appendTodayNotifyCell(tr, row) {
 }
 
 function sendTodayPunchNotify(row, notify, btn) {
-  const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim() || row.employee_afm;
-  if (btn) btn.disabled = true;
-  Office.showLoading("workLogMsg", `Αποστολή ειδοποίησης για ${name}…`);
-  fetch("/api/telegram/notify/today-punch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({
-      employee_afm: row.employee_afm,
-      work_date: row.work_date,
-      eponymo: row.eponymo,
-      onoma: row.onoma,
-      hour_from: row.hour_from,
-      hour_to: row.hour_to,
-      notify_kind: notify.kind,
-    }),
-  })
-    .then((res) => Office.parseJson(res).then((data) => ({ res, data })))
-    .then(({ res, data }) => {
-      if (!res.ok || !data.success) {
-        Office.showMsg(
-          "workLogMsg",
-          data.error ||
-            data._parseError ||
-            data.errors?.join(" · ") ||
-            "Αποτυχία αποστολής",
-          false
-        );
-        if (btn) btn.disabled = false;
-        return;
-      }
-      const n = data.sent || 0;
-      Office.showMsg(
-        "workLogMsg",
-        `Εστάλη σε ${n} λήπτη/ες — ${notify.label} (${row.work_date})`,
-        true
-      );
-    })
-    .catch((e) => {
-      Office.showMsg("workLogMsg", String(e), false);
-      if (btn) btn.disabled = false;
-    });
+  Office.sendTodayPunchNotify(row, notify, btn, "workLogMsg");
 }
 
 async function runSync(bodyOverride, opts = {}) {

@@ -95,6 +95,73 @@ def enrich_work_log_rows_with_today_notify_snooze(
         row["today_notify_snoozed"] = key in snoozed
 
 
+def enrich_card_report_rows_with_today_notify(
+    rows: list[dict[str, Any]],
+    store_id: int,
+) -> None:
+    """Σημαία today_notify_kind / today_notify_snoozed για γραμμές αναφοράς αρχικής."""
+    from app.today_notify_logic import resolve_today_notify_kind
+
+    dates = sorted(
+        {
+            str(r.get("work_date") or "").strip()
+            for r in rows
+            if str(r.get("work_date") or "").strip()
+        }
+    )
+    snoozed = list_today_notify_snoozes(store_id, dates) if dates else set()
+    for row in rows:
+        wl = row.get("work_log") if isinstance(row.get("work_log"), dict) else {}
+        notify_row = {
+            "work_date": row.get("work_date"),
+            "employee_active": row.get("employee_active", True),
+            "hour_from": wl.get("hour_from"),
+            "hour_to": wl.get("hour_to"),
+            "schedule": row.get("schedule"),
+            "schedule_label": row.get("schedule_label"),
+        }
+        kind = resolve_today_notify_kind(notify_row)
+        row["today_notify_kind"] = kind
+        if not kind:
+            row["today_notify_snoozed"] = False
+            continue
+        key = (
+            norm_afm(str(row.get("employee_afm") or "")),
+            str(row.get("work_date") or "").strip(),
+            kind,
+        )
+        row["today_notify_snoozed"] = key in snoozed
+
+
+def enrich_card_report_rows_with_wto_snooze(
+    rows: list[dict[str, Any]],
+    store_id: int,
+    default_work_date: str | None = None,
+) -> None:
+    """Σημαία wto_notify_snoozed για ειδοποίηση αλλαγής ωραρίου."""
+    dates = sorted(
+        {
+            str(r.get("work_date") or default_work_date or "").strip()
+            for r in rows
+            if str(r.get("work_date") or default_work_date or "").strip()
+        }
+    )
+    if not dates:
+        for row in rows:
+            row["wto_notify_snoozed"] = False
+        return
+    snoozed = list_today_notify_snoozes(store_id, dates)
+    for row in rows:
+        wto = row.get("wto_daily") if isinstance(row.get("wto_daily"), dict) else {}
+        kind = str(wto.get("kind") or "").strip()
+        if not wto.get("eligible") or not kind:
+            row["wto_notify_snoozed"] = False
+            continue
+        wd = str(row.get("work_date") or default_work_date or "").strip()
+        afm = norm_afm(str(row.get("employee_afm") or ""))
+        row["wto_notify_snoozed"] = (afm, wd, kind) in snoozed
+
+
 def create_snooze(
     *,
     store_id: int,

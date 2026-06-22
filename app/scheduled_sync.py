@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import datetime
 from typing import Any
@@ -13,6 +14,7 @@ from app.portal_work_log_sync import sync_work_log_from_portal
 from app import repo_store, repo_sync_log
 
 OPERATION = "scheduled_today_sync"
+OPERATION_CARD_SUBMIT = "card_submit_today_sync"
 _RUNNING_GRACE_MINUTES = 15
 
 
@@ -144,6 +146,7 @@ def sync_store_today(
     cfg: dict[str, Any],
     *,
     work_date_iso: str | None = None,
+    operation: str | None = None,
 ) -> dict[str, Any]:
     """Συγχρονισμός μίας ημέρας (προεπιλογή σήμερα): ωράριο + πραγματική + καταγραφή."""
     ctx = store_api_context(cfg)
@@ -151,9 +154,10 @@ def sync_store_today(
     sid = int(cfg["id"])
     name = str(cfg.get("name") or sid)
     run_id = str(uuid.uuid4())
+    op = (operation or OPERATION).strip() or OPERATION
 
     log = KartaLogger(
-        OPERATION,
+        op,
         store_id=sid,
         store_name=name,
         run_id=run_id,
@@ -251,6 +255,37 @@ def sync_store_today(
         result=result,
     )
     return result
+
+
+def enqueue_sync_store_today_after_card(
+    cfg: dict[str, Any],
+    *,
+    work_date_iso: str,
+) -> bool:
+    """
+    Μετά επιτυχές χτύπημα κάρτας (π.χ. today-hit → retro-hit), συγχρονισμός
+    ωραρίου + πραγματικής για σήμερα στο παρασκήνιο ώστε να ενημερωθεί η αναφορά.
+    """
+    ref = (work_date_iso or "").strip()[:10]
+    if not ref or ref != _today_iso():
+        return False
+    if not is_store_syncable(cfg):
+        return False
+
+    cfg_snapshot = dict(cfg)
+
+    def _run() -> None:
+        try:
+            sync_store_today(
+                cfg_snapshot,
+                work_date_iso=ref,
+                operation=OPERATION_CARD_SUBMIT,
+            )
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True, name=f"card-sync-{cfg_snapshot.get('id')}").start()
+    return True
 
 
 def _log_batch_skip(reason: str) -> str | None:

@@ -118,6 +118,161 @@ def _card_time_label(f_date: str | None) -> str | None:
     return f"{p[0]:02d}:{p[1]:02d}" if p else None
 
 
+def _card_hm_short(card_ev: dict[str, Any] | None) -> str | None:
+    """Ώρα κάρτας HH:mm για WTODaily."""
+    label = _card_time_label((card_ev or {}).get("f_date"))
+    if not label:
+        return None
+    p = _parse_hm(label)
+    return f"{p[0]:02d}:{p[1]:02d}" if p else None
+
+
+def _hm_short(value: str | None) -> str | None:
+    p = _parse_hm(value)
+    return f"{p[0]:02d}:{p[1]:02d}" if p else None
+
+
+def _has_work_signal(
+    card_in: dict[str, Any] | None,
+    card_out: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+) -> bool:
+    if card_in or card_out:
+        return True
+    wf = ((wl or {}).get("hour_from") or "").strip()
+    wt = ((wl or {}).get("hour_to") or "").strip()
+    dash = "—"
+    return bool(wf and wf != dash) or bool(wt and wt != dash)
+
+
+def _has_card_punch(
+    card_in: dict[str, Any] | None,
+    card_out: dict[str, Any] | None,
+) -> bool:
+    return bool(card_in or card_out)
+
+
+def _has_arrival_signal(
+    card_in: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+) -> bool:
+    if card_in:
+        return True
+    wf = ((wl or {}).get("hour_from") or "").strip()
+    return bool(wf and wf != "—")
+
+
+def _has_departure_signal(
+    card_out: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+) -> bool:
+    if card_out:
+        return True
+    wt = ((wl or {}).get("hour_to") or "").strip()
+    return bool(wt and wt != "—")
+
+
+def _rest_day_row_eval(
+    *,
+    card_in: dict[str, Any] | None,
+    card_out: dict[str, Any] | None,
+    wl: dict[str, Any] | None,
+) -> tuple[str, str, str]:
+    """Ενέργεια, status, status_label για ημέρα ρεπό/ανάπαυση."""
+    label = "Ανάπαυση / ρεπό"
+    if not _has_work_signal(card_in, card_out, wl):
+        return "Δεν απαιτείται δήλωση κάρτας", "rest", label
+    has_arrival = _has_arrival_signal(card_in, wl)
+    has_departure = _has_departure_signal(card_out, wl)
+    if has_arrival and not has_departure:
+        return (
+            "Στο τέλος βάρδιας: δήλωση αποχώρησης (έξοδος)",
+            "needs_checkout",
+            label,
+        )
+    if has_arrival and has_departure:
+        return "—", "completed", "Ολοκληρωμένη μέρα"
+    return "Ελέγξτε κάρτα και ημερολόγιο πραγματικής απασχόλησης", "rest", label
+
+
+_EARLY_CARD_MINUTES = 60
+
+
+def _wto_daily_fix(
+    *,
+    sched: dict[str, Any] | None,
+    card_in: dict[str, Any] | None,
+    card_out: dict[str, Any] | None,
+    wl: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """
+    Πρόταση υποβολής WTODaily όταν:
+    - δεν υπάρχει ψηφιακό ωράριο (χωρίς κάρτα/πραγματική), ή
+    - ρεπό/ανάπαυση (χωρίς κάρτα/πραγματική), ή
+    - πραγματική ≥1 ώρα πριν το ωράριο (μόνο χωρίς χτύπημα κάρτας).
+    """
+    if _has_work_signal(card_in, card_out, wl):
+        return None
+
+    card_in_hm = _card_hm_short(card_in)
+    card_out_hm = _card_hm_short(card_out)
+    wl_in_hm = _hm_short((wl or {}).get("hour_from"))
+    wl_out_hm = _hm_short((wl or {}).get("hour_to"))
+    arrival_hm = card_in_hm or wl_in_hm
+
+    if not sched:
+        return {
+            "eligible": True,
+            "kind": "no_schedule",
+            "schedule_type": "ΕΡΓ",
+            "hour_from": "",
+            "hour_to": "",
+            "action": "Αλλαγή ωραρίου (WTODaily) — δεν υπάρχει ψηφιακό ωράριο",
+            "note": "Δεν υπάρχει εγγραφή ψηφιακού ωραρίου για αυτή την ημέρα.",
+        }
+
+    shift_type = (sched or {}).get("shift_type")
+    sched_from = (sched or {}).get("hour_from")
+    sched_to = (sched or {}).get("hour_to")
+
+    if _is_rest_day(shift_type, sched_from, sched_to):
+        return {
+            "eligible": True,
+            "kind": "rest_day",
+            "schedule_type": "ΕΡΓ",
+            "hour_from": "",
+            "hour_to": "",
+            "action": "Αλλαγή ωραρίου (WTODaily) — ημέρα ρεπό/ανάπαυση",
+            "note": "Το ψηφιακό ωράριο δηλώνει ανάπαυση/ρεπό.",
+        }
+
+    if not _is_rest_day(shift_type, sched_from, sched_to) and sched_from and arrival_hm:
+        arrival_m = _hm_to_minutes(arrival_hm)
+        s_start = _hm_to_minutes(sched_from)
+        if (
+            arrival_m is not None
+            and s_start is not None
+            and arrival_m <= s_start - _EARLY_CARD_MINUTES
+        ):
+            src = "πραγματική"
+            return {
+                "eligible": True,
+                "kind": "early_card",
+                "schedule_type": "ΕΡΓ",
+                "hour_from": arrival_hm,
+                "hour_to": (sched_to or "").strip(),
+                "action": (
+                    f"Τροποποίηση ωραρίου (WTODaily) — {src} {arrival_hm} "
+                    f"≥1 ώρα πριν από {sched_from}"
+                ),
+                "note": (
+                    f"Η είσοδος ({arrival_hm} από {src}) είναι ≥1 ώρα πριν το ωράριο ({sched_from})."
+                ),
+            }
+
+    return None
+
+
 def _pick_name(*pairs: tuple[str | None, str | None]) -> tuple[str, str]:
     for ep, on in pairs:
         if (ep or "").strip() or (on or "").strip():
@@ -200,13 +355,27 @@ def _evaluate_row(
     }
 
     if sched and _is_rest_day(shift_type, sched_from, sched_to):
+        wto_fix = _wto_daily_fix(
+            sched=sched, card_in=card_in, card_out=card_out, wl=wl
+        )
+        rest_action, rest_status, rest_label = _rest_day_row_eval(
+            card_in=card_in, card_out=card_out, wl=wl
+        )
+        rest_notes = list(notes)
+        if wto_fix:
+            rest_notes.append(str(wto_fix.get("note") or ""))
+        if card_in and not _has_departure_signal(card_out, wl):
+            note = "Υπάρχει δήλωση εισόδου στην κάρτα, όχι ακόμα έξοδος"
+            if note not in rest_notes:
+                rest_notes.append(note)
         return {
-            "status": "rest",
-            "status_label": "Ανάπαυση / ρεπό",
-            "action": "Δεν απαιτείται δήλωση κάρτας",
-            "notes": notes,
+            "status": rest_status,
+            "status_label": rest_label,
+            "action": (wto_fix or {}).get("action") or rest_action,
+            "notes": rest_notes,
             "card": card_block,
             "leave_eligible": False,
+            "wto_daily": wto_fix,
         }
 
     now_min = _minutes_now_on_date(work_date_ergani)
@@ -229,23 +398,38 @@ def _evaluate_row(
     )
 
     if not sched and (a_start is not None or card_in or card_out):
+        wto_fix = _wto_daily_fix(
+            sched=None, card_in=card_in, card_out=card_out, wl=wl
+        )
+        unsched_notes = list(notes)
+        if wto_fix:
+            unsched_notes.append(str(wto_fix.get("note") or ""))
         return {
             "status": "unscheduled_work",
             "status_label": "Χωρίς ωράριο",
-            "action": "Ελέγξτε ψηφιακό ωράριο ή καταχώρηση στην κάρτα",
-            "notes": notes,
+            "action": (wto_fix or {}).get("action")
+            or "Ελέγξτε ψηφιακό ωράριο ή καταχώρηση στην κάρτα",
+            "notes": unsched_notes,
             "card": card_block,
             "leave_eligible": False,
+            "wto_daily": wto_fix,
         }
 
     if not sched:
+        wto_fix = _wto_daily_fix(
+            sched=None, card_in=card_in, card_out=card_out, wl=wl
+        )
+        no_sched_notes = list(notes)
+        if wto_fix:
+            no_sched_notes.append(str(wto_fix.get("note") or ""))
         return {
             "status": "no_schedule",
             "status_label": "Χωρίς εγγραφή ωραρίου",
-            "action": "Συγχρονίστε το ψηφιακό ωράριο",
-            "notes": notes,
+            "action": (wto_fix or {}).get("action") or "Συγχρονίστε το ψηφιακό ωράριο",
+            "notes": no_sched_notes,
             "card": card_block,
             "leave_eligible": False,
+            "wto_daily": wto_fix,
         }
 
     if card_in and not a_start:
@@ -292,7 +476,7 @@ def _evaluate_row(
 
     if a_start is None:
         leave_action = (
-            "Δήλωση άδειας (WTOLeave) — πέραν ευελιξίας προσέλευσης"
+            "Δήλωση ρεπό (WTODaily) ή άδειας (WTOLeave) — πέραν ευελιξίας προσέλευσης"
             if leave_eligible
             else None
         )
@@ -313,6 +497,7 @@ def _evaluate_row(
                 "notes": notes,
                 "card": card_block,
                 "leave_eligible": leave_eligible,
+                "rest_declare_eligible": leave_eligible,
             }
         if s_start is not None and now_min > s_start + tol:
             return {
@@ -322,6 +507,7 @@ def _evaluate_row(
                 "notes": notes,
                 "card": card_block,
                 "leave_eligible": leave_eligible,
+                "rest_declare_eligible": leave_eligible,
             }
         return {
             "status": "needs_checkin",
@@ -330,6 +516,7 @@ def _evaluate_row(
             "notes": notes,
             "card": card_block,
             "leave_eligible": leave_eligible,
+            "rest_declare_eligible": False,
         }
 
     return {
@@ -459,10 +646,27 @@ def build_card_status_report(
         else:
             summary["other"] += 1
 
+        wto_fix = ev.get("wto_daily")
+        if not wto_fix:
+            wto_fix = _wto_daily_fix(
+                sched=sched,
+                card_in=card_in.get(afm),
+                card_out=card_out.get(afm),
+                wl=wl,
+            )
+        row_notes = list(ev.get("notes") or [])
+        row_action = ev["action"]
+        if wto_fix and wto_fix.get("kind") in ("early_card", "rest_day", "no_schedule"):
+            note = str(wto_fix.get("note") or "")
+            if note and note not in row_notes:
+                row_notes.append(note)
+            row_action = str(wto_fix.get("action") or row_action)
+
         rows_out.append({
             "employee_afm": afm,
             "eponymo": ep,
             "onoma": on,
+            "work_date": work_date,
             "flex_arrival_minutes": flex_min,
             "schedule": (
                 {
@@ -484,9 +688,12 @@ def build_card_status_report(
             "card": ev["card"],
             "status": st,
             "status_label": ev["status_label"],
-            "action": ev["action"],
-            "notes": ev["notes"],
+            "action": row_action,
+            "notes": row_notes,
             "leave_eligible": bool(ev.get("leave_eligible")),
+            "rest_declare_eligible": bool(ev.get("rest_declare_eligible")),
+            "wto_daily_eligible": bool(wto_fix and wto_fix.get("eligible")),
+            "wto_daily": wto_fix,
             **_card_punch_fields(sched, wl),
         })
 

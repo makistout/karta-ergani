@@ -13,6 +13,7 @@ from app.routes_period_sync import period_sync_bp
 from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
 from app.routes_leave import leave_bp
+from app.routes_wto_daily import wto_daily_bp
 from app.routes_monthly_status import monthly_status_bp
 from app.routes_telegram import telegram_bp
 from app.routes_auth import auth_bp
@@ -32,6 +33,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)
+    app.register_blueprint(wto_daily_bp)
     app.register_blueprint(local_bp)
     app.register_blueprint(store_bp)
     app.register_blueprint(ergani_bp)
@@ -70,6 +72,7 @@ def create_app() -> Flask:
             "work_card_submit": "POST /api/work-card/submit",
             "leave_types": "GET /api/leave/types",
             "leave_submit": "POST /api/leave/submit",
+            "wto_daily_submit": "POST /api/wto-daily/submit",
             "local": "/api/local/",
             "health": "/api/local/health",
         })

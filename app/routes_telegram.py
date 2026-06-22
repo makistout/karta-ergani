@@ -200,6 +200,58 @@ def telegram_notify_today_punch():
     return jsonify(payload), (200 if ok else 400)
 
 
+@telegram_bp.post("/notify/schedule-fix")
+def telegram_notify_schedule_fix():
+    """Ειδοποίηση Telegram — ρεπό/ανάπαυση με καταγραφή εργασίας (WTODaily)."""
+    from app.http_helpers import resolve_active_store
+    from app.today_alert_service import send_wto_schedule_notifications
+
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    data = request.get_json(silent=True) or {}
+    employee_afm = str(data.get("employee_afm") or "").strip()
+    work_date = str(data.get("work_date") or "").strip()
+    notify_kind = str(data.get("notify_kind") or "rest_with_card").strip()
+    if not employee_afm or not work_date:
+        return jsonify({"error": "Λείπουν employee_afm ή work_date"}), 400
+    try:
+        result = send_wto_schedule_notifications(
+            store_id=int(ctx["id"]),
+            store_name=str(ctx.get("name") or ""),
+            employer_afm=str(ctx.get("employer_afm") or ""),
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+            employee_afm=employee_afm,
+            eponymo=data.get("eponymo"),
+            onoma=data.get("onoma"),
+            work_date=work_date,
+            notify_kind=notify_kind,
+            hour_from=data.get("hour_from"),
+            hour_to=data.get("hour_to"),
+            public_base_url=Config.PUBLIC_BASE_URL,
+        )
+    except TelegramNotConfigured as ex:
+        return jsonify({"error": str(ex)}), 400
+    ok = result["sent"] > 0
+    payload = {"success": ok, **result}
+    if result.get("skipped") == "snoozed":
+        payload["success"] = False
+        payload["error"] = "Η ειδοποίηση είναι σε αναβολή (snooze) για αυτή την περίπτωση."
+        return jsonify(payload), 400
+    if result.get("skipped") in ("no_alert", "invalid_kind"):
+        payload["success"] = False
+        payload["error"] = "Δεν ισχύει πλέον συνθήκη ειδοποίησης για αυτή τη γραμμή."
+        return jsonify(payload), 400
+    if not ok and not result["total"]:
+        payload["error"] = (
+            "Δεν υπάρχουν λήπτες με συνδεδεμένο Telegram. "
+            "Προσθέστε λήπτες στο κατάστημα και /start στο bot."
+        )
+    elif not ok:
+        payload["error"] = "Η αποστολή απέτυχε για όλους τους λήπτες"
+    return jsonify(payload), (200 if ok else 400)
+
+
 @telegram_bp.get("/today-hit/<token>")
 def telegram_today_hit_preview(token: str):
     preview, err = today_hit_preview(token)
@@ -232,6 +284,21 @@ def telegram_today_action_context():
     if ctx.get("leave_eligible"):
         payload["leave_types"] = LEAVE_TYPES
     return jsonify(payload)
+
+
+@telegram_bp.post("/today-action/wto-daily")
+def telegram_today_action_wto_daily():
+    from app.today_alert_service import submit_today_wto_daily
+
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("token") or "").strip() or None
+    result, status = submit_today_wto_daily(
+        hour_from=data.get("hour_from"),
+        hour_to=data.get("hour_to"),
+        comments=data.get("comments"),
+        token=token,
+    )
+    return jsonify(result), status
 
 
 @telegram_bp.post("/today-action/snooze")

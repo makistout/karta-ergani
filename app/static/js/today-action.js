@@ -7,11 +7,24 @@ document.addEventListener("DOMContentLoaded", () => {
   pageToken = (params.get("t") || "").trim();
   document.getElementById("btnTodaySnooze")?.addEventListener("click", onSnooze);
   document.getElementById("btnTodayLeave")?.addEventListener("click", showLeavePanel);
+  document.getElementById("btnTodayWtoDaily")?.addEventListener("click", showWtoDailyPanel);
   document.getElementById("btnTodayCard")?.addEventListener("click", onCard);
   document.getElementById("btnTodayLeaveBack")?.addEventListener("click", hideLeavePanel);
   document.getElementById("btnTodayLeaveSubmit")?.addEventListener("click", onLeaveSubmit);
+  document.getElementById("btnTodayWtoBack")?.addEventListener("click", hideWtoDailyPanel);
+  document.getElementById("btnTodayWtoSubmit")?.addEventListener("click", onWtoDailySubmit);
+  Office.bindHourMinuteInput("todayWtoHourFrom");
+  Office.bindHourMinuteInput("todayWtoHourTo");
   loadContext();
 });
+
+function hmToTimeInput(hm) {
+  return Office.normalizeHourMinute(hm);
+}
+
+function timeInputToHm(value) {
+  return Office.normalizeHourMinute(value);
+}
 
 function apiBody(extra = {}) {
   return JSON.stringify({ token: pageToken || undefined, ...extra });
@@ -39,17 +52,37 @@ async function loadContext() {
     }
     if (details) {
       details.classList.remove("hidden");
-      details.innerHTML =
+      let detailHtml =
         `<strong>${Office.escapeHtml(pageContext.store_name || "")}</strong><br>` +
         `${Office.escapeHtml(pageContext.employee_name || "")} ` +
         `(ΑΦΜ ${Office.escapeHtml(pageContext.employee_afm || "")})<br>` +
         `${Office.escapeHtml(pageContext.work_date_ergani || "")} — ` +
         `${Office.escapeHtml(pageContext.notify_kind_label || "")}`;
+      if (pageContext.wto_daily_eligible && pageContext.wto_hour_from) {
+        detailHtml +=
+          `<br>Προτεινόμενο ωράριο: <strong>${Office.escapeHtml(pageContext.wto_hour_from)}` +
+          (pageContext.wto_hour_to
+            ? ` – ${Office.escapeHtml(pageContext.wto_hour_to)}`
+            : "") +
+          `</strong>`;
+      }
+      details.innerHTML = detailHtml;
     }
     choices?.classList.remove("hidden");
     const leaveBtn = document.getElementById("btnTodayLeave");
     if (leaveBtn) {
       leaveBtn.classList.toggle("hidden", !pageContext.leave_eligible);
+    }
+    const wtoBtn = document.getElementById("btnTodayWtoDaily");
+    if (wtoBtn) {
+      wtoBtn.classList.toggle("hidden", !pageContext.wto_daily_eligible);
+    }
+    const cardBtn = document.getElementById("btnTodayCard");
+    if (cardBtn) {
+      const hideCard =
+        pageContext.wto_daily_eligible &&
+        ["rest_day", "no_schedule"].includes(pageContext.notify_kind);
+      cardBtn.classList.toggle("hidden", hideCard);
     }
   } catch (e) {
     if (intro) intro.textContent = String(e);
@@ -75,6 +108,35 @@ function showLeavePanel() {
 
 function hideLeavePanel() {
   document.getElementById("todayLeavePanel")?.classList.add("hidden");
+  document.getElementById("todayActionChoices")?.classList.remove("hidden");
+  Office.showMsg("todayActionMsg", "", false);
+}
+
+function showWtoDailyPanel() {
+  if (!pageContext?.wto_daily_eligible) return;
+  const hint = document.getElementById("todayWtoDailyHint");
+  const fromEl = document.getElementById("todayWtoHourFrom");
+  const toEl = document.getElementById("todayWtoHourTo");
+  const comments = document.getElementById("todayWtoComments");
+  if (hint) {
+    const kind = pageContext.notify_kind || "";
+    hint.textContent =
+      kind === "rest_day"
+        ? "Ρεπό/ανάπαυση — δηλώστε ωράριο εργασίας αν θα απασχοληθεί ο εργαζόμενος."
+        : kind === "no_schedule"
+          ? "Δεν υπάρχει ψηφιακό ωράριο — δηλώστε ωράριο εργασίας για σήμερα."
+          : "Κάρτα/πραγματική πριν το ωράριο — προσαρμόστε το ψηφιακό ωράριο.";
+  }
+  if (fromEl) fromEl.value = hmToTimeInput(pageContext.wto_hour_from);
+  if (toEl) toEl.value = hmToTimeInput(pageContext.wto_hour_to);
+  if (comments) comments.value = "";
+  document.getElementById("todayActionChoices")?.classList.add("hidden");
+  document.getElementById("todayWtoDailyPanel")?.classList.remove("hidden");
+  Office.showMsg("todayActionMsg", "", false);
+}
+
+function hideWtoDailyPanel() {
+  document.getElementById("todayWtoDailyPanel")?.classList.add("hidden");
   document.getElementById("todayActionChoices")?.classList.remove("hidden");
   Office.showMsg("todayActionMsg", "", false);
 }
@@ -157,6 +219,52 @@ async function onLeaveSubmit() {
     const proto = data.protocol ? ` (πρωτ. ${data.protocol})` : "";
     Office.showMsg("todayActionMsg", `Η άδεια υποβλήθηκε${proto}.`, true);
     document.getElementById("todayLeavePanel")?.classList.add("hidden");
+  } catch (e) {
+    Office.showMsg("todayActionMsg", String(e), false);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function onWtoDailySubmit() {
+  const hourFrom = timeInputToHm(document.getElementById("todayWtoHourFrom")?.value);
+  const hourTo = timeInputToHm(document.getElementById("todayWtoHourTo")?.value);
+  const comments = document.getElementById("todayWtoComments")?.value?.trim() || "";
+  if (!hourFrom) {
+    Office.showMsg("todayActionMsg", "Συμπληρώστε ώρα έναρξης.", false);
+    return;
+  }
+  const btn = document.getElementById("btnTodayWtoSubmit");
+  if (btn) btn.disabled = true;
+  Office.showLoading("todayActionMsg", "Υποβολή WTODaily στο Ergani…");
+  try {
+    const res = await fetch("/api/telegram/today-action/wto-daily", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: apiBody({
+        hour_from: hourFrom,
+        hour_to: hourTo || null,
+        comments: comments || null,
+      }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok || !data.success) {
+      Office.showMsg(
+        "todayActionMsg",
+        data.error || "Αποτυχία υποβολής",
+        false
+      );
+      if (btn) btn.disabled = false;
+      return;
+    }
+    const proto = data.protocol ? ` (πρωτ. ${data.protocol})` : "";
+    Office.showMsg(
+      "todayActionMsg",
+      `Το ωράριο υποβλήθηκε${proto}. Συγχρονίστε το ψηφιακό ωράριο.`,
+      true
+    );
+    document.getElementById("todayWtoDailyPanel")?.classList.add("hidden");
+    document.getElementById("todayActionChoices")?.classList.add("hidden");
   } catch (e) {
     Office.showMsg("todayActionMsg", String(e), false);
     if (btn) btn.disabled = false;

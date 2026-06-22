@@ -33,7 +33,12 @@ document.addEventListener("DOMContentLoaded", () => {
           `<strong>${Office.escapeHtml(p.store_name || "")}</strong><br>` +
           `${Office.escapeHtml(p.employee_name || "")} (ΑΦΜ ${Office.escapeHtml(p.employee_afm || "")})<br>` +
           `Ημερομηνία: ${Office.escapeHtml(p.work_date || "")}<br>` +
-          `Θέμα: ${Office.escapeHtml(p.notify_kind_label || "")}`;
+          `Θέμα: ${Office.escapeHtml(p.notify_kind_label || "")}` +
+          (p.wto_daily_eligible && p.wto_hour_from
+            ? `<br>Προτεινόμενο ωράριο: <strong>${Office.escapeHtml(p.wto_hour_from)}` +
+              (p.wto_hour_to ? ` – ${Office.escapeHtml(p.wto_hour_to)}` : "") +
+              `</strong>`
+            : "");
       }
       if (pinInput) pinInput.disabled = false;
       if (btn) btn.disabled = false;

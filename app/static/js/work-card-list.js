@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   retroDatePicker = Office.attachGreekDateField({ inputId: "wcRetroDate" });
   if (retroDatePicker) retroDatePicker.setDisabled(true);
+  Office.bindHourMinuteInput("wcRetroTime");
   document.getElementById("btnRefreshCards").onclick = () => refreshDayData();
   document.getElementById("btnCheckIn").onclick = () => submitCard("check_in");
   document.getElementById("btnCheckOut").onclick = () => submitCard("check_out");
@@ -52,7 +53,25 @@ function setRetroTimeValue(hhmm) {
 }
 
 function readRetroTimeValue() {
-  return Office.normalizeHourMinute(document.getElementById("wcRetroTime")?.value || "");
+  const raw = document.getElementById("wcRetroTime")?.value || "";
+  return Office.normalizeHourMinute(raw) || Office.normalizeHourMinute(Office.formatHourMinuteInput(raw));
+}
+
+function maybePrefillRetroTimeFromWorkLog(rows, prefill) {
+  if (!prefill?.retro) return;
+  const current = (document.getElementById("wcRetroTime")?.value || "").trim();
+  if (current) {
+    setRetroTimeValue(current);
+    return;
+  }
+  const row = (rows || [])[0];
+  if (!row) return;
+  const opts = Office.workCardUrlOptsFromRow(row);
+  const rt = opts.retro_time || "";
+  if (!rt) return;
+  const event = prefill.card_event || opts.card_event;
+  if (event && opts.card_event && event !== opts.card_event) return;
+  setRetroTimeValue(rt);
 }
 
 function initRetroDefaults() {
@@ -349,6 +368,7 @@ async function loadDayData() {
       logData.db_setup,
       wl
     );
+    maybePrefillRetroTimeFromWorkLog(wl.rows, Office.readWorkCardQueryPrefill());
   } else {
     logWrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(logData.error || "Σφάλμα")}</p>`;
     if (logData.db_setup) {

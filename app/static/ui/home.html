@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <title>erganiOS - Αρχική</title>
-  <link rel="stylesheet" href="/static/css/office.css?v=20260619back">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260622time24">
 </head>
 <body>
   <div class="layout">
@@ -45,11 +45,13 @@
       <div class="card list-card">
         <div id="cardReportSummary" class="report-summary"></div>
         <p id="cardReportMeta" class="table-meta"></p>
+        <div id="cardReportNotifyMsg" class="msg"></div>
         <div id="cardReportWrap" class="list-wrap">
           <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
         </div>
       </div>
       <div id="leaveMsg" class="msg"></div>
+      <div id="wtoDailyMsg" class="msg"></div>
 
       <div id="leaveModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="leaveModalTitle">
         <div class="office-modal-backdrop" data-leave-close></div>
@@ -76,6 +78,37 @@
         </div>
       </div>
 
+      <div id="wtoDailyModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="wtoDailyModalTitle">
+        <div class="office-modal-backdrop" data-wto-daily-close></div>
+        <div class="office-modal-panel">
+          <h2 id="wtoDailyModalTitle" class="office-modal-title">Τροποποίηση ωραρίου (WTODaily)</h2>
+          <p id="wtoDailyModalEmployee" class="office-modal-sub"></p>
+          <p id="wtoDailyModalHint" class="office-modal-sub" style="color:var(--muted);font-size:0.85rem;"></p>
+          <div id="wtoDailyHoursRow" class="wto-daily-hours-row">
+            <div>
+              <label class="field-label" for="wtoDailyHourFrom">Ώρα από</label>
+              <input type="text" id="wtoDailyHourFrom" class="field-input input-time-24" inputmode="numeric"
+                placeholder="09:30" maxlength="5" autocomplete="off">
+            </div>
+            <div>
+              <label class="field-label" for="wtoDailyHourTo">Ώρα έως</label>
+              <input type="text" id="wtoDailyHourTo" class="field-input input-time-24" inputmode="numeric"
+                placeholder="17:00" maxlength="5" autocomplete="off">
+            </div>
+          </div>
+          <input type="hidden" id="wtoDailyScheduleType" value="ΕΡΓ">
+          <label class="field-label" for="wtoDailyComments">Παρατηρήσεις (προαιρετικά)</label>
+          <textarea id="wtoDailyComments" class="field-input" rows="2" maxlength="200" placeholder="Σχόλια για Ergani…"></textarea>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" id="btnWtoDailyCancel" data-wto-daily-close>Ακύρωση</button>
+            <button type="button" class="btn" id="btnWtoDailySubmit">
+              <i class="bi bi-send" aria-hidden="true"></i><span>Αποστολή στο Ergani</span>
+            </button>
+          </div>
+          <p id="wtoDailyModalMsg" class="msg" style="margin-top:0.75rem;"></p>
+        </div>
+      </div>
+
       <div class="card">
         <h2 style="font-size:1rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.4rem;">
           <i class="bi bi-lightning-charge" aria-hidden="true"></i> Γρήγορες ενέργειες
@@ -91,8 +124,8 @@
       </div>
     </main>
   </div>
-  <script src="/static/js/office-common.js?v=20260619retro"></script>
+  <script src="/static/js/office-common.js?v=20260622notify1"></script>
   <script src="/static/js/office-date-picker.js?v=20260611gr3"></script>
-  <script src="/static/js/home.js?v=20260619retro"></script>
+  <script src="/static/js/home.js?v=20260622rest2"></script>
 </body>
 </html>

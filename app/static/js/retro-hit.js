@@ -121,6 +121,9 @@ async function submitRetro(eventName) {
     }
     let ok = `Επιτυχία — ${data.f_type_label || label}`;
     if (data.protocol) ok += ` · Πρωτόκολο: ${data.protocol}`;
+    if (data.sync_triggered) {
+      ok += " · Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο.";
+    }
     Office.showMsg("rhMsg", ok, true);
   } catch (e) {
     Office.showMsg("rhMsg", String(e), false);

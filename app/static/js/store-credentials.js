@@ -115,10 +115,10 @@ function renderNotifyRecipients() {
     const pinTitle = row.has_notify_pin && !pinVal
       ? "Υπάρχει PIN — πληκτρολογήστε ξανά και αποθηκεύστε για εμφάνιση"
       : "4 αριθμητικά ψηφία";
-    const toggleIcon = isActive ? "stop-circle-fill" : "play-circle-fill";
+    const toggleIcon = isActive ? "play-circle-fill" : "stop-circle-fill";
     const toggleTitle = isActive
-      ? "Παύση ειδοποιήσεων (stop) — δεν θα λαμβάνει μηνύματα"
-      : "Ενεργοποίηση ειδοποιήσεων (play)";
+      ? "Ενεργός — λαμβάνει ειδοποιήσεις (πατήστε για παύση)"
+      : "Παυμένος — δεν λαμβάνει ειδοποιήσεις (πατήστε για ενεργοποίηση)";
     const toggleClass = isActive
       ? "notify-toggle-btn notify-toggle-btn--on"
       : "notify-toggle-btn notify-toggle-btn--off";
@@ -128,7 +128,7 @@ function renderNotifyRecipients() {
       `<td><input type="text" class="notify-input-chat" data-idx="${idx}" value="${Office.escapeHtml(row.telegram_chat_id || "")}" placeholder="αυτόματα" readonly title="Συμπληρώνεται με /start στο bot"></td>` +
       `<td><input type="text" class="notify-input-pin${row.has_notify_pin && !pinVal ? " notify-input-pin--restored" : ""}" data-idx="${idx}" value="${Office.escapeHtml(pinVal)}" placeholder="${pinPlaceholder}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" title="${Office.escapeHtml(pinTitle)}"></td>` +
       `<td class="col-notify-actions"><div class="notify-recipients-actions-inner">` +
-      `<button type="button" class="btn btn-secondary ${toggleClass} notify-toggle" data-idx="${idx}" title="${Office.escapeHtml(toggleTitle)}" aria-label="${Office.escapeHtml(toggleTitle)}">${Office.icon(toggleIcon)}</button>` +
+      `<button type="button" class="btn ${toggleClass} notify-toggle" data-idx="${idx}" title="${Office.escapeHtml(toggleTitle)}" aria-label="${Office.escapeHtml(toggleTitle)}">${Office.icon(toggleIcon)}</button>` +
       `<button type="button" class="btn btn-danger notify-remove" data-idx="${idx}" title="Διαγραφή λήπτη" aria-label="Διαγραφή λήπτη">${Office.icon("trash3")}</button>` +
       `</div></td>`;
     body.appendChild(tr);

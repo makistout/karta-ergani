@@ -110,6 +110,21 @@ def card_report():
     except pyodbc.Error as ex:
         return _db_error(ex)
 
+    rows = report.get("rows") or []
+    try:
+        from app.repo_today_alert import (
+            enrich_card_report_rows_with_today_notify,
+            enrich_card_report_rows_with_wto_snooze,
+        )
+
+        enrich_card_report_rows_with_today_notify(rows, int(ctx["id"]))
+        enrich_card_report_rows_with_wto_snooze(rows, int(ctx["id"]), report.get("work_date"))
+    except Exception:
+        for row in rows:
+            row.setdefault("today_notify_kind", None)
+            row.setdefault("today_notify_snoozed", False)
+            row.setdefault("wto_notify_snoozed", False)
+
     return jsonify({
         "store": {
             "id": ctx["id"],
@@ -117,5 +132,5 @@ def card_report():
             "employer_afm": ctx["employer_afm"],
             "branch_aa": ctx["branch_aa"],
         },
-        **report,
+        **{**report, "rows": rows},
     })

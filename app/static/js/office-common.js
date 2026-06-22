@@ -629,9 +629,24 @@ const Office = {
   },
 
   normalizeHourMinute(timeStr) {
-    const m = String(timeStr || "").trim().match(/^(\d{1,2}):(\d{2})/);
-    if (!m) return "";
-    return `${m[1].padStart(2, "0")}:${m[2]}`;
+    const raw = String(timeStr || "").trim();
+    if (!raw) return "";
+    const colon = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (colon) {
+      const h = parseInt(colon[1], 10);
+      const m = parseInt(colon[2], 10);
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      }
+      return "";
+    }
+    const formatted = this.formatHourMinuteInput(raw);
+    const parsed = formatted.match(/^(\d{1,2}):(\d{2})$/);
+    if (!parsed) return "";
+    const h = parseInt(parsed[1], 10);
+    const m = parseInt(parsed[2], 10);
+    if (h < 0 || h > 23 || m < 0 || m > 59) return "";
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   },
 
   /** Μορφοποίηση ώρας κατά την πληκτρολόγηση (π.χ. 1030 → 10:30). */
@@ -666,7 +681,7 @@ const Office = {
     if (!row) return opts;
     if (row.needs_card_punch && row.retro_time) {
       opts.retro = true;
-      opts.retro_time = row.retro_time;
+      opts.retro_time = this.normalizeHourMinute(row.retro_time) || row.retro_time;
       opts.card_event = row.card_event || "check_out";
       opts.retro_highlight = true;
       return opts;
@@ -683,12 +698,12 @@ const Office = {
     if (hf && !ht && schedTo) {
       opts.retro = true;
       opts.card_event = "check_out";
-      opts.retro_time = schedTo;
+      opts.retro_time = this.normalizeHourMinute(schedTo) || schedTo;
       opts.retro_highlight = true;
     } else if (!hf && schedFrom) {
       opts.retro = true;
       opts.card_event = "check_in";
-      opts.retro_time = schedFrom;
+      opts.retro_time = this.normalizeHourMinute(schedFrom) || schedFrom;
       opts.retro_highlight = true;
     } else if (!hf) {
       opts.retro = true;
@@ -712,7 +727,8 @@ const Office = {
     if (name) p.set("employee_name", name);
     if (opts.retro) p.set("retro", "1");
     const retroTime = String(opts.retro_time || "").trim();
-    if (retroTime) p.set("retro_time", retroTime);
+    const normRetro = retroTime ? this.normalizeHourMinute(retroTime) : "";
+    if (normRetro) p.set("retro_time", normRetro);
     const cardEvent = String(opts.card_event || "").trim();
     if (cardEvent) p.set("card_event", cardEvent);
     if (opts.retro_highlight) p.set("retro_highlight", "1");
@@ -956,6 +972,64 @@ const Office = {
 
   workLogHasDigitalSchedule(row) {
     return this.scheduleStartMinutesFromRow(row) != null;
+  },
+
+  /** Ετικέτα ειδοποίησης τύπου 2 (σήμερα). */
+  todayNotifyLabel(kind) {
+    const labels = {
+      exit_without_entry: "εξόδος χωρίς είσοδο",
+      late_check_in: "καθυστέρηση εισόδου (>10' από ωράριο)",
+      missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
+    };
+    return labels[kind] || kind || "";
+  },
+
+  sendTodayPunchNotify(row, notify, btn, msgId = "workLogMsg") {
+    const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim() || row.employee_afm;
+    const wl = row.work_log && typeof row.work_log === "object" ? row.work_log : {};
+    if (btn) btn.disabled = true;
+    this.showLoading(msgId, `Αποστολή ειδοποίησης για ${name}…`);
+    return fetch("/api/telegram/notify/today-punch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        employee_afm: row.employee_afm,
+        work_date: row.work_date,
+        eponymo: row.eponymo,
+        onoma: row.onoma,
+        hour_from: wl.hour_from || row.hour_from || null,
+        hour_to: wl.hour_to || row.hour_to || null,
+        notify_kind: notify.kind,
+      }),
+    })
+      .then((res) => this.parseJson(res).then((data) => ({ res, data })))
+      .then(({ res, data }) => {
+        if (!res.ok || !data.success) {
+          this.showMsg(
+            msgId,
+            data.error ||
+              data._parseError ||
+              data.errors?.join(" · ") ||
+              "Αποτυχία αποστολής",
+            false
+          );
+          if (btn) btn.disabled = false;
+          return false;
+        }
+        const n = data.sent || 0;
+        this.showMsg(
+          msgId,
+          `Εστάλη σε ${n} λήπτη/ες — ${notify.label} (${row.work_date})`,
+          true
+        );
+        return true;
+      })
+      .catch((e) => {
+        this.showMsg(msgId, String(e), false);
+        if (btn) btn.disabled = false;
+        return false;
+      });
   },
 
   /** Ειδοποίηση τύπου 2 — μόνο για σημερινές εγγραφές. */

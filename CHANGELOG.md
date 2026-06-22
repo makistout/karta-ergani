@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-06-22 — WTODaily, ρεπό/άδεια, καμπάνα αρχικής, sync κάρτας, ώρα HH:MM
+
+### Αναφορά αρχικής (`/ui/`) — κατάσταση & ενέργειες
+
+- **`app/card_report.py`**: επέκταση ανίχνευσης — `late_arrival` / `absent` με `leave_eligible` και `rest_declare_eligible` (καθυστέρηση πέραν ευελιξίας, χωρίς είσοδο).
+- **Κουμπιά ενεργειών** στη στήλη «Ενέργεια»:
+  - **Ρεπό** — υποβολή WTODaily τύπου **ΑΝ** (χωρίς ώρες).
+  - **Άδεια** — υποβολή WTOLeave (υπάρχουσα ροή).
+  - **Καμπάνα Telegram** — ειδοποίηση τύπου 2 (`today-punch`) για σημερινές περιπτώσεις (`late_check_in`, `exit_without_entry`, `missing_exit_8h`).
+- Κείμενο ενέργειας: *«Δήλωση ρεπό (WTODaily) ή άδειας (WTOLeave) — πέραν ευελιξίας προσέλευσης»*.
+- **WTODaily** (`_wto_daily_fix`): πρόταση αλλαγής ωραρίου μόνο χωρίς καταγραφή εργασίας — `no_schedule`, `rest_day`, `early_card` (όχι `rest_with_card` / `no_schedule_work`).
+- Ημέρα ρεπό με καταγραφή: `rest` / `needs_checkout` / `completed` (`_rest_day_row_eval`).
+
+### Backend — WTODaily & άδεια
+
+- **`app/wto_daily_payload.py`** (νέο): κατασκευή JSON `Documents/WTODaily` (τύποι ΕΡΓ, ΑΝ, ΤΗΛ, ΜΕ).
+- **`app/routes_wto_daily.py`** (νέο): `POST /api/wto-daily/submit`.
+- **`app/__init__.py`**: εγγραφή blueprint `wto_daily_bp`.
+
+### UI αρχικής
+
+- **`home.html`**: modal άδειας, modal WTODaily (ώρες 24h, τύπος ΑΝ για ρεπό), `cardReportNotifyMsg`.
+- **`home.js`**: `openWtoRestModal`, `buildTodayNotifyButton`, κοινή αποστολή Telegram, κουμπιά `report-action-btns`.
+
+### Telegram — καμπάνα & today-action
+
+- **`app/repo_today_alert.py`**: `enrich_card_report_rows_with_today_notify` — `today_notify_kind` / `today_notify_snoozed` για γραμμές αναφοράς.
+- **`app/routes_dashboard.py`**: κλήση enrichment πριν το JSON αναφοράς.
+- **`app/static/js/office-common.js`**: `todayNotifyLabel`, `sendTodayPunchNotify` (κοινό work-log + αρχική)· `work-log-list.js` απλοποιήθηκε.
+- **`today-action.js` / `today-action.html`**: panel WTODaily από Telegram (ώρες 24h).
+- **`app/today_alert_service.py`**, **`routes_telegram.py`**: `submit_today_wto_daily`, endpoint `POST /api/telegram/today-action/wto-daily`.
+- **`app/today_notify_logic.py`**: `WTO_DAILY_NOTIFY_KINDS` κενό (χωρίς κουδούνι WTODaily στο Telegram προς το παρόν).
+
+### Συγχρονισμός μετά χτύπημα κάρτας (today-hit → retro-hit)
+
+- **`app/scheduled_sync.py`**: `enqueue_sync_store_today_after_card` — background sync ωραρίου + πραγματικής για **σήμερα** μετά επιτυχές WRKCardSE (`operation`: `card_submit_today_sync`).
+- **`app/telegram_punch_service.py`**: κλήση μετά επιτυχές `submit_retro_hit_from_session`· διόρθωση `mark_token_used` μόνο για punch tokens.
+- **`retro-hit.js`**: μήνυμα «Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο».
+
+### Ψηφιακή κάρτα — μορφοποίηση ώρας
+
+- **`office-common.js`**: `normalizeHourMinute` δέχεται και `1500` → `15:00`, `930` → `09:30`· κανονικοποίηση `retro_time` στους συνδέσμους κάρτας.
+- **`work-card-list.js`**: `bindHourMinuteInput("wcRetroTime")`, `maybePrefillRetroTimeFromWorkLog` όταν λείπει `retro_time` στο URL.
+
+### UI — Λήπτες Telegram (`/ui/stores/credentials`)
+
+- **`store-credentials.js`**: εικονίδιο **κατάστασης** — ενεργός = **Play** πράσινο, παυμένος = **Stop** κόκκινο (όχι «επόμενη ενέργεια»).
+- **`office.css`**: `.notify-toggle-btn--on` (πράσινο), `.notify-toggle-btn--off` (κόκκινο).
+
+### Τεκμηρίωση Ergani
+
+- **`documentation/schema_wtodaily.json`**, **`schema_wtoleave.json`**, **`schema_wtoweek.json`** (νέα).
+
+### Σημείωση deploy
+
+Μετά από αλλαγές Python/στατικών: **recycle** IIS app pool `erganios.gr` και **Ctrl+F5** στον browser (cache bust στα `?v=…` των JS/CSS).
+
+---
+
 ## 2026-06-20 (ε) — Ειδοποίηση τύπου 2 (τρέχουσα ημέρα), snooze & audit
 
 ### Ειδοποίηση τύπου 2 — `/ui/work-log`

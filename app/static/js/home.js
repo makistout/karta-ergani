@@ -1,6 +1,7 @@
 let reportDatePicker = null;
 let leaveTypes = [];
 let leaveModalRow = null;
+let wtoDailyModalRow = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("home");
@@ -16,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
   initLeaveModal();
+  initWtoDailyModal();
   loadLeaveTypes();
   loadCardReport();
 });
@@ -123,6 +125,146 @@ function initLeaveModal() {
     e.preventDefault();
     closeLeaveModal();
   });
+}
+
+function initWtoDailyModal() {
+  const modal = document.getElementById("wtoDailyModal");
+  if (!modal) return;
+  Office.bindHourMinuteInput("wtoDailyHourFrom");
+  Office.bindHourMinuteInput("wtoDailyHourTo");
+  modal.querySelectorAll("[data-wto-daily-close]").forEach((el) => {
+    el.addEventListener("click", closeWtoDailyModal);
+  });
+  document.getElementById("btnWtoDailyCancel")?.addEventListener("click", closeWtoDailyModal);
+  document.getElementById("btnWtoDailySubmit")?.addEventListener("click", submitWtoDaily);
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("hidden")) return;
+    e.preventDefault();
+    closeWtoDailyModal();
+  });
+}
+
+function hmToTimeInput(hm) {
+  return Office.normalizeHourMinute(hm);
+}
+
+function timeInputToHm(value) {
+  return Office.normalizeHourMinute(value);
+}
+
+function openWtoDailyModal(row, opts = {}) {
+  wtoDailyModalRow = { ...row, _wtoRestMode: opts.mode === "rest" };
+  const modal = document.getElementById("wtoDailyModal");
+  const title = document.getElementById("wtoDailyModalTitle");
+  const sub = document.getElementById("wtoDailyModalEmployee");
+  const hint = document.getElementById("wtoDailyModalHint");
+  const msg = document.getElementById("wtoDailyModalMsg");
+  const proposal = row.wto_daily || {};
+  const isRest = opts.mode === "rest";
+  if (!modal || !sub) return;
+  sub.textContent =
+    `${row.eponymo || ""} ${row.onoma || ""}`.trim() + ` · ΑΦΜ ${row.employee_afm || ""}`;
+  if (title) {
+    title.textContent = isRest
+      ? "Δήλωση ρεπό (WTODaily)"
+      : "Τροποποίηση ωραρίου (WTODaily)";
+  }
+  if (hint) {
+    hint.textContent = isRest
+      ? "Δήλωση ρεπό/ανάπαυσης (τύπος ΑΝ) για την ημέρα."
+      : row.action || proposal.note || "";
+  }
+  const hoursRow = document.getElementById("wtoDailyHoursRow");
+  if (hoursRow) hoursRow.classList.toggle("hidden", isRest);
+  const fromEl = document.getElementById("wtoDailyHourFrom");
+  const toEl = document.getElementById("wtoDailyHourTo");
+  const typeEl = document.getElementById("wtoDailyScheduleType");
+  if (fromEl) fromEl.value = isRest ? "" : hmToTimeInput(proposal.hour_from);
+  if (toEl) toEl.value = isRest ? "" : hmToTimeInput(proposal.hour_to);
+  if (typeEl) typeEl.value = isRest ? "ΑΝ" : proposal.schedule_type || "ΕΡΓ";
+  const comments = document.getElementById("wtoDailyComments");
+  if (comments) comments.value = "";
+  if (msg) {
+    msg.className = "msg";
+    msg.textContent = "";
+  }
+  modal.classList.remove("hidden");
+}
+
+function openWtoRestModal(row) {
+  openWtoDailyModal(row, { mode: "rest" });
+}
+
+function closeWtoDailyModal() {
+  const modal = document.getElementById("wtoDailyModal");
+  const title = document.getElementById("wtoDailyModalTitle");
+  const hoursRow = document.getElementById("wtoDailyHoursRow");
+  if (title) title.textContent = "Τροποποίηση ωραρίου (WTODaily)";
+  if (hoursRow) hoursRow.classList.remove("hidden");
+  modal?.classList.add("hidden");
+  wtoDailyModalRow = null;
+}
+
+async function submitWtoDaily() {
+  if (!wtoDailyModalRow) return;
+  const btn = document.getElementById("btnWtoDailySubmit");
+  const ref =
+    Office.parseDateGr(wtoDailyModalRow.work_date || "") || reportDate();
+  const hourFrom = timeInputToHm(document.getElementById("wtoDailyHourFrom")?.value);
+  const hourTo = timeInputToHm(document.getElementById("wtoDailyHourTo")?.value);
+  const scheduleType = document.getElementById("wtoDailyScheduleType")?.value || "ΕΡΓ";
+  const comments = document.getElementById("wtoDailyComments")?.value?.trim() || null;
+  const isRest =
+    Boolean(wtoDailyModalRow._wtoRestMode) || scheduleType === "ΑΝ" || scheduleType === "AN";
+  if (!ref || (!hourFrom && !isRest)) {
+    Office.showMsg(
+      "wtoDailyModalMsg",
+      isRest ? "Συμπληρώστε ημερομηνία." : "Συμπληρώστε ημερομηνία και ώρα έναρξης.",
+      false
+    );
+    return;
+  }
+  Office.setButtonLoading(btn, true);
+  Office.showLoading("wtoDailyModalMsg", "Αποστολή WTODaily στο Ergani…");
+  try {
+    const res = await fetch("/api/wto-daily/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employee_afm: wtoDailyModalRow.employee_afm,
+        eponymo: wtoDailyModalRow.eponymo,
+        onoma: wtoDailyModalRow.onoma,
+        reference_date: ref,
+        schedule_type: scheduleType,
+        hour_from: isRest ? null : hourFrom,
+        hour_to: isRest ? null : hourTo || null,
+        comments,
+        kind: wtoDailyModalRow.wto_daily?.kind || null,
+      }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok || !data.success) {
+      Office.showMsg(
+        "wtoDailyModalMsg",
+        data.error || data.data?.message || data.data?.Message || "Αποτυχία υποβολής",
+        false
+      );
+      return;
+    }
+    closeWtoDailyModal();
+    const proto = data.protocol ? ` · ${data.protocol}` : "";
+    Office.showMsg(
+      "wtoDailyMsg",
+      `Ωράριο υποβλήθηκε επιτυχώς${proto}. Συγχρονίστε το ψηφιακό ωράριο.`,
+      true
+    );
+    await loadCardReport();
+  } catch (e) {
+    Office.showMsg("wtoDailyModalMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
 }
 
 function openLeaveModal(row) {
@@ -380,6 +522,29 @@ function buildCardLinkCell(r) {
   );
 }
 
+function buildTodayNotifyButton(r) {
+  const kind = (r.today_notify_kind || "").trim();
+  if (!kind) return "";
+  const snoozed = Boolean(r.today_notify_snoozed);
+  const label = Office.todayNotifyLabel(kind);
+  const cls =
+    "work-log-notify-btn work-log-notify-btn--today" +
+    (snoozed ? " work-log-notify-btn--snoozed" : "");
+  const title = snoozed
+    ? "Snoozed"
+    : `Ειδοποίηση σήμερα — ${label}`;
+  return (
+    `<button type="button" class="${cls}" ` +
+    `data-today-notify-afm="${Office.escapeHtml(r.employee_afm || "")}" ` +
+    `data-today-notify-date="${Office.escapeHtml(r.work_date || "")}" ` +
+    `data-today-notify-kind="${Office.escapeHtml(kind)}" ` +
+    `${snoozed ? "disabled " : ""}` +
+    `title="${Office.escapeHtml(title)}" ` +
+    `aria-label="${Office.escapeHtml(title)}">` +
+    `${Office.icon("bell")}</button>`
+  );
+}
+
 function buildActionCell(r) {
   const notes =
     (r.notes || []).length > 0
@@ -388,10 +553,25 @@ function buildActionCell(r) {
           .join("")}</ul>`
       : "";
   let html = Office.escapeHtml(r.action || "—") + notes;
-  if (r.leave_eligible) {
+  if (r.wto_daily_eligible) {
     html +=
-      `<div><button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}" data-leave-date="${Office.escapeHtml(r.work_date || "")}">` +
-      `${Office.icon("calendar-x")}<span>Άδεια</span></button></div>`;
+      `<div><button type="button" class="btn btn-secondary btn-wto-daily" data-wto-daily-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-daily-date="${Office.escapeHtml(r.work_date || "")}">` +
+      `${Office.icon("calendar-week")}<span>Αλλαγή ωραρίου</span></button></div>`;
+  }
+  if (r.rest_declare_eligible || r.leave_eligible || r.today_notify_kind) {
+    html += `<div class="report-action-btns">`;
+    html += buildTodayNotifyButton(r);
+    if (r.rest_declare_eligible) {
+      html +=
+        `<button type="button" class="btn btn-secondary btn-rest" data-wto-rest-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-rest-date="${Office.escapeHtml(r.work_date || "")}">` +
+        `${Office.icon("calendar-minus")}<span>Ρεπό</span></button>`;
+    }
+    if (r.leave_eligible) {
+      html +=
+        `<button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}" data-leave-date="${Office.escapeHtml(r.work_date || "")}">` +
+        `${Office.icon("calendar-x")}<span>Άδεια</span></button>`;
+    }
+    html += `</div>`;
   }
   return html;
 }
@@ -477,6 +657,41 @@ function renderTable(wrap, rows, meta, multiDay) {
       const wd = btn.getAttribute("data-leave-date") || "";
       const row = rowByKey.get(`${afm}|${wd}`);
       if (row) openLeaveModal(row);
+    });
+  });
+
+  wrap.querySelectorAll("[data-today-notify-afm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      const afm = btn.getAttribute("data-today-notify-afm");
+      const wd = btn.getAttribute("data-today-notify-date") || "";
+      const kind = btn.getAttribute("data-today-notify-kind") || "";
+      const row = rowByKey.get(`${afm}|${wd}`);
+      if (!row) return;
+      Office.sendTodayPunchNotify(
+        row,
+        { kind, label: Office.todayNotifyLabel(kind) },
+        btn,
+        "cardReportNotifyMsg"
+      );
+    });
+  });
+
+  wrap.querySelectorAll("[data-wto-rest-afm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const afm = btn.getAttribute("data-wto-rest-afm");
+      const wd = btn.getAttribute("data-wto-rest-date") || "";
+      const row = rowByKey.get(`${afm}|${wd}`);
+      if (row) openWtoRestModal(row);
+    });
+  });
+
+  wrap.querySelectorAll("[data-wto-daily-afm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const afm = btn.getAttribute("data-wto-daily-afm");
+      const wd = btn.getAttribute("data-wto-daily-date") || "";
+      const row = rowByKey.get(`${afm}|${wd}`);
+      if (row) openWtoDailyModal(row);
     });
   });
 }

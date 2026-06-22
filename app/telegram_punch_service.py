@@ -225,8 +225,16 @@ def submit_retro_hit_from_session(
 
         resolved_type = f_type_from_event(ev, None)
         if card_event_exists(str(ctx.get("employee_afm") or ""), ref, resolved_type):
-            mark_token_used(token_id, retro_time=rt)
+            if row:
+                mark_token_used(token_id, retro_time=rt)
             clear_retro_hit_session()
+            from app.scheduled_sync import enqueue_sync_store_today_after_card
+
+            sync_triggered = enqueue_sync_store_today_after_card(cfg, work_date_iso=ref)
+            data = {
+                **(data or {}),
+                "sync_triggered": sync_triggered,
+            }
         else:
             data = {
                 **(data or {}),
