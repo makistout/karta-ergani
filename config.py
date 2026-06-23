@@ -74,6 +74,11 @@ class Config:
     SMTP_USE_TLS = _env_flag("SMTP_USE_TLS", default=True)
     SMTP_USE_SSL = _env_flag("SMTP_USE_SSL", default=False)
 
+    KARTA_POST_SYNC_NOTIFY_ENABLED = _env_flag(
+        "KARTA_POST_SYNC_NOTIFY_ENABLED",
+        default=True,
+    )
+
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
     ).strip().rstrip("/")

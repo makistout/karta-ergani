@@ -19,6 +19,7 @@ from app.routes_monthly_status import monthly_status_bp
 from app.routes_telegram import telegram_bp
 from app.routes_auth import auth_bp
 from app.routes_work_card import work_card_bp
+from app.routes_audit import audit_bp
 
 
 def create_app() -> Flask:
@@ -29,9 +30,11 @@ def create_app() -> Flask:
     app.url_map.strict_slashes = False
 
     from app.security import register_security
+    from app.audit_log import register_audit_log
 
     register_security(app)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(audit_bp)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)
     app.register_blueprint(wto_daily_bp)
@@ -50,6 +53,7 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)
     register_ui_redirects(app)
+    register_audit_log(app)
 
     @app.get("/api")
     def api_index():
@@ -77,6 +81,7 @@ def create_app() -> Flask:
             "wto_daily_submit": "POST /api/wto-daily/submit",
             "wto_week_submit": "POST /api/wto-week/submit",
             "local": "/api/local/",
+            "audit": "/api/audit/list",
             "health": "/api/local/health",
         })
 

@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-06-24 — Ανεξάρτητο audit trail ενεργειών χρήστη/API
+
+- Προστέθηκε ανεξάρτητος πίνακας `dbo.karta_audit_log`, ξεχωριστός από τα
+  `karta_sync_run` / `karta_sync_log`.
+- Κεντρικό audit middleware γράφει κάθε mutating HTTP request
+  (`POST`, `PUT`, `PATCH`, `DELETE`) με action, endpoint, status, χρήστη/source,
+  κατάστημα, entity, IP και στοιχεία συσκευής/browser.
+- Τα request details αποθηκεύονται με redaction για κωδικούς, tokens, API keys και PIN.
+- Προστέθηκε `GET /api/audit/list` για προβολή των πρόσφατων audit events.
+- Migration: `sql/alter_add_audit_log.sql` και runner
+  `scripts/run_migration_audit_log.py`.
+
+---
+
+## 2026-06-24 — Ασύγχρονες ειδοποιήσεις μετά τον scheduled sync
+
+- Μετά από επιτυχημένο scheduled sync καταστήματος (`scheduled_today_sync`) γίνεται
+  πλέον enqueue ασύγχρονου worker για αυτόματη αποστολή ειδοποιήσεων καμπάνας
+  Telegram/Email, ανάλογα με τους ενεργούς λήπτες και κανάλια.
+- Ο συγχρονισμός του επόμενου καταστήματος δεν περιμένει την ολοκλήρωση των
+  αποστολών Telegram/SMTP.
+- Οι αυτόματες αποστολές σέβονται τους υπάρχοντες κανόνες `today_notify_kind` και
+  το `today_notify_snoozed`.
+- Προστέθηκε feature flag `KARTA_POST_SYNC_NOTIFY_ENABLED=1` στο `.env.example`.
+
+---
+
 ## 2026-06-23 — Email ειδοποιήσεις ληπτών καταστήματος
 
 - **Λήπτες ειδοποιήσεων** στο `/ui/stores/credentials`: προστέθηκε πεδίο `Email`
