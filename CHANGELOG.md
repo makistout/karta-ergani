@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-06-23 — Email ειδοποιήσεις ληπτών καταστήματος
+
+- **Λήπτες ειδοποιήσεων** στο `/ui/stores/credentials`: προστέθηκε πεδίο `Email`
+  ανά λήπτη και δεύτερο **Play/Stop** για ανεξάρτητη ενεργοποίηση email αποστολής.
+- **Βάση**: νέα πεδία `email`, `email_active` στον
+  `dbo.karta_store_notify_recipient` και migration
+  `sql/alter_add_notify_recipient_email.sql`.
+- **Backend**: προστέθηκε SMTP αποστολή με HTML email template (`app/email_notify.py`)
+  και σύνδεση με τα υπάρχοντα flows ειδοποιήσεων κάρτας/ωραρίου, με token link όταν
+  ο λήπτης έχει PIN.
+- **Ρυθμίσεις**: `.env.example` με `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+  `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, `SMTP_USE_TLS`,
+  `SMTP_USE_SSL`.
+
+---
+
 ## 2026-06-23 — Σταθερό εβδομαδιαίο ωράριο ανά εργαζόμενο (WTOWeek)
 
 - Επιβεβαιώθηκε ζωντανά μέσω `GET Lookup/Submissions` ότι το `WTOWeek` είναι ενεργό

@@ -364,7 +364,11 @@ def send_missing_punch_notifications(
     hour_to: str | None,
     public_base_url: str,
 ) -> dict[str, Any]:
-    from app.repo_notify_recipients import list_deliverable_recipients
+    from app.email_notify import EmailNotConfigured, send_notification_email
+    from app.repo_notify_recipients import (
+        list_deliverable_recipients,
+        list_email_deliverable_recipients,
+    )
     from app.repo_telegram_punch import create_punch_token
     from app.telegram_notify import (
         TelegramNotConfigured,
@@ -381,6 +385,7 @@ def send_missing_punch_notifications(
         hour_to=hour_to,
     )
     recipients = list_deliverable_recipients(store_id)
+    email_recipients = list_email_deliverable_recipients(store_id)
     if not action:
         skipped = missing_punch_notify_skip_reason(
             employee_afm=employee_afm,
@@ -390,7 +395,7 @@ def send_missing_punch_notifications(
         )
         return {
             "sent": 0,
-            "total": len(recipients),
+            "total": len(recipients) + len(email_recipients),
             "errors": [],
             "action": None,
             "skipped": skipped or "no_action",
@@ -437,8 +442,71 @@ def send_missing_punch_notifications(
             send_telegram_message(chat_id, text)
             sent += 1
         except TelegramNotConfigured:
-            raise
+            errors.append(f"Telegram {rec.get('name')}: λείπει TELEGRAM_BOT_TOKEN")
         except Exception as ex:
-            errors.append(f"{rec.get('name')}: {ex}")
+            errors.append(f"Telegram {rec.get('name')}: {ex}")
 
-    return {"sent": sent, "total": len(recipients), "errors": errors, "action": action}
+    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
+    if action.get("card_event") == "check_in":
+        defect = "Ελλιπές χτύπημα εισόδου"
+    elif action.get("card_event") == "check_out":
+        defect = "Ελλιπές χτύπημα εξόδου"
+    else:
+        defect = "Ελλιπές χτύπημα κάρτας"
+    for rec in email_recipients:
+        email = str(rec.get("email") or "").strip()
+        if not email:
+            continue
+        hit_url = None
+        has_pin = bool((rec.get("notify_pin_hash") or "").strip())
+        if has_pin:
+            try:
+                token = create_punch_token(
+                    recipient_id=int(rec["id"]),
+                    store_id=store_id,
+                    employee_afm=employee_afm,
+                    eponymo=eponymo,
+                    onoma=onoma,
+                    work_date_ergani=work_date,
+                    reference_date_iso=ref_iso,
+                    card_event=action["card_event"],
+                    retro_time=action.get("retro_time") or "",
+                )
+                hit_url = f"{public_base_url.rstrip('/')}/ui/telegram-hit?t={token}"
+            except Exception as ex:
+                errors.append(f"Email {rec.get('name')}: token — {ex}")
+        try:
+            send_notification_email(
+                email,
+                f"erganiOS — {defect}",
+                title=defect,
+                preheader=f"{employee_name or employee_afm} · {work_date}",
+                store_name=store_name,
+                employee_name=employee_name,
+                employee_afm=employee_afm,
+                work_date=work_date,
+                problem=f"Υπάρχει {defect.lower()} για τον εργαζόμενο.",
+                details=[
+                    ("Προτεινόμενη ώρα", action.get("retro_time") or "—"),
+                    ("Ενέργεια", "Άνοιγμα προγενέστερης καταχώρησης" if hit_url else "Απαιτείται PIN λήπτη"),
+                ],
+                action_url=hit_url,
+                action_label="Άνοιγμα καταχώρησης",
+                footer_note=(
+                    "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
+                    if hit_url
+                    else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
+                ),
+            )
+            sent += 1
+        except EmailNotConfigured as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+        except Exception as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+
+    return {
+        "sent": sent,
+        "total": len(recipients) + len(email_recipients),
+        "errors": errors,
+        "action": action,
+    }

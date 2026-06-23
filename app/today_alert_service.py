@@ -9,7 +9,11 @@ from flask import session
 
 from app import repo_store as repo
 from app.notify_pin import verify_notify_pin
-from app.repo_notify_recipients import list_deliverable_recipients, normalize_mobile
+from app.repo_notify_recipients import (
+    list_deliverable_recipients,
+    list_email_deliverable_recipients,
+    normalize_mobile,
+)
 from app.repo_today_alert import (
     create_snooze,
     create_today_alert_token,
@@ -499,6 +503,7 @@ def send_wto_schedule_notifications(
     hour_to: str | None = None,
     public_base_url: str,
 ) -> dict[str, Any]:
+    from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
         TelegramNotConfigured,
         format_today_alert_notification,
@@ -546,6 +551,7 @@ def send_wto_schedule_notifications(
         }
 
     recipients = list_deliverable_recipients(store_id)
+    email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
@@ -591,9 +597,65 @@ def send_wto_schedule_notifications(
         except Exception as ex:
             errors.append(f"{rec.get('name')}: {ex}")
 
+    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
+    kind_label = KIND_LABELS.get(kind, kind)
+    for rec in email_recipients:
+        email = str(rec.get("email") or "").strip()
+        if not email:
+            continue
+        hit_url = None
+        has_pin = bool((rec.get("notify_pin_hash") or "").strip())
+        if has_pin:
+            try:
+                token = create_today_alert_token(
+                    recipient_id=int(rec["id"]),
+                    store_id=store_id,
+                    employee_afm=employee_afm,
+                    eponymo=eponymo,
+                    onoma=onoma,
+                    work_date_ergani=work_date,
+                    reference_date_iso=ref_iso,
+                    notify_kind=kind,
+                    hour_from=prop_from,
+                    hour_to=prop_to,
+                    schedule_hour_from=None,
+                )
+                hit_url = build_today_hit_redirect_url(token)
+            except Exception as ex:
+                errors.append(f"Email {rec.get('name')}: token — {ex}")
+        try:
+            send_notification_email(
+                email,
+                f"erganiOS — {kind_label}",
+                title=kind_label,
+                preheader=f"{employee_name or employee_afm} · {work_date}",
+                store_name=store_name,
+                employee_name=employee_name,
+                employee_afm=employee_afm,
+                work_date=work_date,
+                problem="Χρειάζεται ενέργεια για το ψηφιακό ωράριο/κάρτα του εργαζομένου.",
+                details=[
+                    ("Ώρα από", prop_from or "—"),
+                    ("Ώρα έως", prop_to or "—"),
+                    ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη"),
+                ],
+                action_url=hit_url,
+                action_label="Άνοιγμα ενέργειας",
+                footer_note=(
+                    "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
+                    if hit_url
+                    else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
+                ),
+            )
+            sent += 1
+        except EmailNotConfigured as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+        except Exception as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+
     return {
         "sent": sent,
-        "total": len(recipients),
+        "total": len(recipients) + len(email_recipients),
         "errors": errors,
         "notify_kind": kind,
     }
@@ -614,6 +676,7 @@ def send_today_punch_notifications(
     notify_kind: str | None,
     public_base_url: str,
 ) -> dict[str, Any]:
+    from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
         TelegramNotConfigured,
         format_today_alert_notification,
@@ -663,6 +726,7 @@ def send_today_punch_notifications(
         }
 
     recipients = list_deliverable_recipients(store_id)
+    email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
@@ -706,9 +770,66 @@ def send_today_punch_notifications(
         except Exception as ex:
             errors.append(f"{rec.get('name')}: {ex}")
 
+    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
+    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
+    for rec in email_recipients:
+        email = str(rec.get("email") or "").strip()
+        if not email:
+            continue
+        hit_url = None
+        has_pin = bool((rec.get("notify_pin_hash") or "").strip())
+        if has_pin:
+            try:
+                token = create_today_alert_token(
+                    recipient_id=int(rec["id"]),
+                    store_id=store_id,
+                    employee_afm=employee_afm,
+                    eponymo=eponymo,
+                    onoma=onoma,
+                    work_date_ergani=work_date,
+                    reference_date_iso=ref_iso,
+                    notify_kind=resolved_kind,
+                    hour_from=hour_from,
+                    hour_to=hour_to,
+                    schedule_hour_from=schedule_hour_from,
+                )
+                hit_url = build_today_hit_redirect_url(token)
+            except Exception as ex:
+                errors.append(f"Email {rec.get('name')}: token — {ex}")
+        try:
+            send_notification_email(
+                email,
+                f"erganiOS — {kind_label}",
+                title=kind_label,
+                preheader=f"{employee_name or employee_afm} · {work_date}",
+                store_name=store_name,
+                employee_name=employee_name,
+                employee_afm=employee_afm,
+                work_date=work_date,
+                problem="Εντοπίστηκε σημερινή εκκρεμότητα κάρτας εργασίας.",
+                details=[
+                    ("Χτύπημα από", hour_from or "—"),
+                    ("Χτύπημα έως", hour_to or "—"),
+                    ("Ώρα ωραρίου", schedule_hour_from or "—"),
+                    ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη"),
+                ],
+                action_url=hit_url,
+                action_label="Άνοιγμα ενέργειας",
+                footer_note=(
+                    "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
+                    if hit_url
+                    else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
+                ),
+            )
+            sent += 1
+        except EmailNotConfigured as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+        except Exception as ex:
+            errors.append(f"Email {rec.get('name')}: {ex}")
+
     return {
         "sent": sent,
-        "total": len(recipients),
+        "total": len(recipients) + len(email_recipients),
         "errors": errors,
         "notify_kind": resolved_kind,
     }

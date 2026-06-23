@@ -48,14 +48,22 @@ def notify_store_recipients(
     *,
     only_with_chat: bool = True,
 ) -> dict[str, Any]:
-    from app.repo_notify_recipients import list_deliverable_recipients, list_notify_recipients
+    from app.email_notify import EmailNotConfigured, send_notification_email
+    from app.repo_notify_recipients import (
+        list_deliverable_recipients,
+        list_email_deliverable_recipients,
+        list_notify_recipients,
+    )
 
     rows = (
         list_deliverable_recipients(store_id)
         if only_with_chat
         else list_notify_recipients(store_id)
     )
+    email_rows = list_email_deliverable_recipients(store_id)
     sent = 0
+    telegram_sent = 0
+    email_sent = 0
     errors: list[str] = []
     for row in rows:
         chat_id = str(row.get("telegram_chat_id") or "").strip()
@@ -65,9 +73,38 @@ def notify_store_recipients(
         try:
             send_telegram_message(chat_id, text)
             sent += 1
+            telegram_sent += 1
         except Exception as ex:
-            errors.append(f"{row.get('name')}: {ex}")
-    return {"sent": sent, "total": len(rows), "errors": errors}
+            errors.append(f"Telegram {row.get('name')}: {ex}")
+    for row in email_rows:
+        email = str(row.get("email") or "").strip()
+        if not email:
+            continue
+        try:
+            send_notification_email(
+                email,
+                "Δοκιμαστική ειδοποίηση erganiOS",
+                title="Δοκιμαστική ειδοποίηση",
+                preheader="Έλεγχος αποστολής email από το erganiOS.",
+                employee_name=str(row.get("name") or "").strip() or None,
+                employee_afm=None,
+                work_date=None,
+                problem=text,
+                footer_note="Αν βλέπετε αυτό το email, ο λήπτης είναι σωστά ρυθμισμένος για email ειδοποιήσεις.",
+            )
+            sent += 1
+            email_sent += 1
+        except EmailNotConfigured as ex:
+            errors.append(f"Email {row.get('name')}: {ex}")
+        except Exception as ex:
+            errors.append(f"Email {row.get('name')}: {ex}")
+    return {
+        "sent": sent,
+        "total": len(rows) + len(email_rows),
+        "telegram_sent": telegram_sent,
+        "email_sent": email_sent,
+        "errors": errors,
+    }
 
 
 def format_missing_punch_notification(

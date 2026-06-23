@@ -65,6 +65,15 @@ class Config:
 
     TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
 
+    SMTP_HOST = (os.environ.get("SMTP_HOST") or "").strip()
+    SMTP_PORT = int((os.environ.get("SMTP_PORT") or "587").strip() or "587")
+    SMTP_USERNAME = (os.environ.get("SMTP_USERNAME") or "").strip()
+    SMTP_PASSWORD = (os.environ.get("SMTP_PASSWORD") or "").strip()
+    SMTP_FROM_EMAIL = (os.environ.get("SMTP_FROM_EMAIL") or SMTP_USERNAME).strip()
+    SMTP_FROM_NAME = (os.environ.get("SMTP_FROM_NAME") or "erganiOS").strip()
+    SMTP_USE_TLS = _env_flag("SMTP_USE_TLS", default=True)
+    SMTP_USE_SSL = _env_flag("SMTP_USE_SSL", default=False)
+
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
     ).strip().rstrip("/")
