@@ -206,6 +206,20 @@ def parse_work_log_export(
     return normalize_work_log_grid_rows(raw, default_branch_aa=default_branch_aa)
 
 
+def _work_log_excel_err_means_empty(err: str) -> bool:
+    """Σφάλματα Excel export που σημαίνουν «δεν υπάρχουν καταγραφές», όχι πραγματική αποτυχία."""
+    low = (err or "").strip().lower()
+    if not low:
+        return False
+    needles = (
+        "δεν επέστρεψε αρχείο excel",
+        "δεν περιέχει εγγραφές πραγματικής",
+        "κενό αρχείο excel export",
+        "no records",
+    )
+    return any(n in low for n in needles)
+
+
 def fetch_work_log_rows_via_excel(
     session: requests.Session,
     html: str,
@@ -214,15 +228,18 @@ def fetch_work_log_rows_via_excel(
     grid_event_target: str,
     default_branch_aa: str = "",
 ) -> list[list[str]]:
-    content, ctype = download_grid_excel(
-        session, html, page_url, grid_event_target=grid_event_target
-    )
-    rows = parse_work_log_export(
-        content, ctype, default_branch_aa=default_branch_aa
-    )
-    if not rows:
-        raise RuntimeError("Το Excel export δεν περιέχει εγγραφές πραγματικής")
-    return rows
+    try:
+        content, ctype = download_grid_excel(
+            session, html, page_url, grid_event_target=grid_event_target
+        )
+        rows = parse_work_log_export(
+            content, ctype, default_branch_aa=default_branch_aa
+        )
+        return rows or []
+    except RuntimeError as ex:
+        if _work_log_excel_err_means_empty(str(ex)):
+            return []
+        raise
 
 
 def _schedule_row_from_cells(

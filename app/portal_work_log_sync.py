@@ -16,7 +16,7 @@ import requests
 from app.date_util import iso_to_ergani_dates
 from app.ergani_parse import portal_rows_to_work_log_items
 from app.karta_log import KartaLogger, logger_for_store
-from app.portal_excel import fetch_work_log_rows_via_excel
+from app.portal_excel import _work_log_excel_err_means_empty, fetch_work_log_rows_via_excel
 from app.portal_form_util import set_portal_dates
 from app.portal_schedule_sync import (
     REQUEST_TIMEOUT,
@@ -45,6 +45,18 @@ GRID_EVENT_TARGET = (
     "$DailyWorkTimesGridControl$Grid$Grid"
 )
 MAX_GRID_PAGES = 80
+
+
+def _work_log_empty_not_error(msg: str) -> bool:
+    """Κενή πραγματική απασχόληση — όχι σφάλμα συγχρονισμού."""
+    text = (msg or "").strip()
+    if not text:
+        return False
+    if "Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid)" in text:
+        return True
+    if _work_log_excel_err_means_empty(text):
+        return True
+    return False
 
 
 class _FormParser(HTMLParser):
@@ -194,19 +206,14 @@ def _search_work_log(
     html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
     if not excel_rows and not html_rows:
-        raise RuntimeError(
-            f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
-            + (f" — Excel: {excel_err}" if excel_err else "")
-        )
+        return [], "empty"
 
     if html_rows:
         src = "html"
         if excel_err:
             src = f"html (Excel απέτυχε: {excel_err[:120]})"
         return html_rows, src
-    raise RuntimeError(
-        f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
-    )
+    return [], "empty"
 
 
 def _persist_work_log_items(
@@ -251,12 +258,17 @@ def _work_log_sync_result(
     log: KartaLogger,
     fetch_source: str = "excel",
 ) -> dict[str, Any]:
-    ok = days_synced > 0 and len(errors) < len(dates)
+    ok = len(errors) == 0
     single = len(dates) == 1
-    detail = (
-        f"{total} εγγραφές portal ({len(dates)} ημέρες, {fetch_source})"
-        + (f" — {len(errors)} αποτυχίες" if errors else "")
-    )
+    if ok and total == 0:
+        detail = (
+            f"0 εγγραφές portal ({len(dates)} ημέρες, {fetch_source}) — δεν υπάρχουν καταγραφές"
+        )
+    else:
+        detail = (
+            f"{total} εγγραφές portal ({len(dates)} ημέρες, {fetch_source})"
+            + (f" — {len(errors)} αποτυχίες" if errors else "")
+        )
     log.info(
         "Ολοκλήρωση συγχρονισμού πραγματικής",
         success=ok,
@@ -373,21 +385,46 @@ def iter_work_log_sync_events(
                 by_day[wd] = by_day.get(wd, 0) + 1
 
         total = _persist_work_log_items(ctx, dates, items)
-        for i, wd in enumerate(dates):
+        days_synced = len(dates)
+        for wd in dates:
             n = by_day.get(wd, 0)
-            if n > 0:
-                days_synced += 1
+            yield {
+                "event": "day_ok",
+                "message": f"Πραγματική απασχόληση: {wd} — {n} εγγραφές",
+                "work_date": wd,
+                "count": n,
+            }
+    except (requests.RequestException, ValueError, RuntimeError) as ex:
+        msg = str(ex)
+        if _work_log_empty_not_error(msg):
+            fetch_source = "empty"
+            days_synced = len(dates)
+            total = _persist_work_log_items(ctx, dates, [])
+            info = (
+                f"Πραγματική απασχόληση: {date_from} – {date_to} — "
+                "0 εγγραφές (δεν υπάρχουν καταγραφές)"
+            )
+            log.info(info, date_from=date_from, date_to=date_to, count=0, source=fetch_source)
+            yield {
+                "event": "range_ok",
+                "message": info,
+                "date_from": date_from,
+                "date_to": date_to,
+                "count": 0,
+                "source": fetch_source,
+            }
+            for wd in dates:
                 yield {
                     "event": "day_ok",
-                    "message": f"Πραγματική απασχόληση: {wd} — {n} εγγραφές",
+                    "message": f"Πραγματική απασχόληση: {wd} — 0 εγγραφές",
                     "work_date": wd,
-                    "count": n,
+                    "count": 0,
                 }
-    except (requests.RequestException, ValueError, RuntimeError) as ex:
-        err = f"{date_from} – {date_to}: {ex}"
-        errors.append(err)
-        log.error(str(ex), date_from=date_from, date_to=date_to)
-        yield {"event": "day_err", "message": err, "work_date": date_from}
+        else:
+            err = f"{date_from} – {date_to}: {msg}"
+            errors.append(err)
+            log.error(msg, date_from=date_from, date_to=date_to)
+            yield {"event": "day_err", "message": err, "work_date": date_from}
 
     result = _work_log_sync_result(
         dates=dates,

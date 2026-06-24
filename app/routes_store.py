@@ -370,5 +370,5 @@ def put_notify_recipients(store_id: int):
         hint = notify_recipients_table_missing_message(ex)
         if hint:
             return jsonify({"error": hint, "db_setup": hint}), 500
-        raise
+        return jsonify({"error": f"Αποτυχία αποθήκευσης ληπτών: {ex}"}), 500
     return jsonify({"success": True, "count": n, "recipients": _json_rows(saved)})

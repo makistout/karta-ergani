@@ -511,6 +511,20 @@ input, select {
   border-radius: 6px;
 }
 
+.notify-store-picker-card {
+  margin-bottom: 1rem;
+  max-width: 28rem;
+}
+
+.notify-store-picker-card .ac-wrap {
+  margin-bottom: 0;
+}
+
+.notify-store-picker-card .ac-wrap input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .notify-recipients-wrap {
   margin-bottom: 0.5rem;
   overflow-x: auto;
@@ -538,6 +552,30 @@ input, select {
 .notify-recipients-table input[readonly] {
   background: #f8fafc;
   color: var(--muted);
+}
+
+.notify-recipients-table .col-notify-field-toggle {
+  min-width: 10rem;
+}
+
+.notify-field-with-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.notify-field-with-toggle input {
+  flex: 1;
+  min-width: 0;
+}
+
+.notify-field-with-toggle .notify-toggle-btn {
+  flex-shrink: 0;
+}
+
+.notify-recipients-table input.notify-input-email--invalid {
+  border-color: var(--err);
+  background: #fff5f5;
 }
 
 .notify-recipients-table .col-notify-actions {

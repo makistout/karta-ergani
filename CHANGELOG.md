@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-06-24 — Αυτόνομες ειδοποιήσεις καταστήματος & κενή πραγματική = OK
+
+### Ειδοποιήσεις (UI + backend)
+
+- **Νέα σελίδα** `/ui/stores/notify` (`store-notify.html`, `store-notify.js`): διαχείριση
+  ληπτών Telegram/Email ανεξάρτητα από το wizard διαπιστευτηρίων Ergani.
+- Αφαιρέθηκαν οι λήπτες από `/ui/stores/credentials` — κουμπί **«Ειδοποιήσεις»** στη λίστα
+  καταστημάτων (`stores-list.js`).
+- Autocomplete επιλογής καταστήματος (`Office.createAutocomplete`), καθάρισμα πεδίου στο κλικ.
+- **Δοκιμαστικό μήνυμα**: αποστολή Telegram **και** Email σε ενεργούς λήπτες με έγκυρο email.
+- **`email_notify.py`**: ανάγνωση SMTP ρυθμίσεων από `.env` κατά την αποστολή (όχι μόνο στο startup).
+- **`repo_notify_recipients.py`**: upsert αντί delete-all (αποφυγή FK conflict με
+  `karta_telegram_today_alert_token`), έλεγχος `is_valid_email`, απενεργοποίηση email χωρίς έγκυρη διεύθυνση.
+- **`store-notify.js`**: διόρθωση re-render σε κάθε keystroke email, sync Play/Stop από DOM
+  (`syncNotifyRecipientsFromDom`), partial UI update (`updateNotifyEmailRowUi`).
+- **`routes_store.py`**: JSON σφάλμα αντί unhandled 500 στο PUT ληπτών.
+
+### Συγχρονισμός πραγματικής απασχόλησης
+
+- **Κενή πραγματική δεν είναι σφάλμα**: όταν το portal δεν επιστρέφει Excel/grid ή δεν υπάρχουν
+  καταγραφές, ο sync ολοκληρώνεται με `success=true` και `count=0`.
+- **`portal_excel.py`**: `fetch_work_log_rows_via_excel` επιστρέφει `[]` για κενό/άκυρο Excel export
+  (π.χ. «δεν επέστρεψε αρχείο Excel») αντί για `RuntimeError`.
+- **`portal_work_log_sync.py`**: `_search_work_log` επιστρέφει `[], "empty"`· `_work_log_sync_result`
+  θεωρεί επιτυχία όταν `errors==0` (όχι `days_synced > 0`)· persist κενών ημερών· ευρύτερος
+  handler για μηνύματα κενής πραγματικής.
+- Έτσι ο **αυτόματος συγχρονισμός** (`scheduled_today_sync`) μπορεί να συνεχίσει στο post-sync notify
+  ακόμα κι όταν δεν υπάρχουν καταγραφές πραγματικής για τη μέρα.
+
+---
+
 ## 2026-06-24 — Ανεξάρτητο audit trail ενεργειών χρήστη/API
 
 - Προστέθηκε ανεξάρτητος πίνακας `dbo.karta_audit_log`, ξεχωριστός από τα

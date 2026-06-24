@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import html
+import os
 import smtplib
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Any
 
-from config import Config
+from dotenv import load_dotenv
 
 
 class EmailNotConfigured(Exception):
@@ -15,21 +17,28 @@ class EmailNotConfigured(Exception):
 
 
 def _smtp_settings() -> dict[str, Any]:
-    host = (Config.SMTP_HOST or "").strip()
-    from_email = (Config.SMTP_FROM_EMAIL or "").strip()
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
+    host = (os.environ.get("SMTP_HOST") or "").strip()
+    from_email = (
+        (os.environ.get("SMTP_FROM_EMAIL") or os.environ.get("SMTP_USERNAME") or "")
+        .strip()
+    )
     if not host or not from_email:
         raise EmailNotConfigured(
             "Λείπουν SMTP_HOST/SMTP_FROM_EMAIL στο .env για αποστολή email."
         )
+    port_raw = (os.environ.get("SMTP_PORT") or "587").strip() or "587"
+    use_tls_raw = (os.environ.get("SMTP_USE_TLS") or "1").strip().lower()
+    use_ssl_raw = (os.environ.get("SMTP_USE_SSL") or "0").strip().lower()
     return {
         "host": host,
-        "port": int(Config.SMTP_PORT or 587),
-        "username": (Config.SMTP_USERNAME or "").strip(),
-        "password": Config.SMTP_PASSWORD or "",
+        "port": int(port_raw),
+        "username": (os.environ.get("SMTP_USERNAME") or "").strip(),
+        "password": os.environ.get("SMTP_PASSWORD") or "",
         "from_email": from_email,
-        "from_name": (Config.SMTP_FROM_NAME or "erganiOS").strip(),
-        "use_tls": bool(Config.SMTP_USE_TLS),
-        "use_ssl": bool(Config.SMTP_USE_SSL),
+        "from_name": (os.environ.get("SMTP_FROM_NAME") or "erganiOS").strip(),
+        "use_tls": use_tls_raw in ("1", "true", "yes", "on"),
+        "use_ssl": use_ssl_raw in ("1", "true", "yes", "on"),
     }
 
 

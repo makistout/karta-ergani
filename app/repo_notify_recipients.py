@@ -28,6 +28,13 @@ def normalize_email(value: str | None) -> str:
     return email[:254]
 
 
+def is_valid_email(value: str | None) -> bool:
+    email = normalize_email(value)
+    if not email:
+        return False
+    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+
 def notify_recipients_table_missing_message(exc: BaseException) -> str | None:
     if isinstance(exc, pyodbc.Error):
         err = exc.args[0] if exc.args else ""
@@ -135,33 +142,86 @@ def replace_notify_recipients(
             email_active = 0
         else:
             email_active = 1
+        if email_active and not is_valid_email(email):
+            email_active = 0
         cleaned.append(
             (name, mobile, chat_id, email, email_active, pin_hash, pin_plain, active)
         )
+
+    kept_mobiles: set[str] = set()
     with cursor() as cur:
-        cur.execute(
-            "DELETE FROM dbo.karta_store_notify_recipient WHERE store_id = ?",
-            (sid,),
-        )
         for name, mobile, chat_id, email, email_active, pin_hash, pin_plain, active in cleaned:
+            kept_mobiles.add(mobile)
+            prev = old_rows.get(mobile) or {}
+            prev_id = prev.get("id")
+            if prev_id:
+                cur.execute(
+                    """
+                    UPDATE dbo.karta_store_notify_recipient
+                    SET name = ?, mobile = ?, telegram_chat_id = ?, email = ?, email_active = ?,
+                        notify_pin_hash = ?, notify_pin = ?, active = ?
+                    WHERE id = ? AND store_id = ?
+                    """,
+                    (
+                        name,
+                        mobile,
+                        chat_id,
+                        email,
+                        email_active,
+                        pin_hash,
+                        pin_plain,
+                        active,
+                        int(prev_id),
+                        sid,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO dbo.karta_store_notify_recipient (
+                        store_id, name, mobile, telegram_chat_id, email, email_active,
+                        notify_pin_hash, notify_pin, active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        sid,
+                        name,
+                        mobile,
+                        chat_id,
+                        email,
+                        email_active,
+                        pin_hash,
+                        pin_plain,
+                        active,
+                    ),
+                )
+
+        for mobile, prev in old_rows.items():
+            if mobile in kept_mobiles:
+                continue
+            recipient_id = prev.get("id")
+            if not recipient_id:
+                continue
             cur.execute(
                 """
-                INSERT INTO dbo.karta_store_notify_recipient (
-                    store_id, name, mobile, telegram_chat_id, email, email_active,
-                    notify_pin_hash, notify_pin, active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                DELETE FROM dbo.karta_telegram_today_alert_token
+                WHERE recipient_id = ?
                 """,
-                (
-                    sid,
-                    name,
-                    mobile,
-                    chat_id,
-                    email,
-                    email_active,
-                    pin_hash,
-                    pin_plain,
-                    active,
-                ),
+                (int(recipient_id),),
+            )
+            cur.execute(
+                """
+                DELETE FROM dbo.karta_today_notify_snooze
+                WHERE recipient_id = ?
+                """,
+                (int(recipient_id),),
+            )
+            cur.execute(
+                """
+                DELETE FROM dbo.karta_store_notify_recipient
+                WHERE id = ? AND store_id = ?
+                """,
+                (int(recipient_id), sid),
             )
         return len(cleaned)
 
@@ -212,4 +272,5 @@ def list_email_deliverable_recipients(store_id: int) -> list[dict[str, Any]]:
             """,
             (int(store_id),),
         )
-        return rows_to_dicts(cur)
+        rows = rows_to_dicts(cur)
+    return [r for r in rows if is_valid_email(r.get("email"))]

@@ -1,58 +1,15 @@
 const MASKED = "********";
 
-function normalizeNotifyPinInput(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 4);
-}
-
-function cleanNotifyPin(value) {
-  const v = String(value || "").trim();
-  if (!v || v === MASKED) return "";
-  return normalizeNotifyPinInput(v);
-}
-
-function isValidNotifyPin(value) {
-  const pin = cleanNotifyPin(value);
-  return !pin || /^\d{4}$/.test(pin);
-}
-
-function normalizeNotifyEmail(value) {
-  return String(value || "").trim().toLowerCase().slice(0, 254);
-}
-
-function isValidNotifyEmail(value) {
-  const email = normalizeNotifyEmail(value);
-  return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-let notifyRecipients = [];
-
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("stores");
   const params = new URLSearchParams(location.search);
   const draft = Office.getDraft();
   const editStoreId = parseInt(params.get("id") || "", 10) || draft.id;
-  initNotifyRecipientButtons();
   if (params.get("edit") === "1" && editStoreId) {
     document.querySelector(".page-title").textContent = "Επεξεργασία καταστήματος";
     await loadStoreIntoForm(editStoreId);
   } else {
     fillFormFromDraft(draft);
-    if (Array.isArray(draft.notifyRecipients) && draft.notifyRecipients.length) {
-      notifyRecipients = draft.notifyRecipients.map((r) => ({
-        name: r.name || "",
-        mobile: r.mobile || "",
-        telegram_chat_id: r.telegram_chat_id || "",
-        email: normalizeNotifyEmail(r.email),
-        notify_pin: cleanNotifyPin(r.notify_pin),
-        has_notify_pin: Boolean(r.has_notify_pin),
-        active: r.active !== false && r.active !== 0,
-        email_active: r.email_active !== false && r.email_active !== 0,
-      }));
-      renderNotifyRecipients();
-    } else {
-      renderNotifyRecipients();
-    }
-    updateNotifyUiState();
   }
   document.getElementById("btnStep1Next").onclick = onStep1Next;
 });
@@ -72,295 +29,6 @@ function fillFormFromDraft(draft) {
   document.getElementById("storeEnv").value = draft.ergani_env || "production";
 }
 
-function updateNotifyUiState() {
-  const draft = Office.getDraft();
-  const hasId = Boolean(draft.id);
-  setNotifyButtonsEnabled(hasId);
-  document.getElementById("notifyRecipientsPendingHint")?.classList.toggle("hidden", hasId);
-}
-
-function notifyRecipientIsActive(row) {
-  if (!row) return true;
-  const v = row.active;
-  return !(v === false || v === 0 || v === "0");
-}
-
-function notifyRecipientEmailIsActive(row) {
-  if (!row) return true;
-  const v = row.email_active;
-  return !(v === false || v === 0 || v === "0");
-}
-
-function initNotifyRecipientButtons() {
-  document.getElementById("btnAddNotifyRecipient").onclick = () => {
-    notifyRecipients.push({
-      name: "",
-      mobile: "",
-      telegram_chat_id: "",
-      email: "",
-      notify_pin: "",
-      active: true,
-      email_active: true,
-    });
-    renderNotifyRecipients();
-  };
-  document.getElementById("btnSaveNotifyRecipients").onclick = () => saveNotifyRecipients();
-  document.getElementById("btnTestNotify").onclick = () => testNotifyRecipients();
-}
-
-function setNotifyButtonsEnabled(enabled) {
-  const saveBtn = document.getElementById("btnSaveNotifyRecipients");
-  const testBtn = document.getElementById("btnTestNotify");
-  if (saveBtn) saveBtn.disabled = !enabled;
-  if (testBtn) testBtn.disabled = !enabled;
-}
-
-function renderNotifyRecipients() {
-  const body = document.getElementById("notifyRecipientsBody");
-  const empty = document.getElementById("notifyRecipientsEmpty");
-  if (!body) return;
-  body.innerHTML = "";
-  if (!notifyRecipients.length) {
-    if (empty) empty.style.display = "";
-    return;
-  }
-  if (empty) empty.style.display = "none";
-  notifyRecipients.forEach((row, idx) => {
-    const tr = document.createElement("tr");
-    const isActive = notifyRecipientIsActive(row);
-    const isEmailActive = notifyRecipientEmailIsActive(row);
-    if (!isActive && !isEmailActive) tr.classList.add("notify-recipient-row--paused");
-    const pinVal = cleanNotifyPin(row.notify_pin);
-    const pinPlaceholder = "4 ψηφία";
-    const pinTitle = row.has_notify_pin && !pinVal
-      ? "Υπάρχει PIN — πληκτρολογήστε ξανά και αποθηκεύστε για εμφάνιση"
-      : "4 αριθμητικά ψηφία";
-    const toggleIcon = isActive ? "play-circle-fill" : "stop-circle-fill";
-    const toggleTitle = isActive
-      ? "Telegram ενεργό — λαμβάνει μηνύματα bot (πατήστε για παύση)"
-      : "Telegram παυμένο — δεν λαμβάνει μηνύματα bot (πατήστε για ενεργοποίηση)";
-    const toggleClass = isActive
-      ? "notify-toggle-btn notify-toggle-btn--on"
-      : "notify-toggle-btn notify-toggle-btn--off";
-    const emailToggleIcon = isEmailActive ? "play-circle-fill" : "stop-circle-fill";
-    const emailToggleTitle = isEmailActive
-      ? "Email ενεργό — λαμβάνει email ειδοποιήσεις (πατήστε για παύση)"
-      : "Email παυμένο — δεν λαμβάνει email ειδοποιήσεις (πατήστε για ενεργοποίηση)";
-    const emailToggleClass = isEmailActive
-      ? "notify-toggle-btn notify-toggle-btn--on"
-      : "notify-toggle-btn notify-toggle-btn--off";
-    tr.innerHTML =
-      `<td><input type="text" class="notify-input-name" data-idx="${idx}" value="${Office.escapeHtml(row.name || "")}" placeholder="Όνομα"></td>` +
-      `<td><input type="text" class="notify-input-mobile" data-idx="${idx}" value="${Office.escapeHtml(row.mobile || "")}" placeholder="69XXXXXXXX"></td>` +
-      `<td><input type="text" class="notify-input-chat" data-idx="${idx}" value="${Office.escapeHtml(row.telegram_chat_id || "")}" placeholder="αυτόματα" readonly title="Συμπληρώνεται με /start στο bot"></td>` +
-      `<td><input type="email" class="notify-input-email" data-idx="${idx}" value="${Office.escapeHtml(row.email || "")}" placeholder="user@example.gr"></td>` +
-      `<td><input type="text" class="notify-input-pin${row.has_notify_pin && !pinVal ? " notify-input-pin--restored" : ""}" data-idx="${idx}" value="${Office.escapeHtml(pinVal)}" placeholder="${pinPlaceholder}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" title="${Office.escapeHtml(pinTitle)}"></td>` +
-      `<td class="col-notify-actions"><div class="notify-recipients-actions-inner">` +
-      `<button type="button" class="btn ${toggleClass} notify-toggle" data-idx="${idx}" title="${Office.escapeHtml(toggleTitle)}" aria-label="${Office.escapeHtml(toggleTitle)}">${Office.icon(toggleIcon)}</button>` +
-      `<button type="button" class="btn ${emailToggleClass} notify-email-toggle" data-idx="${idx}" title="${Office.escapeHtml(emailToggleTitle)}" aria-label="${Office.escapeHtml(emailToggleTitle)}">${Office.icon(emailToggleIcon)}</button>` +
-      `<button type="button" class="btn btn-danger notify-remove" data-idx="${idx}" title="Διαγραφή λήπτη" aria-label="Διαγραφή λήπτη">${Office.icon("trash3")}</button>` +
-      `</div></td>`;
-    body.appendChild(tr);
-  });
-  body.querySelectorAll(".notify-input-name, .notify-input-mobile, .notify-input-email, .notify-input-pin").forEach((inp) => {
-    inp.addEventListener("input", (e) => {
-      const i = parseInt(e.target.getAttribute("data-idx"), 10);
-      let field = "mobile";
-      if (e.target.classList.contains("notify-input-name")) field = "name";
-      else if (e.target.classList.contains("notify-input-email")) {
-        field = "email";
-        const cleaned = normalizeNotifyEmail(e.target.value);
-        if (notifyRecipients[i]) notifyRecipients[i][field] = cleaned;
-        return;
-      }
-      else if (e.target.classList.contains("notify-input-pin")) {
-        field = "notify_pin";
-        const cleaned = normalizeNotifyPinInput(e.target.value);
-        if (e.target.value !== cleaned) e.target.value = cleaned;
-        if (notifyRecipients[i]) notifyRecipients[i][field] = cleaned;
-        return;
-      }
-      if (notifyRecipients[i]) notifyRecipients[i][field] = e.target.value;
-    });
-  });
-  body.querySelectorAll(".notify-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const i = parseInt(btn.getAttribute("data-idx"), 10);
-      if (!notifyRecipients[i]) return;
-      notifyRecipients[i].active = !notifyRecipientIsActive(notifyRecipients[i]);
-      renderNotifyRecipients();
-    });
-  });
-  body.querySelectorAll(".notify-email-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const i = parseInt(btn.getAttribute("data-idx"), 10);
-      if (!notifyRecipients[i]) return;
-      notifyRecipients[i].email_active = !notifyRecipientEmailIsActive(notifyRecipients[i]);
-      renderNotifyRecipients();
-    });
-  });
-  body.querySelectorAll(".notify-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const i = parseInt(btn.getAttribute("data-idx"), 10);
-      notifyRecipients.splice(i, 1);
-      renderNotifyRecipients();
-    });
-  });
-}
-
-function collectNotifyRecipientsFromDom() {
-  const body = document.getElementById("notifyRecipientsBody");
-  if (!body) return notifyRecipients;
-  const rows = [];
-  body.querySelectorAll("tr").forEach((tr, idx) => {
-    const name = (tr.querySelector(".notify-input-name")?.value || "").trim();
-    const mobile = (tr.querySelector(".notify-input-mobile")?.value || "").trim();
-    const telegram_chat_id = (tr.querySelector(".notify-input-chat")?.value || "").trim();
-    const email = normalizeNotifyEmail(tr.querySelector(".notify-input-email")?.value || "");
-    const notify_pin = normalizeNotifyPinInput(tr.querySelector(".notify-input-pin")?.value || "");
-    if (name || mobile || email) {
-      rows.push({
-        name,
-        mobile,
-        telegram_chat_id: telegram_chat_id || null,
-        email: email || null,
-        notify_pin: notify_pin || "",
-        active: notifyRecipientIsActive(notifyRecipients[idx]),
-        email_active: notifyRecipientEmailIsActive(notifyRecipients[idx]),
-      });
-    }
-  });
-  notifyRecipients = rows;
-  return rows;
-}
-
-function persistNotifyRecipientsToDraft() {
-  const rows = collectNotifyRecipientsFromDom();
-  Office.setDraft({ ...Office.getDraft(), notifyRecipients: rows });
-  return rows;
-}
-
-async function loadNotifyRecipients(storeId) {
-  try {
-    const res = await fetch(`/api/store/${storeId}/notify-recipients`);
-    const data = await res.json();
-    if (!res.ok) {
-      Office.showMsg(
-        "stepMsg",
-        data.error || data.db_setup || `Σφάλμα ληπτών (HTTP ${res.status})`,
-        false
-      );
-      notifyRecipients = [];
-      renderNotifyRecipients();
-      return;
-    }
-    notifyRecipients = (data.recipients || []).map((r) => ({
-      name: r.name || "",
-      mobile: r.mobile || "",
-      telegram_chat_id: r.telegram_chat_id || "",
-      email: normalizeNotifyEmail(r.email),
-      notify_pin: cleanNotifyPin(r.notify_pin),
-      has_notify_pin: Boolean(r.has_notify_pin),
-      active: r.active !== false && r.active !== 0,
-      email_active: r.email_active !== false && r.email_active !== 0,
-    }));
-    renderNotifyRecipients();
-    updateNotifyUiState();
-  } catch (e) {
-    Office.showMsg("stepMsg", `Σφάλμα φόρτωσης ληπτών: ${e}`, false);
-    notifyRecipients = [];
-    renderNotifyRecipients();
-  }
-}
-
-async function saveNotifyRecipients(storeIdOverride) {
-  const draft = Office.getDraft();
-  const storeId = storeIdOverride || draft.id;
-  if (!storeId) {
-    Office.showMsg("stepMsg", "Για νέο κατάστημα, οι λήπτες αποθηκεύονται μετά την «Συνέχεια».", false);
-    return false;
-  }
-  const rows = collectNotifyRecipientsFromDom();
-  for (const row of rows) {
-    if (row.notify_pin && !isValidNotifyPin(row.notify_pin)) {
-      Office.showMsg("stepMsg", "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία.", false);
-      return false;
-    }
-    if (row.email && !isValidNotifyEmail(row.email)) {
-      Office.showMsg("stepMsg", `Μη έγκυρο email για ${row.name || row.mobile || "λήπτη"}.`, false);
-      return false;
-    }
-  }
-  const btn = document.getElementById("btnSaveNotifyRecipients");
-  if (btn) btn.disabled = true;
-  try {
-    const res = await fetch(`/api/store/${storeId}/notify-recipients`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipients: rows }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ληπτών", false);
-      return false;
-    }
-    notifyRecipients = (data.recipients || []).map((r) => ({
-      name: r.name || "",
-      mobile: r.mobile || "",
-      telegram_chat_id: r.telegram_chat_id || "",
-      email: normalizeNotifyEmail(r.email),
-      notify_pin: cleanNotifyPin(r.notify_pin),
-      has_notify_pin: Boolean(r.has_notify_pin),
-      active: r.active !== false && r.active !== 0,
-      email_active: r.email_active !== false && r.email_active !== 0,
-    }));
-    renderNotifyRecipients();
-    Office.setDraft({ ...Office.getDraft(), id: storeId, notifyRecipients });
-    Office.showMsg("stepMsg", `Αποθηκεύτηκαν ${data.count || 0} λήπτες.`, true);
-    return true;
-  } catch (e) {
-    Office.showMsg("stepMsg", String(e), false);
-    return false;
-  } finally {
-    updateNotifyUiState();
-  }
-}
-
-async function testNotifyRecipients() {
-  const draft = Office.getDraft();
-  if (!draft.id) {
-    Office.showMsg("stepMsg", "Αποθηκεύστε πρώτα τους λήπτες.", false);
-    return;
-  }
-  await saveNotifyRecipients(draft.id);
-  const btn = document.getElementById("btnTestNotify");
-  if (btn) btn.disabled = true;
-  try {
-    const res = await fetch(`/api/telegram/test/${draft.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      Office.showMsg("stepMsg", data.error || "Αποτυχία αποστολής", false);
-      return;
-    }
-    const err = (data.errors || []).join(" · ");
-    Office.showMsg(
-      "stepMsg",
-      err
-        ? `Στάλθηκαν ${data.sent}/${data.total}. ${err}`
-        : `Στάλθηκαν ${data.sent} δοκιμαστικά μηνύματα.`,
-      data.sent > 0
-    );
-  } catch (e) {
-    Office.showMsg("stepMsg", String(e), false);
-  } finally {
-    updateNotifyUiState();
-  }
-}
-
 async function loadStoreIntoForm(storeId) {
   try {
     const res = await fetch(`/api/store/${storeId}`);
@@ -377,8 +45,6 @@ async function loadStoreIntoForm(storeId) {
       accessToken: "",
       branches: null,
     });
-    await loadNotifyRecipients(storeId);
-    updateNotifyUiState();
   } catch (e) {
     Office.showMsg("stepMsg", String(e), false);
   }
@@ -437,7 +103,6 @@ async function onStep1Next() {
   }
   const btn = document.getElementById("btnStep1Next");
   const draft = Office.getDraft();
-  const pendingRecipients = persistNotifyRecipientsToDraft();
   btn.disabled = true;
   Office.showMsg(
     "stepMsg",
@@ -519,9 +184,6 @@ async function onStep1Next() {
       Office.showMsg("stepMsg", String(saveErr), false);
       return;
     }
-    if (storeId && pendingRecipients.length) {
-      await saveNotifyRecipients(storeId);
-    }
     Office.setDraft({
       ...draft,
       id: storeId,
@@ -530,7 +192,6 @@ async function onStep1Next() {
       accessToken: token,
       employer_afm,
       branches: branchesData.branches || [],
-      notifyRecipients: pendingRecipients,
     });
     window.location.href = "/ui/stores/branch";
   } catch (e) {

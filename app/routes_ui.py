@@ -38,6 +38,11 @@ def ui_store_credentials():
     return send_from_directory(_UI_DIR, "store-credentials.html")
 
 
+@ui_bp.get("/stores/notify")
+def ui_store_notify():
+    return send_from_directory(_UI_DIR, "store-notify.html")
+
+
 @ui_bp.get("/store/edit/<int:store_id>")
 def ui_store_edit_redirect(store_id: int):
     """Συμβατότητα με URL /ui/store/edit/<id> → διαπιστευτήρια."""

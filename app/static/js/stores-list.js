@@ -74,6 +74,11 @@ async function loadStoresList() {
         mkBtn(selectLabel, selectCls, "check-circle", () => selectStore(store.id), { disabled: isActive })
       );
       actInner.appendChild(mkBtn("Επεξεργασία", "btn", "pencil-square", () => editStore(store.id)));
+      actInner.appendChild(
+        mkBtn("Ειδοποιήσεις", "btn btn-secondary", "bell", () => {
+          window.location.href = `/ui/stores/notify?id=${store.id}`;
+        })
+      );
       actInner.appendChild(mkBtn("Διαγραφή", "btn btn-danger", "trash3", () => deleteStore(store.id)));
       tdAct.appendChild(actInner);
       tr.appendChild(tdAct);
