@@ -71,7 +71,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok || !data.success) {
         Office.showMsg(
           "todayHitMsg",
-          data.error || data.errors?.join(" · ") || "Αποτυχία επαλήθευσης",
+          data.error ||
+            data._parseError ||
+            data.errors?.join(" · ") ||
+            "Αποτυχία επαλήθευσης",
           false
         );
         if (btn && res.status !== 403) btn.disabled = false;

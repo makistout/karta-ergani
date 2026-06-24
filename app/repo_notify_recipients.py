@@ -116,15 +116,26 @@ def replace_notify_recipients(
         email = normalize_email(row.get("email")) or None
         pin_raw = str(row.get("notify_pin") or "").strip()
         prev = old_rows.get(mobile) or {}
+        prev_mobile = normalize_mobile(prev.get("mobile"))
         if is_pin_mask(pin_raw):
-            pin_hash = (prev.get("notify_pin_hash") or "").strip() or None
             pin_plain = str(prev.get("notify_pin") or "").strip() or None
+            if pin_plain and is_valid_notify_pin(pin_plain):
+                pin_hash = hash_notify_pin(store_id=sid, mobile=mobile, pin=pin_plain)
+            else:
+                pin_hash = (prev.get("notify_pin_hash") or "").strip() or None
         elif pin_raw:
             pin_plain = validate_notify_pin(pin_raw)
             pin_hash = hash_notify_pin(store_id=sid, mobile=mobile, pin=pin_plain)
         elif (prev.get("notify_pin_hash") or "").strip():
             pin_hash = (prev.get("notify_pin_hash") or "").strip() or None
             pin_plain = str(prev.get("notify_pin") or "").strip() or None
+            if (
+                pin_plain
+                and is_valid_notify_pin(pin_plain)
+                and prev_mobile
+                and prev_mobile != mobile
+            ):
+                pin_hash = hash_notify_pin(store_id=sid, mobile=mobile, pin=pin_plain)
         else:
             pin_hash = None
             pin_plain = None
@@ -274,3 +285,25 @@ def list_email_deliverable_recipients(store_id: int) -> list[dict[str, Any]]:
         )
         rows = rows_to_dicts(cur)
     return [r for r in rows if is_valid_email(r.get("email"))]
+
+
+def repair_notify_pin_hash(
+    *,
+    recipient_id: int,
+    store_id: int,
+    mobile: str | None,
+    pin: str,
+) -> None:
+    """Συγχρονίζει hash PIN με τρέχον mobile μετά επιτυχή επαλήθευση."""
+    mob = normalize_mobile(mobile)
+    pin_plain = validate_notify_pin(pin)
+    pin_hash = hash_notify_pin(store_id=int(store_id), mobile=mob, pin=pin_plain)
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_store_notify_recipient
+            SET notify_pin_hash = ?, notify_pin = ?, mobile = ?
+            WHERE id = ? AND store_id = ?
+            """,
+            (pin_hash, pin_plain, mob, int(recipient_id), int(store_id)),
+        )

@@ -67,22 +67,25 @@ def logout_office_user() -> None:
 
 
 def _path_is_public(path: str, method: str) -> bool:
-    if path in _PUBLIC_EXACT:
+    norm = (path or "").strip()
+    if len(norm) > 1 and norm.endswith("/"):
+        norm = norm.rstrip("/")
+    if norm in _PUBLIC_EXACT:
         return True
     for prefix in _PUBLIC_PREFIXES:
-        if path.startswith(prefix):
+        if norm.startswith(prefix):
             return True
-    if path == "/api/work-card/event" and method == "POST":
+    if norm == "/api/work-card/event" and method == "POST":
         return True
-    if path.startswith("/api/telegram/retro-hit/"):
+    if norm.startswith("/api/telegram/retro-hit/"):
         return True
-    if path.startswith("/api/telegram/today-hit/"):
+    if norm.startswith("/api/telegram/today-hit/"):
         return True
-    if path.startswith("/api/telegram/today-action/"):
+    if norm.startswith("/api/telegram/today-action/"):
         return True
-    if path.startswith("/api/telegram/hit/"):
+    if norm.startswith("/api/telegram/hit/"):
         return True
-    if path.startswith("/api/telegram/punch/"):
+    if norm.startswith("/api/telegram/punch/"):
         return True
     return False
 

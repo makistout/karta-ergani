@@ -361,7 +361,7 @@ def get_today_alert_token_row(token: str) -> dict[str, Any] | None:
                 CAST(t.created_at AS datetime2) AS created_at,
                 CAST(t.expires_at AS datetime2) AS expires_at,
                 CAST(t.used_at AS datetime2) AS used_at,
-                r.mobile, r.notify_pin_hash, r.name AS recipient_name,
+                r.mobile, r.notify_pin_hash, r.notify_pin, r.name AS recipient_name,
                 s.name AS store_name, s.employer_afm, s.branch_aa
             FROM dbo.karta_telegram_today_alert_token t
             INNER JOIN dbo.karta_store_notify_recipient r ON r.id = t.recipient_id
@@ -387,7 +387,7 @@ def get_today_alert_token_row_by_id(token_id: int) -> dict[str, Any] | None:
                 CAST(t.created_at AS datetime2) AS created_at,
                 CAST(t.expires_at AS datetime2) AS expires_at,
                 CAST(t.used_at AS datetime2) AS used_at,
-                r.mobile, r.notify_pin_hash, r.name AS recipient_name,
+                r.mobile, r.notify_pin_hash, r.notify_pin, r.name AS recipient_name,
                 s.name AS store_name, s.employer_afm, s.branch_aa
             FROM dbo.karta_telegram_today_alert_token t
             INNER JOIN dbo.karta_store_notify_recipient r ON r.id = t.recipient_id

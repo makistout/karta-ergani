@@ -4,6 +4,53 @@
 
 ---
 
+## 2026-06-24 (γ) — PIN ειδοποιήσεων, δημόσιοι σύνδεσμοι & προεπιλογή κάρτας από ωράριο
+
+### Δημόσιοι σύνδεσμοι (Telegram / Email)
+
+- **Νέο** `app/public_urls.py`:
+  - `effective_public_base_url()` — σε production αγνοεί λανθασμένο `localhost` στο `.env` και
+    χρησιμοποιεί `https://erganios.gr`.
+  - `ui_public_url()` — απόλυτοι σύνδεσμοι για Telegram/Email.
+  - `ui_relative_path()` — σχετικές διαδρομές μετά PIN (ίδιο host με το browser).
+- **`today_alert_service.py`**: σύνδεσμοι ειδοποίησης σήμερα μέσω `ui_public_url`;
+  redirect μετά PIN μέσω `ui_relative_path` (όχι `PUBLIC_BASE_URL` → localhost).
+- **`telegram_punch_service.py`**: ίδιο pattern για `retro-hit` και `telegram-hit`.
+
+### Επαλήθευση PIN ληπτών
+
+- **`notify_pin.py`**: `verify_notify_pin_for_recipient` — δοκιμή hash με κανονικοποιημένο/ωμό
+  mobile και fallback σε plaintext `notify_pin` όταν το hash είναι παλιό (π.χ. μετά αλλαγή κινητού).
+- **`repo_notify_recipients.py`**:
+  - re-hash PIN όταν αλλάζει mobile χωρίς νέο PIN·
+  - `repair_notify_pin_hash()` — συγχρονισμός hash/mobile μετά επιτυχή PIN.
+- **`repo_today_alert.py`**, **`repo_telegram_punch.py`**: SELECT `notify_pin` στο token row.
+- **`today_alert_service.py`**, **`telegram_punch_service.py`**: χρήση νέας επαλήθευσης +
+  αυτόματο repair hash μετά επιτυχία.
+
+### UI ροής ληπτή (χωρίς login γραφείου)
+
+- **`office-common.js`**:
+  - `/ui/today-hit`, `/ui/today-action` στο `skipLoginRedirect`;
+  - απενεργοποίηση `loadActiveStore` / chrome σε recipient flow (today, telegram-hit, retro-hit).
+- **`office_auth.py`**: κανονικοποίηση path (trailing slash) στα public API prefixes.
+- **`today-hit.js`**: καλύτερα μηνύματα σφάλματος μετά PIN· redirect σε relative URL.
+- Cache bust: `office-common.js?v=20260624todaypin1`, `today-hit.js?v=20260624todaypin2`.
+
+### Προεπιλογή χτυπήματος κάρτας από ψηφιακό ωράριο
+
+- **`prepare_card_from_today_alert`**: `resolve_missing_punch_action` (ίδια λογική με ελλιπές
+  χτύπημα) — προεπιλογή **είσοδος/έξοδος** και **ώρα** από το ψηφιακό ωράριο.
+- Fallback: φόρτωση ωραρίου από DB + `card_action_for_today_kind` με `schedule_hour_to`.
+- Σελίδα `retro-hit`: συμπλήρωση ώρας και επισήμανση σωστού κουμπιού από session context.
+
+### Tests
+
+- `tests/test_public_urls.py` — relative vs public URL, localhost σε production.
+- `tests/test_notify_pin.py` — hash mismatch / κανονικοποιημένο mobile.
+
+---
+
 ## 2026-06-24 — Αυτόνομες ειδοποιήσεις καταστήματος & κενή πραγματική = OK
 
 ### Ειδοποιήσεις (UI + backend)

@@ -9,7 +9,7 @@ from typing import Any
 from flask import session
 
 from app import repo_store as repo
-from app.notify_pin import verify_notify_pin
+from app.notify_pin import verify_notify_pin_for_recipient
 from app.repo_notify_recipients import normalize_mobile
 from app.repo_telegram_punch import (
     get_punch_token_row,
@@ -255,15 +255,16 @@ def _normalize_hour(value: str) -> str:
     return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
-def build_retro_hit_redirect_url(token: str | None = None) -> str:
-    from urllib.parse import quote
+from app.public_urls import ui_public_url, ui_relative_path
 
-    base = (Config.PUBLIC_BASE_URL or "").rstrip("/") or ""
-    path = f"{base}/ui/retro-hit" if base else "/ui/retro-hit"
-    t = (token or "").strip()
-    if t:
-        return f"{path}?t={quote(t, safe='')}"
-    return path
+
+def build_retro_hit_redirect_url(token: str | None = None) -> str:
+    """Σχετική διαδρομή — μετά PIN μένει στο ίδιο host."""
+    return ui_relative_path("/ui/retro-hit", token=token)
+
+
+def build_telegram_hit_public_url(token: str) -> str:
+    return ui_public_url("/ui/telegram-hit", token=token)
 
 
 def punch_preview(token: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -319,16 +320,29 @@ def confirm_punch_with_pin(token: str, pin: str) -> tuple[dict[str, Any], int]:
     if not ok or not row:
         return {"success": False, "error": err or "Μη έγκυρο token"}, 400
 
-    if not verify_notify_pin(
+    if not verify_notify_pin_for_recipient(
         store_id=int(row["store_id"]),
-        mobile=normalize_mobile(row.get("mobile")),
+        mobile=row.get("mobile"),
         pin=str(pin or "").strip(),
         pin_hash=row.get("notify_pin_hash"),
+        pin_plain=row.get("notify_pin"),
     ):
         attempts = increment_pin_attempts(int(row["id"]))
         if attempts >= 5:
             return {"success": False, "error": "Λάθος PIN — ο σύνδεσμος κλειδώθηκε"}, 403
         return {"success": False, "error": "Λάθος PIN"}, 401
+
+    try:
+        from app.repo_notify_recipients import repair_notify_pin_hash
+
+        repair_notify_pin_hash(
+            recipient_id=int(row["recipient_id"]),
+            store_id=int(row["store_id"]),
+            mobile=row.get("mobile"),
+            pin=str(pin or "").strip(),
+        )
+    except Exception:
+        pass
 
     cfg = repo.get_store_config(int(row["store_id"]))
     if not cfg:
@@ -422,7 +436,7 @@ def send_missing_punch_notifications(
                     card_event=action["card_event"],
                     retro_time=action.get("retro_time") or "",
                 )
-                hit_url = f"{public_base_url.rstrip('/')}/ui/telegram-hit?t={token}"
+                hit_url = build_telegram_hit_public_url(token)
             except Exception as ex:
                 errors.append(f"{rec.get('name')}: token — {ex}")
         text = format_missing_punch_notification(
@@ -472,7 +486,7 @@ def send_missing_punch_notifications(
                     card_event=action["card_event"],
                     retro_time=action.get("retro_time") or "",
                 )
-                hit_url = f"{public_base_url.rstrip('/')}/ui/telegram-hit?t={token}"
+                hit_url = build_telegram_hit_public_url(token)
             except Exception as ex:
                 errors.append(f"Email {rec.get('name')}: token — {ex}")
         try:

@@ -50,3 +50,42 @@ def verify_notify_pin(
         return False
     candidate = hash_notify_pin(store_id=store_id, mobile=mobile, pin=str(pin).strip())
     return secrets.compare_digest(candidate, stored)
+
+
+def verify_notify_pin_for_recipient(
+    *,
+    store_id: int,
+    mobile: str | None,
+    pin: str,
+    pin_hash: str | None,
+    pin_plain: str | None = None,
+) -> bool:
+    """Επαλήθευση PIN — hash με κανονικοποιημένο/ωμό mobile ή plaintext fallback."""
+    from app.repo_notify_recipients import normalize_mobile
+
+    entered = str(pin or "").strip()
+    if not entered or not is_valid_notify_pin(entered):
+        return False
+
+    stored_hash = (pin_hash or "").strip()
+    mobile_candidates: list[str] = []
+    norm = normalize_mobile(mobile)
+    if norm:
+        mobile_candidates.append(norm)
+    raw_digits = re.sub(r"\D", "", str(mobile or ""))
+    if raw_digits and raw_digits not in mobile_candidates:
+        mobile_candidates.append(raw_digits)
+    if "" not in mobile_candidates:
+        mobile_candidates.append("")
+
+    for mob in mobile_candidates:
+        if stored_hash and verify_notify_pin(
+            store_id=store_id,
+            mobile=mob,
+            pin=entered,
+            pin_hash=stored_hash,
+        ):
+            return True
+
+    plain = str(pin_plain or "").strip()
+    return bool(plain and is_valid_notify_pin(plain) and secrets.compare_digest(plain, entered))

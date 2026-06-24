@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote
 
 from flask import session
 
 from app import repo_store as repo
-from app.notify_pin import verify_notify_pin
+from app.notify_pin import verify_notify_pin_for_recipient
 from app.repo_notify_recipients import (
     list_deliverable_recipients,
     list_email_deliverable_recipients,
@@ -33,6 +32,7 @@ from app.telegram_punch_service import (
     _activate_store_session,
     _context_from_token_row,
     build_retro_hit_redirect_url,
+    resolve_missing_punch_action,
 )
 from app.today_notify_logic import (
     KIND_LABELS,
@@ -44,7 +44,7 @@ from app.today_notify_logic import (
     today_leave_eligible,
     today_wto_daily_eligible,
 )
-from config import Config
+from app.public_urls import ui_public_url, ui_relative_path
 
 TODAY_ALERT_SESSION_KEY = "today_alert_ctx"
 
@@ -108,21 +108,13 @@ def get_today_action_context(*, token: str | None = None) -> tuple[dict[str, Any
 
 
 def build_today_action_redirect_url(token: str | None = None) -> str:
-    base = (Config.PUBLIC_BASE_URL or "").rstrip("/") or ""
-    path = f"{base}/ui/today-action" if base else "/ui/today-action"
-    t = (token or "").strip()
-    if t:
-        return f"{path}?t={quote(t, safe='')}"
-    return path
+    """Σχετική διαδρομή — μετά PIN μένει στο ίδιο host."""
+    return ui_relative_path("/ui/today-action", token=token)
 
 
 def build_today_hit_redirect_url(token: str | None = None) -> str:
-    base = (Config.PUBLIC_BASE_URL or "").rstrip("/") or ""
-    path = f"{base}/ui/today-hit" if base else "/ui/today-hit"
-    t = (token or "").strip()
-    if t:
-        return f"{path}?t={quote(t, safe='')}"
-    return path
+    """Απόλυτος σύνδεσμος για Telegram/Email."""
+    return ui_public_url("/ui/today-hit", token=token)
 
 
 def today_hit_preview(token: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -154,16 +146,29 @@ def confirm_today_hit_with_pin(token: str, pin: str) -> tuple[dict[str, Any], in
     if not ok or not row:
         return {"success": False, "error": err or "Μη έγκυρο token"}, 400
 
-    if not verify_notify_pin(
+    if not verify_notify_pin_for_recipient(
         store_id=int(row["store_id"]),
-        mobile=normalize_mobile(row.get("mobile")),
+        mobile=row.get("mobile"),
         pin=str(pin or "").strip(),
         pin_hash=row.get("notify_pin_hash"),
+        pin_plain=row.get("notify_pin"),
     ):
         attempts = increment_today_alert_pin_attempts(int(row["id"]))
         if attempts >= 5:
             return {"success": False, "error": "Λάθος PIN — ο σύνδεσμος κλειδώθηκε"}, 403
         return {"success": False, "error": "Λάθος PIN"}, 401
+
+    try:
+        from app.repo_notify_recipients import repair_notify_pin_hash
+
+        repair_notify_pin_hash(
+            recipient_id=int(row["recipient_id"]),
+            store_id=int(row["store_id"]),
+            mobile=row.get("mobile"),
+            pin=str(pin or "").strip(),
+        )
+    except Exception:
+        pass
 
     cfg = repo.get_store_config(int(row["store_id"]))
     if not cfg:
@@ -238,11 +243,41 @@ def prepare_card_from_today_alert(*, token: str | None = None) -> tuple[dict[str
         return {"success": False, "error": "Μη έγκυρο token"}, 400
 
     kind = str(row.get("notify_kind") or "").strip()
-    action = card_action_for_today_kind(
-        kind,
-        schedule_hour_from=str(row.get("schedule_hour_from") or ""),
-        hour_from=str(row.get("hour_from") or ""),
+    employer_afm = str(row.get("employer_afm") or "")
+    branch_aa = str(row.get("branch_aa") or "")
+    work_date = str(row.get("work_date_ergani") or "")
+    employee_afm = str(row.get("employee_afm") or "")
+
+    action = resolve_missing_punch_action(
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employee_afm=employee_afm,
+        work_date=work_date,
+        hour_from=row.get("hour_from"),
+        hour_to=row.get("hour_to"),
     )
+    if not action:
+        sched_row = {
+            "employee_afm": employee_afm,
+            "work_date": work_date,
+            "hour_from": row.get("hour_from"),
+            "hour_to": row.get("hour_to"),
+        }
+        enrich_work_log_rows_with_schedule(
+            [sched_row], employer_afm, branch_aa, [work_date]
+        )
+        sched = sched_row.get("schedule")
+        sched_from = str(row.get("schedule_hour_from") or "").strip()
+        sched_to = ""
+        if isinstance(sched, dict):
+            sched_from = sched_from or str(sched.get("hour_from") or "").strip()
+            sched_to = str(sched.get("hour_to") or "").strip()
+        action = card_action_for_today_kind(
+            kind,
+            schedule_hour_from=sched_from,
+            schedule_hour_to=sched_to,
+            hour_from=str(row.get("hour_from") or ""),
+        )
     retro_row = {
         **row,
         "card_event": action["card_event"],

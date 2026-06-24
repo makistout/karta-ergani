@@ -1350,7 +1350,9 @@ const Office = {
         path.startsWith("/ui/telegram-hit") ||
         path.startsWith("/ui/telegram-punch") ||
         path.startsWith("/ui/retro-hit") ||
-        path.startsWith("/ui/retro-punch")
+        path.startsWith("/ui/retro-punch") ||
+        path.startsWith("/ui/today-hit") ||
+        path.startsWith("/ui/today-action")
       );
     };
     window.fetch = async (...args) => {
@@ -1391,9 +1393,18 @@ const Office = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  const path = window.location.pathname || "";
+  const recipientFlow =
+    path.startsWith("/ui/telegram-hit") ||
+    path.startsWith("/ui/retro-hit") ||
+    path.startsWith("/ui/today-hit") ||
+    path.startsWith("/ui/today-action");
+
   Office.installFetchAuthGuard();
-  Office.initChrome();
-  Office.initPageBackButton();
-  Office.ensureLogoutLink();
-  Office.loadActiveStore();
+  if (!recipientFlow) {
+    Office.initChrome();
+    Office.initPageBackButton();
+    Office.ensureLogoutLink();
+    Office.loadActiveStore();
+  }
 });
