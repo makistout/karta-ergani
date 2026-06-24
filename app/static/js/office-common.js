@@ -994,6 +994,7 @@ const Office = {
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
       late_check_in: "καθυστέρηση εισόδου (>10' από ωράριο)",
+      late_check_out: "έλλειψη εξόδου (>10' από ωράριο)",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };
     return labels[kind] || kind || "";
@@ -1078,6 +1079,17 @@ const Office = {
     }
 
     if (hf && !ht) {
+      const schedEnd = this.scheduleEndMinutesFromRow(row);
+      if (schedEnd != null) {
+        const elapsedEnd = this.elapsedWorkDayMinutes(schedEnd, nowMin);
+        if (elapsedEnd != null && elapsedEnd >= 10) {
+          return {
+            kind: "late_check_out",
+            label: "έλλειψη εξόδου (>10' από ωράριο)",
+          };
+        }
+        return null;
+      }
       const startMin = this.parseClockToMinutes(hf);
       const elapsed = this.elapsedWorkDayMinutes(startMin, nowMin);
       if (elapsed != null && elapsed >= 8 * 60) {

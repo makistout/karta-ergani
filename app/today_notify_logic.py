@@ -8,10 +8,13 @@ from typing import Any
 
 from app.work_card_payload import tz_athens
 
+NOTIFY_GRACE_MINUTES = 10
+
 TODAY_NOTIFY_KINDS = frozenset(
     {
         "exit_without_entry",
         "late_check_in",
+        "late_check_out",
         "missing_exit_8h",
         "rest_with_card",
         "rest_day",
@@ -24,6 +27,7 @@ TODAY_NOTIFY_KINDS = frozenset(
 KIND_LABELS = {
     "exit_without_entry": "εξόδος χωρίς είσοδο",
     "late_check_in": "καθυστέρηση εισόδου (>10' από ωράριο)",
+    "late_check_out": "έλλειψη εξόδου (>10' από ωράριο)",
     "missing_exit_8h": "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     "rest_with_card": "ρεπό/ανάπαυση με καταγραφή εργασίας",
     "rest_day": "ημέρα ρεπό/ανάπαυση",
@@ -33,6 +37,13 @@ KIND_LABELS = {
 }
 
 WTO_DAILY_NOTIFY_KINDS = frozenset()
+
+# Αυτόματες ειδοποιήσεις μετά sync: μία φορά ανά ημέρα (είσοδος).
+AUTO_NOTIFY_SEND_ONCE_KINDS = frozenset({"late_check_in"})
+
+
+def notify_auto_send_once(notify_kind: str) -> bool:
+    return (notify_kind or "").strip() in AUTO_NOTIFY_SEND_ONCE_KINDS
 
 
 def _parse_clock_minutes(value: str | None) -> int | None:
@@ -50,6 +61,23 @@ def _elapsed_work_day_minutes(from_min: int, to_min: int) -> int:
     if elapsed < 0:
         elapsed += 24 * 60
     return elapsed
+
+
+def _schedule_end_minutes(row: dict[str, Any]) -> int | None:
+    sched = row.get("schedule")
+    if isinstance(sched, dict) and sched.get("hour_to"):
+        parsed = _parse_clock_minutes(str(sched.get("hour_to")))
+        if parsed is not None:
+            return parsed
+    label = str(row.get("schedule_label") or "").strip()
+    if not label or label == "—" or re.search(r"ρεπο|ανάπαυση", label, re.I):
+        return None
+    parts = [p.strip() for p in label.split("·") if p.strip()]
+    last = parts[-1] if parts else label
+    match = re.search(r"[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)", last)
+    if match:
+        return _parse_clock_minutes(match.group(1))
+    return None
 
 
 def _schedule_start_minutes(row: dict[str, Any]) -> int | None:
@@ -116,10 +144,15 @@ def resolve_today_notify_kind(
 
     sched_start = _schedule_start_minutes(row)
     if not hf and sched_start is not None:
-        if _elapsed_work_day_minutes(sched_start, now_min) >= 10:
+        if _elapsed_work_day_minutes(sched_start, now_min) >= NOTIFY_GRACE_MINUTES:
             return "late_check_in"
 
     if hf and not ht:
+        sched_end = _schedule_end_minutes(row)
+        if sched_end is not None:
+            if _elapsed_work_day_minutes(sched_end, now_min) >= NOTIFY_GRACE_MINUTES:
+                return "late_check_out"
+            return None
         start_min = _parse_clock_minutes(hf)
         if start_min is not None and _elapsed_work_day_minutes(start_min, now_min) >= 8 * 60:
             return "missing_exit_8h"
@@ -131,14 +164,16 @@ def card_action_for_today_kind(
     kind: str,
     *,
     schedule_hour_from: str | None = None,
+    schedule_hour_to: str | None = None,
     hour_from: str | None = None,
 ) -> dict[str, str]:
     k = (kind or "").strip()
     if k in ("exit_without_entry", "late_check_in"):
         rt = (schedule_hour_from or "").strip()
         return {"card_event": "check_in", "retro_time": rt}
-    if k == "missing_exit_8h":
-        return {"card_event": "check_out", "retro_time": ""}
+    if k in ("missing_exit_8h", "late_check_out"):
+        rt = (schedule_hour_to or "").strip() if k == "late_check_out" else ""
+        return {"card_event": "check_out", "retro_time": rt}
     return {"card_event": "check_in", "retro_time": ""}
 
 

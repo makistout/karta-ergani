@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime
 from typing import Any
 
 from app.db import cursor
@@ -253,6 +254,24 @@ def iter_period_sync_events(
         and results["schedule"].get("success")
         and results["work_log"].get("success")
     )
+    post_sync_notifications_enqueued = False
+    today_iso = datetime.today().strftime("%Y-%m-%d")
+    if ok and from_iso <= today_iso <= to_iso:
+        from app import repo_store
+        from app.scheduled_sync import enqueue_post_sync_notifications
+
+        cfg = repo_store.get_store_config(int(ctx["id"]))
+        if cfg:
+            post_sync_notifications_enqueued = enqueue_post_sync_notifications(
+                cfg,
+                work_date_iso=today_iso,
+                parent_run_id=run_id,
+            )
+            if post_sync_notifications_enqueued:
+                log.info(
+                    "Έγινε enqueue ασύγχρονων ειδοποιήσεων μετά το sync περιόδου",
+                    work_date=today_iso,
+                )
     parts = []
     if results["employees"].get("success"):
         parts.append(f"{results['employees'].get('count', 0)} εργαζόμενοι")
@@ -275,7 +294,11 @@ def iter_period_sync_events(
     yield {
         "event": "done",
         "success": ok,
-        "sync": {"success": ok, "sync_results": results},
+        "sync": {
+            "success": ok,
+            "sync_results": results,
+            "post_sync_notifications_enqueued": post_sync_notifications_enqueued,
+        },
         "message": summary,
         "logs": log.tail(200),
         "error": None if ok else summary,

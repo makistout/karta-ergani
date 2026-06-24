@@ -20,7 +20,9 @@ from app.repo_today_alert import (
     get_today_alert_token_row,
     get_today_alert_token_row_by_id,
     increment_today_alert_pin_attempts,
+    is_notify_sent,
     is_snoozed,
+    mark_notify_sent,
     mark_today_alert_action,
     mark_today_alert_pin_verified,
     today_alert_token_is_valid,
@@ -37,6 +39,7 @@ from app.today_notify_logic import (
     WTO_DAILY_NOTIFY_KINDS,
     card_action_for_today_kind,
     ergani_date_to_iso,
+    notify_auto_send_once,
     resolve_today_notify_kind,
     today_leave_eligible,
     today_wto_daily_eligible,
@@ -675,6 +678,7 @@ def send_today_punch_notifications(
     hour_to: str | None,
     notify_kind: str | None,
     public_base_url: str,
+    auto_post_sync: bool = False,
 ) -> dict[str, Any]:
     from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
@@ -696,6 +700,7 @@ def send_today_punch_notifications(
     )
     sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else {}
     schedule_hour_from = str((sched or {}).get("hour_from") or "").strip() or None
+    schedule_hour_to = str((sched or {}).get("hour_to") or "").strip() or None
 
     resolved_kind = resolve_today_notify_kind(row)
     if not resolved_kind:
@@ -723,6 +728,22 @@ def send_today_punch_notifications(
             "total": 0,
             "errors": [],
             "skipped": "snoozed",
+        }
+    if (
+        auto_post_sync
+        and notify_auto_send_once(resolved_kind)
+        and is_notify_sent(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=resolved_kind,
+        )
+    ):
+        return {
+            "sent": 0,
+            "total": 0,
+            "errors": [],
+            "skipped": "already_sent",
         }
 
     recipients = list_deliverable_recipients(store_id)
@@ -826,6 +847,15 @@ def send_today_punch_notifications(
             errors.append(f"Email {rec.get('name')}: {ex}")
         except Exception as ex:
             errors.append(f"Email {rec.get('name')}: {ex}")
+
+    if auto_post_sync and notify_auto_send_once(resolved_kind) and sent > 0:
+        mark_notify_sent(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=resolved_kind,
+            sent_via="auto_post_sync",
+        )
 
     return {
         "sent": sent,

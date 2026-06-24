@@ -133,6 +133,95 @@ def enrich_card_report_rows_with_today_notify(
         row["today_notify_snoozed"] = key in snoozed
 
 
+def is_notify_sent(
+    *,
+    store_id: int,
+    employee_afm: str,
+    work_date_ergani: str,
+    notify_kind: str,
+) -> bool:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM dbo.karta_today_notify_sent
+            WHERE store_id = ? AND employee_afm = ? AND work_date_ergani = ?
+              AND notify_kind = ?
+            """,
+            (
+                int(store_id),
+                norm_afm(employee_afm),
+                work_date_ergani.strip()[:32],
+                notify_kind.strip()[:32],
+            ),
+        )
+        return cur.fetchone() is not None
+
+
+def list_today_notify_sent(
+    store_id: int,
+    work_dates_ergani: list[str],
+) -> set[tuple[str, str, str]]:
+    dates = [d.strip()[:32] for d in work_dates_ergani if (d or "").strip()]
+    if not dates:
+        return set()
+    placeholders = ",".join("?" * len(dates))
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT employee_afm, work_date_ergani, notify_kind
+            FROM dbo.karta_today_notify_sent
+            WHERE store_id = ? AND work_date_ergani IN ({placeholders})
+            """,
+            (int(store_id), *dates),
+        )
+        rows = rows_to_dicts(cur)
+    return {
+        (
+            norm_afm(str(r.get("employee_afm") or "")),
+            str(r.get("work_date_ergani") or "").strip(),
+            str(r.get("notify_kind") or "").strip(),
+        )
+        for r in rows
+    }
+
+
+def mark_notify_sent(
+    *,
+    store_id: int,
+    employee_afm: str,
+    work_date_ergani: str,
+    notify_kind: str,
+    sent_via: str = "auto_post_sync",
+) -> None:
+    with cursor() as cur:
+        cur.execute(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.karta_today_notify_sent
+                WHERE store_id = ? AND employee_afm = ? AND work_date_ergani = ?
+                  AND notify_kind = ?
+            )
+            BEGIN
+                INSERT INTO dbo.karta_today_notify_sent (
+                    store_id, employee_afm, work_date_ergani, notify_kind, sent_via
+                ) VALUES (?, ?, ?, ?, ?)
+            END
+            """,
+            (
+                int(store_id),
+                norm_afm(employee_afm),
+                work_date_ergani.strip()[:32],
+                notify_kind.strip()[:32],
+                int(store_id),
+                norm_afm(employee_afm),
+                work_date_ergani.strip()[:32],
+                notify_kind.strip()[:32],
+                (sent_via or "auto_post_sync").strip()[:32],
+            ),
+        )
+
+
 def enrich_card_report_rows_with_wto_snooze(
     rows: list[dict[str, Any]],
     store_id: int,
