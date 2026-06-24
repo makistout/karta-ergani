@@ -1,0 +1,34 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Παράρτημα' %}
+{% set shell = "office" %}
+{% set active_nav = '' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-diagram-3" aria-hidden="true"></i> Παράρτημα</h1>
+      <p class="page-desc">Βήμα 2 από 3 — στοιχεία από EX_BASE_02 (web user / API).</p>
+      <div class="steps">
+        <span class="step done"><i class="bi bi-check-circle-fill"></i> Διαπιστευτήρια</span>
+        <span class="step active"><i class="bi bi-2-circle-fill"></i> Παράρτημα</span>
+        <span class="step"><i class="bi bi-3-circle"></i> Κατάλογοι</span>
+      </div>
+      <div class="card">
+        <p id="employerHint" style="font-size:0.88rem;color:var(--muted);margin-bottom:1rem;"></p>
+        <div id="branchPickerWrap" class="hidden">
+          <label for="branchSelect">Παράρτημα (ΑΑ)</label>
+          <select id="branchSelect"></select>
+        </div>
+        <div id="branchDetailsCard" class="branch-details-card">
+          <h2 class="branch-details-title">Στοιχεία EX_BASE_02</h2>
+          <dl id="branchDetails" class="branch-details"></dl>
+        </div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="/ui/stores/credentials"><i class="bi bi-arrow-left-circle" aria-hidden="true"></i><span>Πίσω</span></a>
+          <button type="button" class="btn" id="btnStep2Next"><i class="bi bi-arrow-right-circle" aria-hidden="true"></i><span>Συνέχεια</span></button>
+        </div>
+      </div>
+      <div id="stepMsg" class="msg"></div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/store-branch.js"></script>
+{% endblock %}

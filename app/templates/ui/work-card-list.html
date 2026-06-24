@@ -1,0 +1,130 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ψηφιακή κάρτα' %}
+{% set shell = "office" %}
+{% set active_nav = 'workcard' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i> Ψηφιακή κάρτα</h1>
+      <p class="page-desc" id="workCardDesc">Δηλώσεις εισόδου/εξόδου (WRKCardSE) στο Ergani API για το ενεργό κατάστημα.</p>
+      <p class="page-desc sync-meta-line" id="workCardWorkLogSyncMeta"></p>
+
+      <div class="card work-card-terminal">
+        <div class="terminal-badge online">
+          <span class="terminal-badge-dot" aria-hidden="true"></span>
+          ONLINE · ΤΕΡΜΑΤΙΚΟ ΨΗΦΙΑΚΗΣ ΚΑΡΤΑΣ
+        </div>
+        <div class="terminal-clock" id="terminalClock" aria-live="polite">--:--:--</div>
+      </div>
+
+      <div class="card work-card-declare-card">
+        <h2 class="work-card-declare-title">
+          <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Νέα δήλωση
+        </h2>
+        <div class="work-card-declare-grid">
+          <div id="workCardForm" class="work-card-form">
+            <div class="form-row">
+              <label for="wcEmployeeInput">Εργαζόμενος</label>
+              <div class="work-card-employee-row">
+                <div class="ac-wrap">
+                  <input id="wcEmployeeInput" type="text" placeholder="ΑΦΜ, επώνυμο ή όνομα…" autocomplete="off"
+                    disabled role="combobox" aria-autocomplete="list" aria-controls="wcEmployeeList" aria-expanded="false">
+                  <ul id="wcEmployeeList" class="ac-list" role="listbox"></ul>
+                </div>
+                <a id="wcEmployeeHistoryLink" class="work-card-employee-history hidden"
+                  href="/ui/work-log/history" title="Ιστορικό πραγματικής απασχόλησης"
+                  aria-label="Ιστορικό πραγματικής απασχόλησης" tabindex="-1" aria-hidden="true">
+                  <i class="bi bi-clock-history" aria-hidden="true"></i>
+                </a>
+              </div>
+              <input type="hidden" id="wcEmployeeAfm">
+            </div>
+            <div class="form-row">
+              <label for="wcComments">Σχόλιο (προαιρετικό)</label>
+              <input type="text" id="wcComments" maxlength="500" placeholder="π.χ. mobile app v1">
+            </div>
+            <p class="work-card-form-hint">Ώρα κτυπήματος: <strong>τώρα</strong> · ημέρα αναφοράς από επιλογή κάτω.</p>
+            <div class="work-card-actions">
+              <button type="button" class="btn" id="btnCheckIn" disabled>
+                <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span>Είσοδος (check_in)</span>
+              </button>
+              <button type="button" class="btn btn-outline-primary" id="btnCheckOut" disabled>
+                <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Έξοδος (check_out)</span>
+              </button>
+            </div>
+          </div>
+
+          <aside class="work-card-retro" aria-labelledby="wcRetroTitle">
+            <h3 class="work-card-retro-title" id="wcRetroTitle">
+              <i class="bi bi-clock-history" aria-hidden="true"></i>
+              Προγενέστερη καταχώρηση
+              <span class="work-card-retro-optional">(προαιρετικό)</span>
+            </h3>
+            <p class="work-card-retro-desc">
+              Αιτιολογία εκπρόθεσμης Ergani: <strong>001 — ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ</strong>
+            </p>
+            <div class="form-row">
+              <label for="wcRetroDate">Ημερομηνία κτυπήματος</label>
+              <input type="text" id="wcRetroDate" placeholder="ηη/μμ/εεεε" disabled>
+            </div>
+            <div class="form-row">
+              <label for="wcRetroTime">Ώρα κτυπήματος</label>
+              <input type="text" id="wcRetroTime" class="input-time-24" inputmode="numeric"
+                placeholder="ΩΩ:ΛΛ" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" disabled>
+            </div>
+            <div class="work-card-actions work-card-actions-retro">
+              <button type="button" class="btn btn-secondary" id="btnRetroCheckIn" disabled>
+                <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span>Είσοδος</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnRetroCheckOut" disabled>
+                <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Έξοδος</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      </div>
+      <div id="wcMsg" class="msg"></div>
+
+      <div class="toolbar-dates card">
+        <div class="toolbar-dates-row">
+          <div id="workCardDatePicker"></div>
+          <button type="button" class="btn btn-secondary" id="btnRefreshCards">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Συγχρονισμός & ανανέωση</span>
+          </button>
+        </div>
+      </div>
+      <div class="card work-card-section">
+        <h2 class="work-card-section-title">
+          <i class="bi bi-clock-history" aria-hidden="true"></i> Πραγματική απασχόληση (portal Ergani)
+        </h2>
+        <p class="work-card-section-desc">Τι έχει καταγραφεί στο <strong>ημερολόγιο πραγματικής</strong> του Ergani portal — <em>όλοι</em> οι εργαζόμενοι της ημέρας, όχι μόνο αυτός που επιλέξατε. Με επιλεγμένο εργαζόμενο, εμφανίζεται μόνο η δική του γραμμή. Το χτύπημα κάρτας (WRKCardSE) εμφανίζεται στον πίνακα παρακάτω.</p>
+        <div id="workLogWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+
+      <div class="card work-card-section">
+        <h2 class="work-card-section-title">
+          <i class="bi bi-database" aria-hidden="true"></i> Δηλώσεις ψηφιακής κάρτας (δική μας βάση)
+        </h2>
+        <p class="work-card-section-desc">Τι έχουμε υποβάλει στο Ergani API (WRKCardSE) και αποθηκεύσει τοπικά.</p>
+        <div id="workCardWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+
+      <div id="workLogHistoryModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="workLogHistoryTitle">
+        <div class="office-modal-backdrop" data-history-close></div>
+        <div class="office-modal-panel office-modal-panel--history">
+          <h2 id="workLogHistoryTitle" class="office-modal-title">Ιστορικό πραγματικής απασχόλησης</h2>
+          <p id="workLogHistoryEmployee" class="office-modal-sub"></p>
+          <div id="workLogHistoryWrap" class="work-log-history-wrap">
+            <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+          </div>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" data-history-close>Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/office-autocomplete.js"></script>
+  <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
+  <script src="/static/js/work-card-list.js?v=20260622timefix1"></script>
+{% endblock %}

@@ -1,0 +1,562 @@
+.report-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.report-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+
+.report-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.report-chip {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.status-ok { background: #d1fae5; color: var(--ok); }
+.status-warn { background: #fef3c7; color: #b45309; }
+.status-info { background: #e0f2fe; color: #0369a1; }
+.status-err { background: #fee2e2; color: var(--err); }
+.status-muted { background: #eef2f6; color: var(--muted); }
+
+.report-chip.status-ok { background: #d1fae5; color: var(--ok); }
+.report-chip.status-warn { background: #fef3c7; color: #b45309; }
+.report-chip.status-info { background: #e0f2fe; color: #0369a1; }
+.report-chip.status-err { background: #fee2e2; color: var(--err); }
+.report-chip.status-muted { background: #eef2f6; color: var(--muted); }
+
+table.data.report-table {
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+table.data.report-table th,
+table.data.report-table td {
+  padding: 0.28rem 0.38rem;
+}
+
+table.data.report-table th {
+  font-size: 0.64rem;
+}
+
+table.data.report-table tbody td {
+  color: #4a5568;
+}
+
+table.data.report-table td.col-action {
+  max-width: 11rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.28;
+}
+
+table.data.report-table td.col-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+table.data.report-table td.col-afm {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+table.data td.col-flex,
+table.data.report-table td.col-flex {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+table.data.report-table td.col-hours {
+  white-space: nowrap;
+}
+
+.report-missing-time {
+  display: inline-flex;
+  align-items: center;
+  color: var(--err);
+  vertical-align: middle;
+}
+
+.report-missing-time .bi {
+  font-size: 0.95rem;
+}
+
+table.data.report-table td.work-log-action-cell {
+  text-align: center;
+  width: 2.75rem;
+}
+
+.report-notes {
+  margin: 0.2rem 0 0 0.85rem;
+  padding: 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.btn-leave {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.55rem;
+}
+
+.btn-wto-daily,
+.btn-rest {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.55rem;
+}
+
+.report-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.report-action-btns .btn-leave,
+.report-action-btns .btn-rest,
+.report-action-btns .btn-wto-daily {
+  margin-top: 0;
+}
+
+.btn-wto-daily {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.report-action-btns .btn-wto-daily {
+  margin-top: 0;
+}
+
+.report-action-btns .work-log-notify-btn {
+  flex-shrink: 0;
+}
+
+.wto-daily-hours-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.wto-daily-hours-row input.input-time-24,
+.wto-daily-hours-row input[type="time"] {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.office-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.office-modal.hidden {
+  display: none;
+}
+
+.office-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.work-log-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+table.data th.col-history,
+table.data td.col-history {
+  width: 2.5rem;
+  text-align: center;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  white-space: nowrap;
+}
+
+.work-log-history-cell {
+  vertical-align: middle;
+}
+
+.work-log-history-btn {
+  flex-shrink: 0;
+  padding: 0.12rem 0.32rem;
+  line-height: 1;
+}
+
+#employeesWrap .work-log-history-btn {
+  width: 2.1rem;
+  height: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  background: #fff;
+  border-color: #cbd5e1;
+  color: var(--brand-light);
+  border-radius: 6px;
+}
+
+#employeesWrap .work-log-history-btn .bi {
+  font-size: 1.14rem;
+  line-height: 1;
+}
+
+#employeesWrap .work-log-history-btn:hover,
+#employeesWrap .work-log-history-btn:focus-visible {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: var(--brand);
+}
+
+#employeesWrap .work-log-history-btn:hover .bi,
+#employeesWrap .work-log-history-btn:focus-visible .bi {
+  color: var(--brand);
+}
+
+.work-log-card-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-light);
+  text-decoration: none;
+  line-height: 1;
+}
+
+.work-log-card-link:hover {
+  color: var(--brand);
+}
+
+.work-log-card-link .bi {
+  font-size: 1.1rem;
+}
+
+.work-log-card-link--required {
+  color: var(--err);
+}
+
+.work-log-card-link--required:hover {
+  color: #b91c1c;
+}
+
+.work-log-action-cell {
+  width: 2.75rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.work-log-notify-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--brand-light);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.work-log-notify-btn:hover:not(:disabled) {
+  color: var(--brand);
+}
+
+.work-log-notify-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.work-log-notify-btn--snoozed:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+.work-log-notify-btn .bi {
+  font-size: 1.1rem;
+}
+
+.work-log-action-cell--notify {
+  width: 2.5rem;
+}
+
+.today-action-main {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+.today-action-card {
+  padding: 1.25rem;
+}
+
+.today-action-title {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.today-action-details {
+  margin: 1rem 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.today-action-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.today-action-choice {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.today-leave-panel {
+  margin-top: 1rem;
+}
+
+.today-leave-title {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.today-leave-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.work-log-history-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 0.25rem;
+}
+
+.work-log-history-wrap table.work-log-history-table {
+  font-size: 0.72rem;
+  table-layout: auto;
+}
+
+.work-log-history-wrap table.work-log-history-table th,
+.work-log-history-wrap table.work-log-history-table td {
+  padding: 0.35rem 0.5rem;
+}
+
+.work-log-history-wrap table.work-log-history-table th:nth-child(1),
+.work-log-history-wrap table.work-log-history-table td:nth-child(1) {
+  white-space: nowrap;
+}
+
+tr.work-log-row--inactive:not(.work-log-row--deficient) td {
+  color: #64748b;
+}
+
+tr.work-log-row--inactive:not(.work-log-row--deficient) td strong {
+  color: #64748b;
+}
+
+.work-log-inactive-badge {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+tr.work-log-row--deficient td {
+  color: var(--err);
+}
+
+tr.work-log-row--deficient td strong {
+  color: var(--err);
+}
+
+.work-log-time-missing {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+tr.work-log-row--deficient .work-log-time-missing {
+  color: var(--err);
+}
+
+table.data tbody tr.work-log-row--deficient td,
+table.data tbody tr.work-log-row--deficient td strong {
+  color: var(--err);
+}
+
+.office-modal-panel {
+  position: relative;
+  width: min(100%, 400px);
+  max-height: min(92vh, 520px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem 0.95rem;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  font-size: 0.78rem;
+}
+
+.office-modal-panel.office-modal-panel--history {
+  width: min(100%, 1000px);
+  max-width: 92vw;
+  max-height: min(92vh, 680px);
+}
+
+.office-modal-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.office-modal-sub {
+  margin: 0 0 0.65rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.office-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.85rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin: 0.3rem 0 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.field-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  font: inherit;
+  font-size: 0.74rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.office-modal-panel textarea.field-input {
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.leave-type-picker {
+  position: relative;
+}
+
+.leave-type-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.leave-type-trigger::after {
+  content: "▾";
+  font-size: 0.65rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.leave-type-trigger[aria-expanded="true"]::after {
+  content: "▴";
+}
+
+.leave-type-list {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 5;
+  margin: 0;
+  padding: 0.15rem 0;
+  list-style: none;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  font-size: 0.68rem;
+  line-height: 1.28;
+}
+
+.leave-type-list.show {
+  display: block;
+}
+
+.leave-type-list li {
+  padding: 0.32rem 0.45rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.leave-type-list li:hover,
+.leave-type-list li.selected {
+  background: var(--brand);
+  color: #fff;
+}
+
+.leave-type-list li .leave-type-code {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}

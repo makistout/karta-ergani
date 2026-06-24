@@ -55,9 +55,12 @@ function renderTable(rows, count, store) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "Μηνιαία", "__history__"].forEach((h) => {
+  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "__weekly__", "__history__"].forEach((h) => {
     const th = document.createElement("th");
-    if (h === "__history__") {
+    if (h === "__weekly__") {
+      th.className = "work-log-action-cell";
+      th.setAttribute("aria-label", "Εβδομαδιαίο ωράριο");
+    } else if (h === "__history__") {
       th.className = "col-history work-log-action-cell";
       th.setAttribute("aria-label", "Πραγματική απασχόληση");
     } else {
@@ -76,18 +79,6 @@ function renderTable(rows, count, store) {
     const empAfm = (emp.afm || "").trim();
     const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
     const active = emp.active !== false && emp.active !== 0;
-    if (empAfm && active) {
-      const weeklyLink = document.createElement("a");
-      weeklyLink.href =
-        `/ui/employees/weekly-schedule?afm=${encodeURIComponent(empAfm)}` +
-        `&eponymo=${encodeURIComponent(emp.eponymo || "")}` +
-        `&onoma=${encodeURIComponent(emp.onoma || "")}`;
-      weeklyLink.className = "employee-weekly-schedule-link";
-      weeklyLink.title = "Δήλωση σταθερού εβδομαδιαίου ωραρίου";
-      weeklyLink.setAttribute("aria-label", `Εβδομαδιαίο ωράριο — ${empName}`);
-      weeklyLink.innerHTML = Office.icon("calendar-week");
-      tdEp.querySelector(".employee-name-actions")?.appendChild(weeklyLink);
-    }
     tr.appendChild(tdEp);
     const tdOn = document.createElement("td");
     tdOn.textContent = emp.onoma || "";
@@ -101,18 +92,21 @@ function renderTable(rows, count, store) {
       ? `<span style="color:var(--ok);">${Office.icon("check-circle-fill")} Ενεργός</span>`
       : `<span style="color:var(--muted);">${Office.icon("dash-circle")} Ανενεργός</span>`;
     tr.appendChild(tdSt);
-    const tdMonthly = document.createElement("td");
-    tdMonthly.className = "work-log-action-cell";
-    if (empAfm) {
-      const a = document.createElement("a");
-      a.href = `/ui/monthly-status?afm=${encodeURIComponent(empAfm)}`;
-      a.className = "work-log-card-link";
-      a.title = "Μηνιαία κατάσταση";
-      a.setAttribute("aria-label", `Μηνιαία κατάσταση — ${empName}`);
-      a.innerHTML = Office.icon("calendar3");
-      tdMonthly.appendChild(a);
+    const tdWeekly = document.createElement("td");
+    tdWeekly.className = "work-log-action-cell";
+    if (empAfm && active) {
+      const weeklyLink = document.createElement("a");
+      weeklyLink.href =
+        `/ui/employees/weekly-schedule?afm=${encodeURIComponent(empAfm)}` +
+        `&eponymo=${encodeURIComponent(emp.eponymo || "")}` +
+        `&onoma=${encodeURIComponent(emp.onoma || "")}`;
+      weeklyLink.className = "employee-weekly-schedule-link";
+      weeklyLink.title = "Δήλωση σταθερού εβδομαδιαίου ωραρίου";
+      weeklyLink.setAttribute("aria-label", `Εβδομαδιαίο ωράριο — ${empName}`);
+      weeklyLink.innerHTML = Office.icon("calendar-week");
+      tdWeekly.appendChild(weeklyLink);
     }
-    tr.appendChild(tdMonthly);
+    tr.appendChild(tdWeekly);
     const tdHistory = document.createElement("td");
     tdHistory.className = "col-history work-log-history-cell work-log-action-cell";
     if (empAfm) {

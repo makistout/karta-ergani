@@ -1,0 +1,62 @@
+# Project State
+
+Τρέχουσα εικόνα της εφαρμογής `karta-ergani`.
+
+## Σκοπός
+
+Η εφαρμογή εξυπηρετεί λογιστικό/διαχειριστικό γραφείο για ψηφιακή κάρτα εργασίας:
+
+- διαχείριση καταστημάτων και Ergani credentials,
+- συγχρονισμό εργαζομένων, ψηφιακού ωραρίου, πραγματικής απασχόλησης και μηνιαίας κατάστασης,
+- αναφορά ελλείψεων κάρτας,
+- υποβολή χτυπήματος κάρτας, WTODaily, WTOWeek και leave,
+- Telegram/Email ειδοποιήσεις με PIN και δημόσιους συνδέσμους.
+
+## Κύριες Ροές
+
+- `/ui/`: αρχική αναφορά κατάστασης κάρτας.
+- `/ui/stores`: καταστήματα και επιλογή ενεργού καταστήματος.
+- `/ui/stores/credentials`: Ergani API/portal credentials.
+- `/ui/stores/notify`: λήπτες Telegram/Email.
+- `/ui/employees`: εργαζόμενοι και εβδομαδιαίο πρόγραμμα.
+- `/ui/schedule`: ψηφιακό ωράριο.
+- `/ui/work-log`: πραγματική απασχόληση.
+- `/ui/missing-cards`: ελλιπή χτυπήματα.
+- `/ui/work-card`: υποβολή ψηφιακής κάρτας.
+- `/ui/sync`: χειροκίνητος συγχρονισμός.
+- `/ui/sync-log`: καταγραφές συγχρονισμών και audit.
+
+## Τρέχουσες Προτεραιότητες Συντήρησης
+
+- Κρατάμε το `CHANGELOG.md` ως ιστορικό, όχι ως μοναδική τεκμηρίωση.
+- Κρατάμε μικρά modules με σαφή ρόλο: routes για HTTP, repos για SQL, services για business logic.
+- Frontend shell, CSS και κοινό JS χωρίζονται ώστε αλλαγές navigation/UI να μην απαιτούν αλλαγές σε πολλά αρχεία.
+- Τα παλιά μεγάλα Python modules μένουν ως compatibility facades όπου χρειάζεται, ώστε τα υπάρχοντα imports να μη σπάσουν απότομα.
+
+## Τρέχουσα Δομή UI
+
+- Οι office σελίδες είναι Jinja templates στο `app/templates/ui/`.
+- Το κοινό layout είναι το `app/templates/ui/base.html`.
+- Το sidebar είναι partial στο `app/templates/ui/partials/_sidebar.html`.
+- Τα παλιά static HTML αρχεία στο `app/static/ui/` καταργήθηκαν.
+- Το shared CSS φορτώνεται από `app/static/css/office.css` ως manifest με επιμέρους αρχεία
+  foundation/components/sync/forms/report/work-card/responsive.
+- Το shared JS φορτώνεται από μικρά `office-*.js` modules:
+  chrome, store, feedback, table, sync, format, store-sync, work-log, auth, boot.
+
+## Responsive Συμπεριφορά
+
+- Σε tablet/mobile το sidebar δεν γίνεται οριζόντια λωρίδα. Γίνεται hamburger menu και
+  ανοίγει με click.
+- Οι πίνακες `table.data` δεν κρατούν mobile `min-width`. Το `office-table.js` βάζει
+  labels στα cells και το `office-responsive.css` τους μετατρέπει σε card layout.
+- Οι βασικές λίστες (`sync-log`, `employees`, `schedule`, `work-log`, `missing-cards`,
+  `work-card`, `stores`) πρέπει να αποφεύγουν οριζόντιο scroll σε mobile/tablet.
+
+## Πρόσφατα UI Fixes
+
+- `/ui/employees`: αφαιρέθηκε η «Μηνιαία» στήλη μέχρι να υπάρχουν δεδομένα, προστέθηκε
+  ξεχωριστό action για εβδομαδιαίο πρόγραμμα και βελτιώθηκε το εικονίδιο ιστορικού
+  πραγματικής απασχόλησης.
+- `/ui/stores/notify`: το πεδίο καταστήματος ανοίγει πάντα όλα τα καταστήματα με
+  click/focus, ακόμη και μετά από πολλαπλές επιλογές.

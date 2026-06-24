@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from flask import Blueprint, redirect, send_from_directory
+from flask import Blueprint, redirect, render_template
 
 ui_bp = Blueprint("ui", __name__, url_prefix="/ui")
-_UI_DIR = Path(__file__).resolve().parent / "static" / "ui"
 
 
 @ui_bp.after_request
@@ -20,27 +17,27 @@ def _ui_no_cache(response):
 
 @ui_bp.get("/")
 def ui_home():
-    return send_from_directory(_UI_DIR, "home.html")
+    return render_template("ui/home.html")
 
 
 @ui_bp.get("/login")
 def ui_login():
-    return send_from_directory(_UI_DIR, "login.html")
+    return render_template("ui/login.html")
 
 
 @ui_bp.get("/stores")
 def ui_stores_list():
-    return send_from_directory(_UI_DIR, "stores-list.html")
+    return render_template("ui/stores-list.html")
 
 
 @ui_bp.get("/stores/credentials")
 def ui_store_credentials():
-    return send_from_directory(_UI_DIR, "store-credentials.html")
+    return render_template("ui/store-credentials.html")
 
 
 @ui_bp.get("/stores/notify")
 def ui_store_notify():
-    return send_from_directory(_UI_DIR, "store-notify.html")
+    return render_template("ui/store-notify.html")
 
 
 @ui_bp.get("/store/edit/<int:store_id>")
@@ -51,57 +48,57 @@ def ui_store_edit_redirect(store_id: int):
 
 @ui_bp.get("/stores/branch")
 def ui_store_branch():
-    return send_from_directory(_UI_DIR, "store-branch.html")
+    return render_template("ui/store-branch.html")
 
 
 @ui_bp.get("/stores/mappings")
 def ui_store_mappings():
-    return send_from_directory(_UI_DIR, "store-mappings.html")
+    return render_template("ui/store-mappings.html")
 
 
 @ui_bp.get("/employees")
 def ui_employees_list():
-    return send_from_directory(_UI_DIR, "employees-list.html")
+    return render_template("ui/employees-list.html")
 
 
 @ui_bp.get("/employees/weekly-schedule")
 def ui_employee_weekly_schedule():
-    return send_from_directory(_UI_DIR, "employee-weekly-schedule.html")
+    return render_template("ui/employee-weekly-schedule.html")
 
 
 @ui_bp.get("/schedule")
 def ui_schedule_list():
-    return send_from_directory(_UI_DIR, "schedule-list.html")
+    return render_template("ui/schedule-list.html")
 
 
 @ui_bp.get("/work-log")
 def ui_work_log_list():
-    return send_from_directory(_UI_DIR, "work-log-list.html")
+    return render_template("ui/work-log-list.html")
 
 
 @ui_bp.get("/work-log/history")
 def ui_work_log_history():
-    return send_from_directory(_UI_DIR, "work-log-history.html")
+    return render_template("ui/work-log-history.html")
 
 
 @ui_bp.get("/missing-cards")
 def ui_missing_cards():
-    return send_from_directory(_UI_DIR, "missing-cards-list.html")
+    return render_template("ui/missing-cards-list.html")
 
 
 @ui_bp.get("/monthly-status")
 def ui_monthly_status():
-    return send_from_directory(_UI_DIR, "monthly-status-list.html")
+    return render_template("ui/monthly-status-list.html")
 
 
 @ui_bp.get("/work-card")
 def ui_work_card():
-    return send_from_directory(_UI_DIR, "work-card-list.html")
+    return render_template("ui/work-card-list.html")
 
 
 @ui_bp.get("/telegram-hit")
 def ui_telegram_hit():
-    return send_from_directory(_UI_DIR, "telegram-hit.html")
+    return render_template("ui/telegram-hit.html")
 
 
 @ui_bp.get("/telegram-punch")
@@ -112,7 +109,7 @@ def ui_telegram_punch_redirect():
 
 @ui_bp.get("/retro-hit")
 def ui_retro_hit():
-    return send_from_directory(_UI_DIR, "retro-hit.html")
+    return render_template("ui/retro-hit.html")
 
 
 @ui_bp.get("/retro-punch")
@@ -123,22 +120,22 @@ def ui_retro_punch_redirect():
 
 @ui_bp.get("/today-hit")
 def ui_today_hit():
-    return send_from_directory(_UI_DIR, "today-hit.html")
+    return render_template("ui/today-hit.html")
 
 
 @ui_bp.get("/today-action")
 def ui_today_action():
-    return send_from_directory(_UI_DIR, "today-action.html")
+    return render_template("ui/today-action.html")
 
 
 @ui_bp.get("/sync")
 def ui_sync_hub():
-    return send_from_directory(_UI_DIR, "sync-hub.html")
+    return render_template("ui/sync-hub.html")
 
 
 @ui_bp.get("/sync-log")
 def ui_sync_log():
-    return send_from_directory(_UI_DIR, "sync-log-list.html")
+    return render_template("ui/sync-log-list.html")
 
 
 def register_ui_redirects(app):

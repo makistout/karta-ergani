@@ -1,0 +1,70 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ενέργεια ειδοποίησης' %}
+{% set shell = "public" %}
+{% set body_class = 'login-page' %}
+{% block public_content %}
+  <main class="login-main today-action-main">
+    <div class="card today-action-card">
+      <h1 class="page-title today-action-title">
+        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Επιλογή ενέργειας
+      </h1>
+      <p id="todayActionIntro" class="page-desc">Φόρτωση…</p>
+      <div id="todayActionDetails" class="today-action-details hidden"></div>
+
+      <div id="todayActionChoices" class="today-action-choices hidden">
+        <button type="button" class="btn btn-secondary today-action-choice" id="btnTodaySnooze">
+          <i class="bi bi-bell-slash" aria-hidden="true"></i><span>Αναβολή — μην ειδοποιήσετε ξανά</span>
+        </button>
+        <button type="button" class="btn today-action-choice" id="btnTodayLeave">
+          <i class="bi bi-calendar-x" aria-hidden="true"></i><span>Καταχώριση άδειας</span>
+        </button>
+        <button type="button" class="btn today-action-choice" id="btnTodayWtoDaily">
+          <i class="bi bi-calendar-week" aria-hidden="true"></i><span>Αλλαγή ωραρίου (WTODaily)</span>
+        </button>
+        <button type="button" class="btn today-action-choice" id="btnTodayCard">
+          <i class="bi bi-credit-card-2-front" aria-hidden="true"></i><span>Χτύπημα κάρτας</span>
+        </button>
+      </div>
+
+      <div id="todayLeavePanel" class="today-leave-panel hidden">
+        <h2 class="today-leave-title">Δήλωση άδειας</h2>
+        <label class="field-label" for="todayLeaveType">Είδος άδειας</label>
+        <select id="todayLeaveType" class="field-input"></select>
+        <label class="field-label" for="todayLeaveComments">Παρατηρήσεις (προαιρετικά)</label>
+        <textarea id="todayLeaveComments" class="field-input" rows="2" maxlength="200"></textarea>
+        <div class="today-leave-actions">
+          <button type="button" class="btn btn-secondary" id="btnTodayLeaveBack">Πίσω</button>
+          <button type="button" class="btn" id="btnTodayLeaveSubmit">Υποβολή άδειας</button>
+        </div>
+      </div>
+
+      <div id="todayWtoDailyPanel" class="today-leave-panel hidden">
+        <h2 class="today-leave-title">Τροποποίηση ωραρίου (WTODaily)</h2>
+        <p id="todayWtoDailyHint" class="page-desc" style="margin-bottom:0.75rem;"></p>
+        <div class="wto-daily-hours-row">
+          <div>
+            <label class="field-label" for="todayWtoHourFrom">Ώρα από</label>
+            <input type="text" id="todayWtoHourFrom" class="field-input input-time-24" inputmode="numeric"
+              placeholder="09:30" maxlength="5" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="todayWtoHourTo">Ώρα έως</label>
+            <input type="text" id="todayWtoHourTo" class="field-input input-time-24" inputmode="numeric"
+              placeholder="17:00" maxlength="5" autocomplete="off">
+          </div>
+        </div>
+        <label class="field-label" for="todayWtoComments">Παρατηρήσεις (προαιρετικά)</label>
+        <textarea id="todayWtoComments" class="field-input" rows="2" maxlength="200"></textarea>
+        <div class="today-leave-actions">
+          <button type="button" class="btn btn-secondary" id="btnTodayWtoBack">Πίσω</button>
+          <button type="button" class="btn" id="btnTodayWtoSubmit">Υποβολή ωραρίου</button>
+        </div>
+      </div>
+
+      <div id="todayActionMsg" class="msg"></div>
+    </div>
+  </main>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/today-action.js?v=20260622wtod6"></script>
+{% endblock %}

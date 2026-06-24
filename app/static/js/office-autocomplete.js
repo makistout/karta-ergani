@@ -187,5 +187,18 @@ Office.createAutocomplete = function (opts) {
     getValue() {
       return { code: hidden ? hidden.value : "", label: input.value };
     },
+    clearValue() {
+      input.value = "";
+      if (hidden) hidden.value = "";
+      render([]);
+    },
+    openAll(clearInput = false) {
+      if (opts.searchFn) return;
+      if (clearInput) {
+        input.value = "";
+        if (hidden) hidden.value = "";
+      }
+      render(allItems.slice(0, maxItems));
+    },
   };
 };

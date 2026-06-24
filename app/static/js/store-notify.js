@@ -34,15 +34,17 @@ function storeAcLabel(item) {
 
 function markStorePickerClearOnClick() {
   const input = document.getElementById("notifyStoreInput");
-  const hidden = document.getElementById("notifyStoreId");
-  if (!input) return;
-  input.dataset.clearOnClick = "1";
-  input.onmousedown = () => {
-    if (input.dataset.clearOnClick !== "1") return;
-    input.value = "";
-    if (hidden) hidden.value = "";
-    input.dataset.clearOnClick = "0";
+  if (!input || input.dataset.openAllBound === "1") return;
+  input.dataset.openAllBound = "1";
+
+  const openAllStores = () => {
+    if (!storeAc || input.disabled) return;
+    storeAc.openAll(true);
   };
+
+  input.addEventListener("pointerdown", openAllStores);
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -162,9 +164,9 @@ async function initStorePicker() {
       const id = parseInt(item.value, 10);
       if (!id) return;
       await selectStore(id, true);
-      markStorePickerClearOnClick();
     },
   });
+  markStorePickerClearOnClick();
 
   const params = new URLSearchParams(location.search);
   const urlStoreId = parseInt(params.get("id") || "", 10) || null;
@@ -208,7 +210,6 @@ async function initStorePicker() {
   const pickId = urlStoreId || activeId || stores[0]?.id || null;
   if (pickId) {
     storeAc.setValue(String(pickId));
-    markStorePickerClearOnClick();
     await selectStore(pickId, false);
   } else {
     updateNotifyUiState();

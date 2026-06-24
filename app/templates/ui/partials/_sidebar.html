@@ -1,0 +1,23 @@
+<aside class="sidebar">
+  <div class="logo">
+    <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
+    <small>Ψηφιακή Κάρτα Εργασίας</small>
+  </div>
+  <button type="button" class="sidebar-menu-toggle" aria-expanded="false" aria-controls="officeSidebarNav" aria-label="Άνοιγμα μενού">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+  <nav id="officeSidebarNav">
+    <a href="/ui/" data-nav="home" class="{{ 'active' if active_nav == 'home' else '' }}">Αρχική</a>
+    <a href="/ui/employees" data-nav="employees" class="{{ 'active' if active_nav == 'employees' else '' }}">Εργαζόμενοι</a>
+    <a href="/ui/schedule" data-nav="schedule" class="{{ 'active' if active_nav == 'schedule' else '' }}">Ψηφιακό ωράριο</a>
+    <a href="/ui/work-log" data-nav="worklog" class="{{ 'active' if active_nav == 'worklog' else '' }}">Πραγματική απασχόληση</a>
+    <a href="/ui/missing-cards" data-nav="missingcards" class="{{ 'active' if active_nav == 'missingcards' else '' }}">Ελλειπή Χτυπήματα</a>
+    <a href="/ui/work-card" data-nav="workcard" class="{{ 'active' if active_nav == 'workcard' else '' }}">Ψηφιακή κάρτα</a>
+    <a href="/ui/sync" data-nav="sync" class="{{ 'active' if active_nav == 'sync' else '' }}">Συγχρονισμός</a>
+    <a href="/ui/stores" data-nav="stores" class="{{ 'active' if active_nav == 'stores' else '' }}">Καταστήματα</a>
+    <a href="/ui/stores/notify" data-nav="storenotify" class="{{ 'active' if active_nav == 'storenotify' else '' }}">Ειδοποιήσεις</a>
+    <a href="/ui/sync-log" data-nav="synclog" class="{{ 'active' if active_nav == 'synclog' else '' }}">Καταγραφές</a>
+  </nav>
+</aside>

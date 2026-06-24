@@ -1,0 +1,560 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.steps {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.step {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #e8eef3;
+  color: var(--muted);
+}
+
+.step.active {
+  background: var(--brand);
+  color: #fff;
+}
+
+.step.done {
+  background: #d1fae5;
+  color: var(--ok);
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+label .bi {
+  font-size: 1rem;
+  color: var(--brand-light);
+}
+
+input, select {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.work-card-form .form-row {
+  grid-template-columns: 1fr;
+  margin-bottom: 0.75rem;
+}
+
+.work-card-form label,
+.work-card-form .label-like {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.work-card-form select,
+.work-card-form input[type="text"] {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.radio-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.work-card-terminal {
+  text-align: center;
+  margin-bottom: 1rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+  border-top: 3px solid var(--brand-light);
+}
+
+.terminal-clock {
+  font-size: 2.2rem;
+  font-weight: 700;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: #0f172a;
+  letter-spacing: 0.05em;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.terminal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.terminal-badge.online {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.terminal-badge-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.work-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.work-card-declare-card {
+  margin-bottom: 1rem;
+}
+
+.work-card-declare-title {
+  font-size: 1rem;
+  margin: 0 0 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.work-card-declare-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.work-card-form-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+.missing-cards-closed-title {
+  margin: 2rem 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ok, #15803d);
+}
+
+.missing-cards-closed-desc {
+  margin-top: 0;
+}
+
+.list-card--closed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.missing-cards-closed-table .data tbody tr {
+  background: #fff;
+}
+
+.missing-cards-db-time {
+  color: var(--ok, #15803d);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.retro-hit-page .retro-hit-main {
+  max-width: 28rem;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+.retro-hit-card {
+  padding: 1.25rem;
+}
+
+.retro-hit-page-title {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.retro-hit-employee {
+  margin: 0.75rem 0 1rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.retro-hit-afm {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.retro-hit-page .work-card-retro {
+  margin-top: 0.5rem;
+}
+
+.work-card-retro {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #f8fafc;
+}
+
+.work-card-retro--required {
+  border-color: var(--err);
+  background: #fef2f2;
+}
+
+.btn.work-card-action--required {
+  border-color: var(--err) !important;
+  color: var(--err) !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.work-card-retro-title {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+}
+
+.work-card-retro-optional {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.work-card-retro-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.work-card-retro .form-row input.input-time-24 {
+  width: 100%;
+  max-width: none;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.work-card-retro .form-row input[type="time"] {
+  width: 100%;
+  max-width: none;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.notify-store-picker-card {
+  margin-bottom: 1rem;
+  max-width: 28rem;
+}
+
+.notify-store-picker-card .ac-wrap {
+  margin-bottom: 0;
+}
+
+.notify-store-picker-card .ac-wrap input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.notify-recipients-wrap {
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.notify-recipients-table td {
+  vertical-align: bottom;
+  padding: 0.4rem 0.45rem;
+}
+
+.notify-recipients-table input {
+  display: block;
+  width: 100%;
+  min-width: 6rem;
+  box-sizing: border-box;
+  height: 2rem;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.notify-recipients-table input[readonly] {
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.notify-recipients-table .col-notify-field-toggle {
+  min-width: 10rem;
+}
+
+.notify-field-with-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.notify-field-with-toggle input {
+  flex: 1;
+  min-width: 0;
+}
+
+.notify-field-with-toggle .notify-toggle-btn {
+  flex-shrink: 0;
+}
+
+.notify-recipients-table input.notify-input-email--invalid {
+  border-color: var(--err);
+  background: #fff5f5;
+}
+
+.notify-recipients-table .col-notify-actions {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.notify-recipients-table .notify-recipients-actions-inner {
+  display: flex;
+  align-items: center;
+  height: 2rem;
+  gap: 0.35rem;
+}
+
+.notify-recipients-table .notify-toggle-btn,
+.notify-recipients-table .notify-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  gap: 0;
+}
+
+.notify-recipients-table .notify-toggle-btn .bi {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.notify-recipients-table .notify-toggle-btn--on {
+  color: #047857;
+  border-color: #6ee7b7;
+  background: #ecfdf5;
+}
+
+.notify-recipients-table .notify-toggle-btn--on:hover {
+  background: #d1fae5;
+  border-color: #34d399;
+  color: #065f46;
+}
+
+.notify-recipients-table .notify-toggle-btn--off {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.notify-recipients-table .notify-toggle-btn--off:hover {
+  color: #991b1b;
+  border-color: #fca5a5;
+  background: #fee2e2;
+}
+
+.notify-recipients-table input.notify-input-pin--restored {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.notify-recipients-table input.notify-input-pin--restored::placeholder {
+  color: #b45309;
+  font-weight: 500;
+}
+
+tr.notify-recipient-row--paused td:not(.col-notify-actions) {
+  opacity: 0.62;
+}
+
+.work-card-actions-retro {
+  border-top-color: #e2e8f0;
+}
+
+@media (max-width: 900px) {
+  .work-card-declare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-outline-primary {
+  background: #fff;
+  color: var(--brand-light);
+  border: 2px solid var(--brand-light);
+}
+
+.btn-outline-primary:hover {
+  background: #f0f4f8;
+  color: var(--brand);
+}
+
+.work-card-form .ac-wrap {
+  max-width: 28rem;
+}
+
+.work-card-employee-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 28rem;
+}
+
+.work-card-employee-row .ac-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.work-card-employee-row input[type="text"] {
+  max-width: none;
+}
+
+.work-card-employee-history {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 2.375rem;
+  height: calc(0.5rem * 2 + 1.25rem + 2px);
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--brand-light);
+  text-decoration: none;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.work-card-employee-history:hover {
+  color: var(--brand);
+  border-color: var(--brand-light);
+  background: #f8fafc;
+}
+
+.work-card-employee-history .bi {
+  font-size: 1rem;
+}
+
+.work-card-employee-history.hidden {
+  display: none;
+}
+
+.page-back {
+  margin: 0 0 0.75rem;
+}
+
+.page-back.hidden {
+  display: none;
+}
+
+.page-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--brand-light);
+  text-decoration: none;
+}
+
+.page-back-link:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.work-log-history-page-card {
+  margin-top: 0.5rem;
+}
+
+.work-card-form .ac-wrap.field-err input {
+  border-color: var(--err);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
+.work-card-section {
+  margin-bottom: 1rem;
+}
+
+.work-card-section-title {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.work-card-section-desc {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.work-card-section-desc a {
+  color: var(--brand-light);
+}

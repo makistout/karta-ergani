@@ -1,0 +1,44 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ελλειπή Χτυπήματα' %}
+{% set shell = "office" %}
+{% set active_nav = 'missingcards' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Ελλειπή Χτυπήματα</h1>
+      <p class="page-desc" id="missingCardsDesc">
+        Εγγραφές πριν από σήμερα με έλλειψη ώρας εισόδου ή εξόδου στην πραγματική απασχόληση (νεότερες πρώτα).
+      </p>
+      <div class="card list-card">
+        <div id="missingCardsWrap" class="list-wrap">
+          <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+        </div>
+      </div>
+
+      <h2 class="page-subtitle missing-cards-closed-title">
+        <i class="bi bi-check-circle" aria-hidden="true"></i> Ολοκληρωμένα χτυπήματα από erganiOS
+      </h2>
+      <div class="card list-card list-card--closed">
+        <div id="missingCardsClosedWrap" class="list-wrap">
+          <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+        </div>
+      </div>
+      <div id="missingCardsMsg" class="msg"></div>
+
+      <div id="workLogHistoryModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="workLogHistoryTitle">
+        <div class="office-modal-backdrop" data-history-close></div>
+        <div class="office-modal-panel office-modal-panel--history">
+          <h2 id="workLogHistoryTitle" class="office-modal-title">Ιστορικό πραγματικής απασχόλησης</h2>
+          <p id="workLogHistoryEmployee" class="office-modal-sub"></p>
+          <div id="workLogHistoryWrap" class="work-log-history-wrap">
+            <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+          </div>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" data-history-close>Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/missing-cards-list.js?v=20260620title1"></script>
+{% endblock %}

@@ -2,7 +2,69 @@
 
 Όλες οι μεταβολές του project καταγράφονται εδώ (νέα πρώτα).
 
+Για την τρέχουσα τεχνική εικόνα και οδηγούς συντήρησης, δες το `docs/`:
+`PROJECT_STATE.md`, `ARCHITECTURE.md`, `RUNBOOK.md`, `ERGANI_PORTAL_SYNC.md`,
+`DEPLOYMENT.md`, `DECISIONS.md`.
+
 ---
+
+## 2026-06-24 (δ) — Διάσπαση αρχείων, responsive UI και διορθώσεις επιλογής καταστήματος
+
+### Διάσπαση αρχείων / συντήρηση
+
+- Μεταφέρθηκαν οι office UI σελίδες από `app/static/ui/*.html` σε Jinja templates
+  (`app/templates/ui/*.html`) με κοινό `app/templates/ui/base.html` και sidebar partial.
+- Το `app/routes_ui.py` σερβίρει πλέον templates με `render_template`, κρατώντας τις ίδιες UI
+  διαδρομές.
+- Το μεγάλο `office.css` έγινε manifest και σπάστηκε σε μικρότερα αρχεία:
+  `office-foundation.css`, `office-components.css`, `office-sync.css`,
+  `office-forms-date.css`, `office-report-worklog.css`, `office-work-card.css`,
+  `office-responsive.css`.
+- Το κοινό frontend JS σπάστηκε σε μικρότερα modules:
+  `office-chrome.js`, `office-store.js`, `office-feedback.js`, `office-table.js`,
+  `office-sync.js`, `office-format.js`, `office-store-sync.js`, `office-work-log.js`,
+  `office-auth.js`, `office-boot.js`.
+- Το backend split κράτησε compatibility facades:
+  - `repo_work_log.py` → `repo_work_log_core.py`, `repo_work_log_schedule.py`
+  - `scheduled_sync.py` → `scheduled_sync_notifications.py`
+  - `today_alert_service.py` → `today_alert_notifications.py`
+
+### Responsive / mobile friendly UI
+
+- Το sidebar σε tablet/mobile γίνεται hamburger με 3 γραμμές και ανοίγει με click.
+- Οι δυναμικοί πίνακες `table.data` εμπλουτίζονται αυτόματα με `data-label` και σε
+  tablet/mobile γίνονται cards αντί για πίνακες με οριζόντιο scroll.
+- Το responsive layer καλύπτει βασικά wrappers (`employees`, `sync-log`, `schedule`,
+  `work-log`, `missing-cards`, `work-card`, `stores`) ώστε να μη σπρώχνουν το viewport.
+- Το `office-table.js` έχει `MutationObserver` για πίνακες που δημιουργούνται μετά από API calls.
+
+### Εργαζόμενοι / εικονίδια
+
+- Στη λίστα εργαζομένων αφαιρέθηκε προσωρινά η στήλη «Μηνιαία» επειδή δεν υπάρχουν ακόμη
+  δεδομένα για τη ροή.
+- Το εβδομαδιαίο πρόγραμμα εμφανίζεται ως ξεχωριστό action icon (`employee-weekly-schedule-link`).
+- Το εικονίδιο ιστορικού πραγματικής απασχόλησης (`bi-clock-history`) απέκτησε λευκό φόντο,
+  μεγαλύτερο μέγεθος και καθαρό hover state.
+
+### Ειδοποιήσεις / επιλογή καταστήματος
+
+- Το autocomplete καταστήματος στις Ειδοποιήσεις ανοίγει πλέον κάθε φορά όλα τα καταστήματα
+  με click/focus, ακόμη κι αν έχει ήδη επιλεγεί κατάστημα.
+- Προστέθηκαν `openAll()` και `clearValue()` στο κοινό `Office.createAutocomplete`.
+- Cache bust για τη ροή ειδοποιήσεων: `20260624storepick1`.
+
+### Dependencies / runtime
+
+- Προστέθηκαν στο virtualenv τα `openpyxl` και `xlrd`, ώστε ο συγχρονισμός Excel να μη
+  πέφτει σε fallback HTML λόγω `No module named 'openpyxl'`.
+
+### Έλεγχοι
+
+- `python -m compileall` για `app`, `scripts`, `tests`, `run.py`, `wsgi.py`, `config.py`.
+- Jinja render check για όλα τα `ui/*.html` templates.
+- JS syntax checks για τα νέα split modules μέσω Node REPL.
+- `git diff --check`.
+- Local authenticated checks σε `/ui/`, `/ui/employees`, `/ui/sync-log`, `/ui/stores/notify`.
 
 ## 2026-06-24 (γ) — PIN ειδοποιήσεων, δημόσιοι σύνδεσμοι & προεπιλογή κάρτας από ωράριο
 

@@ -1,0 +1,25 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ελλιπές χτύπημα' %}
+{% set shell = "public" %}
+{% set body_class = 'login-page' %}
+{% block public_content %}
+  <main class="login-main" style="max-width:420px;margin:2rem auto;padding:1rem;">
+    <div class="card" style="padding:1.25rem;">
+      <h1 class="page-title" style="font-size:1.15rem;margin-bottom:0.5rem;">
+        <i class="bi bi-bell" aria-hidden="true"></i> Ελλιπές χτύπημα
+      </h1>
+      <p id="tgHitIntro" class="page-desc" style="margin-top:0;">Φόρτωση…</p>
+      <div id="tgHitDetails" class="hidden" style="margin:1rem 0;font-size:0.95rem;line-height:1.5;"></div>
+      <label class="field-label" for="tgHitPin">Προσωπικός PIN λήπτη</label>
+      <input type="text" id="tgHitPin" class="field-input" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="4 ψηφία" disabled>
+      <p class="field-hint">4 αριθμητικά ψηφία — μετά την επιβεβαίωση ανοίγει η φόρμα προγενέστερης καταχώρησης.</p>
+      <button type="button" id="btnTgHitConfirm" class="btn" style="width:100%;margin-top:1rem;" disabled>
+        <i class="bi bi-clock-history" aria-hidden="true"></i><span>Συνέχεια στην καταχώρηση</span>
+      </button>
+      <div id="tgHitMsg" class="msg" style="margin-top:1rem;"></div>
+    </div>
+  </main>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/telegram-hit.js?v=20260619tgthit2"></script>
+{% endblock %}

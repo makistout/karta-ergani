@@ -1,0 +1,53 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Μηνιαία κατάσταση' %}
+{% set shell = "office" %}
+{% set active_nav = '' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-calendar3" aria-hidden="true"></i> Μηνιαία κατάσταση</h1>
+      <p class="page-desc" id="monthlyStatusDesc">Στοιχεία μηνιαίας απασχόλησης (EX_BASE_04) ανά εργαζόμενο.</p>
+
+      <div class="toolbar-dates card" style="margin-bottom:1rem;">
+        <div class="toolbar-dates-row">
+          <label class="field-inline">
+            <span>Έτος</span>
+            <select id="filterYear" class="input-select"></select>
+          </label>
+          <label class="field-inline">
+            <span>Μήνας</span>
+            <select id="filterMonth" class="input-select">
+              <option value="">Όλοι</option>
+              <option value="1">Ιανουάριος</option>
+              <option value="2">Φεβρουάριος</option>
+              <option value="3">Μάρτιος</option>
+              <option value="4">Απρίλιος</option>
+              <option value="5">Μάιος</option>
+              <option value="6">Ιούνιος</option>
+              <option value="7">Ιούλιος</option>
+              <option value="8">Αύγουστος</option>
+              <option value="9">Σεπτέμβριος</option>
+              <option value="10">Οκτώβριος</option>
+              <option value="11">Νοέμβριος</option>
+              <option value="12">Δεκέμβριος</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary" id="btnFilterMonthly">
+            <i class="bi bi-funnel" aria-hidden="true"></i><span>Εμφάνιση</span>
+          </button>
+          <a href="/ui/employees" class="btn btn-secondary" id="btnBackEmployees" style="display:none;">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="card list-card">
+        <div id="monthlyStatusWrap" class="list-wrap">
+          <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+        </div>
+      </div>
+      <div id="monthlyStatusMsg" class="msg"></div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/monthly-status-list.js?v=20260618month"></script>
+{% endblock %}

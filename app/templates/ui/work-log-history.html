@@ -1,0 +1,18 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ιστορικό πραγματικής απασχόλησης' %}
+{% set shell = "office" %}
+{% set active_nav = 'worklog' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-clock-history" aria-hidden="true"></i> Ιστορικό πραγματικής απασχόλησης</h1>
+      <p id="workLogHistoryPageEmployee" class="page-desc"></p>
+      <div class="card list-card work-log-history-page-card">
+        <div id="workLogHistoryPageWrap" class="work-log-history-wrap">
+          <p class="table-loading"><i class="bi bi-arrow-repeat"></i><span>Φόρτωση ιστορικού…</span></p>
+        </div>
+      </div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/work-log-history.js?v=20260620wlhist2"></script>
+{% endblock %}

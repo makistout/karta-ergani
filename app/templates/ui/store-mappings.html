@@ -1,0 +1,58 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Κατάλογοι' %}
+{% set shell = "office" %}
+{% set active_nav = '' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-journal-bookmark" aria-hidden="true"></i> ΤΕΕΣ, ΟΑΕΔ, ΚΑΔ, Καλλικράτης</h1>
+      <p class="page-desc">Βήμα 3 από 3 — πληκτρολογήστε για αναζήτηση, ↑/↓ για μετακίνηση, Tab ή Enter για επιλογή.</p>
+      <div class="steps">
+        <span class="step done"><i class="bi bi-check-circle-fill"></i> Διαπιστευτήρια</span>
+        <span class="step done"><i class="bi bi-check-circle-fill"></i> Παράρτημα</span>
+        <span class="step active"><i class="bi bi-3-circle-fill"></i> Κατάλογοι</span>
+      </div>
+      <div class="card">
+        <label for="sepeInput"><i class="bi bi-building"></i> ΤΕΕΣ (SEPE)</label>
+        <div class="ac-wrap">
+          <input id="sepeInput" type="text" placeholder="Κωδικός ή περιγραφή" autocomplete="off"
+            role="combobox" aria-autocomplete="list" aria-controls="sepeList" aria-expanded="false">
+          <ul id="sepeList" class="ac-list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="sepeCode">
+
+        <label for="oaedInput"><i class="bi bi-people"></i> ΟΑΕΔ</label>
+        <div class="ac-wrap">
+          <input id="oaedInput" type="text" placeholder="Κωδικός ή περιγραφή" autocomplete="off"
+            role="combobox" aria-autocomplete="list" aria-controls="oaedList" aria-expanded="false">
+          <ul id="oaedList" class="ac-list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="oaedCode">
+
+        <label for="kadInput"><i class="bi bi-tag"></i> ΚΑΔ (STAKOD)</label>
+        <div class="ac-wrap">
+          <input id="kadInput" type="text" placeholder="Κωδικός ή περιγραφή" autocomplete="off"
+            role="combobox" aria-autocomplete="list" aria-controls="kadList" aria-expanded="false">
+          <ul id="kadList" class="ac-list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="kadCode">
+
+        <label for="kallikratisInput"><i class="bi bi-geo-alt"></i> Καλλικράτης</label>
+        <div class="ac-wrap">
+          <input id="kallikratisInput" type="text" placeholder="Κωδικός ή όνομα (min 2 χαρακτήρες)" autocomplete="off"
+            role="combobox" aria-autocomplete="list" aria-controls="kallikratisList" aria-expanded="false">
+          <ul id="kallikratisList" class="ac-list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="kallikratisCode">
+
+        <div class="actions">
+          <a class="btn btn-secondary" href="/ui/stores/branch"><i class="bi bi-arrow-left-circle" aria-hidden="true"></i><span>Πίσω</span></a>
+          <button type="button" class="btn" id="btnSaveStore"><i class="bi bi-check-lg" aria-hidden="true"></i><span>Αποθήκευση καταστήματος</span></button>
+        </div>
+      </div>
+      <div id="stepMsg" class="msg"></div>
+    
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/office-autocomplete.js?v=20260618notify"></script>
+  <script src="/static/js/store-mappings.js?v=20260618step1notify"></script>
+{% endblock %}
