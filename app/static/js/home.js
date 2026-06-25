@@ -531,7 +531,7 @@ function buildTodayNotifyButton(r) {
     "work-log-notify-btn work-log-notify-btn--today" +
     (snoozed ? " work-log-notify-btn--snoozed" : "");
   const title = snoozed
-    ? "Snoozed"
+    ? "Όλοι οι λήπτες σε αναβολή (snooze)"
     : `Ειδοποίηση σήμερα — ${label}`;
   return (
     `<button type="button" class="${cls}" ` +

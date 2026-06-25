@@ -25,17 +25,22 @@ def is_snoozed(
     employee_afm: str,
     work_date_ergani: str,
     notify_kind: str,
+    recipient_id: int,
 ) -> bool:
+    rid = int(recipient_id)
+    if rid <= 0:
+        return False
     with cursor(commit=False) as cur:
         cur.execute(
             """
             SELECT 1
             FROM dbo.karta_today_notify_snooze
-            WHERE store_id = ? AND employee_afm = ? AND work_date_ergani = ?
-              AND notify_kind = ?
+            WHERE store_id = ? AND recipient_id = ? AND employee_afm = ?
+              AND work_date_ergani = ? AND notify_kind = ?
             """,
             (
                 int(store_id),
+                rid,
                 norm_afm(employee_afm),
                 work_date_ergani.strip()[:32],
                 notify_kind.strip()[:32],
@@ -47,8 +52,8 @@ def is_snoozed(
 def list_today_notify_snoozes(
     store_id: int,
     work_dates_ergani: list[str],
-) -> set[tuple[str, str, str]]:
-    """Σύνολο (afm, work_date_ergani, notify_kind) σε αναβολή για το κατάστημα."""
+) -> set[tuple[str, str, str, int]]:
+    """Σύνολο (afm, work_date_ergani, notify_kind, recipient_id) σε αναβολή."""
     dates = [d.strip()[:32] for d in work_dates_ergani if (d or "").strip()]
     if not dates:
         return set()
@@ -56,21 +61,60 @@ def list_today_notify_snoozes(
     with cursor(commit=False) as cur:
         cur.execute(
             f"""
-            SELECT employee_afm, work_date_ergani, notify_kind
+            SELECT employee_afm, work_date_ergani, notify_kind, recipient_id
             FROM dbo.karta_today_notify_snooze
             WHERE store_id = ? AND work_date_ergani IN ({placeholders})
+              AND recipient_id IS NOT NULL
             """,
             (int(store_id), *dates),
         )
         rows = rows_to_dicts(cur)
-    return {
-        (
-            norm_afm(str(r.get("employee_afm") or "")),
-            str(r.get("work_date_ergani") or "").strip(),
-            str(r.get("notify_kind") or "").strip(),
+    out: set[tuple[str, str, str, int]] = set()
+    for r in rows:
+        rid = r.get("recipient_id")
+        if rid is None:
+            continue
+        out.add(
+            (
+                norm_afm(str(r.get("employee_afm") or "")),
+                str(r.get("work_date_ergani") or "").strip(),
+                str(r.get("notify_kind") or "").strip(),
+                int(rid),
+            )
         )
-        for r in rows
-    }
+    return out
+
+
+def any_deliverable_recipient_not_snoozed(
+    *,
+    store_id: int,
+    employee_afm: str,
+    work_date_ergani: str,
+    notify_kind: str,
+) -> bool:
+    """Υπάρχει ενεργός λήπτης (Telegram/Email) χωρίς snooze για την περίπτωση."""
+    from app.repo_notify_recipients import (
+        list_deliverable_recipients,
+        list_email_deliverable_recipients,
+    )
+
+    seen: set[int] = set()
+    for rec in list_deliverable_recipients(store_id) + list_email_deliverable_recipients(
+        store_id
+    ):
+        rid = int(rec.get("id") or 0)
+        if rid <= 0 or rid in seen:
+            continue
+        seen.add(rid)
+        if not is_snoozed(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date_ergani,
+            notify_kind=notify_kind,
+            recipient_id=rid,
+        ):
+            return True
+    return False
 
 
 def enrich_work_log_rows_with_today_notify_snooze(
@@ -78,21 +122,20 @@ def enrich_work_log_rows_with_today_notify_snooze(
     store_id: int,
     ergani_dates: list[str],
 ) -> None:
-    """Σημαία today_notify_snoozed αν η τρέχουσα περίπτωση είναι σε αναβολή."""
+    """Σημαία today_notify_snoozed μόνο όταν όλοι οι λήπτες είναι σε αναβολή."""
     from app.today_notify_logic import resolve_today_notify_kind
 
-    snoozed = list_today_notify_snoozes(store_id, ergani_dates)
     for row in rows:
         kind = resolve_today_notify_kind(row)
         if not kind:
             row["today_notify_snoozed"] = False
             continue
-        key = (
-            norm_afm(str(row.get("employee_afm") or "")),
-            str(row.get("work_date") or "").strip(),
-            kind,
+        row["today_notify_snoozed"] = not any_deliverable_recipient_not_snoozed(
+            store_id=store_id,
+            employee_afm=str(row.get("employee_afm") or ""),
+            work_date_ergani=str(row.get("work_date") or ""),
+            notify_kind=kind,
         )
-        row["today_notify_snoozed"] = key in snoozed
 
 
 def enrich_card_report_rows_with_today_notify(
@@ -109,7 +152,6 @@ def enrich_card_report_rows_with_today_notify(
             if str(r.get("work_date") or "").strip()
         }
     )
-    snoozed = list_today_notify_snoozes(store_id, dates) if dates else set()
     for row in rows:
         wl = row.get("work_log") if isinstance(row.get("work_log"), dict) else {}
         notify_row = {
@@ -125,12 +167,12 @@ def enrich_card_report_rows_with_today_notify(
         if not kind:
             row["today_notify_snoozed"] = False
             continue
-        key = (
-            norm_afm(str(row.get("employee_afm") or "")),
-            str(row.get("work_date") or "").strip(),
-            kind,
+        row["today_notify_snoozed"] = not any_deliverable_recipient_not_snoozed(
+            store_id=store_id,
+            employee_afm=str(row.get("employee_afm") or ""),
+            work_date_ergani=str(row.get("work_date") or ""),
+            notify_kind=kind,
         )
-        row["today_notify_snoozed"] = key in snoozed
 
 
 def is_notify_sent(
@@ -239,7 +281,6 @@ def enrich_card_report_rows_with_wto_snooze(
         for row in rows:
             row["wto_notify_snoozed"] = False
         return
-    snoozed = list_today_notify_snoozes(store_id, dates)
     for row in rows:
         wto = row.get("wto_daily") if isinstance(row.get("wto_daily"), dict) else {}
         kind = str(wto.get("kind") or "").strip()
@@ -248,7 +289,12 @@ def enrich_card_report_rows_with_wto_snooze(
             continue
         wd = str(row.get("work_date") or default_work_date or "").strip()
         afm = norm_afm(str(row.get("employee_afm") or ""))
-        row["wto_notify_snoozed"] = (afm, wd, kind) in snoozed
+        row["wto_notify_snoozed"] = not any_deliverable_recipient_not_snoozed(
+            store_id=store_id,
+            employee_afm=afm,
+            work_date_ergani=wd,
+            notify_kind=kind,
+        )
 
 
 def create_snooze(
@@ -265,13 +311,15 @@ def create_snooze(
     client_ip: str | None = None,
     client_device: str | None = None,
 ) -> None:
+    if not recipient_id:
+        return
     with cursor() as cur:
         cur.execute(
             """
             IF NOT EXISTS (
                 SELECT 1 FROM dbo.karta_today_notify_snooze
-                WHERE store_id = ? AND employee_afm = ? AND work_date_ergani = ?
-                  AND notify_kind = ?
+                WHERE store_id = ? AND recipient_id = ? AND employee_afm = ?
+                  AND work_date_ergani = ? AND notify_kind = ?
             )
             BEGIN
                 INSERT INTO dbo.karta_today_notify_snooze (
@@ -283,11 +331,12 @@ def create_snooze(
             """,
             (
                 int(store_id),
+                int(recipient_id),
                 norm_afm(employee_afm),
                 work_date_ergani.strip()[:32],
                 notify_kind.strip()[:32],
                 int(store_id),
-                int(recipient_id) if recipient_id else None,
+                int(recipient_id),
                 norm_afm(employee_afm),
                 work_date_ergani.strip()[:32],
                 notify_kind.strip()[:32],

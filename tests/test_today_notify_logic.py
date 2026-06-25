@@ -59,6 +59,16 @@ class TodayNotifyLogicTests(unittest.TestCase):
         }
         self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(23, 0)))
 
+    def test_future_schedule_end_does_not_wrap_to_late_check_out(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "15:29",
+            "hour_to": "",
+            "schedule": {"hour_from": "12:00", "hour_to": "20:00"},
+        }
+        self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(15, 30)))
+
     def test_missing_exit_8h_when_no_schedule_end(self):
         row = {
             "work_date": "24/06/2026",

@@ -216,8 +216,8 @@ function appendTodayNotifyCell(tr, row) {
   btn.innerHTML = Office.icon("bell");
   if (snoozed) {
     btn.disabled = true;
-    btn.title = "Snoozed";
-    btn.setAttribute("aria-label", "Snoozed");
+    btn.title = "Όλοι οι λήπτες σε αναβολή (snooze)";
+    btn.setAttribute("aria-label", "Όλοι οι λήπτες σε αναβολή");
   } else {
     btn.title = `Ειδοποίηση σήμερα — ${notify.label}`;
     btn.setAttribute("aria-label", `Ειδοποίηση σήμερα — ${notify.label}`);

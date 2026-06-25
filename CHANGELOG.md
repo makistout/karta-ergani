@@ -8,6 +8,24 @@
 
 ---
 
+## 2026-06-25 — Snooze ανά λήπτη ειδοποίησης
+
+### Πρόβλημα
+
+- Το snooze ήταν **global** ανά υπόθεση (κατάστημα + εργαζόμενος + ημέρα + τύπος), όχι ανά λήπτη.
+- Με πολιτική `once_snooze`, όταν ο **dimitris** έπαιρνε auto-snooze μετά την αποστολή, η καμπάνα στο UI
+  έδειχνε «Snoozed» και ο **makis** δεν έπαιρνε πλέον ειδοποιήσεις.
+
+### Διόρθωση
+
+- Migration `sql/alter_snooze_per_recipient.sql`: νέο UQ
+  `(store_id, recipient_id, employee_afm, work_date_ergani, notify_kind)`.
+- `is_snoozed()` απαιτεί `recipient_id` — έλεγχος/αποστολή ανά λήπτη.
+- Post-sync και χειροκίνητη αποστολή παραλείπουν μόνο snoozed λήπτες.
+- Η καμπάνα στο work-log απενεργοποιείται μόνο όταν **όλοι** οι λήπτες είναι σε αναβολή.
+
+---
+
 ## 2026-06-25 — Fix post-sync ειδοποιήσεων από Task Scheduler
 
 ### Πρόβλημα

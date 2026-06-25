@@ -114,19 +114,6 @@ def send_wto_schedule_notifications(
     prop_from = str(proposal.get("hour_from") or hour_from or "").strip() or None
     prop_to = str(proposal.get("hour_to") or hour_to or "").strip() or None
 
-    if is_snoozed(
-        store_id=store_id,
-        employee_afm=employee_afm,
-        work_date_ergani=work_date,
-        notify_kind=kind,
-    ):
-        return {
-            "sent": 0,
-            "total": 0,
-            "errors": [],
-            "skipped": "snoozed",
-        }
-
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
@@ -136,6 +123,14 @@ def send_wto_schedule_notifications(
     for rec in recipients:
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
         if not chat_id:
+            continue
+        if is_snoozed(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=kind,
+            recipient_id=int(rec["id"]),
+        ):
             continue
         hit_url = None
         if (rec.get("notify_pin_hash") or "").strip():
@@ -179,6 +174,14 @@ def send_wto_schedule_notifications(
     for rec in email_recipients:
         email = str(rec.get("email") or "").strip()
         if not email:
+            continue
+        if is_snoozed(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=kind,
+            recipient_id=int(rec["id"]),
+        ):
             continue
         hit_url = None
         has_pin = bool((rec.get("notify_pin_hash") or "").strip())
@@ -326,18 +329,6 @@ def send_today_punch_notifications(
             "skipped": "kind_mismatch",
         }
     log_step("Έλεγχος snooze ειδοποίησης")
-    if is_snoozed(
-        store_id=store_id,
-        employee_afm=employee_afm,
-        work_date_ergani=work_date,
-        notify_kind=resolved_kind,
-    ):
-        return {
-            "sent": 0,
-            "total": 0,
-            "errors": [],
-            "skipped": "snoozed",
-        }
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
@@ -391,6 +382,14 @@ def send_today_punch_notifications(
     for rec in recipients:
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
         if not chat_id:
+            continue
+        if is_snoozed(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=resolved_kind,
+            recipient_id=int(rec["id"]),
+        ):
             continue
         hit_url = None
         if (rec.get("notify_pin_hash") or "").strip():
@@ -466,6 +465,14 @@ def send_today_punch_notifications(
     for rec in email_recipients:
         email = str(rec.get("email") or "").strip()
         if not email:
+            continue
+        if is_snoozed(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=kind,
+            recipient_id=int(rec["id"]),
+        ):
             continue
         hit_url = None
         has_pin = bool((rec.get("notify_pin_hash") or "").strip())

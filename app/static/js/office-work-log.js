@@ -141,6 +141,13 @@ Object.assign(window.Office, {
     return elapsed;
   },
 
+  /** Λεπτά ίδιας ημερολογιακής ημέρας — χωρίς wrap (για κανόνες ειδοποίησης σήμερα). */
+  elapsedSameDateMinutes(fromMin, toMin) {
+    if (fromMin == null || toMin == null) return null;
+    const elapsed = toMin - fromMin;
+    return elapsed >= 0 ? elapsed : null;
+  },
+
   workLogHasDigitalSchedule(row) {
     return this.scheduleStartMinutesFromRow(row) != null;
   },
@@ -225,7 +232,7 @@ Object.assign(window.Office, {
 
     if (!hf && this.workLogHasDigitalSchedule(row)) {
       const schedStart = this.scheduleStartMinutesFromRow(row);
-      const elapsed = this.elapsedWorkDayMinutes(schedStart, nowMin);
+      const elapsed = this.elapsedSameDateMinutes(schedStart, nowMin);
       if (elapsed != null && elapsed >= 10) {
         return {
           kind: "late_check_in",
@@ -236,8 +243,12 @@ Object.assign(window.Office, {
 
     if (hf && !ht) {
       const schedEnd = this.scheduleEndMinutesFromRow(row);
+      const schedStart = this.scheduleStartMinutesFromRow(row);
       if (schedEnd != null) {
-        const elapsedEnd = this.elapsedWorkDayMinutes(schedEnd, nowMin);
+        if (schedStart != null && schedEnd <= schedStart) {
+          return null;
+        }
+        const elapsedEnd = this.elapsedSameDateMinutes(schedEnd, nowMin);
         if (elapsedEnd != null && elapsedEnd >= 10) {
           return {
             kind: "late_check_out",
@@ -247,7 +258,7 @@ Object.assign(window.Office, {
         return null;
       }
       const startMin = this.parseClockToMinutes(hf);
-      const elapsed = this.elapsedWorkDayMinutes(startMin, nowMin);
+      const elapsed = this.elapsedSameDateMinutes(startMin, nowMin);
       if (elapsed != null && elapsed >= 8 * 60) {
         return {
           kind: "missing_exit_8h",
