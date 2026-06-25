@@ -63,6 +63,10 @@
 - `/ui/sync-log`: το tab **Συγχρονισμός** δείχνει όλες τις καταγραφές by default και
   φιλτράρει με autocomplete καταστήματος. Το tab **Ενέργειες ειδοποιήσεων** δείχνει
   `today-hit` / `today-action` audit events με στήλη **Ποιος** όπου υπάρχει λήπτης token.
+- `/ui/sync-log`: το tab **Απεσταλμένες ειδοποιήσεις** δείχνει τις post-sync αποστολές
+  Telegram/Email ανά κατάστημα, λήπτη, εργαζόμενο, κανάλι και τύπο ειδοποίησης.
+- `/ui/sync-log`: η αναζήτηση στο tab **Συγχρονισμός** ψάχνει και μέσα στις γραμμές
+  `karta_sync_log`, συμπεριλαμβανομένων structured fields από αποστολές ειδοποιήσεων.
 
 ## Κανόνες Ειδοποιήσεων
 
@@ -77,3 +81,6 @@
     οπότε η ειδοποίηση επανέρχεται στα επόμενα scheduled post-sync μέχρι snooze ή άλλη ενέργεια.
 - Το migration `sql/alter_add_notify_recipient_policy.sql` προσθέτει τη στήλη
   `notify_repeat_policy` στους λήπτες.
+- Οι αυτόματες post-sync ειδοποιήσεις γράφουν γραμμή sync log ανά κανάλι/λήπτη/εργαζόμενο
+  με `event=today_notification_send`, `recipient_*`, `employee_*`, `notify_kind` και
+  `notification_channel`, ώστε να γίνεται αναζήτηση/debugging από τις Καταγραφές.

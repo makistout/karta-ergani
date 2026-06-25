@@ -253,6 +253,7 @@ def send_today_punch_notifications(
     notify_kind: str | None,
     public_base_url: str,
     auto_post_sync: bool = False,
+    log: Any | None = None,
 ) -> dict[str, Any]:
     from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
@@ -309,6 +310,38 @@ def send_today_punch_notifications(
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
     snooze_after_send_recipient_id: int | None = None
+    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
+    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
+
+    def log_notification(
+        *,
+        level: str,
+        message: str,
+        rec: dict[str, Any],
+        channel: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        if log is None:
+            return
+        fields = {
+            "event": "today_notification_send",
+            "notification_channel": channel,
+            "notify_kind": resolved_kind,
+            "notify_kind_label": kind_label,
+            "employee_afm": employee_afm,
+            "employee_name": employee_name,
+            "work_date": work_date,
+            "recipient_id": rec.get("id"),
+            "recipient_name": rec.get("name"),
+            "recipient_mobile": rec.get("mobile"),
+            "recipient_email": rec.get("email"),
+            "recipient_policy": _recipient_repeat_policy(rec),
+        }
+        if extra:
+            fields.update(extra)
+        writer = getattr(log, level, None) or getattr(log, "info", None)
+        if writer:
+            writer(message, **fields)
 
     for rec in recipients:
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
@@ -346,15 +379,33 @@ def send_today_punch_notifications(
         try:
             send_telegram_message(chat_id, text)
             sent += 1
+            log_notification(
+                level="info",
+                message=(
+                    "Εστάλη ειδοποίηση Telegram: "
+                    f"{employee_name or employee_afm} -> {rec.get('name') or rec.get('mobile')}"
+                ),
+                rec=rec,
+                channel="telegram",
+                extra={"telegram_chat_id": chat_id, "sent": True},
+            )
             if auto_post_sync and _recipient_repeat_policy(rec) == NOTIFY_REPEAT_ONCE_SNOOZE:
                 rid = _recipient_key(rec)
                 if rid:
                     snooze_after_send_recipient_id = snooze_after_send_recipient_id or rid
         except Exception as ex:
             errors.append(f"{rec.get('name')}: {ex}")
+            log_notification(
+                level="error",
+                message=(
+                    "Αποτυχία ειδοποίησης Telegram: "
+                    f"{employee_name or employee_afm} -> {rec.get('name') or rec.get('mobile')}"
+                ),
+                rec=rec,
+                channel="telegram",
+                extra={"telegram_chat_id": chat_id, "sent": False, "error": str(ex)},
+            )
 
-    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
     for rec in email_recipients:
         email = str(rec.get("email") or "").strip()
         if not email:
@@ -405,14 +456,44 @@ def send_today_punch_notifications(
                 ),
             )
             sent += 1
+            log_notification(
+                level="info",
+                message=(
+                    "Εστάλη ειδοποίηση Email: "
+                    f"{employee_name or employee_afm} -> {rec.get('name') or email}"
+                ),
+                rec=rec,
+                channel="email",
+                extra={"sent": True},
+            )
             if auto_post_sync and _recipient_repeat_policy(rec) == NOTIFY_REPEAT_ONCE_SNOOZE:
                 rid = _recipient_key(rec)
                 if rid:
                     snooze_after_send_recipient_id = snooze_after_send_recipient_id or rid
         except EmailNotConfigured as ex:
             errors.append(f"Email {rec.get('name')}: {ex}")
+            log_notification(
+                level="error",
+                message=(
+                    "Αποτυχία ειδοποίησης Email: "
+                    f"{employee_name or employee_afm} -> {rec.get('name') or email}"
+                ),
+                rec=rec,
+                channel="email",
+                extra={"sent": False, "error": str(ex)},
+            )
         except Exception as ex:
             errors.append(f"Email {rec.get('name')}: {ex}")
+            log_notification(
+                level="error",
+                message=(
+                    "Αποτυχία ειδοποίησης Email: "
+                    f"{employee_name or employee_afm} -> {rec.get('name') or email}"
+                ),
+                rec=rec,
+                channel="email",
+                extra={"sent": False, "error": str(ex)},
+            )
 
     if auto_post_sync and sent > 0:
         mark_notify_sent(
@@ -432,6 +513,17 @@ def send_today_punch_notifications(
             acted_by_name="Αυτόματη αναβολή μετά από ειδοποίηση",
             acted_via="auto_post_sync",
         )
+        if log is not None:
+            log.info(
+                "Αυτόματο snooze μετά από ειδοποίηση μίας φοράς",
+                event="today_notification_auto_snooze",
+                notify_kind=resolved_kind,
+                notify_kind_label=kind_label,
+                employee_afm=employee_afm,
+                employee_name=employee_name,
+                work_date=work_date,
+                recipient_id=snooze_after_send_recipient_id,
+            )
 
     return {
         "sent": sent,

@@ -275,18 +275,58 @@ def reconcile_stale_runs() -> int:
     return total
 
 
-def count_runs(*, store_id: int | None = None) -> int:
+def _run_search_sql() -> str:
+    return f"""
+        (
+            r.run_id LIKE ?
+            OR r.operation LIKE ?
+            OR r.message LIKE ?
+            OR s.name LIKE ?
+            OR EXISTS (
+                SELECT 1
+                FROM dbo.{_LOG_TABLE} l
+                WHERE l.run_id = r.run_id
+                  AND (
+                      l.message LIKE ?
+                      OR l.fields_json LIKE ?
+                  )
+            )
+        )
+    """
+
+
+def _search_params(q: str | None) -> list[str]:
+    term = str(q or "").strip()
+    if not term:
+        return []
+    like = f"%{term}%"
+    return [like, like, like, like, like, like]
+
+
+def count_runs(*, store_id: int | None = None, q: str | None = None) -> int:
     if not tables_available():
         return 0
+    search = _search_params(q)
+    where: list[str] = []
+    params: list[Any] = []
+    if store_id is not None:
+        where.append("r.store_id = ?")
+        params.append(int(store_id))
+    if search:
+        where.append(_run_search_sql())
+        params.extend(search)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     try:
         with cursor() as cur:
-            if store_id is not None:
-                cur.execute(
-                    f"SELECT COUNT(*) FROM dbo.{_RUN_TABLE} WHERE store_id = ?",
-                    int(store_id),
-                )
-            else:
-                cur.execute(f"SELECT COUNT(*) FROM dbo.{_RUN_TABLE}")
+            cur.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM dbo.{_RUN_TABLE} r
+                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                {where_sql}
+                """,
+                *params,
+            )
             row = cur.fetchone()
             return int(row[0]) if row else 0
     except pyodbc.Error:
@@ -296,6 +336,7 @@ def count_runs(*, store_id: int | None = None) -> int:
 def list_runs(
     *,
     store_id: int | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
@@ -303,44 +344,36 @@ def list_runs(
         return []
     lim = max(1, min(int(limit), 200))
     off = max(0, int(offset))
+    search = _search_params(q)
+    where: list[str] = []
+    params: list[Any] = []
+    if store_id is not None:
+        where.append("r.store_id = ?")
+        params.append(int(store_id))
+    if search:
+        where.append(_run_search_sql())
+        params.extend(search)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     try:
         with cursor() as cur:
-            if store_id is not None:
-                cur.execute(
-                    f"""
-                    SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
-                           r.step, r.total,
-                           CAST(r.started_at AS DATETIME2) AS started_at,
-                           CAST(r.finished_at AS DATETIME2) AS finished_at,
-                           s.name AS store_name,
-                           {_DURATION_SQL}
-                    FROM dbo.{_RUN_TABLE} r
-                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
-                    WHERE r.store_id = ?
-                    ORDER BY r.started_at DESC
-                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                    """,
-                    int(store_id),
-                    off,
-                    lim,
-                )
-            else:
-                cur.execute(
-                    f"""
-                    SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
-                           r.step, r.total,
-                           CAST(r.started_at AS DATETIME2) AS started_at,
-                           CAST(r.finished_at AS DATETIME2) AS finished_at,
-                           s.name AS store_name,
-                           {_DURATION_SQL}
-                    FROM dbo.{_RUN_TABLE} r
-                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
-                    ORDER BY r.started_at DESC
-                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                    """,
-                    off,
-                    lim,
-                )
+            cur.execute(
+                f"""
+                SELECT r.run_id, r.store_id, r.operation, r.status, r.message,
+                       r.step, r.total,
+                       CAST(r.started_at AS DATETIME2) AS started_at,
+                       CAST(r.finished_at AS DATETIME2) AS finished_at,
+                       s.name AS store_name,
+                       {_DURATION_SQL}
+                FROM dbo.{_RUN_TABLE} r
+                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                {where_sql}
+                ORDER BY r.started_at DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                *params,
+                off,
+                lim,
+            )
             rows = cur.fetchall()
     except pyodbc.Error:
         return []
@@ -426,6 +459,108 @@ def get_run(run_id: str) -> dict[str, Any] | None:
     item["lines"] = list_lines(run_id, limit=500)
     _enrich_run_timing(item)
     return item
+
+
+def count_notification_sends(
+    *,
+    store_id: int | None = None,
+    q: str | None = None,
+) -> int:
+    if not tables_available():
+        return 0
+    where = ["l.fields_json LIKE ?"]
+    params: list[Any] = ["%today_notification_send%"]
+    if store_id is not None:
+        where.append("r.store_id = ?")
+        params.append(int(store_id))
+    term = str(q or "").strip()
+    if term:
+        like = f"%{term}%"
+        where.append("(l.message LIKE ? OR l.fields_json LIKE ? OR s.name LIKE ?)")
+        params.extend([like, like, like])
+    try:
+        with cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM dbo.{_LOG_TABLE} l
+                INNER JOIN dbo.{_RUN_TABLE} r ON r.run_id = l.run_id
+                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                WHERE {' AND '.join(where)}
+                """,
+                *params,
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+    except pyodbc.Error:
+        return 0
+
+
+def list_notification_sends(
+    *,
+    store_id: int | None = None,
+    q: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    if not tables_available():
+        return []
+    lim = max(1, min(int(limit), 500))
+    off = max(0, int(offset))
+    where = ["l.fields_json LIKE ?"]
+    params: list[Any] = ["%today_notification_send%"]
+    if store_id is not None:
+        where.append("r.store_id = ?")
+        params.append(int(store_id))
+    term = str(q or "").strip()
+    if term:
+        like = f"%{term}%"
+        where.append("(l.message LIKE ? OR l.fields_json LIKE ? OR s.name LIKE ?)")
+        params.extend([like, like, like])
+    try:
+        with cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT l.run_id, l.seq, l.level, l.message, l.fields_json,
+                       CAST(l.created_at AS DATETIME2) AS created_at,
+                       r.store_id, s.name AS store_name
+                FROM dbo.{_LOG_TABLE} l
+                INNER JOIN dbo.{_RUN_TABLE} r ON r.run_id = l.run_id
+                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                WHERE {' AND '.join(where)}
+                ORDER BY l.created_at DESC, l.seq DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                *params,
+                off,
+                lim,
+            )
+            rows = cur.fetchall()
+    except pyodbc.Error:
+        return []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        fields: dict[str, Any] = {}
+        if row[4]:
+            try:
+                parsed = json.loads(row[4])
+                if isinstance(parsed, dict):
+                    fields = parsed
+            except json.JSONDecodeError:
+                fields = {}
+        item: dict[str, Any] = {
+            "run_id": row[0],
+            "seq": row[1],
+            "level": row[2],
+            "message": row[3],
+            "fields": fields,
+            "store_id": row[6],
+            "store_name": row[7],
+        }
+        if row[5] is not None:
+            item["created_at"] = row[5].isoformat() if hasattr(row[5], "isoformat") else str(row[5])
+        out.append(item)
+    return out
 
 
 def list_lines(run_id: str, limit: int = 150) -> list[dict[str, Any]]:

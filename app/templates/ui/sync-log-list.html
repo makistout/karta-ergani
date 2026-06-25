@@ -13,6 +13,9 @@
         <button type="button" class="log-tab" id="tabNotifyActions" data-log-tab="actions" role="tab" aria-selected="false" aria-controls="notifyActionsPanel">
           <i class="bi bi-hand-index-thumb" aria-hidden="true"></i><span>Ενέργειες ειδοποιήσεων</span>
         </button>
+        <button type="button" class="log-tab" id="tabNotifySent" data-log-tab="sent" role="tab" aria-selected="false" aria-controls="notifySentPanel">
+          <i class="bi bi-send-check" aria-hidden="true"></i><span>Απεσταλμένες ειδοποιήσεις</span>
+        </button>
       </div>
       <div id="syncLogsPanel" class="log-tab-panel" role="tabpanel" aria-labelledby="tabSyncLogs">
         <div class="actions sync-log-actions">
@@ -24,6 +27,10 @@
               <ul id="syncLogStoreList" class="ac-list" role="listbox"></ul>
             </div>
             <input type="hidden" id="syncLogStoreId">
+          </div>
+          <div class="sync-log-store-filter">
+            <label for="syncLogSearchInput">Αναζήτηση</label>
+            <input id="syncLogSearchInput" type="search" placeholder="Λήπτης, εργαζόμενος, ΑΦΜ, κανάλι…" autocomplete="off">
           </div>
           <button type="button" class="btn btn-secondary" id="btnClearSyncLogStore">
             <i class="bi bi-x-circle" aria-hidden="true"></i><span>Όλα</span>
@@ -51,10 +58,24 @@
           <div id="notifyActionsWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
         </div>
       </div>
+      <div id="notifySentPanel" class="log-tab-panel hidden" role="tabpanel" aria-labelledby="tabNotifySent">
+        <div class="actions sync-log-actions">
+          <div class="sync-log-store-filter">
+            <label for="notifySentSearchInput">Αναζήτηση</label>
+            <input id="notifySentSearchInput" type="search" placeholder="Λήπτης, εργαζόμενος, ΑΦΜ, κανάλι…" autocomplete="off">
+          </div>
+          <button type="button" class="btn" id="btnRefreshNotifySent">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
+          </button>
+        </div>
+        <div class="card">
+          <div id="notifySentWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+        </div>
+      </div>
       <div id="syncLogMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260624storepick1"></script>
-  <script src="/static/js/sync-log-list.js?v=20260624tabs2"></script>
+  <script src="/static/js/sync-log-list.js?v=20260625notifytabs1"></script>
 {% endblock %}

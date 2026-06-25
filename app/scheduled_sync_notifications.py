@@ -130,6 +130,7 @@ def _send_post_sync_notifications(
                     notify_kind=kind,
                     public_base_url=Config.PUBLIC_BASE_URL,
                     auto_post_sync=True,
+                    log=log,
                 )
                 sent = int(res.get("sent") or 0)
                 total = int(res.get("total") or 0)
