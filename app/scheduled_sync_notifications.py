@@ -233,8 +233,13 @@ def enqueue_post_sync_notifications(
     *,
     work_date_iso: str,
     parent_run_id: str | None = None,
+    background: bool = False,
 ) -> bool:
-    """Fire-and-forget post-sync ειδοποιήσεις για ένα κατάστημα."""
+    """Post-sync ειδοποιήσεις για ένα κατάστημα.
+
+    Προεπιλογή συγχρονή εκτέλεση — το CLI του Task Scheduler τερματίζει αμέσως
+    μετά το sync και θα σκότωνε daemon thread πριν σταλούν τα μηνύματα.
+    """
     if not Config.KARTA_POST_SYNC_NOTIFY_ENABLED:
         return False
     ref = (work_date_iso or "").strip()[:10]
@@ -251,6 +256,18 @@ def enqueue_post_sync_notifications(
         _POST_SYNC_NOTIFY_RUNNING.add(key)
 
     cfg_snapshot = dict(cfg)
+
+    if not background:
+        try:
+            _send_post_sync_notifications(
+                cfg_snapshot,
+                work_date_iso=ref,
+                parent_run_id=parent_run_id,
+            )
+        finally:
+            with _POST_SYNC_NOTIFY_LOCK:
+                _POST_SYNC_NOTIFY_RUNNING.discard(key)
+        return True
 
     def _run() -> None:
         try:

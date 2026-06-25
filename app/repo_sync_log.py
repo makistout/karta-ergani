@@ -227,7 +227,12 @@ def reconcile_stale_runs() -> int:
             finished_at = COALESCE(r.finished_at, sub.last_ts),
             message = COALESCE(
                 NULLIF(r.message, N''),
-                tail.last_msg,
+                CASE
+                    WHEN tail.last_msg LIKE N'Αποστολή ειδοποίησης%'
+                        OR tail.last_msg LIKE N'Έναρξη ασύγχρονων%'
+                    THEN N'Διακόπηκε — η αποστολή ειδοποιήσεων δεν ολοκληρώθηκε'
+                    ELSE tail.last_msg
+                END,
                 N'Ολοκληρώθηκε (αυτόματη διόρθωση κατάστασης)'
             )
         FROM dbo.{_RUN_TABLE} r
