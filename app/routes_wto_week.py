@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from app.db import cursor
 from app.ergani_client import ErganiClient
@@ -38,6 +38,27 @@ def _availability(client: ErganiClient, bearer: str) -> tuple[bool, int, Any]:
     resp = client.submissions_list(bearer)
     parsed = json_or_text(resp)
     return resp.ok and SUBMISSION_CODE_WTO_WEEK in _submission_codes(parsed), resp.status_code, parsed
+
+
+def _availability_with_token_refresh(
+    ctx: dict[str, Any],
+    client: ErganiClient,
+) -> tuple[str | None, bool, int, Any]:
+    bearer = ensure_ergani_bearer(ctx)
+    if not bearer:
+        return None, False, 401, None
+
+    available, status, parsed = _availability(client, bearer)
+    if status not in (401, 403):
+        return bearer, available, status, parsed
+
+    session.pop("ergani_bearer", None)
+    refreshed = ensure_ergani_bearer(ctx)
+    if not refreshed or refreshed == bearer:
+        return bearer, available, status, parsed
+
+    available, status, parsed = _availability(client, refreshed)
+    return refreshed, available, status, parsed
 
 
 def _employee_for_active_store(ctx: dict[str, Any], employee_afm: str) -> dict[str, Any] | None:
@@ -82,11 +103,10 @@ def wto_week_availability():
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"available": False, "error": "Επιλέξτε πρώτα κατάστημα"}), 400
-    bearer = ensure_ergani_bearer(ctx)
+    client = ErganiClient(ctx.get("api_base_url"))
+    bearer, available, status, parsed = _availability_with_token_refresh(ctx, client)
     if not bearer:
         return jsonify({"available": False, "error": "Αποτυχία σύνδεσης Ergani API"}), 401
-    client = ErganiClient(ctx.get("api_base_url"))
-    available, status, parsed = _availability(client, bearer)
     if status >= 400:
         return jsonify({
             "available": False,
@@ -110,11 +130,10 @@ def submit_wto_week():
     if not isinstance(body, dict):
         return jsonify({"error": "Αναμενόταν JSON"}), 400
 
-    bearer = ensure_ergani_bearer(ctx)
+    client = ErganiClient(ctx.get("api_base_url"))
+    bearer, available, status, parsed_availability = _availability_with_token_refresh(ctx, client)
     if not bearer:
         return jsonify({"error": "Αποτυχία σύνδεσης Ergani API (web user)"}), 401
-    client = ErganiClient(ctx.get("api_base_url"))
-    available, status, parsed_availability = _availability(client, bearer)
     if status >= 400:
         return jsonify({
             "error": "Αποτυχία ελέγχου ενεργών υποβολών Ergani",

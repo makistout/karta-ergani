@@ -8,6 +8,19 @@
 
 ---
 
+## 2026-06-25 — WTOWeek availability με ανανέωση Ergani bearer
+
+- Διορθώθηκε το `/api/wto-week/availability` ώστε όταν το αποθηκευμένο Ergani bearer έχει
+  λήξει ή απορριφθεί με 401/403, να καθαρίζεται από το session, να γίνεται νέο API login
+  και να επαναλαμβάνεται μία φορά ο έλεγχος `Lookup/Submissions`.
+- Η ίδια ανανέωση bearer εφαρμόζεται και πριν από `POST /api/wto-week/submit`, ώστε να μη
+  μπλοκάρεται η υποβολή WTOWeek από stale session token.
+- Προστέθηκε unit test για το σενάριο expired token → refresh → επιτυχής availability check.
+- Προστέθηκε `pytest` στο τοπικό virtualenv και επιβεβαιώθηκαν τα WTOWeek tests:
+  `tests/test_wto_week_payload.py`, `tests/test_wto_week_routes.py`.
+
+---
+
 ## 2026-06-25 — Καταγραφές ανά tab, audit ενεργειών ειδοποιήσεων και μοναδικό PIN
 
 ### Καταγραφές / audit ειδοποιήσεων
