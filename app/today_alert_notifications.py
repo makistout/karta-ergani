@@ -384,10 +384,7 @@ def send_today_punch_notifications(
             notify_kind=resolved_kind,
         )
     ):
-        log_step(
-            "Παράλειψη — ήδη στάλθηκε αυτόματη ειδοποίηση σήμερα",
-            notify_kind=resolved_kind,
-        )
+        log_step("Παράλειψη — ήδη στάλθηκε αυτόματη ειδοποίηση σήμερα")
         return {
             "sent": 0,
             "total": 0,
@@ -542,7 +539,7 @@ def send_today_punch_notifications(
             store_id=store_id,
             employee_afm=employee_afm,
             work_date_ergani=work_date,
-            notify_kind=kind,
+            notify_kind=resolved_kind,
             recipient_id=int(rec["id"]),
         ):
             continue

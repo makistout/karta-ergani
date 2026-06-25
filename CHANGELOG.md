@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-06-25 — Fix crashes post-sync ειδοποιήσεων (typo + διπλό log arg)
+
+- **`late_check_out` / email λήπτες:** διόρθωση `notify_kind=kind` → `resolved_kind` στο
+  `send_today_punch_notifications` — προκαλούσε `NameError` και μηδενικές αποστολές.
+- **`late_check_in` / already_sent:** αφαίρεση διπλού `notify_kind` στο `log_step` — προκαλούσε
+  `TypeError` αντί ήσυχης παράλειψης όταν είχε ήδη σταλεί η αυτόματη ειδοποίηση.
+
+---
+
 ## 2026-06-25 — Αναμενόμενη έξοδος = είσοδος + διάρκεια ωραρίου
 
 - Το `late_check_out` δεν συγκρίνει πλέον με το `hour_to` του ψηφιακού ωραρίου απευθείας.
