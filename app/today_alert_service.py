@@ -19,9 +19,6 @@ from app.repo_today_alert import (
     get_today_alert_token_row,
     get_today_alert_token_row_by_id,
     increment_today_alert_pin_attempts,
-    is_notify_sent,
-    is_snoozed,
-    mark_notify_sent,
     mark_today_alert_action,
     mark_today_alert_pin_verified,
     today_alert_token_is_valid,
@@ -36,11 +33,8 @@ from app.telegram_punch_service import (
 )
 from app.today_notify_logic import (
     KIND_LABELS,
-    WTO_DAILY_NOTIFY_KINDS,
     card_action_for_today_kind,
     ergani_date_to_iso,
-    notify_auto_send_once,
-    resolve_today_notify_kind,
     today_leave_eligible,
     today_wto_daily_eligible,
 )

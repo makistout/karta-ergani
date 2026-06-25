@@ -12,7 +12,10 @@ from app.karta_log import KartaLogger
 from app.portal_schedule_sync import sync_schedule_from_portal
 from app.portal_work_log_sync import sync_work_log_from_portal
 from app import repo_store, repo_sync_log
-from app.scheduled_sync_notifications import enqueue_post_sync_notifications
+from app.scheduled_sync_notifications import (
+    _post_sync_notify_key,
+    enqueue_post_sync_notifications,
+)
 from config import Config
 
 OPERATION = "scheduled_today_sync"

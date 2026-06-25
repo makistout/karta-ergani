@@ -70,3 +70,10 @@
 - Η εφαρμογή ελέγχει διπλό PIN στο UI και στο backend save ληπτών.
 - Το migration `sql/alter_unique_notify_pin_per_store.sql` προσθέτει unique filtered index
   στη βάση, αφού πρώτα ελέγξει για υπάρχοντα διπλότυπα.
+- Κάθε λήπτης έχει πολιτική επανάληψης στη σελίδα `/ui/stores/notify`:
+  - `Μία φορά και αυτόματο snooze`: μετά από επιτυχή post-sync αποστολή γράφεται
+    `karta_today_notify_snooze`, άρα η υπάρχουσα ροή δεν ξαναστέλνει την ίδια περίπτωση.
+  - `Συνέχεια κάθε 10 λεπτά μέχρι ενέργεια`: δεν γράφεται snooze μετά την αποστολή,
+    οπότε η ειδοποίηση επανέρχεται στα επόμενα scheduled post-sync μέχρι snooze ή άλλη ενέργεια.
+- Το migration `sql/alter_add_notify_recipient_policy.sql` προσθέτει τη στήλη
+  `notify_repeat_policy` στους λήπτες.

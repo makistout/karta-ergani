@@ -8,6 +8,21 @@
 
 ---
 
+## 2026-06-25 — Πολιτική επανάληψης ειδοποιήσεων ανά λήπτη
+
+- Στη σελίδα `/ui/stores/notify` προστέθηκαν radio επιλογές κάτω από κάθε λήπτη:
+  **Μία φορά και αυτόματο snooze** ή **Συνέχεια κάθε 10 λεπτά μέχρι ενέργεια**.
+- Η post-sync αποστολή κοιτάει την πολιτική του λήπτη:
+  - για `once_snooze`, στέλνει την ειδοποίηση και μετά γράφει άμεσα snooze στον υπάρχοντα
+    `karta_today_notify_snooze`,
+  - για `repeat_until_action`, στέλνει χωρίς αυτόματο snooze, ώστε να επαναληφθεί στο επόμενο
+    scheduled post-sync μέχρι να γίνει ενέργεια.
+- Προστέθηκε migration `sql/alter_add_notify_recipient_policy.sql` και runner
+  `scripts/run_migration_notify_recipient_policy.py`.
+- Προστέθηκαν focused tests για το `send -> snooze` και το repeat-without-snooze path.
+
+---
+
 ## 2026-06-25 — WTOWeek availability με ανανέωση Ergani bearer
 
 - Διορθώθηκε το `/api/wto-week/availability` ώστε όταν το αποθηκευμένο Ergani bearer έχει

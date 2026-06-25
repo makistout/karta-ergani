@@ -60,6 +60,11 @@ function asNotifyFlag(value, defaultValue = false) {
   return Boolean(value);
 }
 
+function normalizeNotifyRepeatPolicy(value) {
+  const v = String(value || "").trim();
+  return v === "repeat_until_action" ? "repeat_until_action" : "once_snooze";
+}
+
 function mapRecipientRow(r) {
   return {
     name: r.name || "",
@@ -70,6 +75,7 @@ function mapRecipientRow(r) {
     has_notify_pin: Boolean(r.has_notify_pin),
     active: asNotifyFlag(r.active, true),
     email_active: asNotifyFlag(r.email_active, false),
+    notify_repeat_policy: normalizeNotifyRepeatPolicy(r.notify_repeat_policy),
   };
 }
 
@@ -93,7 +99,7 @@ function isNotifyToggleOn(tr, selector) {
 function syncNotifyRecipientsFromDom() {
   const body = document.getElementById("notifyRecipientsBody");
   if (!body) return;
-  body.querySelectorAll("tr").forEach((tr, idx) => {
+  body.querySelectorAll("tr.notify-recipient-main-row").forEach((tr, idx) => {
     const row = notifyRecipients[idx];
     if (!row) return;
     row.name = (tr.querySelector(".notify-input-name")?.value || "").trim();
@@ -107,12 +113,16 @@ function syncNotifyRecipientsFromDom() {
       emailActive = false;
     }
     row.email_active = emailActive;
+    row.notify_repeat_policy = normalizeNotifyRepeatPolicy(
+      body.querySelector(`input[name="notify-policy-${idx}"]:checked`)?.value ||
+        row.notify_repeat_policy
+    );
   });
 }
 
 function updateNotifyTelegramRowUi(idx) {
   const body = document.getElementById("notifyRecipientsBody");
-  const tr = body?.querySelectorAll("tr")[idx];
+  const tr = body?.querySelectorAll("tr.notify-recipient-main-row")[idx];
   const row = notifyRecipients[idx];
   if (!tr || !row) return;
 
@@ -136,7 +146,7 @@ function updateNotifyTelegramRowUi(idx) {
 
 function syncNotifyEmailFromDom(idx) {
   const body = document.getElementById("notifyRecipientsBody");
-  const tr = body?.querySelectorAll("tr")[idx];
+  const tr = body?.querySelectorAll("tr.notify-recipient-main-row")[idx];
   const row = notifyRecipients[idx];
   if (!row) return "";
   const email = normalizeNotifyEmail(tr?.querySelector(".notify-input-email")?.value || row.email || "");
@@ -238,6 +248,7 @@ function initNotifyRecipientButtons() {
       notify_pin: "",
       active: true,
       email_active: false,
+      notify_repeat_policy: "once_snooze",
     });
     renderNotifyRecipients();
   };
@@ -268,9 +279,29 @@ function buildNotifyToggleBtn(idx, kind, isOn, title) {
   );
 }
 
+function buildNotifyPolicyRow(row, idx) {
+  const policy = normalizeNotifyRepeatPolicy(row.notify_repeat_policy);
+  return (
+    `<tr class="notify-recipient-policy-row" data-idx="${idx}">` +
+    `<td colspan="6">` +
+    `<div class="notify-policy-options" role="radiogroup" aria-label="Ρυθμός ειδοποιήσεων">` +
+    `<label class="notify-policy-option">` +
+    `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="once_snooze"${policy === "once_snooze" ? " checked" : ""}>` +
+    `<span>Μία φορά και αυτόματο snooze</span>` +
+    `</label>` +
+    `<label class="notify-policy-option">` +
+    `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="repeat_until_action"${policy === "repeat_until_action" ? " checked" : ""}>` +
+    `<span>Συνέχεια κάθε 10 λεπτά μέχρι ενέργεια</span>` +
+    `</label>` +
+    `</div>` +
+    `</td>` +
+    `</tr>`
+  );
+}
+
 function updateNotifyEmailRowUi(idx) {
   const body = document.getElementById("notifyRecipientsBody");
-  const tr = body?.querySelectorAll("tr")[idx];
+  const tr = body?.querySelectorAll("tr.notify-recipient-main-row")[idx];
   const row = notifyRecipients[idx];
   if (!tr || !row) return;
 
@@ -321,6 +352,7 @@ function renderNotifyRecipients() {
     const effectiveEmailActive = notifyRecipientEmailEffective(row, row.email);
 
     const tr = document.createElement("tr");
+    tr.className = "notify-recipient-main-row";
     if (!isActive && !effectiveEmailActive) tr.classList.add("notify-recipient-row--paused");
 
     const pinVal = cleanNotifyPin(row.notify_pin);
@@ -358,6 +390,7 @@ function renderNotifyRecipients() {
       `<button type="button" class="btn btn-danger notify-remove" data-idx="${idx}" title="Διαγραφή λήπτη" aria-label="Διαγραφή λήπτη">${Office.icon("trash3")}</button>` +
       `</td>`;
     body.appendChild(tr);
+    body.insertAdjacentHTML("beforeend", buildNotifyPolicyRow(row, idx));
   });
 
   body.querySelectorAll(".notify-input-name, .notify-input-mobile, .notify-input-email, .notify-input-pin").forEach((inp) => {
@@ -413,6 +446,15 @@ function renderNotifyRecipients() {
       renderNotifyRecipients();
     });
   });
+
+  body.querySelectorAll(".notify-policy-radio").forEach((radio) => {
+    radio.addEventListener("change", () => {
+      const tr = radio.closest(".notify-recipient-policy-row");
+      const i = parseInt(tr?.getAttribute("data-idx") || "", 10);
+      if (!notifyRecipients[i]) return;
+      notifyRecipients[i].notify_repeat_policy = normalizeNotifyRepeatPolicy(radio.value);
+    });
+  });
 }
 
 function collectNotifyRecipientsFromDom() {
@@ -430,6 +472,7 @@ function collectNotifyRecipientsFromDom() {
       notify_pin: row.notify_pin || "",
       active: notifyRecipientIsActive(row),
       email_active: notifyRecipientEmailIsActive(row),
+      notify_repeat_policy: normalizeNotifyRepeatPolicy(row.notify_repeat_policy),
     });
   });
   notifyRecipients = rows;

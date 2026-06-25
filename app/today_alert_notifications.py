@@ -5,12 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from app.repo_notify_recipients import (
+    NOTIFY_REPEAT_ONCE_SNOOZE,
     list_deliverable_recipients,
     list_email_deliverable_recipients,
+    normalize_notify_repeat_policy,
 )
 from app.repo_today_alert import (
+    create_snooze,
     create_today_alert_token,
-    is_notify_sent,
     is_snoozed,
     mark_notify_sent,
 )
@@ -19,7 +21,6 @@ from app.today_notify_logic import (
     KIND_LABELS,
     WTO_DAILY_NOTIFY_KINDS,
     ergani_date_to_iso,
-    notify_auto_send_once,
     resolve_today_notify_kind,
 )
 from app.public_urls import ui_public_url
@@ -27,6 +28,14 @@ from app.public_urls import ui_public_url
 
 def build_today_hit_redirect_url(token: str | None = None) -> str:
     return ui_public_url("/ui/today-hit", token=token)
+
+
+def _recipient_repeat_policy(rec: dict[str, Any]) -> str:
+    return normalize_notify_repeat_policy(rec.get("notify_repeat_policy"))
+
+
+def _recipient_key(rec: dict[str, Any]) -> int:
+    return int(rec.get("id") or 0)
 
 
 def _find_wto_daily_proposal(
@@ -294,28 +303,12 @@ def send_today_punch_notifications(
             "errors": [],
             "skipped": "snoozed",
         }
-    if (
-        auto_post_sync
-        and notify_auto_send_once(resolved_kind)
-        and is_notify_sent(
-            store_id=store_id,
-            employee_afm=employee_afm,
-            work_date_ergani=work_date,
-            notify_kind=resolved_kind,
-        )
-    ):
-        return {
-            "sent": 0,
-            "total": 0,
-            "errors": [],
-            "skipped": "already_sent",
-        }
-
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
+    snooze_after_send_recipient_id: int | None = None
 
     for rec in recipients:
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
@@ -353,6 +346,10 @@ def send_today_punch_notifications(
         try:
             send_telegram_message(chat_id, text)
             sent += 1
+            if auto_post_sync and _recipient_repeat_policy(rec) == NOTIFY_REPEAT_ONCE_SNOOZE:
+                rid = _recipient_key(rec)
+                if rid:
+                    snooze_after_send_recipient_id = snooze_after_send_recipient_id or rid
         except Exception as ex:
             errors.append(f"{rec.get('name')}: {ex}")
 
@@ -408,18 +405,32 @@ def send_today_punch_notifications(
                 ),
             )
             sent += 1
+            if auto_post_sync and _recipient_repeat_policy(rec) == NOTIFY_REPEAT_ONCE_SNOOZE:
+                rid = _recipient_key(rec)
+                if rid:
+                    snooze_after_send_recipient_id = snooze_after_send_recipient_id or rid
         except EmailNotConfigured as ex:
             errors.append(f"Email {rec.get('name')}: {ex}")
         except Exception as ex:
             errors.append(f"Email {rec.get('name')}: {ex}")
 
-    if auto_post_sync and notify_auto_send_once(resolved_kind) and sent > 0:
+    if auto_post_sync and sent > 0:
         mark_notify_sent(
             store_id=store_id,
             employee_afm=employee_afm,
             work_date_ergani=work_date,
             notify_kind=resolved_kind,
             sent_via="auto_post_sync",
+        )
+    if auto_post_sync and snooze_after_send_recipient_id:
+        create_snooze(
+            store_id=store_id,
+            recipient_id=snooze_after_send_recipient_id,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=resolved_kind,
+            acted_by_name="Αυτόματη αναβολή μετά από ειδοποίηση",
+            acted_via="auto_post_sync",
         )
 
     return {

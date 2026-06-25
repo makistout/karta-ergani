@@ -8,8 +8,20 @@ from typing import Any
 import pyodbc
 
 from app.db import cursor
-from app.notify_pin import hash_notify_pin, is_pin_mask, validate_notify_pin
+from app.notify_pin import (
+    hash_notify_pin,
+    is_pin_mask,
+    is_valid_notify_pin,
+    validate_notify_pin,
+)
 from app.row_util import rows_to_dicts
+
+NOTIFY_REPEAT_ONCE_SNOOZE = "once_snooze"
+NOTIFY_REPEAT_UNTIL_ACTION = "repeat_until_action"
+NOTIFY_REPEAT_POLICIES = {
+    NOTIFY_REPEAT_ONCE_SNOOZE,
+    NOTIFY_REPEAT_UNTIL_ACTION,
+}
 
 
 def normalize_mobile(value: str | None) -> str:
@@ -35,6 +47,13 @@ def is_valid_email(value: str | None) -> bool:
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
 
 
+def normalize_notify_repeat_policy(value: str | None) -> str:
+    policy = str(value or "").strip().lower()
+    if policy in NOTIFY_REPEAT_POLICIES:
+        return policy
+    return NOTIFY_REPEAT_ONCE_SNOOZE
+
+
 def notify_recipients_table_missing_message(exc: BaseException) -> str | None:
     if isinstance(exc, pyodbc.Error):
         err = exc.args[0] if exc.args else ""
@@ -42,6 +61,11 @@ def notify_recipients_table_missing_message(exc: BaseException) -> str | None:
             return (
                 "Λείπει ο πίνακας karta_store_notify_recipient. "
                 "Τρέξτε sql/alter_add_store_notify_recipients.sql στο SSMS."
+            )
+        if "notify_repeat_policy" in str(exc):
+            return (
+                "Λείπει η πολιτική επανάληψης στους λήπτες ειδοποιήσεων. "
+                "Τρέξτε sql/alter_add_notify_recipient_policy.sql."
             )
         if err == "42S22" or "email_active" in str(exc) or "Invalid column name" in str(exc):
             return (
@@ -61,6 +85,9 @@ def recipient_for_api(row: dict[str, Any]) -> dict[str, Any]:
     out["email_active"] = (
         bool(row.get("email_active")) if row.get("email_active") is not None else True
     )
+    out["notify_repeat_policy"] = normalize_notify_repeat_policy(
+        row.get("notify_repeat_policy")
+    )
     return out
 
 
@@ -70,7 +97,7 @@ def list_notify_recipients(store_id: int) -> list[dict[str, Any]]:
             """
             SELECT id, store_id, name, mobile, telegram_chat_id, active,
                    email, email_active,
-                   notify_pin_hash, notify_pin
+                   notify_pin_hash, notify_pin, notify_repeat_policy
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ?
             ORDER BY name, mobile, id
@@ -87,7 +114,7 @@ def _list_notify_recipients_raw(store_id: int) -> list[dict[str, Any]]:
             """
             SELECT id, store_id, name, mobile, telegram_chat_id, active,
                    email, email_active,
-                   notify_pin_hash, notify_pin
+                   notify_pin_hash, notify_pin, notify_repeat_policy
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ?
             """,
@@ -105,7 +132,17 @@ def replace_notify_recipients(
         normalize_mobile(r.get("mobile")): r for r in _list_notify_recipients_raw(sid)
     }
     cleaned: list[
-        tuple[str, str, str | None, str | None, int, str | None, str | None, int]
+        tuple[
+            str,
+            str,
+            str | None,
+            str | None,
+            int,
+            str | None,
+            str | None,
+            int,
+            str,
+        ]
     ] = []
     pins_seen: dict[str, str] = {}
     for row in rows:
@@ -164,13 +201,36 @@ def replace_notify_recipients(
             email_active = 1
         if email_active and not is_valid_email(email):
             email_active = 0
+        notify_repeat_policy = normalize_notify_repeat_policy(
+            row.get("notify_repeat_policy") or prev.get("notify_repeat_policy")
+        )
         cleaned.append(
-            (name, mobile, chat_id, email, email_active, pin_hash, pin_plain, active)
+            (
+                name,
+                mobile,
+                chat_id,
+                email,
+                email_active,
+                pin_hash,
+                pin_plain,
+                active,
+                notify_repeat_policy,
+            )
         )
 
     kept_mobiles: set[str] = set()
     with cursor() as cur:
-        for name, mobile, chat_id, email, email_active, pin_hash, pin_plain, active in cleaned:
+        for (
+            name,
+            mobile,
+            chat_id,
+            email,
+            email_active,
+            pin_hash,
+            pin_plain,
+            active,
+            notify_repeat_policy,
+        ) in cleaned:
             kept_mobiles.add(mobile)
             prev = old_rows.get(mobile) or {}
             prev_id = prev.get("id")
@@ -179,7 +239,8 @@ def replace_notify_recipients(
                     """
                     UPDATE dbo.karta_store_notify_recipient
                     SET name = ?, mobile = ?, telegram_chat_id = ?, email = ?, email_active = ?,
-                        notify_pin_hash = ?, notify_pin = ?, active = ?
+                        notify_pin_hash = ?, notify_pin = ?, active = ?,
+                        notify_repeat_policy = ?
                     WHERE id = ? AND store_id = ?
                     """,
                     (
@@ -191,6 +252,7 @@ def replace_notify_recipients(
                         pin_hash,
                         pin_plain,
                         active,
+                        notify_repeat_policy,
                         int(prev_id),
                         sid,
                     ),
@@ -200,8 +262,8 @@ def replace_notify_recipients(
                     """
                     INSERT INTO dbo.karta_store_notify_recipient (
                         store_id, name, mobile, telegram_chat_id, email, email_active,
-                        notify_pin_hash, notify_pin, active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        notify_pin_hash, notify_pin, active, notify_repeat_policy
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         sid,
@@ -213,6 +275,7 @@ def replace_notify_recipients(
                         pin_hash,
                         pin_plain,
                         active,
+                        notify_repeat_policy,
                     ),
                 )
 
@@ -267,7 +330,8 @@ def list_deliverable_recipients(store_id: int) -> list[dict[str, Any]]:
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT id, name, mobile, telegram_chat_id, notify_pin_hash
+            SELECT id, name, mobile, telegram_chat_id, notify_pin_hash,
+                   notify_repeat_policy
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ? AND active = 1
               AND telegram_chat_id IS NOT NULL
@@ -283,7 +347,8 @@ def list_email_deliverable_recipients(store_id: int) -> list[dict[str, Any]]:
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT id, name, mobile, email, notify_pin_hash
+            SELECT id, name, mobile, email, notify_pin_hash,
+                   notify_repeat_policy
             FROM dbo.karta_store_notify_recipient
             WHERE store_id = ? AND email_active = 1
               AND email IS NOT NULL

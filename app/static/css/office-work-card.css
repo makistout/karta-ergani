@@ -371,6 +371,39 @@ input, select {
   gap: 0.35rem;
 }
 
+.notify-recipient-policy-row td {
+  padding-top: 0;
+  padding-bottom: 0.65rem;
+  border-top: 0;
+}
+
+.notify-policy-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  align-items: center;
+  padding: 0 0.05rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.notify-policy-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.notify-policy-option input {
+  display: inline-block;
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+}
+
 .notify-recipients-table .notify-toggle-btn,
 .notify-recipients-table .notify-remove {
   display: inline-flex;

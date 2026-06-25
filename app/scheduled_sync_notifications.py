@@ -8,8 +8,6 @@ from typing import Any
 
 from app.ergani_env import store_api_context
 from app.karta_log import KartaLogger
-from app.today_notify_logic import notify_auto_send_once
-from app.work_card_payload import norm_afm
 from app import repo_sync_log
 from config import Config
 
@@ -48,7 +46,6 @@ def _send_post_sync_notifications(
     """Αποστολή ειδοποιήσεων καμπάνας μετά από sync καταστήματος."""
     from app.card_report import build_card_status_report
     from app.repo_today_alert import enrich_card_report_rows_with_today_notify
-    from app.repo_today_alert import list_today_notify_sent
     from app.today_alert_service import send_today_punch_notifications
 
     ctx = store_api_context(cfg)
@@ -87,31 +84,11 @@ def _send_post_sync_notifications(
         )
         rows = report.get("rows") or []
         enrich_card_report_rows_with_today_notify(rows, sid)
-        ergani_dates = sorted(
-            {
-                str(r.get("work_date") or "").strip()
-                for r in rows
-                if str(r.get("work_date") or "").strip()
-            }
-        )
-        already_sent = (
-            list_today_notify_sent(sid, ergani_dates) if ergani_dates else set()
-        )
-
         notify_rows = [
             row
             for row in rows
             if str(row.get("today_notify_kind") or "").strip()
             and not bool(row.get("today_notify_snoozed"))
-            and not (
-                notify_auto_send_once(str(row.get("today_notify_kind") or ""))
-                and (
-                    norm_afm(str(row.get("employee_afm") or "")),
-                    str(row.get("work_date") or "").strip(),
-                    str(row.get("today_notify_kind") or "").strip(),
-                )
-                in already_sent
-            )
         ]
         if not notify_rows:
             msg = "Δεν υπάρχουν ενεργές ειδοποιήσεις καμπάνας μετά το sync"
