@@ -4,28 +4,57 @@
 {% set active_nav = 'synclog' %}
 {% set body_class = "" %}
 {% block content %}
-      <h1 class="page-title"><i class="bi bi-journal-text" aria-hidden="true"></i> Καταγραφή συγχρονισμών</h1>
-      <p class="page-desc" id="syncLogDesc">Ιστορικό συγχρονισμών Ergani — αποθηκευμένο στη βάση.</p>
-      <div class="actions sync-log-actions">
-        <label class="sync-log-filter">
-          <input type="checkbox" id="chkActiveStoreOnly" checked>
-          <span>Μόνο ενεργό κατάστημα</span>
-        </label>
-        <button type="button" class="btn" id="btnRefreshLogs">
-          <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
+      <h1 class="page-title"><i class="bi bi-journal-text" aria-hidden="true"></i> Καταγραφές</h1>
+      <p class="page-desc" id="syncLogDesc">Ιστορικό συγχρονισμών και ενεργειών από ειδοποιήσεις.</p>
+      <div class="log-tabs" role="tablist" aria-label="Τύπος καταγραφών">
+        <button type="button" class="log-tab active" id="tabSyncLogs" data-log-tab="sync" role="tab" aria-selected="true" aria-controls="syncLogsPanel">
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός</span>
+        </button>
+        <button type="button" class="log-tab" id="tabNotifyActions" data-log-tab="actions" role="tab" aria-selected="false" aria-controls="notifyActionsPanel">
+          <i class="bi bi-hand-index-thumb" aria-hidden="true"></i><span>Ενέργειες ειδοποιήσεων</span>
         </button>
       </div>
-      <div class="card">
-        <div id="syncLogRunsWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      <div id="syncLogsPanel" class="log-tab-panel" role="tabpanel" aria-labelledby="tabSyncLogs">
+        <div class="actions sync-log-actions">
+          <div class="sync-log-store-filter">
+            <label for="syncLogStoreInput">Κατάστημα</label>
+            <div class="ac-wrap">
+              <input id="syncLogStoreInput" type="text" placeholder="Όλα τα καταστήματα" autocomplete="off"
+                role="combobox" aria-autocomplete="list" aria-controls="syncLogStoreList" aria-expanded="false">
+              <ul id="syncLogStoreList" class="ac-list" role="listbox"></ul>
+            </div>
+            <input type="hidden" id="syncLogStoreId">
+          </div>
+          <button type="button" class="btn btn-secondary" id="btnClearSyncLogStore">
+            <i class="bi bi-x-circle" aria-hidden="true"></i><span>Όλα</span>
+          </button>
+          <button type="button" class="btn" id="btnRefreshLogs">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
+          </button>
+        </div>
+        <div class="card">
+          <div id="syncLogRunsWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+        </div>
+        <div class="card sync-log-detail-card hidden" id="syncLogDetailCard">
+          <h2 class="sync-log-detail-title" id="syncLogDetailTitle">Λεπτομέρειες</h2>
+          <div id="syncLogDetailMeta" class="sync-log-detail-meta"></div>
+          <div id="syncLogDetailLines" class="sync-log-detail-lines"></div>
+        </div>
       </div>
-      <div class="card sync-log-detail-card hidden" id="syncLogDetailCard">
-        <h2 class="sync-log-detail-title" id="syncLogDetailTitle">Λεπτομέρειες</h2>
-        <div id="syncLogDetailMeta" class="sync-log-detail-meta"></div>
-        <div id="syncLogDetailLines" class="sync-log-detail-lines"></div>
+      <div id="notifyActionsPanel" class="log-tab-panel hidden" role="tabpanel" aria-labelledby="tabNotifyActions">
+        <div class="actions sync-log-actions">
+          <button type="button" class="btn" id="btnRefreshNotifyActions">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Ανανέωση</span>
+          </button>
+        </div>
+        <div class="card">
+          <div id="notifyActionsWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+        </div>
       </div>
       <div id="syncLogMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/sync-log-list.js"></script>
+  <script src="/static/js/office-autocomplete.js?v=20260624storepick1"></script>
+  <script src="/static/js/sync-log-list.js?v=20260624tabs2"></script>
 {% endblock %}

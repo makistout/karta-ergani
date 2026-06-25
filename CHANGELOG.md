@@ -8,6 +8,27 @@
 
 ---
 
+## 2026-06-25 — Καταγραφές ανά tab, audit ενεργειών ειδοποιήσεων και μοναδικό PIN
+
+### Καταγραφές / audit ειδοποιήσεων
+
+- Η σελίδα `/ui/sync-log` χωρίστηκε σε δύο tabs:
+  - **Συγχρονισμός**: δείχνει όλες τις καταγραφές by default και φιλτράρει με autocomplete
+    επιλογής καταστήματος.
+  - **Ενέργειες ειδοποιήσεων**: δείχνει clicks/actions από `today-hit` / `today-action`.
+- Αφαιρέθηκε το checkbox **«Μόνο ενεργό κατάστημα»** από τις Καταγραφές.
+- Το audit API υποστηρίζει `kind=today_notifications` και επιστρέφει masked paths για tokens
+  (`/api/telegram/today-hit/***/confirm`).
+- Στις ενέργειες ειδοποιήσεων εμφανίζεται στήλη **Ποιος**, με ταυτοποίηση από τον λήπτη/PIN
+  του notification token όπου είναι διαθέσιμη.
+- Τα GET ανοίγματα public notification links γράφονται πλέον στο audit, όχι μόνο τα POST actions.
+- Το PIN λήπτη είναι μοναδικό ανά κατάστημα:
+  - validation στο UI και στο backend save ληπτών,
+  - migration `sql/alter_unique_notify_pin_per_store.sql`,
+  - runner `scripts/run_migration_unique_notify_pin.py`.
+
+---
+
 ## 2026-06-24 (δ) — Διάσπαση αρχείων, responsive UI και διορθώσεις επιλογής καταστήματος
 
 ### Διάσπαση αρχείων / συντήρηση

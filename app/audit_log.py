@@ -210,16 +210,36 @@ def record_audit_event(
 def list_audit_events(
     *,
     store_id: int | None = None,
+    kind: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     from app.row_util import rows_to_dicts
 
     lim = max(1, min(int(limit or 200), 1000))
     params: list[Any] = [lim]
-    where = ""
+    filters: list[str] = []
     if store_id is not None:
-        where = "WHERE store_id = ?"
+        filters.append("store_id = ?")
         params.append(int(store_id))
+    if kind == "today_notifications":
+        filters.append(
+            """
+            (
+                request_path LIKE '/api/telegram/today-hit/%'
+                OR request_path LIKE '/api/telegram/today-action/%'
+                OR endpoint IN (
+                    'telegram.telegram_today_hit_preview',
+                    'telegram.telegram_today_hit_confirm',
+                    'telegram.telegram_today_action_context',
+                    'telegram.telegram_today_action_wto_daily',
+                    'telegram.telegram_today_action_snooze',
+                    'telegram.telegram_today_action_card',
+                    'telegram.telegram_today_action_leave'
+                )
+            )
+            """
+        )
+    where = f"WHERE {' AND '.join(filters)}" if filters else ""
     with cursor(commit=False) as cur:
         cur.execute(
             f"""
@@ -279,6 +299,36 @@ def _response_summary(response: Any) -> dict[str, Any] | None:
     return summary or None
 
 
+def _notification_actor_from_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not has_request_context():
+        return None
+    path = request.path or ""
+    token = ""
+    if path.startswith("/api/telegram/today-hit/"):
+        token = str((request.view_args or {}).get("token") or "").strip()
+    elif path.startswith("/api/telegram/today-action/") and isinstance(payload, dict):
+        token = str(payload.get("token") or "").strip()
+    if not token:
+        return None
+    try:
+        from app.repo_today_alert import get_today_alert_token_row
+
+        row = get_today_alert_token_row(token)
+    except Exception:
+        return None
+    if not row:
+        return None
+    name = str(row.get("recipient_name") or "").strip()
+    mobile = str(row.get("mobile") or "").strip()
+    return {
+        "recipient_id": row.get("recipient_id"),
+        "name": name or mobile or None,
+        "mobile": mobile or None,
+        "store_id": row.get("store_id"),
+        "store_name": row.get("store_name"),
+    }
+
+
 def register_audit_log(app: Flask) -> None:
     """Κεντρικό audit για όλα τα mutating HTTP requests."""
 
@@ -306,6 +356,9 @@ def register_audit_log(app: Flask) -> None:
             "request": safe_payload,
             "response": _response_summary(response),
         }
+        notification_actor = _notification_actor_from_payload(payload)
+        if notification_actor:
+            details["notification_actor"] = notification_actor
         record_audit_event(
             action=str(action),
             success=200 <= int(response.status_code or 0) < 400,

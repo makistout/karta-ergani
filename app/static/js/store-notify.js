@@ -480,6 +480,20 @@ async function saveNotifyRecipients() {
       row.email_active = false;
     }
   }
+  const seenPins = new Map();
+  for (const row of rows) {
+    const pin = cleanNotifyPin(row.notify_pin);
+    if (!pin) continue;
+    if (seenPins.has(pin)) {
+      Office.showMsg(
+        "stepMsg",
+        `Ο PIN ${pin} χρησιμοποιείται ήδη από άλλον λήπτη στο ίδιο κατάστημα. Κάθε PIN πρέπει να είναι μοναδικός.`,
+        false
+      );
+      return false;
+    }
+    seenPins.set(pin, row.name || row.mobile || "λήπτης");
+  }
   const btn = document.getElementById("btnSaveNotifyRecipients");
   if (btn) btn.disabled = true;
   try {

@@ -107,6 +107,7 @@ def replace_notify_recipients(
     cleaned: list[
         tuple[str, str, str | None, str | None, int, str | None, str | None, int]
     ] = []
+    pins_seen: dict[str, str] = {}
     for row in rows:
         name = str(row.get("name") or "").strip()[:128]
         mobile = normalize_mobile(row.get("mobile"))
@@ -139,6 +140,14 @@ def replace_notify_recipients(
         else:
             pin_hash = None
             pin_plain = None
+        if pin_plain:
+            other = pins_seen.get(pin_plain)
+            if other:
+                raise ValueError(
+                    f"Ο PIN {pin_plain} χρησιμοποιείται ήδη από άλλον λήπτη στο ίδιο κατάστημα "
+                    f"({other}). Κάθε PIN πρέπει να είναι μοναδικός ανά κατάστημα."
+                )
+            pins_seen[pin_plain] = name or mobile
         active_raw = row.get("active")
         if active_raw is None:
             active = 1 if bool(prev.get("active", True)) else 0

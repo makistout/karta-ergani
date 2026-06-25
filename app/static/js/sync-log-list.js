@@ -1,4 +1,12 @@
-const syncLogState = { page: 1, selectedRunId: null, refreshTimer: null };
+const syncLogState = {
+  page: 1,
+  selectedRunId: null,
+  refreshTimer: null,
+  activeTab: "sync",
+  actionsLoaded: false,
+  storeId: "",
+  storeAc: null,
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("synclog");
@@ -6,12 +14,25 @@ document.addEventListener("DOMContentLoaded", () => {
     syncLogState.page = 1;
     loadRuns();
   });
-  document.getElementById("chkActiveStoreOnly")?.addEventListener("change", () => {
+  document.getElementById("btnClearSyncLogStore")?.addEventListener("click", () => {
+    syncLogState.storeId = "";
     syncLogState.page = 1;
     syncLogState.selectedRunId = null;
+    syncLogState.storeAc?.clearValue();
+    document.getElementById("syncLogStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
     loadRuns();
   });
-  loadRuns();
+  document.querySelectorAll("[data-log-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => setLogTab(btn.dataset.logTab || "sync"));
+  });
+  document.getElementById("btnRefreshNotifyActions")?.addEventListener("click", () => {
+    loadNotifyActions();
+  });
+  if (location.hash === "#actions") {
+    setLogTab("actions");
+    return;
+  }
+  initSyncLogStorePicker().finally(() => loadRuns());
 });
 
 function formatTs(iso) {
@@ -84,15 +105,33 @@ function statusBadge(status) {
   return `<span class="sync-status-badge ${cls}">${Office.escapeHtml(label)}</span>`;
 }
 
+function setLogTab(tab) {
+  const next = tab === "actions" ? "actions" : "sync";
+  syncLogState.activeTab = next;
+  document.querySelectorAll("[data-log-tab]").forEach((btn) => {
+    const active = btn.dataset.logTab === next;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.getElementById("syncLogsPanel")?.classList.toggle("hidden", next !== "sync");
+  document.getElementById("notifyActionsPanel")?.classList.toggle("hidden", next !== "actions");
+  if (next === "actions") {
+    history.replaceState(null, "", `${location.pathname}#actions`);
+    if (!syncLogState.actionsLoaded) loadNotifyActions();
+  } else {
+    history.replaceState(null, "", location.pathname);
+    loadRuns();
+  }
+}
+
 async function loadRuns(silent) {
   const wrap = document.getElementById("syncLogRunsWrap");
-  const activeOnly = document.getElementById("chkActiveStoreOnly")?.checked;
   const offset = (syncLogState.page - 1) * Office.TABLE_PAGE_SIZE;
   const qs = new URLSearchParams({
     limit: String(Office.TABLE_PAGE_SIZE),
     offset: String(offset),
   });
-  if (activeOnly) qs.set("active_store", "1");
+  if (syncLogState.storeId) qs.set("store_id", syncLogState.storeId);
 
   try {
     const res = await fetch(`/api/sync-log/runs?${qs}`);
@@ -114,6 +153,184 @@ async function loadRuns(silent) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
     }
   }
+}
+
+function storeAcLabel(item) {
+  return `${item.description || "Κατάστημα"} (ID ${item.value})`;
+}
+
+async function initSyncLogStorePicker() {
+  const input = document.getElementById("syncLogStoreInput");
+  if (!input) return;
+  syncLogState.storeAc = Office.createAutocomplete({
+    inputId: "syncLogStoreInput",
+    listId: "syncLogStoreList",
+    hiddenId: "syncLogStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.storeId = String(item.value || "");
+      syncLogState.page = 1;
+      syncLogState.selectedRunId = null;
+      loadRuns();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    syncLogState.storeAc?.setItems(
+      (stores || []).map((s) => ({
+        value: String(s.id),
+        description: s.name || "Κατάστημα",
+      }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => {
+    syncLogState.storeAc?.openAll(false);
+  };
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
+function actionLabel(action, path) {
+  const a = String(action || "");
+  const p = String(path || "");
+  if (a.endsWith("today_hit_confirm") || (p.includes("/today-hit/") && p.includes("/confirm"))) return "Επιβεβαίωση PIN";
+  if (a.endsWith("today_hit_preview") || p.includes("/today-hit/")) return "Άνοιγμα ειδοποίησης";
+  if (a.endsWith("today_action_context") || p.includes("/today-action/context")) return "Άνοιγμα ενεργειών";
+  if (a.endsWith("today_action_snooze") || p.includes("/today-action/snooze")) return "Αναβολή ειδοποίησης";
+  if (a.endsWith("today_action_card") || p.includes("/today-action/card")) return "Προετοιμασία κάρτας";
+  if (a.endsWith("today_action_leave") || p.includes("/today-action/leave")) return "Υποβολή άδειας";
+  if (a.endsWith("today_action_wto_daily") || p.includes("/today-action/wto-daily")) return "Υποβολή WTODaily";
+  return a || p || "Ενέργεια";
+}
+
+function auditSuccessBadge(row) {
+  if (row.success === true || row.success === 1) {
+    return `<span class="sync-status-badge sync-status-done">OK</span>`;
+  }
+  if (row.success === false || row.success === 0) {
+    return `<span class="sync-status-badge sync-status-error">Σφάλμα</span>`;
+  }
+  return `<span class="sync-status-badge sync-status-running">Άγνωστο</span>`;
+}
+
+function auditDetailsText(row) {
+  const details = row.details || {};
+  const response = details.response || {};
+  const requestData = details.request || {};
+  const bits = [];
+  if (response.error) bits.push(response.error);
+  if (response.notify_kind) bits.push(`Τύπος: ${response.notify_kind}`);
+  if (response.sent != null || response.total != null) {
+    bits.push(`Αποστολές: ${response.sent ?? "?"}/${response.total ?? "?"}`);
+  }
+  if (requestData.leave_type) bits.push(`Άδεια: ${requestData.leave_type}`);
+  if (requestData.hour_from || requestData.hour_to) {
+    bits.push(`${requestData.hour_from || "—"}–${requestData.hour_to || "—"}`);
+  }
+  if (!bits.length && details.error) bits.push(details.error);
+  if (!bits.length && row.http_status) bits.push(`HTTP ${row.http_status}`);
+  return bits.join(" · ") || "—";
+}
+
+function auditActorText(row) {
+  const actor = row.notification_actor || {};
+  const name = actor.name || row.actor_name || row.office_user || "";
+  const mobile = actor.mobile ? ` (${actor.mobile})` : "";
+  if (name) return `${name}${mobile}`;
+  if (row.actor_type === "telegram_link") return "Λήπτης ειδοποίησης";
+  return row.actor_type || "—";
+}
+
+async function loadNotifyActions() {
+  const wrap = document.getElementById("notifyActionsWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({
+      kind: "today_notifications",
+      limit: "200",
+    });
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    renderNotifyActions(data.audit || []);
+    syncLogState.actionsLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+  }
+}
+
+function renderNotifyActions(rows) {
+  const wrap = document.getElementById("notifyActionsWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα ενέργειες από ειδοποιήσεις today-hit.</span></p>`;
+    return;
+  }
+
+  const t = document.createElement("table");
+  t.className = "data notify-actions-table";
+  const hr = document.createElement("tr");
+  ["Ώρα", "Ενέργεια", "Ποιος", "Κατάστημα", "Κατάσταση", "Συσκευή/IP", "Λεπτομέρειες"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  t.appendChild(hr);
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    const tdTs = document.createElement("td");
+    tdTs.className = "sync-log-ts";
+    tdTs.textContent = formatTs(row.created_at);
+    tr.appendChild(tdTs);
+
+    const tdAction = document.createElement("td");
+    tdAction.innerHTML =
+      `<strong>${Office.escapeHtml(actionLabel(row.action, row.request_path))}</strong>` +
+      (row.request_method ? `<br><span class="sync-log-muted">${Office.escapeHtml(row.request_method)}</span>` : "");
+    tr.appendChild(tdAction);
+
+    const tdActor = document.createElement("td");
+    tdActor.textContent = auditActorText(row);
+    tr.appendChild(tdActor);
+
+    const tdStore = document.createElement("td");
+    tdStore.textContent = row.notification_actor?.store_name || (row.store_id ? `#${row.store_id}` : "—");
+    tr.appendChild(tdStore);
+
+    const tdStatus = document.createElement("td");
+    tdStatus.innerHTML = auditSuccessBadge(row);
+    tr.appendChild(tdStatus);
+
+    const tdDevice = document.createElement("td");
+    const device = row.client_device || "";
+    const ip = row.client_ip || "";
+    tdDevice.textContent = [ip, device].filter(Boolean).join(" · ") || "—";
+    tdDevice.title = tdDevice.textContent;
+    tr.appendChild(tdDevice);
+
+    const tdDetails = document.createElement("td");
+    tdDetails.textContent = auditDetailsText(row);
+    tdDetails.title = row.request_path || "";
+    tr.appendChild(tdDetails);
+
+    t.appendChild(tr);
+  });
+
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
 }
 
 function renderRunsTable(runs, pageCount) {

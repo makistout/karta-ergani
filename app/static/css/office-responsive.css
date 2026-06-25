@@ -41,6 +41,7 @@ body {
 #workCardWrap,
 #cardReportWrap,
 #storesWrap,
+#notifyActionsWrap,
 #syncLogDetailLines {
   width: 100%;
   max-width: 100%;
@@ -224,6 +225,7 @@ table.data td.work-log-action-cell a {
   #workCardWrap,
   #cardReportWrap,
   #storesWrap,
+  #notifyActionsWrap,
   #syncLogDetailLines {
     overflow-x: visible;
   }

@@ -15,6 +15,7 @@ from app.telegram_notify import (
     send_telegram_message,
 )
 from app.notify_pin import is_valid_notify_pin
+from app.audit_log import record_audit_event
 from app.telegram_punch_service import (
     confirm_punch_with_pin,
     get_retro_hit_context,
@@ -34,6 +35,40 @@ from app.today_alert_service import (
 
 telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
 logger = logging.getLogger(__name__)
+
+
+def _audit_notification_open(action: str, *, token: str | None, ok: bool, error: str | None = None) -> None:
+    actor = None
+    if token:
+        try:
+            from app.repo_today_alert import get_today_alert_token_row
+
+            row = get_today_alert_token_row(token)
+            if row:
+                name = str(row.get("recipient_name") or "").strip()
+                mobile = str(row.get("mobile") or "").strip()
+                actor = {
+                    "recipient_id": row.get("recipient_id"),
+                    "name": name or mobile or None,
+                    "mobile": mobile or None,
+                    "store_id": row.get("store_id"),
+                    "store_name": row.get("store_name"),
+                }
+        except Exception:
+            actor = None
+    record_audit_event(
+        action=action,
+        success=ok,
+        http_status=200 if ok else 400,
+        entity_type="telegram_action",
+        entity_id=None,
+        details={
+            "source": "notification_link",
+            "token": token,
+            "error": error,
+            "notification_actor": actor,
+        },
+    )
 
 
 def _reply_chat(chat_id: str, text: str) -> None:
@@ -256,7 +291,14 @@ def telegram_notify_schedule_fix():
 def telegram_today_hit_preview(token: str):
     preview, err = today_hit_preview(token)
     if err:
+        _audit_notification_open(
+            "telegram.telegram_today_hit_preview",
+            token=token,
+            ok=False,
+            error=err,
+        )
         return jsonify({"error": err}), 400
+    _audit_notification_open("telegram.telegram_today_hit_preview", token=token, ok=True)
     return jsonify({"ok": True, "preview": preview})
 
 
@@ -279,7 +321,14 @@ def telegram_today_action_context():
     token = str(request.args.get("t") or "").strip() or None
     ctx, err = get_today_action_context(token=token)
     if err or not ctx:
+        _audit_notification_open(
+            "telegram.telegram_today_action_context",
+            token=token,
+            ok=False,
+            error=err or "Λήξη συνεδρίας",
+        )
         return jsonify({"error": err or "Λήξη συνεδρίας"}), 401
+    _audit_notification_open("telegram.telegram_today_action_context", token=token, ok=True)
     payload = {"ok": True, "context": ctx}
     if ctx.get("leave_eligible"):
         payload["leave_types"] = LEAVE_TYPES
