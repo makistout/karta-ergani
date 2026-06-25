@@ -63,6 +63,11 @@ def _elapsed_work_day_minutes(from_min: int, to_min: int) -> int:
     return elapsed
 
 
+def _elapsed_same_date_minutes(from_min: int, to_min: int) -> int | None:
+    elapsed = to_min - from_min
+    return elapsed if elapsed >= 0 else None
+
+
 def _schedule_end_minutes(row: dict[str, Any]) -> int | None:
     sched = row.get("schedule")
     if isinstance(sched, dict) and sched.get("hour_to"):
@@ -144,17 +149,26 @@ def resolve_today_notify_kind(
 
     sched_start = _schedule_start_minutes(row)
     if not hf and sched_start is not None:
-        if _elapsed_work_day_minutes(sched_start, now_min) >= NOTIFY_GRACE_MINUTES:
+        elapsed = _elapsed_same_date_minutes(sched_start, now_min)
+        if elapsed is not None and elapsed >= NOTIFY_GRACE_MINUTES:
             return "late_check_in"
 
     if hf and not ht:
         sched_end = _schedule_end_minutes(row)
         if sched_end is not None:
-            if _elapsed_work_day_minutes(sched_end, now_min) >= NOTIFY_GRACE_MINUTES:
+            if sched_start is not None and sched_end <= sched_start:
+                return None
+            elapsed = _elapsed_same_date_minutes(sched_end, now_min)
+            if elapsed is not None and elapsed >= NOTIFY_GRACE_MINUTES:
                 return "late_check_out"
             return None
         start_min = _parse_clock_minutes(hf)
-        if start_min is not None and _elapsed_work_day_minutes(start_min, now_min) >= 8 * 60:
+        elapsed = (
+            _elapsed_same_date_minutes(start_min, now_min)
+            if start_min is not None
+            else None
+        )
+        if elapsed is not None and elapsed >= 8 * 60:
             return "missing_exit_8h"
 
     return None
