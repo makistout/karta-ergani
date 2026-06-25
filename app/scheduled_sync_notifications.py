@@ -105,15 +105,27 @@ def _send_post_sync_notifications(
             repo_sync_log.finish_run(run_id, status="done", message=msg, result=result)
             return result
 
-        for row in notify_rows:
+        for idx, row in enumerate(notify_rows, start=1):
             kind = str(row.get("today_notify_kind") or "").strip()
             wl = _card_report_work_log(row)
+            sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else None
             employee_afm = str(row.get("employee_afm") or "").strip()
             employee_name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
+            repo_sync_log.update_run_progress(
+                run_id,
+                message=f"Αποστολή ειδοποίησης {idx}/{len(notify_rows)}: {employee_name or employee_afm}",
+                step=idx,
+                total=len(notify_rows),
+            )
             log.info(
-                f"Αποστολή ειδοποίησης καμπάνας: {employee_name or employee_afm} ({kind})",
+                (
+                    "Αποστολή ειδοποίησης καμπάνας "
+                    f"{idx}/{len(notify_rows)}: {employee_name or employee_afm} ({kind})"
+                ),
                 employee_afm=employee_afm,
                 notify_kind=kind,
+                step=idx,
+                total=len(notify_rows),
             )
             try:
                 res = send_today_punch_notifications(
@@ -131,6 +143,10 @@ def _send_post_sync_notifications(
                     public_base_url=Config.PUBLIC_BASE_URL,
                     auto_post_sync=True,
                     log=log,
+                    schedule_loaded=True,
+                    schedule_hour_from=(sched or {}).get("hour_from"),
+                    schedule_hour_to=(sched or {}).get("hour_to"),
+                    schedule_shift_type=(sched or {}).get("shift_type"),
                 )
                 sent = int(res.get("sent") or 0)
                 total = int(res.get("total") or 0)

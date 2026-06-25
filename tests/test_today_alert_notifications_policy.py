@@ -150,6 +150,42 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
         self.assertEqual(fields["employee_afm"], "987654321")
         self.assertEqual(fields["notify_kind"], "late_check_in")
 
+    def test_post_sync_uses_loaded_schedule_without_second_lookup(self):
+        enrich_schedule = self._patch_common()[0]
+        with patch(
+            "app.today_alert_notifications.list_deliverable_recipients",
+            return_value=[
+                {
+                    "id": 13,
+                    "name": "One",
+                    "telegram_chat_id": "123",
+                    "notify_repeat_policy": "once_snooze",
+                }
+            ],
+        ), patch("app.today_alert_notifications.mark_notify_sent"), patch(
+            "app.today_alert_notifications.create_snooze"
+        ):
+            res = today_alert_notifications.send_today_punch_notifications(
+                store_id=1,
+                store_name="Store",
+                employer_afm="123456789",
+                branch_aa="0",
+                employee_afm="987654321",
+                eponymo="Last",
+                onoma="First",
+                work_date="25/06/2026",
+                hour_from=None,
+                hour_to=None,
+                notify_kind="late_check_in",
+                public_base_url="",
+                auto_post_sync=True,
+                schedule_loaded=True,
+                schedule_hour_from="17:00",
+                schedule_hour_to="01:00",
+            )
+        self.assertEqual(res["sent"], 1)
+        enrich_schedule.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

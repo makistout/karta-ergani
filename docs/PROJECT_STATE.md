@@ -84,3 +84,6 @@
 - Οι αυτόματες post-sync ειδοποιήσεις γράφουν γραμμή sync log ανά κανάλι/λήπτη/εργαζόμενο
   με `event=today_notification_send`, `recipient_*`, `employee_*`, `notify_kind` και
   `notification_channel`, ώστε να γίνεται αναζήτηση/debugging από τις Καταγραφές.
+- Το post-sync notification worker χρησιμοποιεί το ήδη φορτωμένο schedule του card report
+  και γράφει progress/step logs ανά εργαζόμενο/λήπτη, ώστε να μη γίνεται δεύτερο schedule
+  lookup ανά ειδοποίηση και να φαίνεται ακριβώς πού καθυστερεί ένα κατάστημα.

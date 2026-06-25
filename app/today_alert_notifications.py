@@ -254,6 +254,10 @@ def send_today_punch_notifications(
     public_base_url: str,
     auto_post_sync: bool = False,
     log: Any | None = None,
+    schedule_loaded: bool = False,
+    schedule_hour_from: str | None = None,
+    schedule_hour_to: str | None = None,
+    schedule_shift_type: str | None = None,
 ) -> dict[str, Any]:
     from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
@@ -270,9 +274,19 @@ def send_today_punch_notifications(
         "eponymo": eponymo,
         "onoma": onoma,
     }
-    enrich_work_log_rows_with_schedule(
-        [row], employer_afm, branch_aa, [work_date]
-    )
+    if schedule_loaded:
+        if schedule_hour_from or schedule_hour_to or schedule_shift_type:
+            row["schedule"] = {
+                "hour_from": schedule_hour_from,
+                "hour_to": schedule_hour_to,
+                "shift_type": schedule_shift_type,
+            }
+        else:
+            row["schedule"] = None
+    else:
+        enrich_work_log_rows_with_schedule(
+            [row], employer_afm, branch_aa, [work_date]
+        )
     sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else {}
     schedule_hour_from = str((sched or {}).get("hour_from") or "").strip() or None
     schedule_hour_to = str((sched or {}).get("hour_to") or "").strip() or None
@@ -285,6 +299,25 @@ def send_today_punch_notifications(
             "errors": [],
             "skipped": "no_alert",
         }
+    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
+    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
+
+    def log_step(message: str, **fields: Any) -> None:
+        if log is None:
+            return
+        writer = getattr(log, "info", None)
+        if writer:
+            writer(
+                message,
+                event="today_notification_step",
+                notify_kind=resolved_kind,
+                notify_kind_label=kind_label,
+                employee_afm=employee_afm,
+                employee_name=employee_name,
+                work_date=work_date,
+                **fields,
+            )
+
     if notify_kind and notify_kind.strip() != resolved_kind:
         return {
             "sent": 0,
@@ -292,6 +325,7 @@ def send_today_punch_notifications(
             "errors": [],
             "skipped": "kind_mismatch",
         }
+    log_step("Έλεγχος snooze ειδοποίησης")
     if is_snoozed(
         store_id=store_id,
         employee_afm=employee_afm,
@@ -310,8 +344,6 @@ def send_today_punch_notifications(
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
     snooze_after_send_recipient_id: int | None = None
-    employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
 
     def log_notification(
         *,
@@ -343,6 +375,19 @@ def send_today_punch_notifications(
         if writer:
             writer(message, **fields)
 
+    log_step(
+        "Έλεγχος ληπτών ειδοποίησης",
+        schedule_hour_from=schedule_hour_from,
+        schedule_hour_to=schedule_hour_to,
+    )
+    recipients = list_deliverable_recipients(store_id)
+    email_recipients = list_email_deliverable_recipients(store_id)
+    log_step(
+        "Βρέθηκαν λήπτες ειδοποίησης",
+        telegram_recipients=len(recipients),
+        email_recipients=len(email_recipients),
+    )
+
     for rec in recipients:
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
         if not chat_id:
@@ -350,6 +395,12 @@ def send_today_punch_notifications(
         hit_url = None
         if (rec.get("notify_pin_hash") or "").strip():
             try:
+                log_step(
+                    "Δημιουργία token ενέργειας Telegram",
+                    recipient_id=rec.get("id"),
+                    recipient_name=rec.get("name"),
+                    notification_channel="telegram",
+                )
                 token = create_today_alert_token(
                     recipient_id=int(rec["id"]),
                     store_id=store_id,
@@ -377,6 +428,12 @@ def send_today_punch_notifications(
             has_pin=bool((rec.get("notify_pin_hash") or "").strip()),
         )
         try:
+            log_step(
+                "Αποστολή Telegram προς λήπτη",
+                recipient_id=rec.get("id"),
+                recipient_name=rec.get("name"),
+                notification_channel="telegram",
+            )
             send_telegram_message(chat_id, text)
             sent += 1
             log_notification(
@@ -414,6 +471,12 @@ def send_today_punch_notifications(
         has_pin = bool((rec.get("notify_pin_hash") or "").strip())
         if has_pin:
             try:
+                log_step(
+                    "Δημιουργία token ενέργειας Email",
+                    recipient_id=rec.get("id"),
+                    recipient_name=rec.get("name"),
+                    notification_channel="email",
+                )
                 token = create_today_alert_token(
                     recipient_id=int(rec["id"]),
                     store_id=store_id,
@@ -431,6 +494,13 @@ def send_today_punch_notifications(
             except Exception as ex:
                 errors.append(f"Email {rec.get('name')}: token — {ex}")
         try:
+            log_step(
+                "Αποστολή Email προς λήπτη",
+                recipient_id=rec.get("id"),
+                recipient_name=rec.get("name"),
+                recipient_email=email,
+                notification_channel="email",
+            )
             send_notification_email(
                 email,
                 f"erganiOS — {kind_label}",
@@ -504,6 +574,10 @@ def send_today_punch_notifications(
             sent_via="auto_post_sync",
         )
     if auto_post_sync and snooze_after_send_recipient_id:
+        log_step(
+            "Αυτόματο snooze μετά από αποστολή",
+            recipient_id=snooze_after_send_recipient_id,
+        )
         create_snooze(
             store_id=store_id,
             recipient_id=snooze_after_send_recipient_id,
