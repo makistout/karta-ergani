@@ -44,6 +44,68 @@ Object.assign(window.Office, {
     return null;
   },
 
+  scheduleDurationMinutes(schedStart, schedEnd) {
+    if (schedStart == null || schedEnd == null) return null;
+    let elapsed = schedEnd - schedStart;
+    if (elapsed < 0) elapsed += 24 * 60;
+    return elapsed > 0 ? elapsed : null;
+  },
+
+  expectedExitMinutesFromRow(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const entryMin = this.parseClockToMinutes(hf);
+    if (entryMin == null) return null;
+    const schedStart = this.scheduleStartMinutesFromRow(row);
+    let schedEnd = null;
+    const sched = row?.schedule;
+    if (sched && sched.hour_to) {
+      schedEnd = this.parseClockToMinutes(sched.hour_to);
+    }
+    if (schedEnd == null) {
+      const label = String(row?.schedule_label || "").trim();
+      if (label && label !== "—" && !/ρεπο|ανάπαυση/i.test(label)) {
+        const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
+        const last = parts[parts.length - 1] || label;
+        const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
+        if (match) schedEnd = this.parseClockToMinutes(match[1]);
+      }
+    }
+    if (schedStart == null || schedEnd == null) return null;
+    const duration = this.scheduleDurationMinutes(schedStart, schedEnd);
+    if (duration == null) return null;
+    return entryMin + duration;
+  },
+
+  minutesAfterExpectedExit(expectedExit, entryMin, nowMin, onNextCalendarDay = false) {
+    if (expectedExit == null || entryMin == null || nowMin == null) return null;
+    let nowAbs;
+    if (onNextCalendarDay) {
+      nowAbs = nowMin + 24 * 60;
+    } else if (expectedExit >= 24 * 60 && nowMin < entryMin) {
+      nowAbs = nowMin + 24 * 60;
+    } else {
+      nowAbs = nowMin;
+    }
+    const elapsed = nowAbs - expectedExit;
+    return elapsed >= 0 ? elapsed : null;
+  },
+
+  expectedExitSpillsNextDay(expectedExit) {
+    return expectedExit != null && expectedExit >= 24 * 60;
+  },
+
+  allowsOvernightExitOnToday(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    if (!hf || ht) return false;
+    const wd = this.workDateToIso(row?.work_date);
+    const today = this.todayIsoLocal();
+    if (!wd || wd === today) return false;
+    const expected = this.expectedExitMinutesFromRow(row);
+    if (expected == null || !this.expectedExitSpillsNextDay(expected)) return false;
+    return this.addDaysIso(wd, 1) === today;
+  },
+
   scheduleEndMinutesFromRow(row) {
     let endMin = null;
     const sched = row?.schedule;
@@ -66,29 +128,30 @@ Object.assign(window.Office, {
     return endMin;
   },
 
-  /** Σήμερα, έχει είσοδο, λείπει έξοδος, ακόμα πριν το τέλος βάρδιας (ψηφ. ωράριο). */
+  /** Σήμερα, έχει είσοδο, λείπει έξοδος, ακόμα πριν την αναμενόμενη λήξη (είσοδος + διάρκεια ωραρίου). */
   workLogExitStillPending(row) {
     const hf = String(row?.hour_from || "").trim();
     const ht = String(row?.hour_to || "").trim();
     if (!hf || ht) return false;
     const wd = this.workDateToIso(row?.work_date);
     if (!wd) return false;
-    const endMin = this.scheduleEndMinutesFromRow(row);
-    if (endMin == null) return false;
+    const expectedExit = this.expectedExitMinutesFromRow(row);
+    if (expectedExit == null) return false;
+    const entryMin = this.parseClockToMinutes(hf);
     const today = this.todayIsoLocal();
     const nowMin = this.parseClockToMinutes(this.formatTime24(new Date(), { seconds: false }));
-    if (nowMin == null) return false;
+    if (nowMin == null || entryMin == null) return false;
 
-    const spansMidnight = endMin >= 24 * 60;
+    const spansMidnight = expectedExit >= 24 * 60;
     let timelineNow = null;
     if (wd === today) {
-      timelineNow = nowMin;
+      timelineNow = nowMin < entryMin ? nowMin + 24 * 60 : nowMin;
     } else if (spansMidnight && this.addDaysIso(wd, 1) === today) {
       timelineNow = nowMin + 24 * 60;
     } else {
       return false;
     }
-    return timelineNow < endMin;
+    return timelineNow < expectedExit;
   },
 
   formatWorkLogTimeCell(value, title = "Λείπει ώρα") {
@@ -134,6 +197,10 @@ Object.assign(window.Office, {
     return Boolean(wd && wd === this.todayIsoLocal());
   },
 
+  workLogRowIsTodayOrOvernightExit(row) {
+    return this.workLogRowIsToday(row) || this.allowsOvernightExitOnToday(row);
+  },
+
   elapsedWorkDayMinutes(fromMin, toMin) {
     if (fromMin == null || toMin == null) return null;
     let elapsed = toMin - fromMin;
@@ -157,7 +224,7 @@ Object.assign(window.Office, {
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
       late_check_in: "καθυστέρηση εισόδου (>10' από ωράριο)",
-      late_check_out: "έλλειψη εξόδου (>10' από ωράριο)",
+      late_check_out: "έλλειψη εξόδου (>10' από αναμενόμενη λήξη)",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };
     return labels[kind] || kind || "";
@@ -211,9 +278,12 @@ Object.assign(window.Office, {
       });
   },
 
-  /** Ειδοποίηση τύπου 2 — μόνο για σημερινές εγγραφές. */
+  /** Ειδοποίηση τύπου 2 — σημερινές εγγραφές ή χθεσινή βάρδια με έξοδο σήμερα. */
   workLogTodayNotify(row) {
-    if (!row || !this.workLogRowIsToday(row)) return null;
+    if (!row) return null;
+    const isToday = this.workLogRowIsToday(row);
+    const overnightExit = this.allowsOvernightExitOnToday(row);
+    if (!isToday && !overnightExit) return null;
     if (!this.workLogEmployeeActive(row)) return null;
 
     const hf = String(row.hour_from || "").trim();
@@ -230,7 +300,7 @@ Object.assign(window.Office, {
       };
     }
 
-    if (!hf && this.workLogHasDigitalSchedule(row)) {
+    if (!hf && this.workLogHasDigitalSchedule(row) && isToday) {
       const schedStart = this.scheduleStartMinutesFromRow(row);
       const elapsed = this.elapsedSameDateMinutes(schedStart, nowMin);
       if (elapsed != null && elapsed >= 10) {
@@ -242,20 +312,40 @@ Object.assign(window.Office, {
     }
 
     if (hf && !ht) {
-      const schedEnd = this.scheduleEndMinutesFromRow(row);
+      const entryMin = this.parseClockToMinutes(hf);
       const schedStart = this.scheduleStartMinutesFromRow(row);
-      if (schedEnd != null) {
-        if (schedStart != null && schedEnd <= schedStart) {
+      let schedEndRaw = null;
+      const sched = row?.schedule;
+      if (sched && sched.hour_to) {
+        schedEndRaw = this.parseClockToMinutes(sched.hour_to);
+      }
+      if (schedEndRaw == null) {
+        const label = String(row?.schedule_label || "").trim();
+        if (label && label !== "—" && !/ρεπο|ανάπαυση/i.test(label)) {
+          const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
+          const last = parts[parts.length - 1] || label;
+          const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
+          if (match) schedEndRaw = this.parseClockToMinutes(match[1]);
+        }
+      }
+      if (entryMin != null && schedStart != null && schedEndRaw != null) {
+        const duration = this.scheduleDurationMinutes(schedStart, schedEndRaw);
+        if (duration != null) {
+          const expectedExit = entryMin + duration;
+          const elapsedEnd = this.minutesAfterExpectedExit(
+            expectedExit,
+            entryMin,
+            nowMin,
+            overnightExit
+          );
+          if (elapsedEnd != null && elapsedEnd >= 10) {
+            return {
+              kind: "late_check_out",
+              label: "έλλειψη εξόδου (>10' από αναμενόμενη λήξη)",
+            };
+          }
           return null;
         }
-        const elapsedEnd = this.elapsedSameDateMinutes(schedEnd, nowMin);
-        if (elapsedEnd != null && elapsedEnd >= 10) {
-          return {
-            kind: "late_check_out",
-            label: "έλλειψη εξόδου (>10' από ωράριο)",
-          };
-        }
-        return null;
       }
       const startMin = this.parseClockToMinutes(hf);
       const elapsed = this.elapsedSameDateMinutes(startMin, nowMin);

@@ -36,7 +36,7 @@ class TodayNotifyLogicTests(unittest.TestCase):
         }
         self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(13, 50)))
 
-    def test_late_check_out_after_grace_from_schedule_end(self):
+    def test_late_check_out_after_grace_from_expected_exit(self):
         row = {
             "work_date": "24/06/2026",
             "employee_active": True,
@@ -44,10 +44,37 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "hour_to": "",
             "schedule": {"hour_from": "10:00", "hour_to": "18:30"},
         }
-        before = resolve_today_notify_kind(row, now=self._athens(18, 39))
-        after = resolve_today_notify_kind(row, now=self._athens(18, 40))
+        # Διάρκεια 8:30 → αναμενόμενη έξοδος 18:35
+        before = resolve_today_notify_kind(row, now=self._athens(18, 44))
+        after = resolve_today_notify_kind(row, now=self._athens(18, 46))
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_out")
+
+    def test_late_check_out_uses_entry_plus_schedule_duration(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "12:00",
+            "hour_to": "",
+            "schedule": {"hour_from": "10:00", "hour_to": "18:00"},
+        }
+        # 8 ώρες από 12:00 → έξοδος 20:00
+        at_schedule_end = resolve_today_notify_kind(row, now=self._athens(18, 15))
+        after_expected = resolve_today_notify_kind(row, now=self._athens(20, 11))
+        self.assertIsNone(at_schedule_end)
+        self.assertEqual(after_expected, "late_check_out")
+
+    def test_expected_exit_from_late_entry(self):
+        from app.today_notify_logic import expected_exit_from_schedule_and_entry
+
+        self.assertEqual(
+            expected_exit_from_schedule_and_entry(
+                hour_from="12:00",
+                schedule_hour_from="10:00",
+                schedule_hour_to="18:00",
+            ),
+            "20:00",
+        )
 
     def test_overnight_schedule_end_does_not_wrap_to_late_check_out(self):
         row = {
@@ -58,6 +85,56 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "schedule": {"hour_from": "17:00", "hour_to": "01:00"},
         }
         self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(23, 0)))
+
+    def test_late_check_out_next_calendar_day_after_overnight_expected_exit(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "17:05",
+            "hour_to": "",
+            "schedule": {"hour_from": "17:00", "hour_to": "01:00"},
+        }
+        # Διάρκεια 8 ώρες → αναμενόμενη έξοδος 01:05 (25/06)
+        before = resolve_today_notify_kind(
+            row,
+            now=datetime(2026, 6, 25, 1, 14, tzinfo=ZoneInfo("Europe/Athens")),
+        )
+        after = resolve_today_notify_kind(
+            row,
+            now=datetime(2026, 6, 25, 1, 16, tzinfo=ZoneInfo("Europe/Athens")),
+        )
+        self.assertIsNone(before)
+        self.assertEqual(after, "late_check_out")
+
+    def test_late_check_out_when_entry_plus_duration_crosses_midnight(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "22:00",
+            "hour_to": "",
+            "schedule": {"hour_from": "10:00", "hour_to": "18:00"},
+        }
+        # 8 ώρες από 22:00 → έξοδος 06:00 (25/06)
+        before = resolve_today_notify_kind(
+            row,
+            now=datetime(2026, 6, 25, 6, 9, tzinfo=ZoneInfo("Europe/Athens")),
+        )
+        after = resolve_today_notify_kind(
+            row,
+            now=datetime(2026, 6, 25, 6, 11, tzinfo=ZoneInfo("Europe/Athens")),
+        )
+        self.assertIsNone(before)
+        self.assertEqual(after, "late_check_out")
+
+    def test_expected_exit_reference_date_when_spills_next_day(self):
+        from app.today_notify_logic import expected_exit_reference_date_iso
+
+        row = {
+            "work_date": "24/06/2026",
+            "hour_from": "22:00",
+            "schedule": {"hour_from": "10:00", "hour_to": "18:00"},
+        }
+        self.assertEqual(expected_exit_reference_date_iso(row), "2026-06-25")
 
     def test_future_schedule_end_does_not_wrap_to_late_check_out(self):
         row = {

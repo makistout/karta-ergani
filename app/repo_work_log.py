@@ -90,10 +90,18 @@ def _attach_card_punch_hint(
         row["card_event"] = "check_in"
         row["retro_time"] = sched_from
         return
-    if not ht and sched_to and "1" not in submitted:
+    if not ht and hf and "1" not in submitted:
+        from app.today_notify_logic import expected_exit_from_schedule_and_entry
+
+        retro = expected_exit_from_schedule_and_entry(
+            hour_from=hf,
+            schedule_hour_from=sched_from,
+            schedule_hour_to=sched_to,
+        ) or sched_to
         row["needs_card_punch"] = True
         row["card_event"] = "check_out"
-        row["retro_time"] = sched_to
+        row["retro_time"] = retro
+        return
 
 
 def enrich_work_log_history_with_card_punch(
