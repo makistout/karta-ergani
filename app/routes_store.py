@@ -230,6 +230,8 @@ def delete_store(store_id: int):
     if session.get("active_store_id") == store_id:
         session.pop("active_store_id", None)
         session.pop("ergani_bearer", None)
+        session.pop("ergani_bearer_store_id", None)
+        session.pop("ergani_bearer_env", None)
         session.pop("employer_afm", None)
         session.pop("branch_aa", None)
         session.pop("ergani_env", None)
@@ -272,6 +274,8 @@ def select_store():
     token = str(payload["accessToken"])
     session["active_store_id"] = cfg["id"]
     session["ergani_bearer"] = token
+    session["ergani_bearer_store_id"] = str(cfg["id"])
+    session["ergani_bearer_env"] = ctx["ergani_env"]
     session["employer_afm"] = ctx["employer_afm"]
     session["branch_aa"] = ctx["branch_aa"]
     session["ergani_env"] = ctx["ergani_env"]

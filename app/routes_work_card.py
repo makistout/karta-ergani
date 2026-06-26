@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 
 from app.audit_log import record_audit_event
 from app.date_util import format_date_for_ergani, format_f_date_time, iso_to_ergani_dates
@@ -293,6 +293,7 @@ def _submit_work_card(
             "persist_error": persist_error,
             "batch_index": body.get("batch_index"),
             "batch_total": body.get("batch_total"),
+            "auth_retry": bool(body.get("auth_retry")),
             "error": err_msg,
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),
@@ -414,11 +415,32 @@ def work_card_submit_office():
     from app.client_request import capture_client_context
 
     client_ctx = capture_client_context("office_ui")
-    return _submit_work_card(
+    response, status = _submit_work_card(
         body=body,
         erg_s=str(ctx["employer_afm"]).strip(),
         aa_s=str(ctx.get("branch_aa") or "0").strip(),
         bearer=bearer,
+        api_base_url=ctx.get("api_base_url"),
+        client_ip=client_ctx.get("client_ip"),
+        client_device=client_ctx.get("client_device"),
+        store_id=int(ctx["id"]),
+    )
+    if status != 401:
+        return response, status
+
+    session.pop("ergani_bearer", None)
+    session.pop("ergani_bearer_store_id", None)
+    session.pop("ergani_bearer_env", None)
+    refreshed = ensure_ergani_bearer(ctx)
+    if not refreshed:
+        return response, status
+    retry_body = dict(body)
+    retry_body["auth_retry"] = True
+    return _submit_work_card(
+        body=retry_body,
+        erg_s=str(ctx["employer_afm"]).strip(),
+        aa_s=str(ctx.get("branch_aa") or "0").strip(),
+        bearer=refreshed,
         api_base_url=ctx.get("api_base_url"),
         client_ip=client_ctx.get("client_ip"),
         client_device=client_ctx.get("client_device"),
