@@ -125,6 +125,22 @@ Object.assign(window.Office, {
     };
   },
 
+  resolveEntryPunchFromExistingExit(row, exitTimeStr) {
+    const workDateIso = this.erganiDateToIso(row?.work_date);
+    if (!workDateIso) return null;
+    const exitMin = this.parseClockToMinutes(exitTimeStr);
+    const totalDuration = this.scheduleTotalDurationMinutesFromRow(row);
+    if (exitMin == null || totalDuration == null) return null;
+
+    const expectedMin = exitMin - totalDuration;
+    return {
+      event: "check_in",
+      retro_time: this.formatTotalMinutesAsClock(expectedMin),
+      reference_date: expectedMin < 0 ? this.addDaysIso(workDateIso, -1) : workDateIso,
+      time_source: `έξοδος - διάρκεια ωραρίου (${this.formatDurationMinutesLabel(totalDuration)})`,
+    };
+  },
+
   buildMissingCardPunchPlan(row) {
     if (!this.shouldShowWorkCardLink(row)) return [];
     const hf = String(row?.hour_from || "").trim();
@@ -142,20 +158,37 @@ Object.assign(window.Office, {
     const name =
       `${row?.eponymo || ""} ${row?.onoma || ""}`.trim() || row?.employee_afm || "";
     const schedStart = this.scheduleStartMinutesFromRow(row);
+    const scheduleDuration = this.scheduleTotalDurationMinutesFromRow(row);
     const schedFrom =
       schedStart != null ? this.formatTotalMinutesAsClock(schedStart) : "";
+    const pairKey = `${row.employee_afm || ""}|${workDateIso}`;
     const base = {
       employee_afm: row.employee_afm,
       employee_name: name,
       work_date: row.work_date,
+      work_date_iso: workDateIso,
       schedule_label: schedLabel || "—",
+      schedule_duration_minutes: scheduleDuration,
+      pair_key: pairKey,
       hour_from_existing: hf,
       hour_to_existing: ht,
     };
     const plan = [];
 
     if (!hf) {
-      if (
+      const entryFromExistingExit = ht
+        ? this.resolveEntryPunchFromExistingExit(row, ht)
+        : null;
+      if (entryFromExistingExit) {
+        plan.push({
+          ...base,
+          event: entryFromExistingExit.event,
+          event_label: "Είσοδος",
+          retro_time: entryFromExistingExit.retro_time,
+          reference_date: entryFromExistingExit.reference_date,
+          time_source: entryFromExistingExit.time_source,
+        });
+      } else if (
         row?.needs_card_punch &&
         row.card_event === "check_in" &&
         row.retro_time
@@ -1038,7 +1071,7 @@ Object.assign(window.Office, {
         `value="${this.escapeHtml(retroNorm)}" inputmode="numeric" maxlength="5" ` +
         `aria-label="Ώρα χτυπήματος ${this.escapeHtml(punch.event_label || "")}" />` +
         `</td>` +
-        `<td class="table-meta missing-cards-close-all-basis">${this.escapeHtml(punch.time_source || "—")}</td>` +
+        `<td class="table-meta missing-cards-close-all-basis" data-plan-basis="${idx}">${this.escapeHtml(punch.time_source || "—")}</td>` +
         "</tr>";
     });
     html += "</tbody></table>";
@@ -1071,6 +1104,7 @@ Object.assign(window.Office, {
       this.bindHourMinuteElement(el, () => {
         const norm = this.normalizeHourMinute(el.value || "");
         plan[idx].retro_time = norm || "";
+        this.adjustCloseAllPairedDuration(plan, idx);
         el.classList.remove("close-all-time-input--error");
         if (this.isCloseAllMissingPunchTime(plan[idx].retro_time)) {
           el.classList.add("close-all-time-input--empty");
@@ -1080,6 +1114,55 @@ Object.assign(window.Office, {
         onChange?.(plan[idx], idx);
       });
     });
+  },
+
+  adjustCloseAllPairedDuration(plan, changedIdx) {
+    const changed = plan?.[changedIdx];
+    if (!changed || (changed.event !== "check_in" && changed.event !== "check_out")) return;
+    const duration = Number(changed.schedule_duration_minutes);
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    const changedMin = this.parseClockToMinutes(changed.retro_time);
+    if (changedMin == null) return;
+    const pairIdx = (plan || []).findIndex(
+      (item, idx) =>
+        idx !== changedIdx &&
+        item?.pair_key === changed.pair_key &&
+        item?.event !== changed.event &&
+        (item.event === "check_in" || item.event === "check_out")
+    );
+    if (pairIdx < 0) return;
+
+    const pair = plan[pairIdx];
+    const pairMin =
+      changed.event === "check_out" ? changedMin - duration : changedMin + duration;
+    pair.retro_time = this.formatTotalMinutesAsClock(pairMin);
+    pair.time_source =
+      pair.event === "check_in"
+        ? `έξοδος - διάρκεια ωραρίου (${this.formatDurationMinutesLabel(duration)})`
+        : `είσοδος + διάρκεια ωραρίου (${this.formatDurationMinutesLabel(duration)})`;
+
+    const baseDate = changed.work_date_iso || pair.work_date_iso || this.erganiDateToIso(changed.work_date);
+    if (baseDate) {
+      if (pair.event === "check_in") {
+        pair.reference_date = pairMin < 0 ? this.addDaysIso(baseDate, -1) : baseDate;
+      } else if (pair.event === "check_out") {
+        pair.reference_date = pairMin >= 24 * 60 ? this.addDaysIso(baseDate, 1) : baseDate;
+      }
+    }
+
+    const pairInput = document.querySelector(
+      `.close-all-time-input[data-plan-idx="${pairIdx}"]`
+    );
+    if (pairInput) {
+      pairInput.value = pair.retro_time;
+      pairInput.classList.remove("close-all-time-input--error");
+      pairInput.classList.toggle(
+        "close-all-time-input--empty",
+        this.isCloseAllMissingPunchTime(pair.retro_time)
+      );
+    }
+    const basisCell = document.querySelector(`[data-plan-basis="${pairIdx}"]`);
+    if (basisCell) basisCell.textContent = pair.time_source || "—";
   },
 
   syncCloseAllPlanTimes(plan) {
