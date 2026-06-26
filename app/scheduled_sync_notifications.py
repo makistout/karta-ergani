@@ -47,6 +47,7 @@ def _send_post_sync_notifications(
     from app.card_report import build_card_status_report
     from app.repo_today_alert import enrich_card_report_rows_with_today_notify
     from app.today_alert_service import send_today_punch_notifications
+    from app.today_notify_logic import merge_notify_work_hours
 
     ctx = store_api_context(cfg)
     sid = int(cfg["id"])
@@ -109,6 +110,12 @@ def _send_post_sync_notifications(
             kind = str(row.get("today_notify_kind") or "").strip()
             wl = _card_report_work_log(row)
             sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else None
+            card = row.get("card") if isinstance(row.get("card"), dict) else {}
+            hf, ht = merge_notify_work_hours(
+                hour_from=wl.get("hour_from") or row.get("hour_from"),
+                hour_to=wl.get("hour_to") or row.get("hour_to"),
+                card=card,
+            )
             employee_afm = str(row.get("employee_afm") or "").strip()
             employee_name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
             repo_sync_log.update_run_progress(
@@ -137,8 +144,8 @@ def _send_post_sync_notifications(
                     eponymo=row.get("eponymo"),
                     onoma=row.get("onoma"),
                     work_date=str(row.get("work_date") or ""),
-                    hour_from=wl.get("hour_from") or row.get("hour_from"),
-                    hour_to=wl.get("hour_to") or row.get("hour_to"),
+                    hour_from=hf,
+                    hour_to=ht,
                     notify_kind=kind,
                     public_base_url=Config.PUBLIC_BASE_URL,
                     auto_post_sync=True,

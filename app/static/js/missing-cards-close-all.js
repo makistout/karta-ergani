@@ -43,7 +43,7 @@ async function loadCloseAllPlan() {
     let descText = storeName
       ? `${storeName} · ${pending} εκκρεμείς εγγραφές πριν από ${data.exclude_date || "σήμερα"}`
       : `${pending} εκκρεμείς εγγραφές`;
-    descText += ` · ${planN} προς αυτόματη υποβολή`;
+    descText += ` · ${planN} προς υποβολή (ταξινόμηση: παλαιότερες πρώτα)`;
     if (skipN) descText += ` · ${skipN} εκτός`;
     if (data.truncated) {
       descText += ` · προειδοποίηση: εμφανίζονται οι πρώτες ${rows.length} από ${pending}`;
@@ -51,6 +51,7 @@ async function loadCloseAllPlan() {
     if (desc) desc.textContent = descText;
 
     wrap.innerHTML = Office.renderCloseAllPlanPageHtml(summary.plan, summary.skipped);
+    Office.bindCloseAllPlanPage(closeAllState.plan);
     if (confirmBtn) confirmBtn.disabled = planN === 0;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
@@ -63,6 +64,17 @@ async function runCloseAllPunches() {
   const progress = document.getElementById("closeAllProgress");
   const confirmBtn = document.getElementById("closeAllConfirm");
   if (!plan.length || closeAllState.running) return;
+
+  Office.syncCloseAllPlanTimes(plan);
+  const validation = Office.validateCloseAllPlanTimes(plan);
+  if (!validation.ok) {
+    Office.showMsg(
+      "closeAllMsg",
+      validation.message || "Συμπληρώστε όλες τις ώρες χτυπήματος πριν την αποστολή.",
+      false
+    );
+    return;
+  }
 
   closeAllState.running = true;
   if (confirmBtn) confirmBtn.disabled = true;
@@ -78,7 +90,11 @@ async function runCloseAllPunches() {
     if (progress) {
       progress.textContent = `Αποστολή ${i + 1}/${plan.length}: ${label}…`;
     }
-    const res = await Office.submitRetroWorkCardPunch(punch);
+    const res = await Office.submitRetroWorkCardPunch(punch, {
+      source: "close_all",
+      batch_index: i + 1,
+      batch_total: plan.length,
+    });
     if (res.ok) {
       ok += 1;
       if (progress) {
@@ -107,7 +123,7 @@ async function runCloseAllPunches() {
 
   Office.showMsg(
     "closeAllMsg",
-    `Επιτυχής υποβολή ${ok} χτυπημάτων (WRKCardSE). Επιστροφή στη λίστα…`,
+    `Επιτυχής υποβολή ${ok} χτυπημάτων (WRKCardSE). Δείτε Καταγραφές → Χτυπήματα κάρτας. Επιστροφή στη λίστα…`,
     true
   );
   window.setTimeout(() => {

@@ -8,6 +8,39 @@
 
 ---
 
+## 2026-06-26 — Sync/ειδοποιήσεις 15 λεπτά + snapshot βάσης στα logs
+
+### Διάστημα 15 λεπτά (αντί 10)
+- **Task Scheduler**: `scripts/setup_scheduled_sync_task.ps1` → task **`ErganiOS-ScheduledSync15Min`**
+  (`/ri 15`, `:00` / `:15` / `:30` / `:45`). Διαγράφει αυτόματα το παλιό `ErganiOS-ScheduledSync10Min`.
+- **`NOTIFY_GRACE_MINUTES = 15`** (`today_notify_logic.py`): καθυστέρηση εισόδου και έλλειψη εξόδου
+  ενεργοποιούνται στον **πρώτο sync ≥15'** μετά το όριο (όχι 10').
+- UI/JS: ετικέτες «>15'», «Αυτόματος συγχρονισμός server κάθε 15 λεπτά», πολιτική ληπτών
+  «Συνέχεια κάθε 15 λεπτά».
+
+### Snapshot βάσης κατά την αποστολή ειδοποίησης
+- Νέα **`notify_db_snapshot()`**: διαβάζει από DB πραγματική (`karta_work_log`) και κάρτα
+  (`karta_card_event`) τη στιγμή της αποστολής.
+- **`send_today_punch_notifications`**: log `today_notification_db_snapshot` πριν την αποστολή +
+  τα ίδια πεδία στα `today_notification_send` (Telegram/Email).
+
+### Ειδοποιήσεις — λογική κάρτα + πραγματική (προηγούμενες αλλαγές ίδιας ημέρας)
+- **`merge_notify_work_hours()`**: συνδυάζει ώρες πραγματικής και κάρτας πριν τον κανόνα.
+- **`card_event_blocks_today_notify()`**: δεν στέλνει αν υπάρχει χτύπημα κάρτας στη βάση.
+- **`enrich_card_report_rows_with_today_notify`**: χρησιμοποιεί block `card` από card report.
+
+### Καταγραφές χτυπημάτων κάρτας (UI)
+- Tab **«Χτυπήματα κάρτας»** στις Καταγραφές· αναλυτικά μηνύματα Ergani στα audit logs
+  (`error_message`, `ergani_response`).
+
+### «Κλείστε όλα» / persist χτυπημάτων
+- Αποτυχία αποθήκευσης μετά Ergani OK → `success: false` + audit (όχι σιωπηλή επιτυχία).
+
+**Production:** μετά deploy, τρέξε ως Administrator:
+`powershell -ExecutionPolicy Bypass -File scripts\setup_scheduled_sync_task.ps1`
+
+---
+
 ## 2026-06-26 — Fix αιτιολογίας καθυστέρησης σε προγενέστερο χτύπημα (today-hit / retro-hit)
 
 - Το Ergani απορρίπτει `f_aitiologia` όταν η ώρα κίνησης είναι **εντός επιτρεπόμενου ορίου**

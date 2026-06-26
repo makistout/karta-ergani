@@ -6,15 +6,15 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
+from app.audit_log import record_audit_event
 from app.date_util import format_date_for_ergani, format_f_date_time, iso_to_ergani_dates
 from app.ergani_client import ErganiClient
 from app.http_helpers import (
     bearer_from_request,
     ensure_ergani_bearer,
     json_or_text,
-    persist_safe,
     resolve_active_store,
     response_body_text,
 )
@@ -97,6 +97,51 @@ def _f_type_label(f_type: str | None) -> str:
     return t or "—"
 
 
+def _wrk_card_error_message(resp, parsed: Any) -> str | None:
+    """Αναλυτικό μήνυμα σφάλματος Ergani για καταγραφές/UI."""
+    if resp.ok:
+        return None
+    parts: list[str] = []
+
+    def _add(msg: Any) -> None:
+        text = str(msg or "").strip()
+        if text and text not in parts:
+            parts.append(text)
+
+    if isinstance(parsed, dict):
+        for key in ("message", "Message", "error", "Error", "detail", "Detail", "title"):
+            _add(parsed.get(key))
+        errors = parsed.get("errors") or parsed.get("Errors")
+        if isinstance(errors, list):
+            for item in errors:
+                if isinstance(item, dict):
+                    _add(item.get("message") or item.get("Message") or item.get("error"))
+                else:
+                    _add(item)
+        elif isinstance(errors, str):
+            _add(errors)
+    elif isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, dict):
+                _add(item.get("message") or item.get("Message") or item.get("error"))
+            else:
+                _add(str(item))
+    elif isinstance(parsed, str):
+        _add(parsed)
+
+    if not parts:
+        body = response_body_text(resp)
+        if body:
+            _add(body[:600])
+
+    if parts:
+        return f"Ergani ({resp.status_code}): " + " · ".join(parts)
+
+    from app.ergani_errors import ergani_failure_detail
+
+    return ergani_failure_detail(resp, SUBMISSION_CODE_WRK_CARD)
+
+
 def _submit_work_card(
     *,
     body: dict[str, Any],
@@ -106,6 +151,7 @@ def _submit_work_card(
     api_base_url: str | None = None,
     client_ip: str | None = None,
     client_device: str | None = None,
+    store_id: int | None = None,
 ) -> tuple[Any, int]:
     emp_afm = (body.get("employee_afm") or "").strip()
     last = (body.get("employee_last_name") or body.get("eponymo") or "").strip()
@@ -196,23 +242,83 @@ def _submit_work_card(
             raw_id = first_item.get("id")
             ergani_id = str(raw_id).strip() if raw_id is not None else None
 
-    persist_safe(
-        persist_wrk_card_submit,
-        SUBMISSION_CODE_WRK_CARD,
-        resp.status_code,
-        resp.ok,
-        payload,
-        response_body_text(resp),
-        protocol,
-        submit_date,
-        ergani_id,
+    persist_error: str | None = None
+    persisted = False
+    try:
+        persist_wrk_card_submit(
+            SUBMISSION_CODE_WRK_CARD,
+            resp.status_code,
+            resp.ok,
+            payload,
+            response_body_text(resp),
+            protocol,
+            submit_date,
+            ergani_id,
+            client_ip=client_ip,
+            client_device=client_device,
+        )
+        persisted = bool(resp.ok)
+    except Exception as ex:
+        persist_error = str(ex)
+        if resp.ok:
+            current_app.logger.exception(
+                "Αποτυχία αποθήκευσης χτυπήματος κάρτας στη βάση erganiOS"
+            )
+
+    err_msg = _wrk_card_error_message(resp, parsed)
+    submit_source = str(body.get("source") or "office_ui").strip()[:32] or "office_ui"
+    employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
+    record_audit_event(
+        action="work_card_punch_submit",
+        success=bool(resp.ok and persisted),
+        http_status=int(resp.status_code or 0),
+        store_id=store_id,
+        employer_afm=erg_s,
+        branch_aa=aa_s,
+        entity_type="employee",
+        entity_id=emp_afm,
+        details={
+            "source": submit_source,
+            "employee_afm": emp_afm,
+            "employee_name": employee_display or None,
+            "event": str(event or "").strip() or None,
+            "f_type": resolved_type,
+            "f_type_label": _f_type_label(resolved_type),
+            "reference_date": ref_date,
+            "event_at": event_at_str,
+            "protocol": protocol,
+            "ergani_submission_id": ergani_id,
+            "ergani_ok": resp.ok,
+            "persisted": persisted,
+            "persist_error": persist_error,
+            "batch_index": body.get("batch_index"),
+            "batch_total": body.get("batch_total"),
+            "error": err_msg,
+            "error_message": err_msg,
+            "ergani_http_status": int(resp.status_code or 0),
+            "ergani_response": parsed if not resp.ok else None,
+        },
         client_ip=client_ip,
         client_device=client_device,
     )
 
-    err_msg = None
-    if not resp.ok and isinstance(parsed, dict):
-        err_msg = str(parsed.get("message") or parsed.get("Message") or "").strip() or None
+    if resp.ok and not persisted:
+        return jsonify({
+            "success": False,
+            "status": 500,
+            "submission_code": SUBMISSION_CODE_WRK_CARD,
+            "protocol": protocol,
+            "submit_date": submit_date,
+            "ergani_submission_id": ergani_id,
+            "f_type": resolved_type,
+            "f_type_label": _f_type_label(resolved_type),
+            "persisted": False,
+            "error": (
+                "Ergani επιτυχία αλλά αποτυχία αποθήκευσης στη βάση erganiOS"
+                + (f": {persist_error}" if persist_error else "")
+            ),
+            "data": parsed,
+        }), 500
 
     return jsonify({
         "success": resp.ok,
@@ -223,6 +329,7 @@ def _submit_work_card(
         "ergani_submission_id": ergani_id,
         "f_type": resolved_type,
         "f_type_label": _f_type_label(resolved_type),
+        "persisted": persisted,
         "error": err_msg,
         "data": parsed,
     }), resp.status_code if not resp.ok else 200
@@ -315,6 +422,7 @@ def work_card_submit_office():
         api_base_url=ctx.get("api_base_url"),
         client_ip=client_ctx.get("client_ip"),
         client_device=client_ctx.get("client_device"),
+        store_id=int(ctx["id"]),
     )
 
 

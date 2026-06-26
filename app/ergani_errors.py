@@ -10,6 +10,7 @@ _SERVICE_LABELS = {
     "EX_BASE_04": "Μηνιαία κατάσταση (EX_BASE_04)",
     "EX_BASE_07": "Πραγματική απασχόληση (EX_BASE_07)",
     "EX_BASE_08": "Ψηφιακό ωράριο (EX_BASE_08)",
+    "WRKCardSE": "Ψηφιακή κάρτα (WRKCardSE)",
 }
 
 

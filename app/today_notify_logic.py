@@ -8,7 +8,8 @@ from typing import Any
 
 from app.work_card_payload import tz_athens
 
-NOTIFY_GRACE_MINUTES = 10
+NOTIFY_GRACE_MINUTES = 15
+NOTIFY_GRACE_CHECKOUT_MINUTES = NOTIFY_GRACE_MINUTES
 
 TODAY_NOTIFY_KINDS = frozenset(
     {
@@ -26,8 +27,8 @@ TODAY_NOTIFY_KINDS = frozenset(
 
 KIND_LABELS = {
     "exit_without_entry": "εξόδος χωρίς είσοδο",
-    "late_check_in": "καθυστέρηση εισόδου (>10' από ωράριο)",
-    "late_check_out": "έλλειψη εξόδου (>10' από αναμενόμενη λήξη)",
+    "late_check_in": "καθυστέρηση εισόδου (>15' από ωράριο)",
+    "late_check_out": "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
     "missing_exit_8h": "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     "rest_with_card": "ρεπό/ανάπαυση με καταγραφή εργασίας",
     "rest_day": "ημέρα ρεπό/ανάπαυση",
@@ -100,6 +101,140 @@ def _schedule_start_minutes(row: dict[str, Any]) -> int | None:
     if match:
         return _parse_clock_minutes(match.group(1))
     return None
+
+
+def _hm_short(value: str | None) -> str:
+    m = re.match(r"^(\d{1,2}):(\d{2})", str(value or "").strip())
+    if not m:
+        return ""
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+def merge_notify_work_hours(
+    *,
+    hour_from: str | None,
+    hour_to: str | None,
+    card: dict[str, Any] | None = None,
+) -> tuple[str | None, str | None]:
+    """Συνδυάζει πραγματική + ώρες κάρτας για κανόνες ειδοποίησης."""
+    hf = str(hour_from or "").strip()
+    ht = str(hour_to or "").strip()
+    card_block = card if isinstance(card, dict) else {}
+    card_in = _hm_short(str(card_block.get("check_in") or ""))
+    card_out = _hm_short(str(card_block.get("check_out") or ""))
+    if not hf and card_in:
+        hf = card_in
+    if not ht and card_out:
+        ht = card_out
+    return hf or None, ht or None
+
+
+def notify_row_from_sources(
+    *,
+    work_date: Any,
+    employee_active: Any = True,
+    hour_from: str | None = None,
+    hour_to: str | None = None,
+    schedule: dict[str, Any] | None = None,
+    schedule_label: str | None = None,
+    card: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    hf, ht = merge_notify_work_hours(
+        hour_from=hour_from,
+        hour_to=hour_to,
+        card=card,
+    )
+    return {
+        "work_date": work_date,
+        "employee_active": employee_active,
+        "hour_from": hf,
+        "hour_to": ht,
+        "schedule": schedule,
+        "schedule_label": schedule_label,
+    }
+
+
+def card_event_blocks_today_notify(
+    employee_afm: str,
+    work_date: str,
+    kind: str,
+) -> bool:
+    """True όταν υπάρχει χτύπημα κάρτας που ακυρώνει την ειδοποίηση."""
+    from app.repo_card import card_event_exists
+
+    ref = ergani_date_to_iso(work_date)
+    if not ref or not str(employee_afm or "").strip():
+        return False
+    k = (kind or "").strip()
+    if k == "late_check_in" and card_event_exists(employee_afm, ref, "0"):
+        return True
+    if k in ("late_check_out", "missing_exit_8h") and card_event_exists(employee_afm, ref, "1"):
+        return True
+    if k == "exit_without_entry" and card_event_exists(employee_afm, ref, "0"):
+        return True
+    return False
+
+
+def notify_db_snapshot(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    work_date: str,
+) -> dict[str, Any]:
+    """Κατάσταση βάσης (πραγματική + κάρτα) τη στιγμή της ειδοποίησης."""
+    from app.db import cursor
+    from app.repo_card import card_event_exists
+    from app.repo_work_log import _card_db_details_by_employee_work_date
+    from app.work_card_payload import norm_afm
+
+    wd = str(work_date or "").strip()[:32]
+    ref_iso = ergani_date_to_iso(wd)
+    e_afm = norm_afm(employee_afm)
+    wl_hf = wl_ht = None
+    wl_synced_at: str | None = None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT hour_from, hour_to, CAST(synced_at AS datetime2)
+            FROM dbo.karta_work_log
+            WHERE employee_afm = ? AND work_date = ?
+            """,
+            (e_afm, wd),
+        )
+        row = cur.fetchone()
+        if row:
+            wl_hf = str(row[0] or "").strip() or None
+            wl_ht = str(row[1] or "").strip() or None
+            if row[2] is not None:
+                wl_synced_at = str(row[2])[:19]
+
+    card_in = card_out = None
+    if wd:
+        details = _card_db_details_by_employee_work_date(
+            employer_afm,
+            branch_aa,
+            [wd],
+        )
+        slot = details.get((e_afm, wd), {})
+        ci = slot.get("check_in") if isinstance(slot.get("check_in"), dict) else None
+        co = slot.get("check_out") if isinstance(slot.get("check_out"), dict) else None
+        if ci:
+            card_in = str(ci.get("time") or "").strip() or None
+        if co:
+            card_out = str(co.get("time") or "").strip() or None
+
+    return {
+        "work_log_hour_from": wl_hf,
+        "work_log_hour_to": wl_ht,
+        "work_log_synced_at": wl_synced_at,
+        "card_check_in": card_in,
+        "card_check_out": card_out,
+        "card_has_check_in": bool(ref_iso and card_event_exists(e_afm, ref_iso, "0")),
+        "card_has_check_out": bool(ref_iso and card_event_exists(e_afm, ref_iso, "1")),
+        "work_date_ergani": wd,
+        "reference_date_iso": ref_iso or None,
+    }
 
 
 def _today_ergani(now: datetime | None = None) -> str:
@@ -275,7 +410,7 @@ def resolve_today_notify_kind(
                     now_min=now_min,
                     on_next_calendar_day=overnight_exit_today,
                 )
-                if elapsed is not None and elapsed >= NOTIFY_GRACE_MINUTES:
+                if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
                     return "late_check_out"
                 return None
         start_min = _parse_clock_minutes(hf)

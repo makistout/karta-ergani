@@ -143,7 +143,11 @@ def enrich_card_report_rows_with_today_notify(
     store_id: int,
 ) -> None:
     """Σημαία today_notify_kind / today_notify_snoozed για γραμμές αναφοράς αρχικής."""
-    from app.today_notify_logic import resolve_today_notify_kind
+    from app.today_notify_logic import (
+        card_event_blocks_today_notify,
+        notify_row_from_sources,
+        resolve_today_notify_kind,
+    )
 
     dates = sorted(
         {
@@ -154,15 +158,23 @@ def enrich_card_report_rows_with_today_notify(
     )
     for row in rows:
         wl = row.get("work_log") if isinstance(row.get("work_log"), dict) else {}
-        notify_row = {
-            "work_date": row.get("work_date"),
-            "employee_active": row.get("employee_active", True),
-            "hour_from": wl.get("hour_from"),
-            "hour_to": wl.get("hour_to"),
-            "schedule": row.get("schedule"),
-            "schedule_label": row.get("schedule_label"),
-        }
+        card = row.get("card") if isinstance(row.get("card"), dict) else {}
+        notify_row = notify_row_from_sources(
+            work_date=row.get("work_date"),
+            employee_active=row.get("employee_active", True),
+            hour_from=wl.get("hour_from"),
+            hour_to=wl.get("hour_to"),
+            schedule=row.get("schedule"),
+            schedule_label=row.get("schedule_label"),
+            card=card,
+        )
         kind = resolve_today_notify_kind(notify_row)
+        if kind and card_event_blocks_today_notify(
+            str(row.get("employee_afm") or ""),
+            str(row.get("work_date") or ""),
+            kind,
+        ):
+            kind = None
         row["today_notify_kind"] = kind
         if not kind:
             row["today_notify_snoozed"] = False

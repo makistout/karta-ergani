@@ -44,7 +44,16 @@ def enrich_work_log_rows_with_schedule(
         if not slots:
             row["schedule_label"] = "—"
             row["schedule"] = None
+            row["schedule_slots"] = []
             continue
+        row["schedule_slots"] = [
+            {
+                "hour_from": s.get("hour_from"),
+                "hour_to": s.get("hour_to"),
+                "shift_type": s.get("shift_type"),
+            }
+            for s in slots
+        ]
         row["schedule_label"] = " · ".join(_format_schedule_slot(s) for s in slots)
         pick = slots[0] if len(slots) == 1 else None
         if len(slots) > 1:

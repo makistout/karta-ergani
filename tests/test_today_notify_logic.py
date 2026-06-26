@@ -21,8 +21,8 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "hour_to": "",
             "schedule": {"hour_from": "10:00", "hour_to": "16:00"},
         }
-        before = resolve_today_notify_kind(row, now=self._athens(10, 9))
-        after = resolve_today_notify_kind(row, now=self._athens(10, 10))
+        before = resolve_today_notify_kind(row, now=self._athens(10, 14))
+        after = resolve_today_notify_kind(row, now=self._athens(10, 15))
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_in")
 
@@ -45,8 +45,8 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "schedule": {"hour_from": "10:00", "hour_to": "18:30"},
         }
         # Διάρκεια 8:30 → αναμενόμενη έξοδος 18:35
-        before = resolve_today_notify_kind(row, now=self._athens(18, 44))
-        after = resolve_today_notify_kind(row, now=self._athens(18, 46))
+        before = resolve_today_notify_kind(row, now=self._athens(18, 49))
+        after = resolve_today_notify_kind(row, now=self._athens(18, 50))
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_out")
 
@@ -60,7 +60,7 @@ class TodayNotifyLogicTests(unittest.TestCase):
         }
         # 8 ώρες από 12:00 → έξοδος 20:00
         at_schedule_end = resolve_today_notify_kind(row, now=self._athens(18, 15))
-        after_expected = resolve_today_notify_kind(row, now=self._athens(20, 11))
+        after_expected = resolve_today_notify_kind(row, now=self._athens(20, 15))
         self.assertIsNone(at_schedule_end)
         self.assertEqual(after_expected, "late_check_out")
 
@@ -97,11 +97,11 @@ class TodayNotifyLogicTests(unittest.TestCase):
         # Διάρκεια 8 ώρες → αναμενόμενη έξοδος 01:05 (25/06)
         before = resolve_today_notify_kind(
             row,
-            now=datetime(2026, 6, 25, 1, 14, tzinfo=ZoneInfo("Europe/Athens")),
+            now=datetime(2026, 6, 25, 1, 19, tzinfo=ZoneInfo("Europe/Athens")),
         )
         after = resolve_today_notify_kind(
             row,
-            now=datetime(2026, 6, 25, 1, 16, tzinfo=ZoneInfo("Europe/Athens")),
+            now=datetime(2026, 6, 25, 1, 21, tzinfo=ZoneInfo("Europe/Athens")),
         )
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_out")
@@ -117,11 +117,11 @@ class TodayNotifyLogicTests(unittest.TestCase):
         # 8 ώρες από 22:00 → έξοδος 06:00 (25/06)
         before = resolve_today_notify_kind(
             row,
-            now=datetime(2026, 6, 25, 6, 9, tzinfo=ZoneInfo("Europe/Athens")),
+            now=datetime(2026, 6, 25, 6, 14, tzinfo=ZoneInfo("Europe/Athens")),
         )
         after = resolve_today_notify_kind(
             row,
-            now=datetime(2026, 6, 25, 6, 11, tzinfo=ZoneInfo("Europe/Athens")),
+            now=datetime(2026, 6, 25, 6, 16, tzinfo=ZoneInfo("Europe/Athens")),
         )
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_out")
@@ -159,8 +159,8 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertIsNone(before)
         self.assertEqual(after, "missing_exit_8h")
 
-    def test_grace_constant_is_ten_minutes(self):
-        self.assertEqual(NOTIFY_GRACE_MINUTES, 10)
+    def test_grace_constant_is_fifteen_minutes(self):
+        self.assertEqual(NOTIFY_GRACE_MINUTES, 15)
 
     def test_only_late_check_in_auto_sends_once(self):
         self.assertTrue(notify_auto_send_once("late_check_in"))

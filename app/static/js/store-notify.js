@@ -291,7 +291,7 @@ function buildNotifyPolicyRow(row, idx) {
     `</label>` +
     `<label class="notify-policy-option">` +
     `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="repeat_until_action"${policy === "repeat_until_action" ? " checked" : ""}>` +
-    `<span>Συνέχεια κάθε 10 λεπτά μέχρι ενέργεια</span>` +
+    `<span>Συνέχεια κάθε 15 λεπτά μέχρι ενέργεια</span>` +
     `</label>` +
     `</div>` +
     `</td>` +

@@ -5,6 +5,9 @@ const syncLogState = {
   activeTab: "sync",
   actionsLoaded: false,
   sentLoaded: false,
+  punchesLoaded: false,
+  punchesStoreId: "",
+  punchesStoreAc: null,
   storeId: "",
   query: "",
   sentQuery: "",
@@ -46,6 +49,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnRefreshNotifySent")?.addEventListener("click", () => {
     loadNotifySent();
   });
+  document.getElementById("btnRefreshWorkCardPunches")?.addEventListener("click", () => {
+    loadWorkCardPunches();
+  });
+  document.getElementById("btnClearWorkCardPunchesStore")?.addEventListener("click", () => {
+    syncLogState.punchesStoreId = "";
+    syncLogState.punchesStoreAc?.clearValue();
+    document.getElementById("workCardPunchesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
+    loadWorkCardPunches();
+  });
   document.getElementById("notifySentSearchInput")?.addEventListener("input", (e) => {
     syncLogState.sentQuery = String(e.target.value || "").trim();
     if (syncLogState.sentSearchTimer) clearTimeout(syncLogState.sentSearchTimer);
@@ -59,7 +71,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setLogTab("sent");
     return;
   }
+  if (location.hash === "#punches") {
+    initWorkCardPunchesStorePicker().finally(() => setLogTab("punches"));
+    return;
+  }
   initSyncLogStorePicker().finally(() => loadRuns());
+  initWorkCardPunchesStorePicker();
 });
 
 function formatTs(iso) {
@@ -133,7 +150,8 @@ function statusBadge(status) {
 }
 
 function setLogTab(tab) {
-  const next = tab === "actions" || tab === "sent" ? tab : "sync";
+  const next =
+    tab === "actions" || tab === "sent" || tab === "punches" ? tab : "sync";
   syncLogState.activeTab = next;
   document.querySelectorAll("[data-log-tab]").forEach((btn) => {
     const active = btn.dataset.logTab === next;
@@ -143,12 +161,16 @@ function setLogTab(tab) {
   document.getElementById("syncLogsPanel")?.classList.toggle("hidden", next !== "sync");
   document.getElementById("notifyActionsPanel")?.classList.toggle("hidden", next !== "actions");
   document.getElementById("notifySentPanel")?.classList.toggle("hidden", next !== "sent");
+  document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
   if (next === "actions") {
     history.replaceState(null, "", `${location.pathname}#actions`);
     if (!syncLogState.actionsLoaded) loadNotifyActions();
   } else if (next === "sent") {
     history.replaceState(null, "", `${location.pathname}#sent`);
     if (!syncLogState.sentLoaded) loadNotifySent();
+  } else if (next === "punches") {
+    history.replaceState(null, "", `${location.pathname}#punches`);
+    loadWorkCardPunches();
   } else {
     history.replaceState(null, "", location.pathname);
     loadRuns();
@@ -225,6 +247,241 @@ async function initSyncLogStorePicker() {
   };
   input.addEventListener("focus", openAllStores);
   input.addEventListener("click", openAllStores);
+}
+
+async function initWorkCardPunchesStorePicker() {
+  const input = document.getElementById("workCardPunchesStoreInput");
+  if (!input || syncLogState.punchesStoreAc) return;
+  syncLogState.punchesStoreAc = Office.createAutocomplete({
+    inputId: "workCardPunchesStoreInput",
+    listId: "workCardPunchesStoreList",
+    hiddenId: "workCardPunchesStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.punchesStoreId = String(item.value || "");
+      loadWorkCardPunches();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    syncLogState.punchesStoreAc?.setItems(
+      (stores || []).map((s) => ({
+        value: String(s.id),
+        description: s.name || "Κατάστημα",
+      }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => {
+    syncLogState.punchesStoreAc?.openAll(false);
+  };
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
+function workCardPunchSourceLabel(source) {
+  const s = String(source || "").trim();
+  if (s === "close_all") return "Κλείστε όλα";
+  if (s === "telegram_retro") return "Telegram retro";
+  if (s === "office_ui") return "Ψηφ. κάρτα";
+  return s || "—";
+}
+
+function workCardPunchEmployeeText(row) {
+  const d = row.details || {};
+  const name = String(d.employee_name || "").trim();
+  const afm = String(d.employee_afm || row.entity_id || "").trim();
+  if (name && afm && name !== afm) return `${name} · ${afm}`;
+  return name || afm || "—";
+}
+
+function workCardPunchErganiResponseText(parsed) {
+  if (!parsed) return "";
+  const parts = [];
+  const push = (msg) => {
+    const text = String(msg || "").trim();
+    if (text && !parts.includes(text)) parts.push(text);
+  };
+  if (typeof parsed === "string") {
+    push(parsed);
+    return parts.join(" · ");
+  }
+  if (Array.isArray(parsed)) {
+    parsed.forEach((item) => {
+      if (item && typeof item === "object") {
+        push(item.message || item.Message || item.error || item.Error);
+      } else {
+        push(item);
+      }
+    });
+    return parts.join(" · ");
+  }
+  if (typeof parsed === "object") {
+    push(parsed.message || parsed.Message || parsed.error || parsed.Error || parsed.detail);
+    const errors = parsed.errors || parsed.Errors;
+    if (Array.isArray(errors)) {
+      errors.forEach((item) => {
+        if (item && typeof item === "object") {
+          push(item.message || item.Message || item.error);
+        } else {
+          push(item);
+        }
+      });
+    } else if (typeof errors === "string") {
+      push(errors);
+    }
+  }
+  return parts.join(" · ");
+}
+
+function workCardPunchDetailsText(row) {
+  const d = row.details || {};
+  const resp = d.response && typeof d.response === "object" ? d.response : {};
+  const messages = [];
+
+  const push = (msg) => {
+    const text = String(msg || "").trim();
+    if (text && !messages.includes(text)) messages.push(text);
+  };
+
+  push(d.error_message);
+  push(d.error);
+  const erganiFromStored = workCardPunchErganiResponseText(d.ergani_response);
+  if (erganiFromStored) {
+    const code = d.ergani_http_status || row.http_status;
+    push(code ? `Ergani (${code}): ${erganiFromStored}` : erganiFromStored);
+  }
+  if (d.persist_error) push(`Αποθήκευση βάσης: ${d.persist_error}`);
+  if (d.ergani_ok === true && d.persisted === false) {
+    push("Ergani OK αλλά δεν αποθηκεύτηκε στη βάση erganiOS");
+  }
+  push(resp.error);
+  if (resp.data && typeof resp.data === "object") {
+    push(resp.data.message || resp.data.Message || resp.data.error);
+  }
+  if (d.protocol) push(`Πρωτόκολο: ${d.protocol}`);
+  if (d.batch_index != null && d.batch_total != null) {
+    push(`Σειρά ${d.batch_index}/${d.batch_total}`);
+  }
+  if (!messages.length && row.http_status) {
+    push(`HTTP ${row.http_status} — δεν επέστρεψε αναλυτικό μήνυμα`);
+  }
+  return messages.join(" · ") || "—";
+}
+
+async function loadWorkCardPunches() {
+  const wrap = document.getElementById("workCardPunchesWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({
+      kind: "work_card_punches",
+      limit: "200",
+    });
+    if (syncLogState.punchesStoreId) qs.set("store_id", syncLogState.punchesStoreId);
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    renderWorkCardPunches(data.audit || []);
+    syncLogState.punchesLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+  }
+}
+
+function renderWorkCardPunches(rows) {
+  const wrap = document.getElementById("workCardPunchesWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα καταγραφές χτυπημάτων κάρτας.</span></p>`;
+    return;
+  }
+
+  const t = document.createElement("table");
+  t.className = "data work-card-punches-table";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  [
+    "Ώρα",
+    "Πηγή",
+    "Εργαζόμενος",
+    "Ημ/νία",
+    "Ενέργεια",
+    "Κατάστημα",
+    "Κατάσταση",
+    "Λεπτομέρειες",
+  ].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  t.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const d = row.details || {};
+    const tr = document.createElement("tr");
+    tr.className = "work-card-punch-row";
+
+    const tdTs = document.createElement("td");
+    tdTs.className = "sync-log-ts work-card-punch-col-ts";
+    tdTs.textContent = formatTs(row.created_at);
+    tr.appendChild(tdTs);
+
+    const tdSource = document.createElement("td");
+    tdSource.className = "work-card-punch-col-source";
+    tdSource.textContent = workCardPunchSourceLabel(d.source);
+    tr.appendChild(tdSource);
+
+    const tdEmp = document.createElement("td");
+    tdEmp.className = "work-card-punch-col-emp";
+    tdEmp.textContent = workCardPunchEmployeeText(row);
+    tr.appendChild(tdEmp);
+
+    const tdDate = document.createElement("td");
+    tdDate.className = "work-card-punch-col-date";
+    tdDate.textContent = d.reference_date || d.event_at || "—";
+    tr.appendChild(tdDate);
+
+    const tdAction = document.createElement("td");
+    tdAction.className = "work-card-punch-col-action";
+    tdAction.textContent = d.f_type_label || d.event || "—";
+    tr.appendChild(tdAction);
+
+    const tdStore = document.createElement("td");
+    tdStore.className = "work-card-punch-col-store";
+    tdStore.textContent = row.store_id ? `ID ${row.store_id}` : "—";
+    tr.appendChild(tdStore);
+
+    const tdStatus = document.createElement("td");
+    tdStatus.className = "work-card-punch-col-status";
+    tdStatus.innerHTML = auditSuccessBadge(row);
+    tr.appendChild(tdStatus);
+
+    const tdDetails = document.createElement("td");
+    tdDetails.className = "work-card-punch-details";
+    tdDetails.textContent = workCardPunchDetailsText(row);
+    if (row.success === false || row.success === 0) {
+      tdDetails.title = workCardPunchDetailsText(row);
+    }
+    tr.appendChild(tdDetails);
+
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody);
+
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
 }
 
 function actionLabel(action, path) {

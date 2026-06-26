@@ -1,4 +1,4 @@
-"""CLI για περιοδικό συγχρονισμό — καλείται από Windows Task Scheduler κάθε 10 λεπτά."""
+"""CLI για περιοδικό συγχρονισμό — καλείται από Windows Task Scheduler κάθε 15 λεπτά."""
 
 from __future__ import annotations
 

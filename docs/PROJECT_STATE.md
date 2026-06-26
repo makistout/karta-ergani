@@ -77,13 +77,12 @@
 - Κάθε λήπτης έχει πολιτική επανάληψης στη σελίδα `/ui/stores/notify`:
   - `Μία φορά και αυτόματο snooze`: μετά από επιτυχή post-sync αποστολή γράφεται
     `karta_today_notify_snooze`, άρα η υπάρχουσα ροή δεν ξαναστέλνει την ίδια περίπτωση.
-  - `Συνέχεια κάθε 10 λεπτά μέχρι ενέργεια`: δεν γράφεται snooze μετά την αποστολή,
+  - `Συνέχεια κάθε 15 λεπτά μέχρι ενέργεια`: δεν γράφεται snooze μετά την αποστολή,
     οπότε η ειδοποίηση επανέρχεται στα επόμενα scheduled post-sync μέχρι snooze ή άλλη ενέργεια.
-- Το migration `sql/alter_add_notify_recipient_policy.sql` προσθέτει τη στήλη
-  `notify_repeat_policy` στους λήπτες.
 - Οι αυτόματες post-sync ειδοποιήσεις γράφουν γραμμή sync log ανά κανάλι/λήπτη/εργαζόμενο
   με `event=today_notification_send`, `recipient_*`, `employee_*`, `notify_kind` και
-  `notification_channel`, ώστε να γίνεται αναζήτηση/debugging από τις Καταγραφές.
+  `notification_channel`, **και snapshot βάσης** (`work_log_hour_from/to`, `card_check_in/out`,
+  `work_log_synced_at`) τη στιγμή της αποστολής — βλ. `notify_db_snapshot()`.
 - Το post-sync notification worker χρησιμοποιεί το ήδη φορτωμένο schedule του card report
   και γράφει progress/step logs ανά εργαζόμενο/λήπτη, ώστε να μη γίνεται δεύτερο schedule
   lookup ανά ειδοποίηση και να φαίνεται ακριβώς πού καθυστερεί ένα κατάστημα.

@@ -77,11 +77,22 @@ Object.assign(window.Office, {
     const schedStart = this.scheduleStartMinutesFromRow(row);
     const schedEnd = this.scheduleEndMinutesRawFromRow(row);
     const entryMin = this.parseClockToMinutes(entryForCalc);
+    const totalDuration = this.scheduleTotalDurationMinutesFromRow(row);
 
     let expectedMin = null;
-    if (entryMin != null && schedStart != null && schedEnd != null) {
+    let durationUsed = null;
+    let timeSourceMode = "schedule_end";
+    if (entryMin != null && totalDuration != null) {
+      expectedMin = entryMin + totalDuration;
+      durationUsed = totalDuration;
+      timeSourceMode = "entry_plus_duration";
+    } else if (entryMin != null && schedStart != null && schedEnd != null) {
       const duration = this.scheduleDurationMinutes(schedStart, schedEnd);
-      if (duration != null) expectedMin = entryMin + duration;
+      if (duration != null) {
+        expectedMin = entryMin + duration;
+        durationUsed = duration;
+        timeSourceMode = "entry_plus_duration";
+      }
     }
 
     let retroTime = "";
@@ -91,11 +102,14 @@ Object.assign(window.Office, {
       row.retro_time
     ) {
       retroTime = this.normalizeHourMinute(row.retro_time) || String(row.retro_time).trim();
+      timeSourceMode = "card_hint";
+      durationUsed = null;
     } else if (expectedMin != null) {
       retroTime = this.formatTotalMinutesAsClock(expectedMin);
     } else if (schedEnd != null) {
       retroTime = this.formatTotalMinutesAsClock(schedEnd);
       expectedMin = schedEnd;
+      timeSourceMode = "schedule_end";
     }
     if (!retroTime) return null;
 
@@ -107,6 +121,7 @@ Object.assign(window.Office, {
       event: "check_out",
       retro_time: retroTime,
       reference_date: referenceDate,
+      time_source: this.describeMissingCardTimeSource(timeSourceMode, durationUsed),
     };
   },
 
@@ -133,6 +148,9 @@ Object.assign(window.Office, {
       employee_afm: row.employee_afm,
       employee_name: name,
       work_date: row.work_date,
+      schedule_label: schedLabel || "—",
+      hour_from_existing: hf,
+      hour_to_existing: ht,
     };
     const plan = [];
 
@@ -150,7 +168,7 @@ Object.assign(window.Office, {
             this.normalizeHourMinute(row.retro_time) ||
             String(row.retro_time).trim(),
           reference_date: workDateIso,
-          time_source: "ψηφ. ωράριο",
+          time_source: this.describeMissingCardTimeSource("schedule_start"),
         });
       } else if (schedFrom) {
         plan.push({
@@ -159,42 +177,44 @@ Object.assign(window.Office, {
           event_label: "Είσοδος",
           retro_time: schedFrom,
           reference_date: workDateIso,
-          time_source: "ψηφ. ωράριο",
+          time_source: this.describeMissingCardTimeSource("schedule_start"),
         });
       } else {
-        return [];
+        plan.push({
+          ...base,
+          event: "check_in",
+          event_label: "Είσοδος",
+          retro_time: "",
+          reference_date: workDateIso,
+          time_source: "απαιτείται χειροκίνητη ώρα",
+          needs_manual_time: true,
+        });
       }
     }
 
     if (!ht && !this.workLogExitStillPending(row)) {
       const entryForExit = hf || schedFrom;
-      let exitPunch = this.resolveExitPunchFromRow(row, entryForExit);
-      let timeSource = "ψηφ. ωράριο";
-      if (!exitPunch && hf) {
-        const entryMin = this.parseClockToMinutes(hf);
-        if (entryMin != null) {
-          const exitMinAbs = entryMin + 8 * 60;
-          let refDate = workDateIso;
-          if (exitMinAbs >= 24 * 60) {
-            refDate = this.addDaysIso(workDateIso, 1);
-          }
-          exitPunch = {
-            event: "check_out",
-            retro_time: this.formatTotalMinutesAsClock(exitMinAbs),
-            reference_date: refDate,
-          };
-          timeSource = "είσοδος + 8 ώρες";
-        }
+      const exitPunch = this.resolveExitPunchFromRow(row, entryForExit);
+      if (!exitPunch) {
+        plan.push({
+          ...base,
+          event: "check_out",
+          event_label: "Έξοδος",
+          retro_time: "",
+          reference_date: workDateIso,
+          time_source: "απαιτείται χειροκίνητη ώρα",
+          needs_manual_time: true,
+        });
+      } else {
+        plan.push({
+          ...base,
+          event: exitPunch.event,
+          event_label: "Έξοδος",
+          retro_time: exitPunch.retro_time,
+          reference_date: exitPunch.reference_date,
+          time_source: exitPunch.time_source || "ψηφ. ωράριο",
+        });
       }
-      if (!exitPunch) return plan.length ? plan : [];
-      plan.push({
-        ...base,
-        event: exitPunch.event,
-        event_label: "Έξοδος",
-        retro_time: exitPunch.retro_time,
-        reference_date: exitPunch.reference_date,
-        time_source: timeSource,
-      });
     }
 
     return plan;
@@ -240,32 +260,110 @@ Object.assign(window.Office, {
         reason,
       });
     });
-    return { plan, skipped };
+    return {
+      plan: this.sortCloseAllPlanEntries(plan),
+      skipped: this.sortCloseAllSkippedEntries(skipped),
+    };
+  },
+
+  erganiDateSortKey(workDate) {
+    return this.erganiDateToIso(String(workDate || "").trim()) || "0000-00-00";
+  },
+
+  sortCloseAllPlanEntries(items) {
+    const eventOrder = { check_in: 0, check_out: 1 };
+    return [...(items || [])].sort((a, b) => {
+      const dateCmp = this.erganiDateSortKey(a.work_date).localeCompare(
+        this.erganiDateSortKey(b.work_date)
+      );
+      if (dateCmp !== 0) return dateCmp;
+      const nameCmp = String(a.employee_name || a.employee_afm || "")
+        .localeCompare(String(b.employee_name || b.employee_afm || ""), "el", {
+          sensitivity: "base",
+        });
+      if (nameCmp !== 0) return nameCmp;
+      return (eventOrder[a.event] ?? 9) - (eventOrder[b.event] ?? 9);
+    });
+  },
+
+  sortCloseAllSkippedEntries(items) {
+    return [...(items || [])].sort((a, b) => {
+      const dateCmp = this.erganiDateSortKey(a.work_date).localeCompare(
+        this.erganiDateSortKey(b.work_date)
+      );
+      if (dateCmp !== 0) return dateCmp;
+      return String(a.employee_name || "")
+        .localeCompare(String(b.employee_name || ""), "el", { sensitivity: "base" });
+    });
+  },
+
+  isCloseAllMissingPunchTime(value) {
+    return !this.normalizeHourMinute(String(value || "").trim());
+  },
+
+  resolveCloseAllPunchTimeValue(punch) {
+    return this.normalizeHourMinute(punch?.retro_time || "") || "";
+  },
+
+  clearCloseAllTimeInputErrors() {
+    document.querySelectorAll(".close-all-time-input--error").forEach((el) => {
+      el.classList.remove("close-all-time-input--error");
+    });
+  },
+
+  validateCloseAllPlanTimes(plan) {
+    this.clearCloseAllTimeInputErrors();
+    this.syncCloseAllPlanTimes(plan);
+    const errors = [];
+    (plan || []).forEach((punch, idx) => {
+      const time = this.normalizeHourMinute(punch.retro_time || "");
+      if (!time) {
+        errors.push({
+          idx,
+          message: `${punch.employee_name || punch.employee_afm} · ${punch.event_label}: συμπληρώστε την ώρα χτυπήματος`,
+        });
+      }
+    });
+    errors.forEach((err) => {
+      const el = document.querySelector(`.close-all-time-input[data-plan-idx="${err.idx}"]`);
+      el?.classList.add("close-all-time-input--error");
+    });
+    if (!errors.length) return { ok: true, errors: [] };
+    return {
+      ok: false,
+      errors,
+      message: errors.map((e) => e.message).join(" · "),
+    };
   },
 
   buildMissingCardPunchPlans(rows) {
     return this.summarizeMissingCardCloseAll(rows).plan;
   },
 
-  async submitRetroWorkCardPunch(punch) {
+  async submitRetroWorkCardPunch(punch, meta = {}) {
     const retroTime = this.normalizeHourMinute(punch?.retro_time) || punch?.retro_time;
     const refDate = String(punch?.reference_date || "").trim();
     if (!retroTime || !refDate) {
       return { ok: false, error: "Λείπει ώρα ή ημερομηνία καταχώρησης" };
     }
+    const body = {
+      employee_afm: punch.employee_afm,
+      event: punch.event,
+      reference_date: refDate,
+      event_at: `${refDate}T${retroTime}:00`,
+      aitiologia: punch?.aitiologia || this.RETRO_AITIOLOGIA,
+      device_info: this.clientDeviceInfo(),
+      source: meta.source || punch.source || "office_ui",
+    };
+    if (punch.employee_name) body.employee_name = punch.employee_name;
+    if (meta.batch_index != null) body.batch_index = meta.batch_index;
+    if (meta.batch_total != null) body.batch_total = meta.batch_total;
     try {
       const res = await fetch("/api/work-card/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({
-          employee_afm: punch.employee_afm,
-          event: punch.event,
-          reference_date: refDate,
-          event_at: `${refDate}T${retroTime}:00`,
-          aitiologia: "001",
-          device_info: this.clientDeviceInfo(),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await this.parseJson(res);
       if (data?._parseError) {
@@ -280,6 +378,14 @@ Object.assign(window.Office, {
             data.data?.Message ||
             data.data?.error ||
             "Αποτυχία υποβολής",
+          data,
+        };
+      }
+      if (data.persisted === false) {
+        return {
+          ok: false,
+          error: data.error || "Δεν αποθηκεύτηκε στη βάση erganiOS",
+          data,
         };
       }
       return { ok: true, data };
@@ -293,6 +399,60 @@ Object.assign(window.Office, {
     let elapsed = schedEnd - schedStart;
     if (elapsed < 0) elapsed += 24 * 60;
     return elapsed > 0 ? elapsed : null;
+  },
+
+  scheduleSlotDurationsFromRow(row) {
+    const slots = row?.schedule_slots;
+    if (Array.isArray(slots) && slots.length) {
+      const durations = [];
+      slots.forEach((slot) => {
+        const start = this.parseClockToMinutes(slot?.hour_from);
+        const end = this.parseClockToMinutes(slot?.hour_to);
+        const duration = this.scheduleDurationMinutes(start, end);
+        if (duration != null) durations.push(duration);
+      });
+      if (durations.length) return durations;
+    }
+    const label = String(row?.schedule_label || "").trim();
+    if (!label || label === "—" || /ρεπο|ανάπαυση/i.test(label)) return [];
+    const durations = [];
+    label.split("·").forEach((segment) => {
+      const match = segment.match(
+        /(\d{1,2}:\d{2}(?::\d{2})?)\s*[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)/
+      );
+      if (!match) return;
+      const duration = this.scheduleDurationMinutes(
+        this.parseClockToMinutes(match[1]),
+        this.parseClockToMinutes(match[2])
+      );
+      if (duration != null) durations.push(duration);
+    });
+    return durations;
+  },
+
+  scheduleTotalDurationMinutesFromRow(row) {
+    const durations = this.scheduleSlotDurationsFromRow(row);
+    if (!durations.length) return null;
+    return durations.reduce((sum, value) => sum + value, 0);
+  },
+
+  formatDurationMinutesLabel(totalMin) {
+    const minutes = Math.max(0, Number(totalMin) || 0);
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h > 0 && m > 0) return `${h}ω ${m}λ`;
+    if (h > 0) return `${h}ω`;
+    return `${m}λ`;
+  },
+
+  describeMissingCardTimeSource(mode, durationMin) {
+    if (mode === "entry_plus_duration" && durationMin != null) {
+      return `είσοδος + διάρκεια ωραρίου (${this.formatDurationMinutesLabel(durationMin)})`;
+    }
+    if (mode === "schedule_end") return "ώρα λήξης ψηφ. ωραρίου";
+    if (mode === "schedule_start") return "ώρα έναρξης ψηφ. ωραρίου";
+    if (mode === "card_hint") return "προτεινόμενη ώρα (ψηφ. ωράριο)";
+    return "ψηφ. ωράριο";
   },
 
   expectedExitMinutesFromRow(row) {
@@ -454,8 +614,8 @@ Object.assign(window.Office, {
   todayNotifyLabel(kind) {
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
-      late_check_in: "καθυστέρηση εισόδου (>10' από ωράριο)",
-      late_check_out: "έλλειψη εξόδου (>10' από αναμενόμενη λήξη)",
+      late_check_in: "καθυστέρηση εισόδου (>15' από ωράριο)",
+      late_check_out: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };
     return labels[kind] || kind || "";
@@ -537,7 +697,7 @@ Object.assign(window.Office, {
       if (elapsed != null && elapsed >= 10) {
         return {
           kind: "late_check_in",
-          label: "καθυστέρηση εισόδου (>10' από ωράριο)",
+          label: "καθυστέρηση εισόδου (>15' από ωράριο)",
         };
       }
     }
@@ -572,7 +732,7 @@ Object.assign(window.Office, {
           if (elapsedEnd != null && elapsedEnd >= 10) {
             return {
               kind: "late_check_out",
-              label: "έλλειψη εξόδου (>10' από αναμενόμενη λήξη)",
+              label: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
             };
           }
           return null;
@@ -824,7 +984,7 @@ Object.assign(window.Office, {
     const last = this.formatSyncTimestamp(store.work_log_last_sync_at);
     el.innerHTML =
       `Τελευταίος συγχρονισμός πραγματικής: <strong>${this.escapeHtml(last)}</strong>` +
-      ` · Αυτόματος συγχρονισμός server κάθε 10 λεπτά.`;
+      ` · Αυτόματος συγχρονισμός server κάθε 15 λεπτά.`;
   },
 
   formatCloseAllPlanDate(punch) {
@@ -837,6 +997,12 @@ Object.assign(window.Office, {
     return `${wd} (καταχώρηση ${refGr})`;
   },
 
+  formatCloseAllExistingTimeHtml(value) {
+    const txt = String(value || "").trim();
+    if (txt) return this.escapeHtml(txt);
+    return "";
+  },
+
   renderCloseAllPlanPageHtml(plan, skipped) {
     if (!plan?.length) {
       return (
@@ -846,17 +1012,33 @@ Object.assign(window.Office, {
     }
     let html =
       '<table class="data missing-cards-close-all-table"><thead><tr>' +
-      "<th>#</th><th>Εργαζόμενος</th><th>Ημερομηνία</th><th>Ενέργεια</th><th>Ώρα</th><th>Βάση ώρας</th>" +
+      "<th>#</th><th>Ημερομηνία</th><th>Εργαζόμενος</th><th>Ψηφ. ωράριο</th>" +
+      "<th>Είσοδος</th><th>Έξοδος</th><th>Χτύπημα</th><th>Ώρα χτυπήματος</th><th>Βάση ώρας</th>" +
       "</tr></thead><tbody>";
     plan.forEach((punch, idx) => {
+      const retroNorm = this.resolveCloseAllPunchTimeValue(punch);
+      const isEmpty = this.isCloseAllMissingPunchTime(retroNorm);
+      const actionClass =
+        punch.event === "check_in"
+          ? "missing-cards-close-all-punch--in"
+          : "missing-cards-close-all-punch--out";
+      const inputClass =
+        "close-all-time-input" + (isEmpty ? " close-all-time-input--empty" : "");
       html +=
-        "<tr>" +
-        `<td>${idx + 1}</td>` +
-        `<td><strong>${this.escapeHtml(punch.employee_name || punch.employee_afm || "")}</strong></td>` +
-        `<td>${this.escapeHtml(this.formatCloseAllPlanDate(punch))}</td>` +
-        `<td>${this.escapeHtml(punch.event_label || "")}</td>` +
-        `<td class="missing-cards-close-all-time">${this.escapeHtml(punch.retro_time || "")}</td>` +
-        `<td class="table-meta">${this.escapeHtml(punch.time_source || "—")}</td>` +
+        "<tr class=\"missing-cards-close-all-row\">" +
+        `<td class="missing-cards-close-all-num">${idx + 1}</td>` +
+        `<td class="missing-cards-close-all-date">${this.escapeHtml(this.formatCloseAllPlanDate(punch))}</td>` +
+        `<td class="missing-cards-close-all-name"><strong>${this.escapeHtml(punch.employee_name || punch.employee_afm || "")}</strong></td>` +
+        `<td class="table-meta missing-cards-close-all-sched">${this.escapeHtml(punch.schedule_label || "—")}</td>` +
+        `<td class="missing-cards-close-all-col-time">${this.formatCloseAllExistingTimeHtml(punch.hour_from_existing)}</td>` +
+        `<td class="missing-cards-close-all-col-time">${this.formatCloseAllExistingTimeHtml(punch.hour_to_existing)}</td>` +
+        `<td class="missing-cards-close-all-col-punch"><span class="missing-cards-close-all-punch ${actionClass}">${this.escapeHtml(punch.event_label || "")}</span></td>` +
+        `<td class="missing-cards-close-all-time">` +
+        `<input type="text" class="${inputClass}" data-plan-idx="${idx}" ` +
+        `value="${this.escapeHtml(retroNorm)}" inputmode="numeric" maxlength="5" ` +
+        `aria-label="Ώρα χτυπήματος ${this.escapeHtml(punch.event_label || "")}" />` +
+        `</td>` +
+        `<td class="table-meta missing-cards-close-all-basis">${this.escapeHtml(punch.time_source || "—")}</td>` +
         "</tr>";
     });
     html += "</tbody></table>";
@@ -864,18 +1046,48 @@ Object.assign(window.Office, {
       html +=
         `<h2 class="missing-cards-close-all-skipped-title">Δεν συμπεριλαμβάνονται (${skipped.length})</h2>` +
         '<table class="data missing-cards-close-all-skipped-table"><thead><tr>' +
-        "<th>Εργαζόμενος</th><th>Ημερομηνία</th><th>Λόγος</th>" +
+        "<th>Ημερομηνία</th><th>Εργαζόμενος</th><th>Λόγος</th>" +
         "</tr></thead><tbody>";
       skipped.forEach((item) => {
         html +=
-          "<tr>" +
-          `<td>${this.escapeHtml(item.employee_name || "")}</td>` +
+          "<tr class=\"missing-cards-close-all-skipped-row\">" +
           `<td>${this.escapeHtml(item.work_date || "")}</td>` +
+          `<td>${this.escapeHtml(item.employee_name || "")}</td>` +
           `<td class="table-meta">${this.escapeHtml(item.reason || "")}</td>` +
           "</tr>";
       });
       html += "</tbody></table>";
     }
     return html;
+  },
+
+  bindCloseAllPlanPage(plan, onChange) {
+    (plan || []).forEach((punch, idx) => {
+      if (!punch.aitiologia) punch.aitiologia = this.RETRO_AITIOLOGIA;
+    });
+    document.querySelectorAll(".close-all-time-input").forEach((el) => {
+      const idx = Number(el.dataset.planIdx);
+      if (!Number.isFinite(idx) || !plan[idx]) return;
+      this.bindHourMinuteElement(el, () => {
+        const norm = this.normalizeHourMinute(el.value || "");
+        plan[idx].retro_time = norm || "";
+        el.classList.remove("close-all-time-input--error");
+        if (this.isCloseAllMissingPunchTime(plan[idx].retro_time)) {
+          el.classList.add("close-all-time-input--empty");
+        } else {
+          el.classList.remove("close-all-time-input--empty");
+        }
+        onChange?.(plan[idx], idx);
+      });
+    });
+  },
+
+  syncCloseAllPlanTimes(plan) {
+    document.querySelectorAll(".close-all-time-input").forEach((el) => {
+      const idx = Number(el.dataset.planIdx);
+      if (!Number.isFinite(idx) || !plan[idx]) return;
+      const norm = this.normalizeHourMinute(el.value || "");
+      plan[idx].retro_time = norm || "";
+    });
   },
 });

@@ -210,6 +210,7 @@ def submit_retro_hit_from_session(
     }
     if aitiologia:
         body["aitiologia"] = aitiologia
+    body["source"] = "telegram_retro"
     resp, status = _submit_work_card(
         body=body,
         erg_s=str(cfg.get("employer_afm") or ""),
@@ -218,6 +219,7 @@ def submit_retro_hit_from_session(
         api_base_url=client.base_url,
         client_ip=client_ctx.get("client_ip"),
         client_device=client_ctx.get("client_device"),
+        store_id=int(ctx["store_id"]),
     )
     data = resp.get_json() if hasattr(resp, "get_json") else {}
     if status == 200 and data.get("success"):

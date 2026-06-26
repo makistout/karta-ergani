@@ -1,4 +1,8 @@
 Object.assign(window.Office, {
+  RETRO_AITIOLOGIA: "001",
+  RETRO_AITIOLOGIA_LABEL:
+    "001 — ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ",
+
   async parseJson(res) {
     const text = await res.text();
     if (!text || !text.trim()) {
@@ -161,31 +165,39 @@ Object.assign(window.Office, {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   },
 
-  /** Μορφοποίηση ώρας κατά την πληκτρολόγηση (π.χ. 1030 → 10:30). */
+  /** Μορφοποίηση ώρας κατά την πληκτρολόγηση (έως 4 ψηφία → ΩΩ:ΛΛ, λεπτά ≤ 59). */
   formatHourMinuteInput(value) {
-    let s = String(value || "").replace(/[^\d:]/g, "");
-    if (s.includes(":")) {
-      const parts = s.split(":", 2);
-      const h = parts[0].replace(/\D/g, "").slice(0, 2);
-      const m = (parts[1] || "").replace(/\D/g, "").slice(0, 2);
-      return m.length ? `${h}:${m}` : h;
-    }
-    const digits = s.replace(/\D/g, "").slice(0, 4);
+    const digits = String(value || "").replace(/\D/g, "").slice(0, 4);
+    if (!digits.length) return "";
     if (digits.length <= 2) return digits;
-    if (digits.length === 3) return `0${digits.slice(0, 1)}:${digits.slice(1)}`;
-    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    const hNum = Math.min(23, parseInt(digits.slice(0, 2), 10) || 0);
+    const hh = String(hNum).padStart(2, "0");
+    if (digits.length === 3) {
+      return `${hh}:${digits[2]}`;
+    }
+    let mNum = parseInt(digits.slice(2, 4), 10) || 0;
+    if (mNum > 59) mNum = 59;
+    return `${hh}:${String(mNum).padStart(2, "0")}`;
   },
 
   bindHourMinuteInput(inputId) {
     const el = document.getElementById(inputId);
     if (!el) return;
+    this.bindHourMinuteElement(el);
+  },
+
+  bindHourMinuteElement(el, onChange) {
+    if (!el || el.dataset.hourBound) return;
+    el.dataset.hourBound = "1";
     el.addEventListener("input", () => {
       const formatted = this.formatHourMinuteInput(el.value || "");
       if (el.value !== formatted) el.value = formatted;
+      onChange?.(el);
     });
     el.addEventListener("blur", () => {
       const norm = this.normalizeHourMinute(el.value || "");
-      if (norm) el.value = norm;
+      el.value = norm || "";
+      onChange?.(el);
     });
   },
 

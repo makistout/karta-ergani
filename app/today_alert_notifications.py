@@ -21,8 +21,11 @@ from app.repo_work_log import enrich_work_log_rows_with_schedule
 from app.today_notify_logic import (
     KIND_LABELS,
     WTO_DAILY_NOTIFY_KINDS,
+    card_event_blocks_today_notify,
     ergani_date_to_iso,
+    merge_notify_work_hours,
     notify_auto_send_once,
+    notify_db_snapshot,
     resolve_today_notify_kind,
 )
 from app.public_urls import ui_public_url
@@ -314,11 +317,15 @@ def send_today_punch_notifications(
         send_telegram_message,
     )
 
+    hf, ht = merge_notify_work_hours(
+        hour_from=hour_from,
+        hour_to=hour_to,
+    )
     row: dict[str, Any] = {
         "employee_afm": employee_afm,
         "work_date": work_date,
-        "hour_from": hour_from,
-        "hour_to": hour_to,
+        "hour_from": hf,
+        "hour_to": ht,
         "eponymo": eponymo,
         "onoma": onoma,
     }
@@ -340,6 +347,16 @@ def send_today_punch_notifications(
     schedule_hour_to = str((sched or {}).get("hour_to") or "").strip() or None
 
     resolved_kind = resolve_today_notify_kind(row)
+    if resolved_kind and card_event_blocks_today_notify(
+        employee_afm, work_date, resolved_kind
+    ):
+        return {
+            "sent": 0,
+            "total": 0,
+            "errors": [],
+            "skipped": "card_already_punched",
+            "notify_kind": resolved_kind,
+        }
     if not resolved_kind:
         return {
             "sent": 0,
@@ -433,6 +450,25 @@ def send_today_punch_notifications(
         schedule_hour_from=schedule_hour_from,
         schedule_hour_to=schedule_hour_to,
     )
+    db_snapshot = notify_db_snapshot(
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employee_afm=employee_afm,
+        work_date=work_date,
+    )
+    log_step(
+        "Κατάσταση βάσης πριν την αποστολή",
+        event="today_notification_db_snapshot",
+        db_work_log_hour_from=db_snapshot.get("work_log_hour_from"),
+        db_work_log_hour_to=db_snapshot.get("work_log_hour_to"),
+        db_work_log_synced_at=db_snapshot.get("work_log_synced_at"),
+        db_card_check_in=db_snapshot.get("card_check_in"),
+        db_card_check_out=db_snapshot.get("card_check_out"),
+        db_card_has_check_in=db_snapshot.get("card_has_check_in"),
+        db_card_has_check_out=db_snapshot.get("card_has_check_out"),
+        notify_input_hour_from=hf,
+        notify_input_hour_to=ht,
+    )
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
     log_step(
@@ -505,7 +541,7 @@ def send_today_punch_notifications(
                 ),
                 rec=rec,
                 channel="telegram",
-                extra={"telegram_chat_id": chat_id, "sent": True},
+                extra={"telegram_chat_id": chat_id, "sent": True, **db_snapshot},
             )
             _auto_snooze_after_send(
                 rec=rec,
@@ -610,7 +646,7 @@ def send_today_punch_notifications(
                 ),
                 rec=rec,
                 channel="email",
-                extra={"sent": True},
+                extra={"sent": True, **db_snapshot},
             )
             _auto_snooze_after_send(
                 rec=rec,

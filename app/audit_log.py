@@ -239,6 +239,8 @@ def list_audit_events(
             )
             """
         )
+    elif kind == "work_card_punches":
+        filters.append("action = 'work_card_punch_submit'")
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
     with cursor(commit=False) as cur:
         cur.execute(

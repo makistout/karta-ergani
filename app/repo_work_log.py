@@ -54,7 +54,16 @@ def _attach_schedule_fields(row: dict[str, Any], slots: list[dict[str, Any]]) ->
     if not slots:
         row["schedule_label"] = "—"
         row["schedule"] = None
+        row["schedule_slots"] = []
         return
+    row["schedule_slots"] = [
+        {
+            "hour_from": s.get("hour_from"),
+            "hour_to": s.get("hour_to"),
+            "shift_type": s.get("shift_type"),
+        }
+        for s in slots
+    ]
     row["schedule_label"] = " · ".join(_format_schedule_slot(s) for s in slots)
     pick = _pick_schedule_slot(slots, row)
     row["schedule"] = (
