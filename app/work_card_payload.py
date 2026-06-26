@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
@@ -72,6 +73,102 @@ def parse_event_at(raw: str | None, reference_date: str | None) -> datetime:
             raise WorkCardPayloadError("Μη έγκυρο reference_date") from ex
         return datetime.combine(d, now.time(), tzinfo=tz_athens())
     return now
+
+
+def _parse_hhmm_to_minutes(value: str | None) -> int | None:
+    m = re.match(r"^(\d{1,2}):(\d{2})", str(value or "").strip())
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    if h < 0 or h > 23 or mi < 0 or mi > 59:
+        return None
+    return h * 60 + mi
+
+
+def _minutes_from_event_at(event_at: str | None) -> int | None:
+    if not event_at:
+        return None
+    s = str(event_at).strip()
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt.hour * 60 + dt.minute
+    except ValueError:
+        return _parse_hhmm_to_minutes(s)
+
+
+def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
+    if flex_arrival_minutes is None:
+        return default
+    return max(0, int(flex_arrival_minutes))
+
+
+def resolve_wrk_card_aitiologia(
+    *,
+    f_type: str,
+    event_at: str | None,
+    requested_aitiologia: str | None,
+    schedule_hour_from: str | None = None,
+    schedule_hour_to: str | None = None,
+    flex_arrival_minutes: int | None = None,
+) -> str | None:
+    """Κωδικός καθυστέρησης μόνο εκτός επιτρεπόμενου χρονικού ορίου (Ergani)."""
+    if not requested_aitiologia:
+        return None
+    ait = normalize_aitiologia(requested_aitiologia)
+    if not ait:
+        return None
+
+    event_min = _minutes_from_event_at(event_at)
+    if event_min is None:
+        return ait
+
+    flex = _flex_tolerance_minutes(flex_arrival_minutes)
+
+    if f_type == "1":
+        return None
+
+    sched_start = _parse_hhmm_to_minutes(schedule_hour_from)
+    if sched_start is None:
+        return ait
+    if event_min <= sched_start + flex:
+        return None
+    return ait
+
+
+def lookup_punch_schedule_context(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    work_date_ergani: str,
+) -> dict[str, Any]:
+    """Ψηφ. ωράριο + ευελιξία + πραγματική είσοδος για έλεγχο αιτιολογίας."""
+    from app.repo_entities import flex_arrival_map_for_employer
+    from app.repo_work_log import enrich_work_log_rows_with_schedule, list_work_log_for_store
+
+    wd = str(work_date_ergani or "").strip()
+    emp = norm_afm(employee_afm)
+    row: dict[str, Any] = {
+        "employee_afm": emp,
+        "work_date": wd,
+        "hour_from": None,
+        "hour_to": None,
+    }
+    wl_rows = list_work_log_for_store(employer_afm, branch_aa, wd, limit=20)
+    for wl in wl_rows:
+        if norm_afm(str(wl.get("employee_afm") or "")) == emp:
+            row["hour_from"] = wl.get("hour_from")
+            row["hour_to"] = wl.get("hour_to")
+            break
+    enrich_work_log_rows_with_schedule([row], employer_afm, branch_aa, [wd])
+    sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else {}
+    flex_map = flex_arrival_map_for_employer(employer_afm, branch_aa)
+    return {
+        "schedule_hour_from": str((sched or {}).get("hour_from") or "").strip() or None,
+        "schedule_hour_to": str((sched or {}).get("hour_to") or "").strip() or None,
+        "flex_arrival_minutes": flex_map.get(emp),
+        "work_hour_from": str(row.get("hour_from") or "").strip() or None,
+    }
 
 
 def normalize_aitiologia(raw: str | None) -> str | None:
@@ -150,8 +247,9 @@ def build_wrk_card_se_payload(
         "f_type": ft,
         "f_reference_date": ref,
         "f_date": f_date,
-        "f_aitiologia": ait,
     }
+    if ait:
+        detail["f_aitiologia"] = ait
     return {
         "Cards": {
             "Card": [

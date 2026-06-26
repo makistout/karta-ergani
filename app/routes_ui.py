@@ -86,6 +86,11 @@ def ui_missing_cards():
     return render_template("ui/missing-cards-list.html")
 
 
+@ui_bp.get("/missing-cards/close-all")
+def ui_missing_cards_close_all():
+    return render_template("ui/missing-cards-close-all.html")
+
+
 @ui_bp.get("/monthly-status")
 def ui_monthly_status():
     return render_template("ui/monthly-status-list.html")

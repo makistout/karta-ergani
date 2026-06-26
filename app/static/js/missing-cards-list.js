@@ -9,6 +9,7 @@ let tableState = {
   closedPageSize: Office.TABLE_PAGE_SIZE,
   store: null,
   excludeDate: "",
+  pendingRows: [],
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -69,6 +70,7 @@ async function loadMissingCards(page, closedPage = 1, cachedActive) {
       closedPageSize: data.closed_page_size || Office.TABLE_PAGE_SIZE,
       store: data.store,
       excludeDate: data.exclude_date || "",
+      pendingRows: data.work_log || [],
     };
     if (desc && data.exclude_date) {
       desc.textContent =
@@ -84,7 +86,23 @@ async function loadMissingCards(page, closedPage = 1, cachedActive) {
 
 function renderTablePage(rows) {
   const wrap = document.getElementById("missingCardsWrap");
+  const toolbar = document.getElementById("missingCardsToolbar");
   const { store, page, total, totalPages, pageSize } = tableState;
+
+  if (toolbar) {
+    if (!total) {
+      toolbar.classList.add("hidden");
+      toolbar.innerHTML = "";
+    } else {
+      toolbar.classList.remove("hidden");
+      const pageNote = totalPages > 1 ? ` (${total} εκκρεμείς συνολικά)` : "";
+      toolbar.innerHTML =
+        `<a href="/ui/missing-cards/close-all" class="btn missing-cards-close-all-btn">` +
+        `${Office.icon("list-check")}<span>Κλείστε όλα</span></a>` +
+        `<span class="table-meta missing-cards-close-all-meta">` +
+        `Επιβεβαίωση σε ξεχωριστή σελίδα — όλες οι εκκρεμείς${pageNote}</span>`;
+    }
+  }
 
   if (!total) {
     wrap.innerHTML =

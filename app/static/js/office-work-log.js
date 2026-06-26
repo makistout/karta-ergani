@@ -44,18 +44,7 @@ Object.assign(window.Office, {
     return null;
   },
 
-  scheduleDurationMinutes(schedStart, schedEnd) {
-    if (schedStart == null || schedEnd == null) return null;
-    let elapsed = schedEnd - schedStart;
-    if (elapsed < 0) elapsed += 24 * 60;
-    return elapsed > 0 ? elapsed : null;
-  },
-
-  expectedExitMinutesFromRow(row) {
-    const hf = String(row?.hour_from || "").trim();
-    const entryMin = this.parseClockToMinutes(hf);
-    if (entryMin == null) return null;
-    const schedStart = this.scheduleStartMinutesFromRow(row);
+  scheduleEndMinutesRawFromRow(row) {
     let schedEnd = null;
     const sched = row?.schedule;
     if (sched && sched.hour_to) {
@@ -70,6 +59,248 @@ Object.assign(window.Office, {
         if (match) schedEnd = this.parseClockToMinutes(match[1]);
       }
     }
+    return schedEnd;
+  },
+
+  formatTotalMinutesAsClock(totalMin) {
+    const wrapped = ((Number(totalMin) % (24 * 60)) + 24 * 60) % (24 * 60);
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  },
+
+  resolveExitPunchFromRow(row, entryTimeStr) {
+    const workDateIso = this.erganiDateToIso(row?.work_date);
+    if (!workDateIso) return null;
+
+    const entryForCalc = String(entryTimeStr || row?.hour_from || "").trim();
+    const schedStart = this.scheduleStartMinutesFromRow(row);
+    const schedEnd = this.scheduleEndMinutesRawFromRow(row);
+    const entryMin = this.parseClockToMinutes(entryForCalc);
+
+    let expectedMin = null;
+    if (entryMin != null && schedStart != null && schedEnd != null) {
+      const duration = this.scheduleDurationMinutes(schedStart, schedEnd);
+      if (duration != null) expectedMin = entryMin + duration;
+    }
+
+    let retroTime = "";
+    if (
+      row?.needs_card_punch &&
+      row.card_event === "check_out" &&
+      row.retro_time
+    ) {
+      retroTime = this.normalizeHourMinute(row.retro_time) || String(row.retro_time).trim();
+    } else if (expectedMin != null) {
+      retroTime = this.formatTotalMinutesAsClock(expectedMin);
+    } else if (schedEnd != null) {
+      retroTime = this.formatTotalMinutesAsClock(schedEnd);
+      expectedMin = schedEnd;
+    }
+    if (!retroTime) return null;
+
+    let referenceDate = workDateIso;
+    if (expectedMin != null && this.expectedExitSpillsNextDay(expectedMin)) {
+      referenceDate = this.addDaysIso(workDateIso, 1);
+    }
+    return {
+      event: "check_out",
+      retro_time: retroTime,
+      reference_date: referenceDate,
+    };
+  },
+
+  buildMissingCardPunchPlan(row) {
+    if (!this.shouldShowWorkCardLink(row)) return [];
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    if (hf && ht) return [];
+
+    const schedLabel = String(row?.schedule_label || "").trim();
+    if (schedLabel && schedLabel !== "—" && /ρεπο|ανάπαυση/i.test(schedLabel)) {
+      return [];
+    }
+
+    const workDateIso = this.erganiDateToIso(row?.work_date);
+    if (!workDateIso) return [];
+
+    const name =
+      `${row?.eponymo || ""} ${row?.onoma || ""}`.trim() || row?.employee_afm || "";
+    const schedStart = this.scheduleStartMinutesFromRow(row);
+    const schedFrom =
+      schedStart != null ? this.formatTotalMinutesAsClock(schedStart) : "";
+    const base = {
+      employee_afm: row.employee_afm,
+      employee_name: name,
+      work_date: row.work_date,
+    };
+    const plan = [];
+
+    if (!hf) {
+      if (
+        row?.needs_card_punch &&
+        row.card_event === "check_in" &&
+        row.retro_time
+      ) {
+        plan.push({
+          ...base,
+          event: "check_in",
+          event_label: "Είσοδος",
+          retro_time:
+            this.normalizeHourMinute(row.retro_time) ||
+            String(row.retro_time).trim(),
+          reference_date: workDateIso,
+          time_source: "ψηφ. ωράριο",
+        });
+      } else if (schedFrom) {
+        plan.push({
+          ...base,
+          event: "check_in",
+          event_label: "Είσοδος",
+          retro_time: schedFrom,
+          reference_date: workDateIso,
+          time_source: "ψηφ. ωράριο",
+        });
+      } else {
+        return [];
+      }
+    }
+
+    if (!ht && !this.workLogExitStillPending(row)) {
+      const entryForExit = hf || schedFrom;
+      let exitPunch = this.resolveExitPunchFromRow(row, entryForExit);
+      let timeSource = "ψηφ. ωράριο";
+      if (!exitPunch && hf) {
+        const entryMin = this.parseClockToMinutes(hf);
+        if (entryMin != null) {
+          const exitMinAbs = entryMin + 8 * 60;
+          let refDate = workDateIso;
+          if (exitMinAbs >= 24 * 60) {
+            refDate = this.addDaysIso(workDateIso, 1);
+          }
+          exitPunch = {
+            event: "check_out",
+            retro_time: this.formatTotalMinutesAsClock(exitMinAbs),
+            reference_date: refDate,
+          };
+          timeSource = "είσοδος + 8 ώρες";
+        }
+      }
+      if (!exitPunch) return plan.length ? plan : [];
+      plan.push({
+        ...base,
+        event: exitPunch.event,
+        event_label: "Έξοδος",
+        retro_time: exitPunch.retro_time,
+        reference_date: exitPunch.reference_date,
+        time_source: timeSource,
+      });
+    }
+
+    return plan;
+  },
+
+  missingCardPunchSkipReason(row) {
+    if (!row) return "άγνωστο";
+    if (!this.workLogEmployeeActive(row)) return "ανενεργός εργαζόμενος";
+    const hf = String(row?.hour_from || "").trim();
+    const ht = String(row?.hour_to || "").trim();
+    if (hf && ht) return "ολοκληρωμένη εγγραφή";
+    const schedLabel = String(row?.schedule_label || "").trim();
+    if (schedLabel && schedLabel !== "—" && /ρεπο|ανάπαυση/i.test(schedLabel)) {
+      return "ρεπό/ανάπαυση";
+    }
+    if (!hf && !this.scheduleStartMinutesFromRow(row)) {
+      return "λείπει είσοδος — χωρίς ψηφ. ωράριο";
+    }
+    if (!ht && this.workLogExitStillPending(row)) {
+      return "έξοδος εκκρεμεί (βάρδια σε εξέλιξη)";
+    }
+    if (this.buildMissingCardPunchPlan(row).length) return null;
+    return "δεν προσδιορίστηκε ώρα χτυπήματος";
+  },
+
+  summarizeMissingCardCloseAll(rows) {
+    const plan = [];
+    const skipped = [];
+    (rows || []).forEach((row) => {
+      const rowPlan = this.buildMissingCardPunchPlan(row);
+      if (rowPlan.length) {
+        rowPlan.forEach((item) => plan.push(item));
+        return;
+      }
+      if (!this.shouldShowWorkCardLink(row)) return;
+      const reason = this.missingCardPunchSkipReason(row);
+      if (!reason) return;
+      const name =
+        `${row?.eponymo || ""} ${row?.onoma || ""}`.trim() || row?.employee_afm || "";
+      skipped.push({
+        employee_name: name,
+        work_date: row?.work_date || "",
+        reason,
+      });
+    });
+    return { plan, skipped };
+  },
+
+  buildMissingCardPunchPlans(rows) {
+    return this.summarizeMissingCardCloseAll(rows).plan;
+  },
+
+  async submitRetroWorkCardPunch(punch) {
+    const retroTime = this.normalizeHourMinute(punch?.retro_time) || punch?.retro_time;
+    const refDate = String(punch?.reference_date || "").trim();
+    if (!retroTime || !refDate) {
+      return { ok: false, error: "Λείπει ώρα ή ημερομηνία καταχώρησης" };
+    }
+    try {
+      const res = await fetch("/api/work-card/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          employee_afm: punch.employee_afm,
+          event: punch.event,
+          reference_date: refDate,
+          event_at: `${refDate}T${retroTime}:00`,
+          aitiologia: "001",
+          device_info: this.clientDeviceInfo(),
+        }),
+      });
+      const data = await this.parseJson(res);
+      if (data?._parseError) {
+        return { ok: false, error: data._parseError };
+      }
+      if (!res.ok || !data.success) {
+        return {
+          ok: false,
+          error:
+            data.error ||
+            data.data?.message ||
+            data.data?.Message ||
+            data.data?.error ||
+            "Αποτυχία υποβολής",
+        };
+      }
+      return { ok: true, data };
+    } catch (ex) {
+      return { ok: false, error: String(ex) };
+    }
+  },
+
+  scheduleDurationMinutes(schedStart, schedEnd) {
+    if (schedStart == null || schedEnd == null) return null;
+    let elapsed = schedEnd - schedStart;
+    if (elapsed < 0) elapsed += 24 * 60;
+    return elapsed > 0 ? elapsed : null;
+  },
+
+  expectedExitMinutesFromRow(row) {
+    const hf = String(row?.hour_from || "").trim();
+    const entryMin = this.parseClockToMinutes(hf);
+    if (entryMin == null) return null;
+    const schedStart = this.scheduleStartMinutesFromRow(row);
+    const schedEnd = this.scheduleEndMinutesRawFromRow(row);
     if (schedStart == null || schedEnd == null) return null;
     const duration = this.scheduleDurationMinutes(schedStart, schedEnd);
     if (duration == null) return null;
@@ -594,5 +825,57 @@ Object.assign(window.Office, {
     el.innerHTML =
       `Τελευταίος συγχρονισμός πραγματικής: <strong>${this.escapeHtml(last)}</strong>` +
       ` · Αυτόματος συγχρονισμός server κάθε 10 λεπτά.`;
+  },
+
+  formatCloseAllPlanDate(punch) {
+    const wd = String(punch?.work_date || "").trim();
+    const ref = String(punch?.reference_date || "").trim();
+    const wdIso = this.erganiDateToIso(wd);
+    if (!ref || ref === wdIso) return wd;
+    const m = ref.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const refGr = m ? `${m[3]}/${m[2]}/${m[1]}` : ref;
+    return `${wd} (καταχώρηση ${refGr})`;
+  },
+
+  renderCloseAllPlanPageHtml(plan, skipped) {
+    if (!plan?.length) {
+      return (
+        `<p style="color:var(--muted);">${this.icon("info-circle")}` +
+        `<span style="margin-left:0.35rem;">Δεν βρέθηκαν χτυπήματα προς αυτόματη αποστολή.</span></p>`
+      );
+    }
+    let html =
+      '<table class="data missing-cards-close-all-table"><thead><tr>' +
+      "<th>#</th><th>Εργαζόμενος</th><th>Ημερομηνία</th><th>Ενέργεια</th><th>Ώρα</th><th>Βάση ώρας</th>" +
+      "</tr></thead><tbody>";
+    plan.forEach((punch, idx) => {
+      html +=
+        "<tr>" +
+        `<td>${idx + 1}</td>` +
+        `<td><strong>${this.escapeHtml(punch.employee_name || punch.employee_afm || "")}</strong></td>` +
+        `<td>${this.escapeHtml(this.formatCloseAllPlanDate(punch))}</td>` +
+        `<td>${this.escapeHtml(punch.event_label || "")}</td>` +
+        `<td class="missing-cards-close-all-time">${this.escapeHtml(punch.retro_time || "")}</td>` +
+        `<td class="table-meta">${this.escapeHtml(punch.time_source || "—")}</td>` +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    if (skipped?.length) {
+      html +=
+        `<h2 class="missing-cards-close-all-skipped-title">Δεν συμπεριλαμβάνονται (${skipped.length})</h2>` +
+        '<table class="data missing-cards-close-all-skipped-table"><thead><tr>' +
+        "<th>Εργαζόμενος</th><th>Ημερομηνία</th><th>Λόγος</th>" +
+        "</tr></thead><tbody>";
+      skipped.forEach((item) => {
+        html +=
+          "<tr>" +
+          `<td>${this.escapeHtml(item.employee_name || "")}</td>` +
+          `<td>${this.escapeHtml(item.work_date || "")}</td>` +
+          `<td class="table-meta">${this.escapeHtml(item.reason || "")}</td>` +
+          "</tr>";
+      });
+      html += "</tbody></table>";
+    }
+    return html;
   },
 });

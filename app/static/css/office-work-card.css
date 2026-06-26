@@ -176,6 +176,127 @@ input, select {
   margin: 0.25rem 0 0;
 }
 
+.missing-cards-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.missing-cards-close-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-decoration: none;
+}
+
+.missing-cards-close-all-meta {
+  margin: 0;
+}
+
+.missing-cards-close-all-page-card {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.missing-cards-close-all-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.missing-cards-close-all-table {
+  margin-top: 0.5rem;
+}
+
+.missing-cards-close-all-skipped-table {
+  margin-top: 0.5rem;
+}
+
+.page-breadcrumb {
+  margin: 0 0 0.75rem;
+  font-size: 0.92rem;
+}
+
+.page-breadcrumb a {
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+}
+
+.page-breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.missing-cards-close-all-list {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0.75rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+
+.missing-cards-close-all-items {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.missing-cards-close-all-items li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.missing-cards-close-all-items li:last-child {
+  border-bottom: none;
+}
+
+.missing-cards-close-all-idx {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.missing-cards-close-all-action {
+  font-weight: 600;
+}
+
+.missing-cards-close-all-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.missing-cards-close-all-progress {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.missing-cards-close-all-skipped-title {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.missing-cards-close-all-skipped {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.missing-cards-close-all-skipped li {
+  margin: 0.2rem 0;
+}
+
 .missing-cards-closed-title {
   margin: 2rem 0 0.35rem;
   font-size: 1.05rem;

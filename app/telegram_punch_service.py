@@ -207,8 +207,9 @@ def submit_retro_hit_from_session(
         "event": ev,
         "reference_date": ref,
         "event_at": f"{ref}T{rt}:00",
-        "aitiologia": aitiologia or RETRO_AITIOLOGIA,
     }
+    if aitiologia:
+        body["aitiologia"] = aitiologia
     resp, status = _submit_work_card(
         body=body,
         erg_s=str(cfg.get("employer_afm") or ""),

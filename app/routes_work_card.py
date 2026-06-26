@@ -8,7 +8,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
-from app.date_util import format_f_date_time, iso_to_ergani_dates
+from app.date_util import format_date_for_ergani, format_f_date_time, iso_to_ergani_dates
 from app.ergani_client import ErganiClient
 from app.http_helpers import (
     bearer_from_request,
@@ -30,6 +30,8 @@ from app.work_card_payload import (
     WorkCardPayloadError,
     build_wrk_card_se_payload,
     f_type_from_event,
+    lookup_punch_schedule_context,
+    resolve_wrk_card_aitiologia,
     tz_athens,
 )
 from config import Config
@@ -147,6 +149,24 @@ def _submit_work_card(
             "error": f"Υπάρχει ήδη {label} για {emp_afm} στις {ref_date}"
         }), 400
 
+    event_at_str = str(body.get("event_at") or "").strip() or None
+    aitiologia_raw = str(body.get("aitiologia") or "").strip() or None
+    if aitiologia_raw and event_at_str:
+        sched_ctx = lookup_punch_schedule_context(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            work_date_ergani=format_date_for_ergani(ref_date),
+        )
+        aitiologia_raw = resolve_wrk_card_aitiologia(
+            f_type=resolved_type,
+            event_at=event_at_str,
+            requested_aitiologia=aitiologia_raw,
+            schedule_hour_from=sched_ctx.get("schedule_hour_from"),
+            schedule_hour_to=sched_ctx.get("schedule_hour_to"),
+            flex_arrival_minutes=sched_ctx.get("flex_arrival_minutes"),
+        )
+
     try:
         payload = build_wrk_card_se_payload(
             employer_afm=erg_s,
@@ -158,8 +178,8 @@ def _submit_work_card(
             f_type=str(f_type).strip() if f_type is not None else None,
             comments=str(body.get("comments") or "").strip() or None,
             reference_date=ref_date,
-            event_at=str(body.get("event_at") or "").strip() or None,
-            aitiologia=str(body.get("aitiologia") or "").strip() or None,
+            event_at=event_at_str,
+            aitiologia=aitiologia_raw,
         )
     except WorkCardPayloadError as e:
         return jsonify({"error": str(e)}), 400

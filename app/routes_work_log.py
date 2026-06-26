@@ -161,6 +161,69 @@ def work_log_history():
     })
 
 
+@work_log_bp.get("/missing-cards/close-all-plan")
+def work_log_missing_cards_close_all_plan():
+    """Όλες οι εκκρεμείς εγγραφές για επιβεβαίωση «Κλείστε όλα» (χωρίς paging)."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    today_ergani = datetime.now(tz_athens()).strftime("%d/%m/%Y")
+    max_rows = 500
+    try:
+        rows, total, _, _ = list_work_log_missing_cards_paged(
+            ctx["employer_afm"],
+            ctx["branch_aa"],
+            today_ergani,
+            page=1,
+            page_size=max_rows,
+            closed_page=1,
+            closed_page_size=1,
+            store_id=int(ctx["id"]),
+        )
+    except pyodbc.Error as ex:
+        return _db_error(ex)
+    dates = list(
+        dict.fromkeys(
+            str(r.get("work_date") or "").strip()
+            for r in rows
+            if (r.get("work_date") or "").strip()
+        )
+    )
+    try:
+        enrich_work_log_rows_with_schedule(
+            rows, ctx["employer_afm"], ctx["branch_aa"], dates
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+        for r in rows:
+            r["schedule_label"] = "—"
+            r["schedule"] = None
+    try:
+        enrich_work_log_rows_with_card_punch(
+            rows, ctx["employer_afm"], ctx["branch_aa"]
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+    for r in rows:
+        if hasattr(r.get("synced_at"), "isoformat"):
+            r["synced_at"] = r["synced_at"].isoformat()
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx["branch_aa"],
+        },
+        "exclude_date": today_ergani,
+        "total_pending": total,
+        "count": len(rows),
+        "truncated": total > len(rows),
+        "work_log": rows,
+    })
+
+
 @work_log_bp.get("/missing-cards")
 def work_log_missing_cards():
     ctx = resolve_active_store()

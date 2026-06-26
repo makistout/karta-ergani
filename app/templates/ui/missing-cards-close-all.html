@@ -1,0 +1,28 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Κλείστε όλα' %}
+{% set shell = "office" %}
+{% set active_nav = 'missingcards' %}
+{% set body_class = "" %}
+{% block content %}
+      <p class="page-breadcrumb">
+        <a href="/ui/missing-cards"><i class="bi bi-arrow-left" aria-hidden="true"></i> Ελλειπή Χτυπήματα</a>
+      </p>
+      <h1 class="page-title"><i class="bi bi-list-check" aria-hidden="true"></i> Κλείστε όλα — επιβεβαίωση</h1>
+      <p class="page-desc" id="closeAllDesc">Φόρτωση λίστας χτυπημάτων…</p>
+      <div class="card list-card missing-cards-close-all-page-card">
+        <div id="closeAllPlanWrap" class="list-wrap">
+          <p class="table-loading"><i class="bi bi-arrow-repeat"></i><span>Φόρτωση…</span></p>
+        </div>
+        <p id="closeAllProgress" class="missing-cards-close-all-progress hidden"></p>
+        <div class="missing-cards-close-all-actions">
+          <button type="button" id="closeAllConfirm" class="btn" disabled>
+            <i class="bi bi-check2-circle" aria-hidden="true"></i> Επιβεβαίωση και αποστολή
+          </button>
+          <a href="/ui/missing-cards" class="btn btn-secondary">Ακύρωση</a>
+        </div>
+      </div>
+      <div id="closeAllMsg" class="msg"></div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/missing-cards-close-all.js?v=20260626closeall3"></script>
+{% endblock %}
