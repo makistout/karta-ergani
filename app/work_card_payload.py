@@ -111,7 +111,7 @@ def resolve_wrk_card_aitiologia(
     schedule_hour_to: str | None = None,
     flex_arrival_minutes: int | None = None,
 ) -> str | None:
-    """Κωδικός καθυστέρησης μόνο εκτός επιτρεπόμενου χρονικού ορίου (Ergani)."""
+    """Παράλειψη αιτιολογίας μόνο για είσοδο εντός επιτρεπόμενου ορίου."""
     if not requested_aitiologia:
         return None
     ait = normalize_aitiologia(requested_aitiologia)
@@ -125,7 +125,7 @@ def resolve_wrk_card_aitiologia(
     flex = _flex_tolerance_minutes(flex_arrival_minutes)
 
     if f_type == "1":
-        return None
+        return ait
 
     sched_start = _parse_hhmm_to_minutes(schedule_hour_from)
     if sched_start is None:

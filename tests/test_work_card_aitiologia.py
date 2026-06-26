@@ -24,7 +24,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         self.assertEqual(ait, "001")
 
-    def test_check_out_omits_aitiologia(self):
+    def test_check_out_keeps_aitiologia(self):
         ait = resolve_wrk_card_aitiologia(
             f_type="1",
             event_at="2026-06-26T18:00:00",
@@ -32,7 +32,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
             schedule_hour_from="10:00",
             schedule_hour_to="18:00",
         )
-        self.assertIsNone(ait)
+        self.assertEqual(ait, "001")
 
     def test_payload_omits_f_aitiologia_when_none(self):
         payload = build_wrk_card_se_payload(

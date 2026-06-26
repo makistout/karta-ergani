@@ -47,6 +47,30 @@ GRID_EVENT_TARGET = (
 MAX_GRID_PAGES = 80
 
 
+def _work_log_item_score(item: dict[str, Any]) -> tuple[int, int]:
+    """Προτίμηση στην πληρέστερη γραμμή όταν το export έχει διπλό ΑΦΜ."""
+    has_from = 1 if str(item.get("hour_from") or "").strip() else 0
+    has_to = 1 if str(item.get("hour_to") or "").strip() else 0
+    return (has_from + has_to, has_to)
+
+
+def _dedupe_work_log_day_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Κρατά μία γραμμή ανά ΑΦΜ, προτιμώντας αυτή που έχει και έξοδο."""
+    best_by_afm: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for item in items:
+        afm = (item.get("employee_afm") or "").strip()
+        if not afm:
+            continue
+        if afm not in best_by_afm:
+            order.append(afm)
+            best_by_afm[afm] = item
+            continue
+        if _work_log_item_score(item) > _work_log_item_score(best_by_afm[afm]):
+            best_by_afm[afm] = item
+    return [best_by_afm[afm] for afm in order]
+
+
 def _work_log_empty_not_error(msg: str) -> bool:
     """Κενή πραγματική απασχόληση — όχι σφάλμα συγχρονισμού."""
     text = (msg or "").strip()
@@ -235,15 +259,10 @@ def _persist_work_log_items(
     total = 0
     for wd in work_dates:
         day_items = by_day.get(wd, [])
-        seen_afm: set[str] = set()
-        deduped: list[dict[str, Any]] = []
-        for it in day_items:
+        deduped = _dedupe_work_log_day_items(day_items)
+        for it in deduped:
             afm = (it.get("employee_afm") or "").strip()
-            if not afm or afm in seen_afm:
-                continue
-            seen_afm.add(afm)
             upsert_employee_by_afm(afm, it.get("eponymo"), it.get("onoma"))
-            deduped.append(it)
         total += replace_work_log_for_day(employer_afm, branch_aa, wd, deduped)
     return total
 
