@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
@@ -75,33 +74,6 @@ def parse_event_at(raw: str | None, reference_date: str | None) -> datetime:
     return now
 
 
-def _parse_hhmm_to_minutes(value: str | None) -> int | None:
-    m = re.match(r"^(\d{1,2}):(\d{2})", str(value or "").strip())
-    if not m:
-        return None
-    h, mi = int(m.group(1)), int(m.group(2))
-    if h < 0 or h > 23 or mi < 0 or mi > 59:
-        return None
-    return h * 60 + mi
-
-
-def _minutes_from_event_at(event_at: str | None) -> int | None:
-    if not event_at:
-        return None
-    s = str(event_at).strip()
-    try:
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return dt.hour * 60 + dt.minute
-    except ValueError:
-        return _parse_hhmm_to_minutes(s)
-
-
-def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
-    if flex_arrival_minutes is None:
-        return default
-    return max(0, int(flex_arrival_minutes))
-
-
 def resolve_wrk_card_aitiologia(
     *,
     f_type: str,
@@ -111,26 +83,17 @@ def resolve_wrk_card_aitiologia(
     schedule_hour_to: str | None = None,
     flex_arrival_minutes: int | None = None,
 ) -> str | None:
-    """Παράλειψη αιτιολογίας μόνο για είσοδο εντός επιτρεπόμενου ορίου."""
+    """Κανονικοποίηση αιτιολογίας WRKCardSE.
+
+    Το τρέχον XSD της Ergani απαιτεί f_aitiologia όταν στέλνεται
+    προγενέστερη καταχώρηση μέσω WRKCardSE. Δεν την αφαιρούμε με βάση
+    την ευελιξία προσέλευσης, γιατί το αρχείο απορρίπτεται πριν φτάσει
+    σε business validation.
+    """
     if not requested_aitiologia:
         return None
     ait = normalize_aitiologia(requested_aitiologia)
     if not ait:
-        return None
-
-    event_min = _minutes_from_event_at(event_at)
-    if event_min is None:
-        return ait
-
-    flex = _flex_tolerance_minutes(flex_arrival_minutes)
-
-    if f_type == "1":
-        return ait
-
-    sched_start = _parse_hhmm_to_minutes(schedule_hour_from)
-    if sched_start is None:
-        return ait
-    if event_min <= sched_start + flex:
         return None
     return ait
 

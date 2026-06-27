@@ -4,7 +4,7 @@ from app.work_card_payload import build_wrk_card_se_payload, resolve_wrk_card_ai
 
 
 class WorkCardAitiologiaTests(unittest.TestCase):
-    def test_check_in_at_schedule_start_omits_aitiologia(self):
+    def test_check_in_at_schedule_start_keeps_aitiologia(self):
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
             event_at="2026-06-26T10:00:00",
@@ -12,7 +12,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
             schedule_hour_from="10:00",
             flex_arrival_minutes=15,
         )
-        self.assertIsNone(ait)
+        self.assertEqual(ait, "001")
 
     def test_check_in_late_requires_aitiologia(self):
         ait = resolve_wrk_card_aitiologia(

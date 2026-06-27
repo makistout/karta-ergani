@@ -372,9 +372,10 @@ def send_today_punch_notifications(
             return
         writer = getattr(log, "info", None)
         if writer:
+            event_name = str(fields.pop("event", "today_notification_step") or "today_notification_step")
             writer(
                 message,
-                event="today_notification_step",
+                event=event_name,
                 notify_kind=resolved_kind,
                 notify_kind_label=kind_label,
                 employee_afm=employee_afm,

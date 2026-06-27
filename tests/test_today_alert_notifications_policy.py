@@ -25,6 +25,8 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
             ),
             patch("app.today_alert_notifications.is_snoozed", return_value=False),
             patch("app.today_alert_notifications.is_notify_sent", return_value=False),
+            patch("app.today_alert_notifications.card_event_blocks_today_notify", return_value=False),
+            patch("app.today_alert_notifications.notify_db_snapshot", return_value={}),
             patch("app.today_alert_notifications.list_email_deliverable_recipients", return_value=[]),
             patch("app.today_alert_notifications.ergani_date_to_iso", return_value="2026-06-25"),
             patch("app.telegram_notify.send_telegram_message"),
@@ -227,6 +229,11 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
         self.assertEqual(fields["employee_name"], "Last First")
         self.assertEqual(fields["employee_afm"], "987654321")
         self.assertEqual(fields["notify_kind"], "late_check_in")
+        snapshot_entries = [
+            item for item in logger.entries
+            if item[2].get("event") == "today_notification_db_snapshot"
+        ]
+        self.assertEqual(len(snapshot_entries), 1)
 
     def test_post_sync_uses_loaded_schedule_without_second_lookup(self):
         enrich_schedule = self._patch_common()[0]
