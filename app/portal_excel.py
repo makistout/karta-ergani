@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -227,6 +228,7 @@ def fetch_work_log_rows_via_excel(
     *,
     grid_event_target: str,
     default_branch_aa: str = "",
+    archive: Any | None = None,
 ) -> list[list[str]]:
     try:
         content, ctype = download_grid_excel(
@@ -235,8 +237,23 @@ def fetch_work_log_rows_via_excel(
         rows = parse_work_log_export(
             content, ctype, default_branch_aa=default_branch_aa
         )
+        if archive is not None:
+            from app.portal_excel_archive import PortalExcelArchive
+
+            if isinstance(archive, PortalExcelArchive):
+                archive.record_excel(
+                    content,
+                    ctype,
+                    row_count=len(rows or []),
+                    fetch_source="excel",
+                )
         return rows or []
     except RuntimeError as ex:
+        if archive is not None:
+            from app.portal_excel_archive import PortalExcelArchive
+
+            if isinstance(archive, PortalExcelArchive):
+                archive.record_failure(str(ex), fetch_source="excel")
         if _work_log_excel_err_means_empty(str(ex)):
             return []
         raise
@@ -354,11 +371,30 @@ def fetch_schedule_rows_via_excel(
     *,
     grid_event_target: str,
     default_branch_aa: str = "",
+    archive: Any | None = None,
 ) -> list[list[str]]:
-    content, ctype = download_grid_excel(
-        session, html, page_url, grid_event_target=grid_event_target
-    )
-    rows = parse_schedule_export(content, ctype, default_branch_aa=default_branch_aa)
-    if not rows:
-        raise RuntimeError("Το Excel export δεν περιέχει εγγραφές ωραρίου")
-    return rows
+    try:
+        content, ctype = download_grid_excel(
+            session, html, page_url, grid_event_target=grid_event_target
+        )
+        rows = parse_schedule_export(content, ctype, default_branch_aa=default_branch_aa)
+        if archive is not None:
+            from app.portal_excel_archive import PortalExcelArchive
+
+            if isinstance(archive, PortalExcelArchive):
+                archive.record_excel(
+                    content,
+                    ctype,
+                    row_count=len(rows or []),
+                    fetch_source="excel",
+                )
+        if not rows:
+            raise RuntimeError("Το Excel export δεν περιέχει εγγραφές ωραρίου")
+        return rows
+    except RuntimeError as ex:
+        if archive is not None:
+            from app.portal_excel_archive import PortalExcelArchive
+
+            if isinstance(archive, PortalExcelArchive):
+                archive.record_failure(str(ex), fetch_source="excel")
+        raise

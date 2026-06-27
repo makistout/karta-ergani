@@ -1,4 +1,30 @@
-"""Κανόνες ειδοποίησης τύπου 2 — τρέχουσα ημέρα."""
+"""Κανόνες ειδοποίησης τύπου 2 — τρέχουσα ημέρα.
+
+Κανόνες καμπάνας (resolve_today_notify_kind)
+-------------------------------------------
+Grace: 15 λεπτά (NOTIFY_GRACE_MINUTES) για είσοδο και έξοδο.
+
+1. exit_without_entry — υπάρχει έξοδος (κάρτα/πραγματική) χωρίς είσοδο.
+
+2. late_check_in — σήμερα, ενεργός, ψηφ. ωράριο εργασίας, χωρίς είσοδο,
+   πέρασαν ≥15' από την έναρξη του ωραρίου. Αυτόματη αποστολή: μία φορά/ημέρα.
+
+3. late_check_out — σήμερα (ή έξοδος βάρδιας χθες που λήγει σήμερα),
+   υπάρχει είσοδος, όχι έξοδος, υπάρχει ψηφ. ωράριο εργασίας με ώρες:
+   αναμενόμενη έξοδος = είσοδος + (τέλος_ωραρίου − αρχή_ωραρίου).
+   Alert αν πέρασαν ≥15' από την αναμενόμενη έξοδο (συμπ. μετά τα μεσάνυχτα).
+
+4. missing_exit_8h — μόνο όταν ΔΕΝ υπάρχει ψηφ. ωράριο εργασίας σήμερα
+   (ρεπό, «—», χωρίς ώρες): είσοδος χωρίς έξοδο και πέρασαν ≥8 ώρες.
+
+Ακύρωση: card_event_blocks_today_notify — δεν στέλνει αν υπάρχει αντίστοιχο
+χτύπημα κάρτας στη βάση erganios.
+
+Ώρες εισόδου/εξόδου: merge_notify_work_hours — κάρτα υπερισχύει πραγματικής.
+
+Άλλες ενέργειες (card_report / WTODaily, όχι καμπάνα sync):
+rest_day, no_schedule, early_card, rest_with_card, no_schedule_work — βλ. card_report.
+"""
 
 from __future__ import annotations
 
@@ -28,7 +54,7 @@ TODAY_NOTIFY_KINDS = frozenset(
 KIND_LABELS = {
     "exit_without_entry": "εξόδος χωρίς είσοδο",
     "late_check_in": "καθυστέρηση εισόδου (>15' από ωράριο)",
-    "late_check_out": "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
+    "late_check_out": "έλλειψη εξόδου (>15' από είσοδο+διάρκεια ωραρίου)",
     "missing_exit_8h": "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     "rest_with_card": "ρεπό/ανάπαυση με καταγραφή εργασίας",
     "rest_day": "ημέρα ρεπό/ανάπαυση",
@@ -116,15 +142,15 @@ def merge_notify_work_hours(
     hour_to: str | None,
     card: dict[str, Any] | None = None,
 ) -> tuple[str | None, str | None]:
-    """Συνδυάζει πραγματική + ώρες κάρτας για κανόνες ειδοποίησης."""
+    """Συνδυάζει πραγματική + κάρτα· η κάρτα υπερισχύει όταν υπάρχει χτύπημα."""
     hf = str(hour_from or "").strip()
     ht = str(hour_to or "").strip()
     card_block = card if isinstance(card, dict) else {}
     card_in = _hm_short(str(card_block.get("check_in") or ""))
     card_out = _hm_short(str(card_block.get("check_out") or ""))
-    if not hf and card_in:
+    if card_in:
         hf = card_in
-    if not ht and card_out:
+    if card_out:
         ht = card_out
     return hf or None, ht or None
 
@@ -302,6 +328,22 @@ def _schedule_duration_minutes(sched_start: int, sched_end: int) -> int | None:
     return duration if duration > 0 else None
 
 
+def _has_digital_work_schedule(row: dict[str, Any]) -> bool:
+    """True όταν υπάρχει ψηφ. ωράριο εργασίας σήμερα (όχι ρεπό/κενό)."""
+    sched = row.get("schedule")
+    if isinstance(sched, dict):
+        shift = str(sched.get("shift_type") or "").strip()
+        if shift and re.search(r"ρεπο|ανάπαυση", shift, re.I):
+            return False
+    label = str(row.get("schedule_label") or "").strip()
+    if label and label != "—" and re.search(r"ρεπο|ανάπαυση", label, re.I):
+        return False
+    return (
+        _schedule_start_minutes(row) is not None
+        and _schedule_end_minutes(row) is not None
+    )
+
+
 def _expected_exit_minutes(row: dict[str, Any]) -> int | None:
     """Αναμενόμενη έξοδος = ώρα εισόδου (κάρτα/πραγματική) + διάρκεια ψηφ. ωραρίου."""
     entry_min = _parse_clock_minutes(str(row.get("hour_from") or "").strip())
@@ -365,6 +407,37 @@ def expected_exit_from_schedule_and_entry(
     )
 
 
+def _format_duration_greek(total_minutes: int) -> str:
+    hours, minutes = divmod(int(total_minutes), 60)
+    if hours and minutes:
+        return f"{hours} ώρ{'α' if hours == 1 else 'ες'} {minutes} λεπτά"
+    if hours:
+        return f"{hours} ώρ{'α' if hours == 1 else 'ες'}"
+    return f"{minutes} λεπτά"
+
+
+def format_digital_schedule_summary(
+    schedule_hour_from: str | None,
+    schedule_hour_to: str | None,
+) -> str | None:
+    """Μία γραμμή με ώρες εργασίας από ψηφιακό ωράριο για ειδοποίηση."""
+    hf = str(schedule_hour_from or "").strip()
+    ht = str(schedule_hour_to or "").strip()
+    if not hf or not ht:
+        return None
+    start = _parse_clock_minutes(hf)
+    end = _parse_clock_minutes(ht)
+    if start is None or end is None:
+        return f"Ώρες εργασίας (ψηφ. ωράριο): {hf} – {ht}"
+    duration = _schedule_duration_minutes(start, end)
+    if duration is None:
+        return f"Ώρες εργασίας (ψηφ. ωράριο): {hf} – {ht}"
+    return (
+        f"Ώρες εργασίας (ψηφ. ωράριο): {hf} – {ht} "
+        f"({_format_duration_greek(duration)})"
+    )
+
+
 def resolve_today_notify_kind(
     row: dict[str, Any],
     *,
@@ -398,12 +471,11 @@ def resolve_today_notify_kind(
 
     if hf and not ht:
         entry_min = _parse_clock_minutes(hf)
-        sched_start = _schedule_start_minutes(row)
-        sched_end = _schedule_end_minutes(row)
-        if entry_min is not None and sched_start is not None and sched_end is not None:
-            duration = _schedule_duration_minutes(sched_start, sched_end)
-            if duration is not None:
-                expected_exit = entry_min + duration
+        if entry_min is None:
+            return None
+        if _has_digital_work_schedule(row):
+            expected_exit = _expected_exit_minutes(row)
+            if expected_exit is not None:
                 elapsed = _minutes_after_expected_exit(
                     expected_exit=expected_exit,
                     entry_min=entry_min,
@@ -412,13 +484,8 @@ def resolve_today_notify_kind(
                 )
                 if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
                     return "late_check_out"
-                return None
-        start_min = _parse_clock_minutes(hf)
-        elapsed = (
-            _elapsed_same_date_minutes(start_min, now_min)
-            if start_min is not None
-            else None
-        )
+            return None
+        elapsed = _elapsed_same_date_minutes(entry_min, now_min)
         if elapsed is not None and elapsed >= 8 * 60:
             return "missing_exit_8h"
 

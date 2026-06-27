@@ -79,6 +79,15 @@ class Config:
         default=True,
     )
 
+    KARTA_PORTAL_EXCEL_DEBUG_TODAY = _env_flag(
+        "KARTA_PORTAL_EXCEL_DEBUG_TODAY",
+        default=True,
+    )
+    PORTAL_EXCEL_DEBUG_DIR = Path(
+        os.environ.get("KARTA_PORTAL_EXCEL_DEBUG_DIR")
+        or (_ROOT / "data" / "portal_excel_debug")
+    )
+
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
     ).strip().rstrip("/")

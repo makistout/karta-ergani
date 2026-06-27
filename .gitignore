@@ -5,6 +5,7 @@ __pycache__/
 venv/
 documentation/document_extracted.txt
 logs/
+data/portal_excel_debug/
 
 # Scripts — προσωρινά / δοκιμές
 scripts/temp_portal_output/

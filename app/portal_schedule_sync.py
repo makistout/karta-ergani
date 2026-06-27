@@ -236,6 +236,9 @@ def _search_schedule(
     ctx: dict[str, Any],
     date_from: str,
     date_to: str | None = None,
+    *,
+    run_id: str | None = None,
+    log: KartaLogger | None = None,
 ) -> tuple[list[list[str]], str]:
     """Αναζήτηση ωραρίου — επιστρέφει (grid_rows, source: excel|html)."""
     date_to = date_to or date_from
@@ -269,6 +272,15 @@ def _search_schedule(
         )
 
     # Excel πρώτα — αν πετύχει, μόνο Excel (openpyxl/xlrd). HTML grid μόνο σε αποτυχία.
+    from app.portal_excel_archive import PortalExcelArchive, log_excel_archive_saved
+
+    excel_archive = PortalExcelArchive.for_sync(
+        kind="schedule",
+        ctx=ctx,
+        date_from=date_from,
+        date_to=date_to,
+        run_id=run_id,
+    )
     excel_rows: list[list[str]] = []
     excel_err: str | None = None
     try:
@@ -280,16 +292,24 @@ def _search_schedule(
             r.url,
             grid_event_target=GRID_EVENT_TARGET,
             default_branch_aa=branch_aa,
+            archive=excel_archive,
         )
     except Exception as ex:
         excel_err = str(ex)
 
     if excel_rows:
+        log_excel_archive_saved(excel_archive, log)
         return excel_rows, "excel"
 
     html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
     if not excel_rows and not html_rows:
+        if excel_archive is not None and excel_archive.saved_path is None:
+            excel_archive.record_failure(
+                excel_err or "Κενό Excel και HTML grid",
+                fetch_source="empty",
+            )
+        log_excel_archive_saved(excel_archive, log)
         raise RuntimeError(
             f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
             + (f" — Excel: {excel_err}" if excel_err else "")
@@ -299,7 +319,15 @@ def _search_schedule(
         src = "html"
         if excel_err:
             src = f"html (Excel απέτυχε: {excel_err[:120]})"
+        if excel_archive is not None and excel_archive.saved_path is None:
+            excel_archive.record_fallback(
+                excel_error=excel_err,
+                html_row_count=len(html_rows),
+                fetch_source=src,
+            )
+        log_excel_archive_saved(excel_archive, log)
         return html_rows, src
+    log_excel_archive_saved(excel_archive, log)
     raise RuntimeError(
         f"Δεν βρέθηκαν εγγραφές (ούτε Excel ούτε HTML grid) για {date_from} – {date_to}"
     )
@@ -447,7 +475,14 @@ def iter_schedule_sync_events(
             date_to=date_to,
         )
         grid_rows, fetch_source = _search_schedule(
-            session, page_html, page_url, ctx, date_from, date_to
+            session,
+            page_html,
+            page_url,
+            ctx,
+            date_from,
+            date_to,
+            run_id=log.run_id,
+            log=log,
         )
         range_msg = (
             f"Ψηφιακό ωράριο: {date_from} – {date_to} — "

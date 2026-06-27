@@ -17,6 +17,7 @@ from app.date_util import iso_to_ergani_dates
 from app.ergani_parse import portal_rows_to_work_log_items
 from app.karta_log import KartaLogger, logger_for_store
 from app.portal_excel import _work_log_excel_err_means_empty, fetch_work_log_rows_via_excel
+from app.portal_excel_archive import PortalExcelArchive, log_excel_archive_saved
 from app.portal_form_util import set_portal_dates
 from app.portal_schedule_sync import (
     REQUEST_TIMEOUT,
@@ -178,6 +179,9 @@ def _search_work_log(
     ctx: dict[str, Any],
     date_from: str,
     date_to: str | None = None,
+    *,
+    run_id: str | None = None,
+    log: KartaLogger | None = None,
 ) -> tuple[list[list[str]], str]:
     """Αναζήτηση πραγματικής — επιστρέφει (grid_rows, source: excel|html)."""
     date_to = date_to or date_from
@@ -211,6 +215,13 @@ def _search_work_log(
         )
 
     # Excel πρώτα — αν πετύχει, μόνο Excel (openpyxl/xlrd). HTML grid μόνο σε αποτυχία.
+    excel_archive = PortalExcelArchive.for_sync(
+        kind="work_log",
+        ctx=ctx,
+        date_from=date_from,
+        date_to=date_to,
+        run_id=run_id,
+    )
     excel_rows: list[list[str]] = []
     excel_err: str | None = None
     try:
@@ -220,24 +231,44 @@ def _search_work_log(
             r.url,
             grid_event_target=GRID_EVENT_TARGET,
             default_branch_aa=branch_aa,
+            archive=excel_archive,
         )
     except Exception as ex:
         excel_err = str(ex)
 
     if excel_rows:
+        _log_excel_archive(excel_archive, log)
         return excel_rows, "excel"
 
     html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
     if not excel_rows and not html_rows:
+        if excel_archive is not None and excel_archive.saved_path is None:
+            excel_archive.record_failure(
+                excel_err or "Κενό Excel και HTML grid",
+                fetch_source="empty",
+            )
+        _log_excel_archive(excel_archive, log)
         return [], "empty"
 
     if html_rows:
         src = "html"
         if excel_err:
             src = f"html (Excel απέτυχε: {excel_err[:120]})"
+        if excel_archive is not None and excel_archive.saved_path is None:
+            excel_archive.record_fallback(
+                excel_error=excel_err,
+                html_row_count=len(html_rows),
+                fetch_source=src,
+            )
+        _log_excel_archive(excel_archive, log)
         return html_rows, src
+    _log_excel_archive(excel_archive, log)
     return [], "empty"
+
+
+def _log_excel_archive(archive: Any | None, log: KartaLogger | None) -> None:
+    log_excel_archive_saved(archive, log)
 
 
 def _persist_work_log_items(
@@ -377,7 +408,14 @@ def iter_work_log_sync_events(
             date_to=date_to,
         )
         grid_rows, fetch_source = _search_work_log(
-            session, page_html, page_url, ctx, date_from, date_to
+            session,
+            page_html,
+            page_url,
+            ctx,
+            date_from,
+            date_to,
+            run_id=log.run_id,
+            log=log,
         )
         range_msg = (
             f"Πραγματική απασχόληση: {date_from} – {date_to} — "

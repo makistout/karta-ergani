@@ -23,6 +23,8 @@ from app.today_notify_logic import (
     WTO_DAILY_NOTIFY_KINDS,
     card_event_blocks_today_notify,
     ergani_date_to_iso,
+    expected_exit_from_schedule_and_entry,
+    format_digital_schedule_summary,
     merge_notify_work_hours,
     notify_auto_send_once,
     notify_db_snapshot,
@@ -366,6 +368,19 @@ def send_today_punch_notifications(
         }
     employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
     kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
+    schedule_summary = format_digital_schedule_summary(
+        schedule_hour_from,
+        schedule_hour_to,
+    )
+    expected_exit_hm = (
+        expected_exit_from_schedule_and_entry(
+            hour_from=hour_from,
+            schedule_hour_from=schedule_hour_from,
+            schedule_hour_to=schedule_hour_to,
+        )
+        if resolved_kind == "late_check_out"
+        else None
+    )
 
     def log_step(message: str, **fields: Any) -> None:
         if log is None:
@@ -524,6 +539,10 @@ def send_today_punch_notifications(
             notify_kind=resolved_kind,
             hit_url=hit_url,
             has_pin=bool((rec.get("notify_pin_hash") or "").strip()),
+            schedule_hour_from=schedule_hour_from,
+            schedule_hour_to=schedule_hour_to,
+            hour_from=hour_from,
+            expected_exit=expected_exit_hm,
         )
         try:
             log_step(
@@ -627,7 +646,19 @@ def send_today_punch_notifications(
                 details=[
                     ("Χτύπημα από", hour_from or "—"),
                     ("Χτύπημα έως", hour_to or "—"),
-                    ("Ώρα ωραρίου", schedule_hour_from or "—"),
+                    *(
+                        [("Ψηφ. ωράριο", schedule_summary)]
+                        if schedule_summary
+                        else [
+                            ("Ώρα ωραρίου από", schedule_hour_from or "—"),
+                            ("Ώρα ωραρίου έως", schedule_hour_to or "—"),
+                        ]
+                    ),
+                    *(
+                        [("Αναμενόμενη έξοδος", expected_exit_hm)]
+                        if expected_exit_hm
+                        else []
+                    ),
                     ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη"),
                 ],
                 action_url=hit_url,

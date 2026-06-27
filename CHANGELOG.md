@@ -8,6 +8,28 @@
 
 ---
 
+## 2026-06-27 — Κανόνες εξόδου, ώρες ωραρίου στα alerts, debug Excel portal
+
+### Κανόνες ειδοποίησης (`today_notify_logic.py`)
+- **`late_check_out`**: αναμενόμενη έξοδος = **ώρα εισόδου + διάρκεια ψηφ. ωραρίου**
+  (`τέλος − αρχή`), με υποστήριξη λήξης **μετά τα μεσάνυχτα**.
+- **`missing_exit_8h`**: μόνο όταν **δεν** υπάρχει ψηφ. ωράριο εργασίας σήμερα (ρεπό, «—»).
+- **`merge_notify_work_hours`**: η **κάρτα υπερισχύει** της πραγματικής όταν υπάρχει χτύπημα.
+- Νέο `_has_digital_work_schedule()` · τεκμηρίωση κανόνων στο module docstring.
+
+### Κείμενο Telegram/Email alerts
+- Γραμμή **«Ώρες εργασίας (ψηφ. ωράριο): HH:MM – HH:MM (X ώρες Y λεπτά)»** σε όλα τα
+  alerts με ψηφ. ωράριο (`format_digital_schedule_summary`).
+- Για **`late_check_out`**: επιπλέον **«Είσοδος · Αναμενόμενη έξοδος»**.
+
+### Debug Excel τρέχουσας ημέρας (portal sync)
+- Νέο `app/portal_excel_archive.py`: αποθήκευση raw Excel + `.meta.json` ανά sync **σήμερα**.
+- Φάκελος: `data/portal_excel_debug/store_{id}/{YYYY-MM-DD}/` (στο `.gitignore`).
+- Env: `KARTA_PORTAL_EXCEL_DEBUG_TODAY` (default `true`), `KARTA_PORTAL_EXCEL_DEBUG_DIR`.
+- Log: `Debug Excel τρέχουσας ημέρας: …` · fix import `log_excel_archive_saved`.
+
+---
+
 ## 2026-06-27 — «Κλείστε όλα»: διατήρηση διάρκειας ωραρίου
 
 - Στο `/ui/missing-cards/close-all`, όταν αλλάζει χειροκίνητα είσοδος ή έξοδος σε ζευγάρι

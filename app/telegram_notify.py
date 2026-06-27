@@ -172,9 +172,17 @@ def format_today_alert_notification(
     has_pin: bool = False,
     wto_hour_from: str | None = None,
     wto_hour_to: str | None = None,
+    schedule_hour_from: str | None = None,
+    schedule_hour_to: str | None = None,
+    hour_from: str | None = None,
+    expected_exit: str | None = None,
 ) -> str:
     """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
-    from app.today_notify_logic import KIND_LABELS, WTO_DAILY_NOTIFY_KINDS
+    from app.today_notify_logic import (
+        KIND_LABELS,
+        WTO_DAILY_NOTIFY_KINDS,
+        format_digital_schedule_summary,
+    )
 
     link = (hit_url or "").strip()
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
@@ -186,6 +194,13 @@ def format_today_alert_notification(
         f"{prefix}Υπάρχει πρόβλημα με τον εργαζόμενο {name} (ΑΦΜ {employee_afm}) "
         f"για σήμερα ({work_date}): {problem}.",
     ]
+    sched_line = format_digital_schedule_summary(schedule_hour_from, schedule_hour_to)
+    if sched_line:
+        lines.append(sched_line)
+    entry_hm = str(hour_from or "").strip()
+    exit_hm = str(expected_exit or "").strip()
+    if kind == "late_check_out" and entry_hm and exit_hm:
+        lines.append(f"Είσοδος: {entry_hm} · Αναμενόμενη έξοδος: {exit_hm}")
     if kind in WTO_DAILY_NOTIFY_KINDS:
         hf = (wto_hour_from or "").strip()
         ht = (wto_hour_to or "").strip()

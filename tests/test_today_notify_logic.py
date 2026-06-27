@@ -159,6 +159,63 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertIsNone(before)
         self.assertEqual(after, "missing_exit_8h")
 
+    def test_missing_exit_8h_not_used_when_schedule_exists_even_after_8h(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "11:42",
+            "hour_to": "",
+            "schedule": {"hour_from": "08:00", "hour_to": "14:40"},
+        }
+        # Διάρκεια 6:40 → αναμενόμενη έξοδος 18:22 (όχι +8h)
+        self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(18, 36)))
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(18, 45)),
+            "late_check_out",
+        )
+        # Μετά 8h από είσοδο (19:42) — ακόμα late_check_out, ποτέ missing_exit_8h
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(19, 42)),
+            "late_check_out",
+        )
+
+    def test_merge_prefers_card_entry_over_portal(self):
+        from app.today_notify_logic import merge_notify_work_hours
+
+        hf, ht = merge_notify_work_hours(
+            hour_from="08:00",
+            hour_to="",
+            card={"check_in": "11:42"},
+        )
+        self.assertEqual(hf, "11:42")
+        self.assertIsNone(ht)
+
+    def test_format_digital_schedule_summary(self):
+        from app.today_notify_logic import format_digital_schedule_summary
+
+        self.assertEqual(
+            format_digital_schedule_summary("08:00", "14:40"),
+            "Ώρες εργασίας (ψηφ. ωράριο): 08:00 – 14:40 (6 ώρες 40 λεπτά)",
+        )
+
+    def test_today_alert_includes_schedule_hours(self):
+        from app.telegram_notify import format_today_alert_notification
+
+        text = format_today_alert_notification(
+            store_name="Stanotas",
+            employee_afm="173705710",
+            eponymo="ΚΑΚΚΑΛΗΣ",
+            onoma="ΝΙΚΟΛΑΟΣ",
+            work_date="27/06/2026",
+            notify_kind="late_check_out",
+            schedule_hour_from="08:00",
+            schedule_hour_to="14:40",
+            hour_from="11:42",
+            expected_exit="18:22",
+        )
+        self.assertIn("Ώρες εργασίας (ψηφ. ωράριο): 08:00 – 14:40", text)
+        self.assertIn("Είσοδος: 11:42 · Αναμενόμενη έξοδος: 18:22", text)
+
     def test_grace_constant_is_fifteen_minutes(self):
         self.assertEqual(NOTIFY_GRACE_MINUTES, 15)
 
