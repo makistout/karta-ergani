@@ -85,10 +85,9 @@ def resolve_wrk_card_aitiologia(
 ) -> str | None:
     """Κανονικοποίηση αιτιολογίας WRKCardSE.
 
-    Το τρέχον XSD της Ergani απαιτεί f_aitiologia όταν στέλνεται
-    προγενέστερη καταχώρηση μέσω WRKCardSE. Δεν την αφαιρούμε με βάση
-    την ευελιξία προσέλευσης, γιατί το αρχείο απορρίπτεται πριν φτάσει
-    σε business validation.
+    Για ρητή αιτιολογία (προγενέστερη καταχώρηση) την κρατάμε όπως ζητήθηκε.
+    Για τρέχουσα καταχώρηση χωρίς αιτιολογία, το route δοκιμάζει χωρίς
+    f_aitiologia και κάνει retry με 001 μόνο αν το ζητήσει η Ergani.
     """
     if not requested_aitiologia:
         return None
@@ -189,6 +188,7 @@ def build_wrk_card_se_payload(
     reference_date: str | None = None,
     event_at: str | None = None,
     aitiologia: str | None = None,
+    include_null_aitiologia: bool = False,
 ) -> dict[str, Any]:
     erg = norm_afm(employer_afm)
     emp = norm_afm(employee_afm)
@@ -211,7 +211,9 @@ def build_wrk_card_se_payload(
         "f_reference_date": ref,
         "f_date": f_date,
     }
-    if ait:
+    if include_null_aitiologia and not ait:
+        detail["f_aitiologia"] = None
+    elif ait:
         detail["f_aitiologia"] = ait
     return {
         "Cards": {

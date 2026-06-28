@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime
 from typing import Any
@@ -32,6 +33,7 @@ from app.work_card_payload import (
     f_type_from_event,
     lookup_punch_schedule_context,
     resolve_wrk_card_aitiologia,
+    RETRO_AITIOLOGIA_INTERNET,
     tz_athens,
 )
 from config import Config
@@ -142,6 +144,17 @@ def _wrk_card_error_message(resp, parsed: Any) -> str | None:
     return ergani_failure_detail(resp, SUBMISSION_CODE_WRK_CARD)
 
 
+def _ergani_requires_aitiologia(parsed: Any) -> bool:
+    try:
+        text = json.dumps(parsed, ensure_ascii=False)
+    except TypeError:
+        text = str(parsed or "")
+    low = text.lower()
+    return "f_aitiologia" in low and (
+        "expected" in low or "possible elements" in low or "incomplete content" in low
+    )
+
+
 def _submit_work_card(
     *,
     body: dict[str, Any],
@@ -197,6 +210,9 @@ def _submit_work_card(
 
     event_at_str = str(body.get("event_at") or "").strip() or None
     aitiologia_raw = str(body.get("aitiologia") or "").strip() or None
+    explicit_aitiologia = bool(aitiologia_raw)
+    if not event_at_str:
+        event_at_str = datetime.now(tz_athens()).isoformat(timespec="seconds")
     if aitiologia_raw and event_at_str:
         sched_ctx = lookup_punch_schedule_context(
             employer_afm=erg_s,
@@ -213,8 +229,12 @@ def _submit_work_card(
             flex_arrival_minutes=sched_ctx.get("flex_arrival_minutes"),
         )
 
-    try:
-        payload = build_wrk_card_se_payload(
+    def build_payload(
+        resolved_aitiologia: str | None,
+        *,
+        include_null_aitiologia: bool = False,
+    ):
+        return build_wrk_card_se_payload(
             employer_afm=erg_s,
             branch_aa=aa_s,
             employee_afm=emp_afm,
@@ -225,14 +245,36 @@ def _submit_work_card(
             comments=str(body.get("comments") or "").strip() or None,
             reference_date=ref_date,
             event_at=event_at_str,
-            aitiologia=aitiologia_raw,
+            aitiologia=resolved_aitiologia,
+            include_null_aitiologia=include_null_aitiologia,
         )
+
+    try:
+        payload = build_payload(aitiologia_raw)
     except WorkCardPayloadError as e:
         return jsonify({"error": str(e)}), 400
 
     client = ErganiClient(api_base_url)
     resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
     parsed = json_or_text(resp)
+    aitiologia_retry = False
+    if not resp.ok and not explicit_aitiologia and _ergani_requires_aitiologia(parsed):
+        try:
+            payload = build_payload(None, include_null_aitiologia=True)
+        except WorkCardPayloadError as e:
+            return jsonify({"error": str(e)}), 400
+        resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
+        parsed = json_or_text(resp)
+        aitiologia_retry = True
+    if not resp.ok and not explicit_aitiologia and _ergani_requires_aitiologia(parsed):
+        aitiologia_raw = RETRO_AITIOLOGIA_INTERNET
+        try:
+            payload = build_payload(aitiologia_raw)
+        except WorkCardPayloadError as e:
+            return jsonify({"error": str(e)}), 400
+        resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
+        parsed = json_or_text(resp)
+        aitiologia_retry = True
     protocol = submit_date = ergani_id = None
     if resp.ok and isinstance(parsed, list) and parsed:
         first_item = parsed[0]
@@ -294,6 +336,8 @@ def _submit_work_card(
             "batch_index": body.get("batch_index"),
             "batch_total": body.get("batch_total"),
             "auth_retry": bool(body.get("auth_retry")),
+            "aitiologia_retry": aitiologia_retry,
+            "aitiologia": aitiologia_raw,
             "error": err_msg,
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),

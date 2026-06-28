@@ -1,6 +1,9 @@
 import unittest
 
-from app.work_card_payload import build_wrk_card_se_payload, resolve_wrk_card_aitiologia
+from app.work_card_payload import (
+    build_wrk_card_se_payload,
+    resolve_wrk_card_aitiologia,
+)
 
 
 class WorkCardAitiologiaTests(unittest.TestCase):
@@ -48,6 +51,35 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         detail = payload["Cards"]["Card"][0]["Details"]["CardDetails"][0]
         self.assertNotIn("f_aitiologia", detail)
+
+    def test_payload_can_include_null_f_aitiologia(self):
+        payload = build_wrk_card_se_payload(
+            employer_afm="123456789",
+            branch_aa="0",
+            employee_afm="987654321",
+            employee_last_name="Test",
+            employee_first_name="User",
+            event="check_in",
+            reference_date="2026-06-26",
+            event_at="2026-06-26T10:00:00",
+            aitiologia=None,
+            include_null_aitiologia=True,
+        )
+        detail = payload["Cards"]["Card"][0]["Details"]["CardDetails"][0]
+        self.assertIsNone(detail["f_aitiologia"])
+
+    def test_routes_detects_ergani_xsd_aitiologia_requirement(self):
+        from app.routes_work_card import _ergani_requires_aitiologia
+
+        self.assertTrue(_ergani_requires_aitiologia({
+            "message": (
+                "The element 'CardDetails' has incomplete content. "
+                "List of possible elements expected: 'f_aitiologia'."
+            )
+        }))
+        self.assertFalse(_ergani_requires_aitiologia({
+            "message": "Δεν πρέπει να δηλώνεται λόγος καθυστέρησης"
+        }))
 
 
 if __name__ == "__main__":
