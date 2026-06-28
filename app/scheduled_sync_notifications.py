@@ -37,6 +37,29 @@ def _card_report_work_log(row: dict[str, Any]) -> dict[str, Any]:
     return wl or {}
 
 
+_SKIP_REASON_LABELS = {
+    "already_sent": "ήδη στάλθηκε αυτόματη ειδοποίηση σήμερα",
+    "card_already_punched": "υπάρχει ήδη αντίστοιχο χτύπημα κάρτας",
+    "kind_mismatch": "άλλαξε ο τύπος ειδοποίησης πριν την αποστολή",
+    "no_alert": "δεν ισχύει πλέον ενεργή ειδοποίηση",
+    "snoozed": "υπάρχει ενεργό snooze",
+    "invalid_kind": "μη έγκυρος τύπος ειδοποίησης",
+}
+
+
+def _skip_reason_label(reason: Any) -> str:
+    key = str(reason or "").strip()
+    return _SKIP_REASON_LABELS.get(key, key or "άγνωστος λόγος")
+
+
+def _skip_summary(skip_counts: dict[str, int]) -> str:
+    parts = [
+        f"{count} {_skip_reason_label(reason)}"
+        for reason, count in sorted(skip_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    return "; ".join(parts)
+
+
 def _send_post_sync_notifications(
     cfg: dict[str, Any],
     *,
@@ -74,6 +97,7 @@ def _send_post_sync_notifications(
     sent_total = 0
     target_total = 0
     skipped = 0
+    skip_counts: dict[str, int] = {}
     errors: list[str] = []
     attempted: list[dict[str, Any]] = []
 
@@ -159,8 +183,10 @@ def _send_post_sync_notifications(
                 total = int(res.get("total") or 0)
                 sent_total += sent
                 target_total += total
-                if res.get("skipped"):
+                skip_reason = str(res.get("skipped") or "").strip()
+                if skip_reason:
                     skipped += 1
+                    skip_counts[skip_reason] = skip_counts.get(skip_reason, 0) + 1
                 row_errors = [str(e) for e in (res.get("errors") or []) if str(e).strip()]
                 errors.extend(row_errors)
                 attempted.append(
@@ -190,22 +216,34 @@ def _send_post_sync_notifications(
                 log.error(f"Αποτυχία ειδοποίησης καμπάνας: {err}")
 
         ok = not errors
-        summary = (
-            f"Ειδοποιήσεις μετά το sync: {sent_total}/{target_total} αποστολές"
-            if target_total
-            else "Ειδοποιήσεις μετά το sync: δεν υπάρχουν ενεργοί λήπτες"
-        )
+        if target_total:
+            summary = f"Ειδοποιήσεις μετά το sync: {sent_total}/{target_total} αποστολές"
+        elif skipped:
+            summary = "Ειδοποιήσεις μετά το sync: 0 αποστολές"
+        else:
+            summary = "Ειδοποιήσεις μετά το sync: δεν υπάρχουν ενεργοί λήπτες"
         if skipped:
-            summary += f", {skipped} skipped"
+            summary += f", {skipped} παραλείψεις"
+            reasons = _skip_summary(skip_counts)
+            if reasons:
+                summary += f" ({reasons})"
         if errors:
             summary += f", {len(errors)} σφάλματα"
-        log.info(summary, sent=sent_total, total=target_total, errors=len(errors))
+        log.info(
+            summary,
+            sent=sent_total,
+            total=target_total,
+            skipped=skipped,
+            skip_reasons=skip_counts,
+            errors=len(errors),
+        )
         result = {
             "success": ok,
             "work_date": today,
             "sent": sent_total,
             "total": target_total,
             "skipped": skipped,
+            "skip_reasons": skip_counts,
             "attempted": attempted,
             "errors": errors[:20],
         }

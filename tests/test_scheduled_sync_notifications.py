@@ -1,6 +1,7 @@
 import unittest
 
 from app import scheduled_sync
+from app import scheduled_sync_notifications
 from config import Config
 
 
@@ -42,6 +43,13 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             self.assertFalse(enqueued)
         finally:
             Config.KARTA_POST_SYNC_NOTIFY_ENABLED = old
+
+    def test_skip_summary_explains_exact_reason(self):
+        summary = scheduled_sync_notifications._skip_summary(
+            {"already_sent": 4, "card_already_punched": 1}
+        )
+        self.assertIn("4 ήδη στάλθηκε αυτόματη ειδοποίηση σήμερα", summary)
+        self.assertIn("1 υπάρχει ήδη αντίστοιχο χτύπημα κάρτας", summary)
 
 
 if __name__ == "__main__":
