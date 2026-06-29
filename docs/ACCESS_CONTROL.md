@@ -36,6 +36,9 @@
 
 - Αριστερά υπάρχει λίστα χρηστών με username, role και status.
 - Η φόρμα χρήστη υποστηρίζει username, email, όνομα, role, ενεργό/ανενεργό και reset password.
+- Στη δημιουργία χρήστη με email παράγεται link επιβεβαίωσης και αποστέλλεται email επαλήθευσης. Το token αποθηκεύεται μόνο ως SHA-256 hash στη βάση και λήγει σε 48 ώρες.
+- Το public link ανοίγει `/ui/verify-email?t=...` και καλεί το `/api/users/verify-email`. Με επιτυχή επιβεβαίωση συμπληρώνεται `email_verified_at` και καθαρίζεται το token.
+- Για υπάρχουσες βάσεις πρέπει να τρέξει το idempotent migration `scripts/run_migration_user_email_verification.py` ή το SQL `sql/alter_add_user_email_verification.sql`.
 - Τα καταστήματα δεν φορτώνονται ως μαζική checkbox λίστα. Ο χειριστής γράφει όνομα ή ΑΦΜ στο autocomplete, πατά Enter ή `Προσθήκη`, και το κατάστημα προστίθεται κάτω στη λίστα πρόσβασης του χρήστη.
 - Η λίστα επιλεγμένων καταστημάτων δείχνει όνομα, ΑΦΜ, αριθμό εργαζομένων και κουμπί αφαίρεσης ανά γραμμή.
 - Τα granular permissions εμφανίζονται ως checkbox list και μπορούν να γεμίσουν από `Template ρόλου`.

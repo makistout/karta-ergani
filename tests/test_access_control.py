@@ -299,3 +299,62 @@ def test_user_save_requires_store_scope_for_non_super_admin():
     assert response.status_code == 400
     assert "κατάστημα" in response.json["error"]
     create_user.assert_not_called()
+
+
+def test_user_create_sends_email_verification():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+    user = {
+        "id": 9,
+        "username": "new-user",
+        "email": "new@example.gr",
+        "full_name": "New User",
+        "role": "office",
+        "is_active": True,
+        "permissions": [],
+        "store_ids": [7],
+    }
+
+    with (
+        patch("app.repo_users.tables_available", return_value=True),
+        patch("app.repo_users.create_user", return_value=9),
+        patch("app.repo_users.get_user", return_value=user),
+        patch("app.repo_users.create_email_verification_token", return_value="tok") as make_token,
+        patch("app.routes_users.send_verification_email") as send_email,
+    ):
+        response = client.post(
+            "/api/users",
+            json={
+                "username": "new-user",
+                "password": "pw",
+                "email": "new@example.gr",
+                "role": "office",
+                "store_ids": [7],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    make_token.assert_called_once_with(9)
+    send_email.assert_called_once()
+    assert send_email.call_args.kwargs["email"] == "new@example.gr"
+    assert send_email.call_args.kwargs["token"] == "tok"
+
+
+def test_user_email_verify_endpoint_consumes_token():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+
+    with patch(
+        "app.repo_users.verify_email_token",
+        return_value={"id": 9, "username": "new-user", "email": "new@example.gr"},
+    ) as verify:
+        response = client.get("/api/users/verify-email?t=tok")
+
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    verify.assert_called_once_with("tok")

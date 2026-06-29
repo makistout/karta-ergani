@@ -28,6 +28,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/telegram/webhook",
     "/ui/landing",
     "/ui/login",
+    "/ui/verify-email",
     "/ui/telegram-hit",
     "/ui/telegram-punch",
     "/ui/retro-hit",
@@ -37,6 +38,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/auth/login",
     "/api/auth/status",
     "/api/auth/logout",
+    "/api/users/verify-email",
     "/favicon.ico",
 })
 

@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-06-30 — Email verification χρηστών και casing erganiOS
+
+- Η δημιουργία χρήστη από `/ui/users` στέλνει email επιβεβαίωσης όταν υπάρχει email στον χρήστη.
+- Προστέθηκε public σελίδα `/ui/verify-email?t=...` και endpoint `/api/users/verify-email` για επαλήθευση του token.
+- Το verification token αποθηκεύεται στη βάση μόνο ως SHA-256 hash, έχει λήξη 48 ωρών και καθαρίζεται μετά την επιβεβαίωση.
+- Προστέθηκαν migration SQL/script για τα πεδία `email_verified_at`, `email_verification_token_hash`,
+  `email_verification_sent_at`, `email_verification_expires_at` στους office users.
+- Τα email templates κρατούν πλέον το brand ακριβώς ως **erganiOS** και δεν το μετατρέπουν με CSS σε κεφαλαία.
+- Το scheduled sync task μετονομάστηκε σε `erganiOS-ScheduledSync15Min`, ενώ το setup script διαγράφει και τα παλιά `ErganiOS-*` task names.
+
+---
+
 ## 2026-06-29 — After-card sync μόνο Πραγματικής Απασχόλησης
 
 - Μετά από επιτυχημένη αποστολή ψηφιακής κάρτας από `/ui/work-card`, ξεκινά background
@@ -77,8 +89,8 @@
 ## 2026-06-26 — Sync/ειδοποιήσεις 15 λεπτά + snapshot βάσης στα logs
 
 ### Διάστημα 15 λεπτά (αντί 10)
-- **Task Scheduler**: `scripts/setup_scheduled_sync_task.ps1` → task **`ErganiOS-ScheduledSync15Min`**
-  (`/ri 15`, `:00` / `:15` / `:30` / `:45`). Διαγράφει αυτόματα το παλιό `ErganiOS-ScheduledSync10Min`.
+- **Task Scheduler**: `scripts/setup_scheduled_sync_task.ps1` → task **`erganiOS-ScheduledSync15Min`**
+  (`/ri 15`, `:00` / `:15` / `:30` / `:45`). Διαγράφει αυτόματα τα παλιά tasks `ErganiOS-ScheduledSync10Min` / `ErganiOS-ScheduledSync15Min`.
 - **`NOTIFY_GRACE_MINUTES = 15`** (`today_notify_logic.py`): καθυστέρηση εισόδου και έλλειψη εξόδου
   ενεργοποιούνται στον **πρώτο sync ≥15'** μετά το όριο (όχι 10').
 - UI/JS: ετικέτες «>15'», «Αυτόματος συγχρονισμός server κάθε 15 λεπτά», πολιτική ληπτών
@@ -762,7 +774,7 @@
 
 - **`app/scheduled_sync.py`**: συγχρονισμός **όλων των καταστημάτων** με portal credentials για **σήμερα** — ψηφιακό ωράριο + πραγματική απασχόληση.
 - **`scripts/run_scheduled_sync.py`**: CLI για Task Scheduler (`--dry-run`, `--store-id`, `--date`, `--force`).
-- **`scripts/setup_scheduled_sync_task.ps1`**: εγκατάσταση Windows task **`ErganiOS-ScheduledSync10Min`** (μέσω `schtasks`: καθημερινά 00:00, επανάληψη κάθε **10 λεπτά**, `:00` / `:10` / `:20` …).
+- **`scripts/setup_scheduled_sync_task.ps1`**: εγκατάσταση Windows task **`erganiOS-ScheduledSync10Min`** (μέσω `schtasks`: καθημερινά 00:00, επανάληψη κάθε **10 λεπτά**, `:00` / `:10` / `:20` …).
 - **`.env`**: `KARTA_SCHEDULED_SYNC_ENABLED=1` (`0` για απενεργοποίηση).
 
 ### Καταγραφές sync (`/ui/sync-log`)

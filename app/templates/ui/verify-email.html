@@ -1,0 +1,27 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Επιβεβαίωση email' %}
+{% set shell = "public" %}
+{% set body_class = 'login-page' %}
+{% block public_content %}
+  <div class="login-shell">
+    <div class="login-card card">
+      <div class="login-brand">
+        <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
+        <p class="login-subtitle">Ψηφιακή Κάρτα Εργασίας</p>
+      </div>
+      <h1 class="login-title"><i class="bi bi-envelope-check" aria-hidden="true"></i> Επιβεβαίωση email</h1>
+      <p class="field-hint" id="verifyEmailHint">Ελέγχουμε τον σύνδεσμο επιβεβαίωσης.</p>
+      <div id="verifyEmailMsg" class="msg show loading">
+        <i class="bi bi-arrow-repeat"></i> Φόρτωση…
+      </div>
+      <div class="actions" style="margin-top:1rem;">
+        <a class="btn btn-secondary" href="/ui/login">
+          <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span>Σύνδεση</span>
+        </a>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/verify-email.js?v=20260629emailverify1"></script>
+{% endblock %}

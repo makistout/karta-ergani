@@ -99,7 +99,7 @@ Grace **15 λεπτά** (`NOTIFY_GRACE_MINUTES`) για είσοδο και έξ
 | `exit_without_entry` | Έξοδος χωρίς είσοδο. |
 
 - **Ώρες για κανόνες**: `merge_notify_work_hours()` — κάρτα υπερισχύει πραγματικής.
-- **Ακύρωση**: `card_event_blocks_today_notify()` αν υπάρχει αντίστοιχο χτύπημα στη βάση erganios.
+- **Ακύρωση**: `card_event_blocks_today_notify()` αν υπάρχει αντίστοιχο χτύπημα στη βάση erganiOS.
 - **Κείμενο alert**: ώρες ψηφ. ωραρίου + (για έξοδο) είσοδος/αναμενόμενη έξοδος — `format_today_alert_notification`.
 
 ### Debug Excel portal (σήμερα)

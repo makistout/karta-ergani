@@ -7,7 +7,9 @@ from flask import Blueprint, jsonify, request
 from app.access_control import ROLE_PERMISSIONS, all_permission_codes
 from app import repo_store
 from app import repo_users
+from app.email_notify import EmailNotConfigured
 from app.store_credentials_util import mask_store_secrets
+from app.user_email_verification import send_verification_email
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users")
 
@@ -56,6 +58,22 @@ def _json_user(user: dict) -> dict:
     for key, value in user.items():
         out[key] = value.isoformat() if hasattr(value, "isoformat") else value
     return out
+
+
+def _send_created_user_verification(user_id: int, user: dict) -> str | None:
+    email = str(user.get("email") or "").strip()
+    if not email:
+        return None
+    token = repo_users.create_email_verification_token(user_id)
+    if not token:
+        return "Δεν έχουν εφαρμοστεί τα πεδία email verification στη βάση."
+    send_verification_email(
+        email=email,
+        username=str(user.get("username") or ""),
+        full_name=str(user.get("full_name") or "") or None,
+        token=token,
+    )
+    return None
 
 
 @users_bp.get("")
@@ -126,7 +144,33 @@ def create_user():
     except Exception as ex:
         return jsonify({"error": f"Αποτυχία δημιουργίας χρήστη: {ex}"}), 400
     user = repo_users.get_user(int(user_id))
-    return jsonify({"success": True, "id": user_id, "user": _json_user(user or {})})
+    email_warning = None
+    if user:
+        try:
+            email_warning = _send_created_user_verification(int(user_id), user)
+        except EmailNotConfigured as ex:
+            email_warning = str(ex)
+        except Exception as ex:
+            email_warning = f"Αποτυχία αποστολής email επιβεβαίωσης: {ex}"
+    payload = {"success": True, "id": user_id, "user": _json_user(user or {})}
+    if email_warning:
+        payload["email_warning"] = email_warning
+    return jsonify(payload)
+
+
+@users_bp.get("/verify-email")
+def verify_email():
+    token = str(request.args.get("t") or request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"success": False, "error": "Λείπει token επιβεβαίωσης"}), 400
+    user = repo_users.verify_email_token(token)
+    if not user:
+        return jsonify({"success": False, "error": "Μη έγκυρος ή ληγμένος σύνδεσμος"}), 400
+    return jsonify({
+        "success": True,
+        "message": "Το email επιβεβαιώθηκε.",
+        "user": _json_user(user),
+    })
 
 
 @users_bp.put("/<int:user_id>")

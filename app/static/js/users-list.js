@@ -566,7 +566,11 @@ async function saveUser() {
     const data = await Office.parseJson(res);
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
     applySavedUser(data.user || { ...payload, id: Number(id || data.id) });
-    Office.showMsg("usersMsg", "Αποθηκεύτηκε.", true);
+    Office.showMsg(
+      "usersMsg",
+      data.email_warning ? `Αποθηκεύτηκε, αλλά ${data.email_warning}` : "Αποθηκεύτηκε.",
+      !data.email_warning
+    );
   } catch (e) {
     Office.showMsg("usersMsg", String(e), false);
   } finally {

@@ -177,7 +177,7 @@ def build_notification_email(
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:22px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 18px 45px rgba(15,23,42,.08);">
             <tr>
               <td style="padding:26px 28px;background:linear-gradient(135deg,#0f172a,#1d4ed8);">
-                <div style="color:#bfdbfe;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;">erganiOS</div>
+                <div style="color:#bfdbfe;font-size:12px;font-weight:800;letter-spacing:.04em;">erganiOS</div>
                 <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.2;">{html.escape(clean_title)}</h1>
                 <div style="display:inline-block;margin-top:14px;padding:7px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:#e0f2fe;font-size:13px;">{badge}</div>
               </td>

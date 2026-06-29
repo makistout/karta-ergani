@@ -9,9 +9,22 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app.access_control import ROLE_PERMISSIONS, all_permission_codes, normalize_role
 from app.db import cursor
 from app.row_util import row_to_dict, rows_to_dicts
+from app.user_email_verification import expiry_utc, new_verification_token, token_hash
 
 _tables_available: bool | None = None
 _PASSWORD_HASH_METHOD = "pbkdf2:sha256"
+
+
+def email_verification_available() -> bool:
+    if not tables_available():
+        return False
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute("SELECT COL_LENGTH(N'dbo.karta_user', N'email_verification_token_hash')")
+            row = cur.fetchone()
+            return bool(row and row[0] is not None)
+    except Exception:
+        return False
 
 
 def tables_available() -> bool:
@@ -246,6 +259,60 @@ def get_user(user_id: int) -> dict[str, Any] | None:
             is_super_admin=bool(data.get("is_super_admin")),
         )
         data["store_ids"] = list_user_store_ids(int(data["id"]))
+        return data
+
+
+def create_email_verification_token(user_id: int) -> str | None:
+    if not email_verification_available():
+        return None
+    token, hashed = new_verification_token()
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_user
+            SET email_verified_at = NULL,
+                email_verification_token_hash = ?,
+                email_verification_sent_at = SYSDATETIMEOFFSET(),
+                email_verification_expires_at = ?,
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE id = ? AND email IS NOT NULL
+            """,
+            hashed,
+            expiry_utc(),
+            int(user_id),
+        )
+    return token
+
+
+def verify_email_token(token: str) -> dict[str, Any] | None:
+    if not email_verification_available():
+        return None
+    hashed = token_hash(token)
+    with cursor() as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) id, username, email, full_name
+            FROM dbo.karta_user
+            WHERE email_verification_token_hash = ?
+              AND email_verification_expires_at >= SYSDATETIMEOFFSET()
+            """,
+            hashed,
+        )
+        row = cur.fetchone()
+        data = row_to_dict(cur, row) if row else None
+        if not data:
+            return None
+        cur.execute(
+            """
+            UPDATE dbo.karta_user
+            SET email_verified_at = SYSDATETIMEOFFSET(),
+                email_verification_token_hash = NULL,
+                email_verification_expires_at = NULL,
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE id = ?
+            """,
+            int(data["id"]),
+        )
         return data
 
 

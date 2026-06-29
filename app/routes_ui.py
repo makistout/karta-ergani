@@ -30,6 +30,11 @@ def ui_login():
     return render_template("ui/login.html")
 
 
+@ui_bp.get("/verify-email")
+def ui_verify_email():
+    return render_template("ui/verify-email.html")
+
+
 @ui_bp.get("/stores")
 def ui_stores_list():
     return render_template("ui/stores-list.html")
