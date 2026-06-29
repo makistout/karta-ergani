@@ -111,6 +111,56 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         )
         finish_run.assert_called_once()
 
+    def test_after_login_sync_enqueues_store_scope_once(self):
+        class ImmediateThread:
+            def __init__(self, target, **kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        scheduled_sync._after_login_sync_seen.clear()
+        with (
+            patch("app.scheduled_sync.threading.Thread", ImmediateThread),
+            patch("app.scheduled_sync.run_scheduled_sync") as run_sync,
+        ):
+            self.assertTrue(
+                scheduled_sync.enqueue_sync_allowed_stores_after_login(
+                    user_id=42,
+                    store_ids=[9, 7, 7],
+                )
+            )
+            self.assertFalse(
+                scheduled_sync.enqueue_sync_allowed_stores_after_login(
+                    user_id=42,
+                    store_ids=[7, 9],
+                )
+            )
+
+        run_sync.assert_called_once_with(store_ids=[7, 9], skip_if_running=True)
+
+    def test_after_login_sync_super_admin_uses_all_stores(self):
+        class ImmediateThread:
+            def __init__(self, target, **kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        scheduled_sync._after_login_sync_seen.clear()
+        with (
+            patch("app.scheduled_sync.threading.Thread", ImmediateThread),
+            patch("app.scheduled_sync.run_scheduled_sync") as run_sync,
+        ):
+            self.assertTrue(
+                scheduled_sync.enqueue_sync_allowed_stores_after_login(
+                    user_id=1,
+                    store_ids=None,
+                )
+            )
+
+        run_sync.assert_called_once_with(store_ids=None, skip_if_running=True)
+
 
 if __name__ == "__main__":
     unittest.main()

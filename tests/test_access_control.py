@@ -1,4 +1,5 @@
 from flask import Flask
+from unittest.mock import patch
 
 from app.office_auth import register_login_guard
 from app.routes_auth import auth_bp
@@ -53,3 +54,51 @@ def test_admin_can_write():
     assert login.status_code == 200
     assert login.json["role"] == "admin"
     assert client.post("/api/store/save").status_code == 200
+
+
+def test_db_login_enqueues_sync_for_user_stores():
+    client = _make_app().test_client()
+    db_user = {
+        "id": 42,
+        "username": "office-user",
+        "role": "office",
+        "permissions": ["dashboard.view"],
+        "is_super_admin": False,
+        "store_ids": [7, 9],
+    }
+
+    with (
+        patch("app.repo_users.authenticate_user", return_value=db_user),
+        patch("app.scheduled_sync.enqueue_sync_allowed_stores_after_login") as enqueue,
+    ):
+        login = client.post(
+            "/api/auth/login",
+            json={"username": "office-user", "password": "pw"},
+        )
+
+    assert login.status_code == 200
+    enqueue.assert_called_once_with(user_id=42, store_ids=[7, 9])
+
+
+def test_db_super_admin_login_enqueues_sync_for_all_stores():
+    client = _make_app().test_client()
+    db_user = {
+        "id": 1,
+        "username": "admin",
+        "role": "super_admin",
+        "permissions": ["*"],
+        "is_super_admin": True,
+        "store_ids": [],
+    }
+
+    with (
+        patch("app.repo_users.authenticate_user", return_value=db_user),
+        patch("app.scheduled_sync.enqueue_sync_allowed_stores_after_login") as enqueue,
+    ):
+        login = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "pw"},
+        )
+
+    assert login.status_code == 200
+    enqueue.assert_called_once_with(user_id=1, store_ids=None)

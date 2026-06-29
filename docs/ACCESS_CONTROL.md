@@ -17,6 +17,7 @@
 - `app/repo_users.py`: διαχειρίζεται users, roles, permissions, password hashes και store access.
 - `app/routes_users.py`: API για λίστα/δημιουργία/ενημέρωση χρήστη, reset password, permissions και stores.
 - `app/http_helpers.py` και store routes: εφαρμόζουν store scoping ώστε ο μη-super-admin να βλέπει/επιλέγει μόνο επιτρεπόμενα καταστήματα.
+- `app/scheduled_sync.py`: μετά από επιτυχές DB login κάνει enqueue background sync για τα καταστήματα του χρήστη. Για `super_admin` το scope είναι όλα τα syncable stores, για τους υπόλοιπους μόνο τα `karta_user_store`. Υπάρχει cooldown 15 λεπτών ανά user/scope για να μην τρέχει ξανά σε συνεχόμενα logins.
 - `app/templates/ui/partials/_sidebar.html`: εμφανίζει navigation items μόνο όταν ο χρήστης έχει το αντίστοιχο permission.
 - `scripts/run_migration_office_users.py` και `sql/alter_add_office_users.sql`: δημιουργούν schema και κάνουν seed τον σημερινό admin ως `super_admin`.
 
@@ -81,6 +82,13 @@
 - `karta_user_store`
 
 Κανόνας: ο χρήστης βλέπει και επιλέγει μόνο καταστήματα που υπάρχουν στο `karta_user_store`, εκτός αν είναι `super_admin`.
+
+Στο login ισχύει το ίδιο scope:
+
+- `super_admin`: κάνει background sync σε όλα τα syncable stores.
+- Λοιποί χρήστες: κάνουν background sync μόνο στα assigned stores τους.
+- Χρήστης χωρίς assigned stores: δεν ξεκινά sync.
+- Το login δεν περιμένει να τελειώσει το sync. Ο συγχρονισμός μπαίνει σε background thread.
 
 ## Φάσεις
 

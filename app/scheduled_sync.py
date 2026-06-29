@@ -23,6 +23,9 @@ OPERATION = "scheduled_today_sync"
 OPERATION_CARD_SUBMIT = "card_submit_work_log_sync"
 _RUNNING_GRACE_MINUTES = 15
 AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS = 10
+AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
+_after_login_sync_lock = threading.Lock()
+_after_login_sync_seen: dict[str, float] = {}
 
 
 def is_store_syncable(cfg: dict[str, Any]) -> bool:
@@ -380,6 +383,52 @@ def _log_batch_skip(reason: str) -> str | None:
         result={"success": True, "skipped": True, "reason": reason},
     )
     return run_id
+
+
+def _login_sync_key(user_id: int | None, store_ids: list[int] | None) -> str:
+    if store_ids is None:
+        scope = "all"
+    else:
+        scope = ",".join(str(x) for x in sorted({int(s) for s in store_ids}))
+    return f"user:{user_id or 'fallback'}|stores:{scope}"
+
+
+def enqueue_sync_allowed_stores_after_login(
+    *,
+    user_id: int | None,
+    store_ids: list[int] | None,
+) -> bool:
+    """
+    Μετά από login γραφείου, τρέχει background sync για τα καταστήματα του χρήστη.
+    `store_ids=None` σημαίνει όλα τα syncable stores, δηλαδή `super_admin`.
+    """
+    if store_ids is not None and not {int(x) for x in store_ids}:
+        return False
+    key = _login_sync_key(user_id, store_ids)
+    now = time.time()
+    with _after_login_sync_lock:
+        last = _after_login_sync_seen.get(key)
+        if last and now - last < AFTER_LOGIN_SYNC_COOLDOWN_SECONDS:
+            return False
+        _after_login_sync_seen[key] = now
+
+    ids_snapshot = None if store_ids is None else sorted({int(x) for x in store_ids})
+
+    def _run() -> None:
+        try:
+            run_scheduled_sync(
+                store_ids=ids_snapshot,
+                skip_if_running=True,
+            )
+        except Exception:
+            pass
+
+    threading.Thread(
+        target=_run,
+        daemon=True,
+        name=f"login-sync-{user_id or 'all'}",
+    ).start()
+    return True
 
 
 def run_scheduled_sync(

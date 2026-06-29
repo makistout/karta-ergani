@@ -182,6 +182,11 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
         role = _role_for_user(cur, user_id, is_super_admin=is_sa)
         permissions = _permissions_for_user(cur, user_id, role, is_super_admin=is_sa)
         cur.execute(
+            "SELECT store_id FROM dbo.karta_user_store WHERE user_id = ? ORDER BY store_id",
+            user_id,
+        )
+        store_ids = [int(row[0]) for row in cur.fetchall()]
+        cur.execute(
             "UPDATE dbo.karta_user SET last_login_at = SYSDATETIMEOFFSET() WHERE id = ?",
             user_id,
         )
@@ -193,6 +198,7 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
             "role": role,
             "is_super_admin": is_sa,
             "permissions": permissions,
+            "store_ids": store_ids,
         }
 
 

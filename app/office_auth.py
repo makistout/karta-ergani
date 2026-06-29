@@ -70,6 +70,17 @@ def login_office_user(username: str, password: str) -> bool:
         session[SESSION_PERMISSIONS] = list(db_user.get("permissions") or [])
         session[SESSION_SUPER_ADMIN] = bool(db_user.get("is_super_admin"))
         session.permanent = True
+        try:
+            from app.scheduled_sync import enqueue_sync_allowed_stores_after_login
+
+            enqueue_sync_allowed_stores_after_login(
+                user_id=int(db_user["id"]),
+                store_ids=None
+                if bool(db_user.get("is_super_admin"))
+                else list(db_user.get("store_ids") or []),
+            )
+        except Exception:
+            pass
         return True
 
     users = Config.office_users()
