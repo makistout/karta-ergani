@@ -77,6 +77,7 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
 
         with (
             patch("app.scheduled_sync.threading.Thread", ImmediateThread),
+            patch("app.scheduled_sync.time.sleep") as sleep,
             patch("app.scheduled_sync.store_api_context", return_value=ctx),
             patch("app.scheduled_sync.KartaLogger", return_value=fake_logger),
             patch("app.scheduled_sync.sync_schedule_from_portal") as schedule_sync,
@@ -97,6 +98,9 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 )
             )
 
+        sleep.assert_called_once_with(
+            scheduled_sync.AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS
+        )
         schedule_sync.assert_not_called()
         work_log_sync.assert_called_once_with(
             ctx,

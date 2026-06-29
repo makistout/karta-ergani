@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,7 @@ from config import Config
 OPERATION = "scheduled_today_sync"
 OPERATION_CARD_SUBMIT = "card_submit_work_log_sync"
 _RUNNING_GRACE_MINUTES = 15
+AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS = 10
 
 
 def is_store_syncable(cfg: dict[str, Any]) -> bool:
@@ -294,6 +296,7 @@ def enqueue_sync_store_today_after_card(
 
     def _run() -> None:
         try:
+            time.sleep(AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS)
             ctx = store_api_context(cfg_snapshot)
             sid = int(cfg_snapshot["id"])
             name = str(cfg_snapshot.get("name") or sid)

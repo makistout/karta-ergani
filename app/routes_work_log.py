@@ -25,6 +25,7 @@ from app.repo_work_log import (
     enrich_work_log_rows_with_schedule,
     enrich_work_log_history_with_card_punch,
     enrich_work_log_rows_with_card_punch,
+    append_card_punches_missing_from_work_log,
     list_work_log_missing_cards_paged,
 )
 from app.repo_schedule import schedule_table_missing_message
@@ -72,6 +73,9 @@ def work_log_list():
             )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    append_card_punches_missing_from_work_log(
+        rows, ctx["employer_afm"], ctx["branch_aa"], ergani_dates
+    )
     try:
         enrich_work_log_rows_with_schedule(
             rows, ctx["employer_afm"], ctx["branch_aa"], ergani_dates

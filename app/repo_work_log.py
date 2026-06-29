@@ -207,6 +207,8 @@ def _card_db_details_by_employee_work_date(
         hm = _card_event_time_hm(card.get("f_date"))
         entry = {
             "time": hm,
+            "eponymo": str(card.get("f_eponymo") or "").strip() or None,
+            "onoma": str(card.get("f_onoma") or "").strip() or None,
             "protocol": str(card.get("protocol") or "").strip() or None,
             "recorded_at": _format_recorded_at(card.get("declaration_created_at")),
         }
@@ -339,6 +341,90 @@ def enrich_work_log_rows_with_card_punch(
         slots = by_key.get((afm, wd), [])
         submitted = card_types.get((afm, wd), set())
         _attach_card_punch_hint(row, slots, submitted_types=submitted)
+    return rows
+
+
+def append_card_punches_missing_from_work_log(
+    rows: list[dict[str, Any]],
+    employer_afm: str,
+    branch_aa: str,
+    work_dates: list[str],
+) -> list[dict[str, Any]]:
+    """Προσθέτει τοπικά χτυπήματα κάρτας που δεν έχουν εμφανιστεί ακόμα στην πραγματική."""
+    dates = list(
+        dict.fromkeys(str(d or "").strip() for d in work_dates if str(d or "").strip())
+    )
+    if not dates:
+        return rows
+
+    card_details = _card_db_details_by_employee_work_date(employer_afm, branch_aa, dates)
+    if not card_details:
+        return rows
+
+    existing: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (
+            norm_afm(row.get("employee_afm") or ""),
+            str(row.get("work_date") or "").strip(),
+        )
+        existing.add(key)
+        detail = card_details.get(key)
+        if not detail:
+            continue
+        check_in = detail.get("check_in") or {}
+        check_out = detail.get("check_out") or {}
+        row.setdefault("card_db_in", check_in or None)
+        row.setdefault("card_db_out", check_out or None)
+        if not str(row.get("hour_from") or "").strip() and check_in.get("time"):
+            row["hour_from"] = check_in.get("time") or ""
+            row["hour_from_source"] = "card_event_fallback"
+            row["from_card_event_fallback"] = True
+        if not str(row.get("hour_to") or "").strip() and check_out.get("time"):
+            row["hour_to"] = check_out.get("time") or ""
+            row["hour_to_source"] = "card_event_fallback"
+            row["from_card_event_fallback"] = True
+
+    added: list[dict[str, Any]] = []
+    for (employee_afm, work_date), detail in card_details.items():
+        if not employee_afm or not work_date or (employee_afm, work_date) in existing:
+            continue
+        check_in = detail.get("check_in") or {}
+        check_out = detail.get("check_out") or {}
+        if not check_in.get("time") and not check_out.get("time"):
+            continue
+        added.append({
+            "id": None,
+            "employee_afm": employee_afm,
+            "hour_from": check_in.get("time") or "",
+            "hour_to": check_out.get("time") or "",
+            "work_date": work_date,
+            "source_aa": "card_event_fallback",
+            "is_end_date_different": None,
+            "eponymo": check_in.get("eponymo") or check_out.get("eponymo") or "",
+            "onoma": check_in.get("onoma") or check_out.get("onoma") or "",
+            "flex_arrival_minutes": None,
+            "synced_at": None,
+            "employee_active": True,
+            "from_card_event_fallback": True,
+            "hour_from_source": "card_event_fallback" if check_in.get("time") else None,
+            "hour_to_source": "card_event_fallback" if check_out.get("time") else None,
+            "card_db_in": check_in or None,
+            "card_db_out": check_out or None,
+        })
+        existing.add((employee_afm, work_date))
+
+    if not added:
+        return rows
+
+    rows.extend(added)
+    rows.sort(
+        key=lambda r: (
+            str(r.get("work_date") or ""),
+            str(r.get("hour_from") or ""),
+            str(r.get("eponymo") or ""),
+            str(r.get("employee_afm") or ""),
+        )
+    )
     return rows
 
 

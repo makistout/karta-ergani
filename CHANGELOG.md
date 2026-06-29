@@ -12,12 +12,18 @@
 
 - Μετά από επιτυχημένη αποστολή ψηφιακής κάρτας από `/ui/work-card`, ξεκινά background
   συγχρονισμός αποκλειστικά της Πραγματικής Απασχόλησης από το Ergani portal.
+- Το after-card sync περιμένει 10 δευτερόλεπτα πριν διαβάσει το portal, ώστε να προλαβαίνει
+  να εμφανιστεί το νέο WRKCardSE χτύπημα στο Ημερολόγιο Πραγματικής Απασχόλησης.
 - Η ίδια συμπεριφορά ισχύει και για `today-hit`/retro-hit, επειδή περνά από το κοινό
   `_submit_work_card`.
 - Το after-card background job δεν συγχρονίζει πλέον ψηφιακό ωράριο και δεν κάνει δεύτερο
   enqueue από το Telegram service.
+- Η λίστα `/api/work-log/list` συμπληρώνει την εικόνα από τα δικά μας `karta_card_event`:
+  αν το portal δεν έχει ακόμα φέρει γραμμή ή λείπει είσοδος/έξοδος, εμφανίζεται fallback
+  ώρα από τη δήλωση κάρτας που αποθηκεύσαμε τοπικά.
 - Προστέθηκε regression test που επιβεβαιώνει ότι το after-card sync καλεί μόνο
-  `sync_work_log_from_portal` και όχι `sync_schedule_from_portal`.
+  `sync_work_log_from_portal` και όχι `sync_schedule_from_portal`, καθώς και test για το
+  fallback merge τοπικών χτυπημάτων στη λίστα πραγματικής.
 
 ---
 
