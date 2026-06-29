@@ -13,6 +13,9 @@ SESSION_USER_ID = "office_user_id"
 SESSION_PERMISSIONS = "office_permissions"
 SESSION_SUPER_ADMIN = "office_super_admin"
 
+ADMIN_NAV_ROLES = {"super_admin", "admin", "backoffice_admin"}
+ADMIN_ONLY_NAVS = {"sync", "storenotify", "synclog"}
+
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
     "employees.export",
@@ -49,18 +52,12 @@ VIEWER_PERMISSIONS: set[str] = {
     "work_log.view",
     "missing_cards.view",
     "work_card.view",
-    "logs.view",
-    "logs.view_sync",
-    "logs.view_work_cards",
     "stores.view",
     "stores.select",
     "ergani.catalog",
 }
 
 OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
-    "sync.view",
-    "sync.run_store",
-    "sync.view_progress",
     "work_log.sync",
     "schedule.sync",
     "monthly_status.view",
@@ -77,17 +74,24 @@ OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
     "schedule.submit_weekly",
 }
 
-STORE_MANAGER_PERMISSIONS: set[str] = OFFICE_OPERATOR_PERMISSIONS | {
-    "notifications.view",
-    "notifications.snooze",
-    "notifications.send_test",
-    "logs.view_notifications",
-}
+STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS)
 
 BACKOFFICE_ADMIN_PERMISSIONS: set[str] = STORE_MANAGER_PERMISSIONS | {
+    "sync.view",
+    "sync.run_store",
     "sync.run_period",
+    "sync.view_progress",
+    "notifications.view",
     "notifications.recipients.manage",
     "notifications.rules.manage",
+    "notifications.snooze",
+    "notifications.send_test",
+    "logs.view",
+    "logs.view_sync",
+    "logs.view_notifications",
+    "logs.view_work_cards",
+    "logs.view_errors",
+    "logs.export",
     "stores.manage",
     "stores.api_env.manage",
 }
@@ -104,17 +108,21 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "dashboard.view",
         "stores.view",
         "stores.select",
-        "notifications.view",
-        "notifications.recipients.manage",
-        "notifications.rules.manage",
-        "notifications.snooze",
-        "notifications.send_test",
-        "logs.view",
-        "logs.view_notifications",
     },
 }
 
 DEFAULT_ROLE = "super_admin"
+ROLE_ALIASES = {
+    "super-admin": "super_admin",
+    "super admin": "super_admin",
+    "backoffice-admin": "backoffice_admin",
+    "backoffice admin": "backoffice_admin",
+    "backoffice": "backoffice_admin",
+    "office-manager": "office_manager",
+    "office manager": "office_manager",
+    "store-viewer": "store_viewer",
+    "store viewer": "store_viewer",
+}
 
 UI_PERMISSIONS: dict[str, str] = {
     "/ui/": "dashboard.view",
@@ -210,8 +218,11 @@ API_RULES: tuple[RouteRule, ...] = (
 
 
 def normalize_role(role: str | None) -> str:
-    value = (role or DEFAULT_ROLE).strip().lower()
-    return value if value in ROLE_PERMISSIONS else DEFAULT_ROLE
+    if role is None or not str(role).strip():
+        return DEFAULT_ROLE
+    value = str(role).strip().lower()
+    value = ROLE_ALIASES.get(value, value)
+    return value if value in ROLE_PERMISSIONS else "viewer"
 
 
 def permissions_for_role(role: str | None) -> set[str]:
@@ -243,6 +254,17 @@ def current_permissions() -> set[str]:
 
 def is_super_admin() -> bool:
     return bool(session.get(SESSION_SUPER_ADMIN)) or "*" in current_permissions()
+
+
+def is_admin_role(role: str | None = None) -> bool:
+    return normalize_role(role if role is not None else current_role()) in ADMIN_NAV_ROLES
+
+
+def nav_item_allowed(item: dict[str, str]) -> bool:
+    nav = str(item.get("nav") or "")
+    if nav in ADMIN_ONLY_NAVS and not is_admin_role():
+        return False
+    return has_permission(item.get("permission"))
 
 
 def current_user_id() -> int | None:
@@ -325,4 +347,5 @@ def register_access_context(app: Flask) -> None:
             "office_nav_items": NAV_ITEMS,
             "office_role": current_role,
             "office_has_permission": has_permission,
+            "office_nav_item_allowed": nav_item_allowed,
         }

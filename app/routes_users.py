@@ -42,6 +42,15 @@ def _parse_permissions(data: dict) -> list[str]:
     return sorted({str(x).strip() for x in raw if str(x).strip() in allowed})
 
 
+def _store_scope_error(data: dict):
+    role = str(data.get("role") or "viewer").strip().lower()
+    if role == "super_admin":
+        return None
+    if _parse_store_ids(data):
+        return None
+    return jsonify({"error": "Επιλέξτε τουλάχιστον ένα κατάστημα για τον χρήστη"}), 400
+
+
 def _json_user(user: dict) -> dict:
     out = {}
     for key, value in user.items():
@@ -100,6 +109,9 @@ def create_user():
     password = str(data.get("password") or "")
     if not username or not password:
         return jsonify({"error": "Συμπληρώστε username και password"}), 400
+    store_scope_error = _store_scope_error(data)
+    if store_scope_error:
+        return store_scope_error
     try:
         user_id = repo_users.create_user(
             username=username,
@@ -113,7 +125,8 @@ def create_user():
         )
     except Exception as ex:
         return jsonify({"error": f"Αποτυχία δημιουργίας χρήστη: {ex}"}), 400
-    return jsonify({"success": True, "id": user_id})
+    user = repo_users.get_user(int(user_id))
+    return jsonify({"success": True, "id": user_id, "user": _json_user(user or {})})
 
 
 @users_bp.put("/<int:user_id>")
@@ -124,6 +137,9 @@ def update_user(user_id: int):
     data = request.get_json(silent=True) or {}
     if not repo_users.get_user(user_id):
         return jsonify({"error": "Δεν βρέθηκε χρήστης"}), 404
+    store_scope_error = _store_scope_error(data)
+    if store_scope_error:
+        return store_scope_error
     repo_users.update_user(
         user_id,
         email=str(data.get("email") or "").strip() or None,
@@ -131,7 +147,12 @@ def update_user(user_id: int):
         role=str(data.get("role") or "viewer"),
         is_active=bool(data.get("is_active", True)),
     )
-    return jsonify({"success": True})
+    if "permissions" in data:
+        repo_users.replace_user_permissions(user_id, _parse_permissions(data))
+    if "store_ids" in data:
+        repo_users.replace_user_stores(user_id, _parse_store_ids(data))
+    user = repo_users.get_user(user_id)
+    return jsonify({"success": True, "user": _json_user(user or {})})
 
 
 @users_bp.post("/<int:user_id>/password")

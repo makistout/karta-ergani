@@ -12,12 +12,48 @@ let tableState = {
   pendingRows: [],
 };
 
+async function fetchJsonWithTimeout(url, { timeoutMs = 25000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`Σφάλμα διακομιστή (HTTP ${res.status}).`);
+    }
+    if (!res.ok) {
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error("Η φόρτωση αργεί υπερβολικά. Δοκιμάστε ξανά ή κάντε συγχρονισμό πραγματικής για το κατάστημα.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("missingcards");
   Office.initWorkLogHistoryModal();
-  const activeData = await Office.fetchActiveStore();
-  Office.applyActiveStoreChrome(activeData);
-  await loadMissingCards(1, 1, activeData);
+  try {
+    const activeData = await Office.fetchActiveStore();
+    Office.applyActiveStoreChrome(activeData);
+    await loadMissingCards(1, 1, activeData);
+  } catch (e) {
+    const err = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    document.getElementById("missingCardsWrap").innerHTML = err;
+    document.getElementById("missingCardsClosedWrap").innerHTML = err;
+  }
 });
 
 async function loadMissingCards(page, closedPage = 1, cachedActive) {
@@ -41,24 +77,7 @@ async function loadMissingCards(page, closedPage = 1, cachedActive) {
       closed_page: String(closedPage),
       closed_page_size: String(Office.TABLE_PAGE_SIZE),
     });
-    const res = await fetch(`/api/work-log/missing-cards?${qs}`, { cache: "no-store" });
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα διακομιστή (HTTP ${res.status}).</p>`;
-      if (closedWrap) closedWrap.innerHTML = "";
-      return;
-    }
-    if (!res.ok) {
-      const err = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
-      wrap.innerHTML = err;
-      if (closedWrap) closedWrap.innerHTML = err;
-      if (data.db_setup) {
-        wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;">${Office.escapeHtml(data.db_setup)}</p>`;
-      }
-      return;
-    }
+    const data = await fetchJsonWithTimeout(`/api/work-log/missing-cards?${qs}`);
     tableState = {
       page: data.page || page,
       total: data.total || 0,
@@ -79,8 +98,13 @@ async function loadMissingCards(page, closedPage = 1, cachedActive) {
     renderTablePage(data.work_log || []);
     renderClosedTablePage(data.closed_work_log || []);
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
-    if (closedWrap) closedWrap.innerHTML = "";
+    const data = e.data || {};
+    const err = `<p style="color:var(--err);">${Office.escapeHtml(e.message || String(e))}</p>`;
+    wrap.innerHTML = err;
+    if (closedWrap) closedWrap.innerHTML = err;
+    if (data.db_setup) {
+      wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;">${Office.escapeHtml(data.db_setup)}</p>`;
+    }
   }
 }
 

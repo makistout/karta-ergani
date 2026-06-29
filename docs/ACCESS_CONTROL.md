@@ -24,11 +24,11 @@
 ## Ρόλοι
 
 - `super_admin`: όλα, όλα τα καταστήματα.
-- `admin` / `backoffice_admin`: backoffice λειτουργίες χωρίς secrets/users by default.
-- `office_manager`: λειτουργία γραφείου, sync, κάρτες, ελλιπή χτυπήματα, ειδοποιήσεις, logs στα καταστήματά του.
+- `admin` / `backoffice_admin`: backoffice λειτουργίες, global συγχρονισμός, ειδοποιήσεις και καταγραφές.
+- `office_manager`: λειτουργία γραφείου, κάρτες και ελλιπή χτυπήματα στα καταστήματά του.
 - `office`: καθημερινές ενέργειες χειριστή.
 - `store_viewer` / `viewer`: μόνο προβολή.
-- `notifications_manager`: ειδοποιήσεις και αντίστοιχα logs.
+- `notifications_manager`: δεν έχει πρόσβαση σε ειδοποιήσεις/καταγραφές εκτός αν αναβαθμιστεί σε admin-level ρόλο.
 
 ## UI Χρηστών
 
@@ -57,6 +57,12 @@
 - Καταγραφές: `logs.view`, `logs.view_sync`, `logs.view_notifications`, `logs.view_work_cards`, `logs.view_errors`, `logs.export`
 - Χρήστες / δικαιώματα: `users.view`, `users.create`, `users.edit`, `users.disable`, `users.reset_password`, `users.manage_permissions`, `users.manage_store_access`
 - Ρυθμίσεις: `settings.view`, `settings.edit`, `settings.secrets.manage`, `settings.scheduler.manage`
+
+Οι σελίδες `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές`, μαζί με τα αντίστοιχα global API permissions, είναι admin-only: `admin`, `backoffice_admin` και `super_admin`.
+
+Στο sidebar/menu οι επιλογές `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές` κόβονται με βάση τον ρόλο, όχι μόνο με βάση granular permissions. Αυτό σημαίνει ότι `office`, `office_manager`, `viewer`, `store_viewer` και `notifications_manager` δεν τις βλέπουν ακόμη κι αν έχουν απομείνει explicit permissions όπως `sync.view`, `notifications.view` ή `logs.view` στο session/DB.
+
+Το role normalization αναγνωρίζει aliases όπως `office manager`, `office-manager`, `backoffice` και `store viewer`. Άγνωστος ρόλος πέφτει σε `viewer` και όχι σε `super_admin`.
 
 ## Dangerous Permissions
 

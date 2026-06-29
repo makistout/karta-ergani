@@ -25,19 +25,6 @@ Object.assign(window.Office, {
       const label = a.textContent.trim();
       a.innerHTML = `${this.icon(navIcons[key] || "circle")}<span>${label}</span>`;
     });
-    document.querySelectorAll(".sidebar nav").forEach((nav) => {
-      if (nav.querySelector('a[data-nav="storenotify"]')) return;
-      const storesLink = nav.querySelector('a[data-nav="stores"]');
-      if (!storesLink) return;
-      const a = document.createElement("a");
-      a.href = "/ui/stores/notify";
-      a.dataset.nav = "storenotify";
-      a.textContent = "Ειδοποιήσεις";
-      storesLink.insertAdjacentElement("afterend", a);
-      if (!a.querySelector(".bi")) {
-        a.innerHTML = `${this.icon(navIcons.storenotify)}<span>Ειδοποιήσεις</span>`;
-      }
-    });
     document.querySelectorAll(".sidebar").forEach((sb) => {
       let box = sb.querySelector("#sidebarActiveStore");
       if (!box) {

@@ -564,14 +564,22 @@ def _missing_rows_from_card_events(
         if card.get("flex_arrival_minutes") is not None:
             slot["flex_arrival_minutes"] = card.get("flex_arrival_minutes")
 
+    work_dates = list(dict.fromkeys(wd for _, wd in by_key.keys()))
+    work_log_rows: list[dict[str, Any]] = []
+    for i in range(0, len(work_dates), 62):
+        work_log_rows.extend(
+            list_work_log_for_range(afm, aa, work_dates[i : i + 62], limit=20000)
+        )
+    work_log_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in work_log_rows:
+        e_afm = norm_afm(row.get("employee_afm") or "")
+        wd = str(row.get("work_date") or "").strip()
+        if e_afm and wd and (e_afm, wd) not in work_log_by_key:
+            work_log_by_key[(e_afm, wd)] = row
+
     gaps: list[dict[str, Any]] = []
     for (e_afm, wd), slot in by_key.items():
-        wl_rows = [
-            r
-            for r in list_work_log_for_store(afm, aa, wd, limit=20)
-            if norm_afm(r.get("employee_afm") or "") == e_afm
-        ]
-        wl = wl_rows[0] if wl_rows else None
+        wl = work_log_by_key.get((e_afm, wd))
         hf = str(wl.get("hour_from") or "").strip() if wl else ""
         ht = str(wl.get("hour_to") or "").strip() if wl else ""
         if hf and ht:

@@ -10,7 +10,7 @@
   </button>
   <nav id="officeSidebarNav">
     {% for item in office_nav_items %}
-      {% if office_has_permission(item.permission) %}
+      {% if office_nav_item_allowed(item) %}
         <a href="{{ item.href }}" data-nav="{{ item.nav }}" class="{{ 'active' if active_nav == item.nav else '' }}">{{ item.label }}</a>
       {% endif %}
     {% endfor %}

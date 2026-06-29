@@ -505,7 +505,36 @@ function applyRoleTemplate() {
   setCheckedPermissions(usersState.rolePermissions[role] || []);
 }
 
+function upsertUser(user) {
+  if (!user || !user.id) return;
+  const id = Number(user.id);
+  const idx = usersState.users.findIndex((item) => Number(item.id) === id);
+  if (idx >= 0) usersState.users[idx] = user;
+  else usersState.users.push(user);
+}
+
+function applySavedUser(user) {
+  if (!user || !user.id) return;
+  upsertUser(user);
+  usersState.selected = user;
+  document.getElementById("userId").value = user.id;
+  document.getElementById("userFormTitle").textContent = "Επεξεργασία χρήστη";
+  document.getElementById("userUsername").disabled = true;
+  document.getElementById("userUsername").value = user.username || "";
+  document.getElementById("userEmail").value = user.email || "";
+  document.getElementById("userFullName").value = user.full_name || "";
+  document.getElementById("userPassword").value = "";
+  document.getElementById("userActive").checked = Boolean(user.is_active);
+  document.getElementById("userRole").value = user.role || "viewer";
+  usersState.selectedStoreIds = new Set((user.store_ids || []).map(Number));
+  renderUsersList();
+  renderStores();
+  renderPermissions(user.permissions || []);
+  renderPermissionComparison();
+}
+
 async function saveUser() {
+  const saveBtn = document.getElementById("btnSaveUser");
   const id = document.getElementById("userId").value;
   const payload = {
     username: document.getElementById("userUsername").value.trim(),
@@ -521,6 +550,13 @@ async function saveUser() {
     Office.showMsg("usersMsg", "Συμπληρώστε password για νέο χρήστη.", false);
     return;
   }
+  if (payload.role !== "super_admin" && !payload.store_ids.length) {
+    Office.showMsg("usersMsg", "Επιλέξτε τουλάχιστον ένα κατάστημα για τον χρήστη.", false);
+    document.getElementById("userStoreSearch")?.focus();
+    return;
+  }
+  Office.setButtonLoading(saveBtn, true);
+  Office.showMsg("usersMsg", "Αποθήκευση…", true);
   try {
     const res = await fetch(id ? `/api/users/${id}` : "/api/users", {
       method: id ? "PUT" : "POST",
@@ -529,26 +565,12 @@ async function saveUser() {
     });
     const data = await Office.parseJson(res);
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-    const userId = id || data.id;
-    let extra = await fetch(`/api/users/${userId}/permissions`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ permissions: payload.permissions }),
-    });
-    let extraData = await Office.parseJson(extra);
-    if (!extra.ok || extraData.error) throw new Error(extraData.error || `HTTP ${extra.status}`);
-    extra = await fetch(`/api/users/${userId}/stores`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ store_ids: payload.store_ids }),
-    });
-    extraData = await Office.parseJson(extra);
-    if (!extra.ok || extraData.error) throw new Error(extraData.error || `HTTP ${extra.status}`);
-    usersState.selected = { id: Number(userId) };
-    await loadUsers();
+    applySavedUser(data.user || { ...payload, id: Number(id || data.id) });
     Office.showMsg("usersMsg", "Αποθηκεύτηκε.", true);
   } catch (e) {
     Office.showMsg("usersMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(saveBtn, false);
   }
 }
 
