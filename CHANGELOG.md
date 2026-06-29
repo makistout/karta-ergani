@@ -8,6 +8,19 @@
 
 ---
 
+## 2026-06-29 — After-card sync μόνο Πραγματικής Απασχόλησης
+
+- Μετά από επιτυχημένη αποστολή ψηφιακής κάρτας από `/ui/work-card`, ξεκινά background
+  συγχρονισμός αποκλειστικά της Πραγματικής Απασχόλησης από το Ergani portal.
+- Η ίδια συμπεριφορά ισχύει και για `today-hit`/retro-hit, επειδή περνά από το κοινό
+  `_submit_work_card`.
+- Το after-card background job δεν συγχρονίζει πλέον ψηφιακό ωράριο και δεν κάνει δεύτερο
+  enqueue από το Telegram service.
+- Προστέθηκε regression test που επιβεβαιώνει ότι το after-card sync καλεί μόνο
+  `sync_work_log_from_portal` και όχι `sync_schedule_from_portal`.
+
+---
+
 ## 2026-06-28 — WRKCardSE live χτύπημα και `f_aitiologia`
 
 - Για τρέχουσες δηλώσεις ψηφιακής κάρτας από το UI, η υποβολή δοκιμάζει πρώτα χωρίς
