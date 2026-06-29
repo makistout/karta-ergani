@@ -7,13 +7,18 @@ from app.access_control import (
     SESSION_ROLE,
     SESSION_SUPER_ADMIN,
     normalize_role,
+    permission_for_path,
+    permissions_for_role,
     register_access_context,
 )
 from app.office_auth import register_login_guard
 from app.office_auth import SESSION_LOGGED_IN, SESSION_USER
 from app.routes_auth import auth_bp
 from app.routes_users import users_bp
+from app.routes_work_log import work_log_bp
+from app.work_card_payload import tz_athens
 from config import Config
+from datetime import datetime, timedelta
 
 
 @pytest.fixture(autouse=True)
@@ -141,6 +146,61 @@ def test_role_aliases_do_not_fallback_to_super_admin():
     assert normalize_role("office-manager") == "office_manager"
     assert normalize_role("backoffice") == "backoffice_admin"
     assert normalize_role("not-a-real-role") == "viewer"
+
+
+def test_non_admin_sync_permissions_are_limited_to_work_card_refresh():
+    office_permissions = permissions_for_role("office_manager")
+
+    assert "work_card.sync_refresh" in office_permissions
+    assert "schedule.sync" not in office_permissions
+    assert "work_log.sync" not in office_permissions
+    assert "monthly_status.sync" not in office_permissions
+    assert "missing_cards.sync_refresh" not in office_permissions
+    assert "sync.view" not in office_permissions
+
+
+def test_work_card_sync_uses_separate_permission():
+    assert permission_for_path("/api/work-log/work-card-sync", "POST") == "work_card.sync_refresh"
+    assert permission_for_path("/api/work-log/sync", "POST") == "work_log.sync"
+
+
+def test_non_admin_work_card_sync_only_allows_today():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    register_access_context(app)
+    register_login_guard(app)
+    app.register_blueprint(work_log_bp)
+    client = app.test_client()
+    today = datetime.now(tz_athens()).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    ctx = {
+        "id": 7,
+        "name": "Store",
+        "employer_afm": "123456789",
+        "branch_aa": "0",
+    }
+
+    with client.session_transaction() as session:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = "makis"
+        session[SESSION_ROLE] = "office_manager"
+        session[SESSION_SUPER_ADMIN] = False
+        session[SESSION_PERMISSIONS] = sorted(permissions_for_role("office_manager"))
+
+    with (
+        patch("app.routes_work_log.resolve_active_store", return_value=ctx),
+        patch(
+            "app.routes_work_log.start_async_portal_sync",
+            return_value={"async": True, "job_id": "test-job"},
+        ) as sync,
+    ):
+        rejected = client.post("/api/work-log/work-card-sync", json={"date": yesterday})
+        accepted = client.post("/api/work-log/work-card-sync", json={"date": today.isoformat()})
+
+    assert rejected.status_code == 403
+    assert "μόνο για σήμερα" in rejected.json["error"]
+    assert accepted.status_code == 200
+    sync.assert_called_once()
 
 
 def test_notifications_and_logs_are_admin_only():

@@ -62,6 +62,12 @@
 
 Στο sidebar/menu οι επιλογές `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές` κόβονται με βάση τον ρόλο, όχι μόνο με βάση granular permissions. Αυτό σημαίνει ότι `office`, `office_manager`, `viewer`, `store_viewer` και `notifications_manager` δεν τις βλέπουν ακόμη κι αν έχουν απομείνει explicit permissions όπως `sync.view`, `notifications.view` ή `logs.view` στο session/DB.
 
+Οι non-admin χρήστες δεν βλέπουν επιλογές συγχρονισμού σε `Εργαζόμενοι`, `Ψηφιακό ωράριο`, `Πραγματική απασχόληση`, `Ελλιπή χτυπήματα` ή στη global σελίδα `Συγχρονισμός`. Η μοναδική επιτρεπτή λειτουργία συγχρονισμού για non-admin είναι μέσα από τη σελίδα `Ψηφιακή κάρτα`, μέσω `work_card.sync_refresh` και του endpoint `/api/work-log/work-card-sync`.
+
+Για non-admin χρήστες, το `/api/work-log/work-card-sync` επιτρέπεται μόνο για τη σημερινή ημερομηνία. Παλιότερη ή μελλοντική ημερομηνία στην `Ψηφιακή κάρτα` φορτώνει μόνο τοπικά δεδομένα και δεν κάνει portal sync.
+
+Τα γενικά sync permissions `schedule.sync`, `work_log.sync`, `monthly_status.sync`, `missing_cards.sync_refresh`, `sync.run_store`, `sync.run_period`, `sync.run_all` και `sync.view_progress` προορίζονται για admin-level ρόλους.
+
 Το role normalization αναγνωρίζει aliases όπως `office manager`, `office-manager`, `backoffice` και `store viewer`. Άγνωστος ρόλος πέφτει σε `viewer` και όχι σε `super_admin`.
 
 ## Audit Login

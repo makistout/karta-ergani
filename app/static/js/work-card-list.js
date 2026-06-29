@@ -298,7 +298,7 @@ async function refreshDayData(options = {}) {
       return;
     }
     const payload = await Office.runPortalSync({
-      url: "/api/work-log/sync",
+      url: "/api/work-log/work-card-sync",
       body: { date },
       msgId: "wcMsg",
       btnId: "btnRefreshCards",

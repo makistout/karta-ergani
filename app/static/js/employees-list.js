@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("employees");
-  document.getElementById("btnSyncEmployees").onclick = runSync;
+  const btnSync = document.getElementById("btnSyncEmployees");
+  if (btnSync) btnSync.onclick = runSync;
   loadEmployees();
 });
 
@@ -13,13 +14,15 @@ async function loadEmployees() {
     const activeData = await activeRes.json();
     if (!activeData.store) {
       desc.textContent = "Επιλέξτε ενεργό κατάστημα από Καταστήματα (βλ. sidebar).";
-      btnSync.disabled = true;
+      if (btnSync) btnSync.disabled = true;
       wrap.innerHTML =
         `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Δεν υπάρχει ενεργό κατάστημα.</span></p>`;
       return;
     }
-    desc.textContent = "Συγχρονισμός και προβολή εργαζομένων Ergani για το ενεργό κατάστημα.";
-    btnSync.disabled = false;
+    desc.textContent = btnSync
+      ? "Συγχρονισμός και προβολή εργαζομένων Ergani για το ενεργό κατάστημα."
+      : "Προβολή εργαζομένων Ergani για το ενεργό κατάστημα.";
+    if (btnSync) btnSync.disabled = false;
     await Office.loadActiveStore();
 
     const res = await fetch("/api/employees/list");
@@ -38,7 +41,7 @@ function renderTable(rows, count, store) {
   const wrap = document.getElementById("employeesWrap");
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν εργαζόμενοι. Πατήστε «Συγχρονισμός Ergani».</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν εργαζόμενοι.</span></p>`;
     return;
   }
   const branchAa = store?.branch_aa ?? rows[0]?.parartima_aa ?? "—";

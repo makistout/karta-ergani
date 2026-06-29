@@ -9,9 +9,11 @@
       <div class="toolbar-dates card">
         <div class="toolbar-dates-row">
           <div id="workLogDatePicker"></div>
+          {% if office_is_admin_role() %}
           <button type="button" class="btn" id="btnSyncWorkLog" disabled>
             <i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός Ergani</span>
           </button>
+          {% endif %}
         </div>
       </div>
       <div class="card list-card">
@@ -36,5 +38,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/work-log-list.js?v=20260620wlsnooze1"></script>
+  <script src="/static/js/work-log-list.js?v=20260629syncroles1"></script>
 {% endblock %}

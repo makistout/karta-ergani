@@ -8,6 +8,7 @@ from datetime import datetime
 import pyodbc
 from flask import Blueprint, jsonify, request
 
+from app.access_control import is_admin_role
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
 from app.portal_work_log_sync import iter_work_log_sync_events
@@ -308,6 +309,15 @@ def work_log_missing_cards():
 
 @work_log_bp.post("/sync")
 def work_log_sync_route():
+    return _run_work_log_sync()
+
+
+@work_log_bp.post("/work-card-sync")
+def work_card_work_log_sync_route():
+    return _run_work_log_sync(work_card_context=True)
+
+
+def _run_work_log_sync(*, work_card_context: bool = False):
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"error": "Δεν έχει επιλεγεί κατάστημα"}), 400
@@ -315,6 +325,12 @@ def work_log_sync_route():
     from_iso, to_iso, dates = parse_sync_request(data)
     if not from_iso:
         return jsonify({"error": "Λείπει date ή from/to"}), 400
+    if work_card_context and not is_admin_role():
+        today_iso = datetime.now(tz_athens()).date().isoformat()
+        if from_iso != today_iso or to_iso != today_iso:
+            return jsonify({
+                "error": "Η ανανέωση Ψηφιακής Κάρτας επιτρέπεται μόνο για σήμερα",
+            }), 403
 
     if should_run_async(data, dates):
         store_ctx = dict(ctx)

@@ -58,17 +58,13 @@ VIEWER_PERMISSIONS: set[str] = {
 }
 
 OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
-    "work_log.sync",
-    "schedule.sync",
     "monthly_status.view",
-    "monthly_status.sync",
     "work_card.submit_live",
     "work_card.submit_retro",
     "work_card.view_history",
     "work_card.sync_refresh",
     "missing_cards.close_one",
     "missing_cards.close_all",
-    "missing_cards.sync_refresh",
     "schedule.submit_leave",
     "schedule.submit_daily",
     "schedule.submit_weekly",
@@ -181,6 +177,7 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/work-log/history", "work_log.view"),
     RouteRule("GET", "/api/work-log/missing-cards", "missing_cards.view"),
     RouteRule("GET", "/api/work-log/missing-cards/close-all-plan", "missing_cards.close_all"),
+    RouteRule("POST", "/api/work-log/work-card-sync", "work_card.sync_refresh"),
     RouteRule("POST", "/api/work-log/sync", "work_log.sync"),
     RouteRule("GET", "/api/work-log/sync/status/*", "work_log.view"),
     RouteRule("GET", "/api/monthly-status/*", "monthly_status.view"),
@@ -348,4 +345,5 @@ def register_access_context(app: Flask) -> None:
             "office_role": current_role,
             "office_has_permission": has_permission,
             "office_nav_item_allowed": nav_item_allowed,
+            "office_is_admin_role": is_admin_role,
         }

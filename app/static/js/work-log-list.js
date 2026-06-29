@@ -9,7 +9,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     mode: "range",
     onApply: () => loadWorkLog(),
   });
-  document.getElementById("btnSyncWorkLog").onclick = () => runSync();
+  const btnSync = document.getElementById("btnSyncWorkLog");
+  if (btnSync) btnSync.onclick = () => runSync();
 
   try {
     const activeData = await Office.fetchActiveStore();
@@ -43,12 +44,12 @@ async function loadWorkLog(cachedActive) {
   try {
     const activeData = cachedActive || (await Office.fetchActiveStore());
     if (!activeData.store) {
-      btn.disabled = true;
+      if (btn) btn.disabled = true;
       wrap.innerHTML =
         `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Επιλέξτε ενεργό κατάστημα (sidebar).</span></p>`;
       return;
     }
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
     const res = await fetch(`/api/work-log/list?${listQuery(r)}`);
     let data = {};
     try {
@@ -89,7 +90,7 @@ function renderTablePage() {
   const showTodayNotify = rangeIncludesToday(range);
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές. Πατήστε «Συγχρονισμός Ergani».</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχουν εγγραφές.</span></p>`;
     return;
   }
 
