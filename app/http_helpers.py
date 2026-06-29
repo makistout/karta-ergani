@@ -57,6 +57,23 @@ def resolve_active_store(*, refresh_session: bool = True) -> dict[str, Any] | No
         ):
             session.pop(key, None)
         return None
+    try:
+        from app.access_control import can_access_store
+
+        if not can_access_store(int(sid)):
+            for key in (
+                "active_store_id",
+                "ergani_bearer",
+                "ergani_bearer_store_id",
+                "ergani_bearer_env",
+                "employer_afm",
+                "branch_aa",
+                "ergani_env",
+            ):
+                session.pop(key, None)
+            return None
+    except Exception:
+        pass
     from app.ergani_env import store_api_context
 
     ctx = store_api_context(cfg)

@@ -20,6 +20,8 @@ from app.routes_telegram import telegram_bp
 from app.routes_auth import auth_bp
 from app.routes_work_card import work_card_bp
 from app.routes_audit import audit_bp
+from app.access_control import register_access_context
+from app.routes_users import users_bp
 
 
 def create_app() -> Flask:
@@ -33,7 +35,9 @@ def create_app() -> Flask:
     from app.audit_log import register_audit_log
 
     register_security(app)
+    register_access_context(app)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)

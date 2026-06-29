@@ -58,6 +58,31 @@ def list_store_configs() -> list[dict[str, Any]]:
         return rows_to_dicts(cur)
 
 
+def list_store_employee_counts() -> dict[int, int]:
+    sql = """
+        SELECT s.id, COUNT(DISTINCT e.employee_id) AS employee_count
+        FROM dbo.karta_store_config s
+        LEFT JOIN dbo.karta_employer em ON em.afm = s.employer_afm
+        LEFT JOIN dbo.karta_parartima p
+            ON p.employer_id = em.id
+           AND p.code_aa = s.branch_aa
+        LEFT JOIN dbo.karta_employment e
+            ON e.employer_id = em.id
+           AND e.active = 1
+           AND (
+                p.id IS NULL
+                OR e.parartima_id = p.id
+           )
+        GROUP BY s.id
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql)
+        return {
+            int(row[0]): int(row[1] or 0)
+            for row in cur.fetchall()
+        }
+
+
 def get_store_config(store_id: int) -> dict[str, Any] | None:
     sql = f"""
         SELECT id, name, username, password, usertype,

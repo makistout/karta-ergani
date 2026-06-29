@@ -1,0 +1,214 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Ψηφιακή Κάρτα Εργασίας' %}
+{% set shell = "public" %}
+{% set body_class = "landing-body" %}
+{% block public_content %}
+  <header class="landing-nav" aria-label="erganiOS">
+    <a class="landing-brand" href="#top" aria-label="erganiOS">
+      <img src="/static/img/erganios-logo.png" alt="erganiOS">
+    </a>
+    <nav class="landing-links" aria-label="Ενότητες">
+      <a href="#features">Λειτουργίες</a>
+      <a href="#plans">Συνδρομές</a>
+      <a href="#accountants">Λογιστικά γραφεία</a>
+    </nav>
+    <a class="landing-nav-cta" href="#contact">Επικοινωνία</a>
+  </header>
+
+  <main id="top" class="landing-page">
+    <section class="landing-hero" aria-labelledby="landingHeroTitle">
+      <div class="landing-hero-bg" aria-hidden="true"></div>
+      <div class="landing-container landing-hero-inner">
+        <p class="landing-eyebrow">Ψηφιακή Κάρτα Εργασίας χωρίς χαμένες κινήσεις</p>
+        <h1 id="landingHeroTitle">erganiOS</h1>
+        <p class="landing-hero-copy">
+          Cloud εργαλείο για επιχειρήσεις και λογιστικά γραφεία που συγχρονίζει ΕΡΓΑΝΗ,
+          εντοπίζει αποκλίσεις και οδηγεί την καθημερινή διαχείριση κάρτας, ωραρίου και ειδοποιήσεων.
+        </p>
+        <div class="landing-hero-actions">
+          <a class="landing-btn landing-btn-primary" href="#plans">
+            <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i><span>Συνδρομές</span>
+          </a>
+          <a class="landing-btn landing-btn-secondary" href="#features">
+            <i class="bi bi-check2-circle" aria-hidden="true"></i><span>Λειτουργίες</span>
+          </a>
+        </div>
+        <div class="landing-proof" aria-label="Κύριες δυνατότητες">
+          <span><strong>WTODaily</strong> διορθώσεις ωραρίου</span>
+          <span><strong>Telegram/Email</strong> ειδοποιήσεις</span>
+          <span><strong>Audit</strong> για κάθε ενέργεια</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="landing-section landing-feature-band">
+      <div class="landing-container">
+        <div class="landing-section-head">
+          <p class="landing-kicker">Λειτουργίες</p>
+          <h2>Όλα όσα χρειάζεται η καθημερινή κάρτα σε μία οθόνη.</h2>
+          <p>
+            Το erganiOS συνδέει προγραμματισμένο ωράριο, πραγματική απασχόληση και χτυπήματα κάρτας,
+            ώστε οι εκκρεμότητες να φαίνονται πριν γίνουν πρόβλημα.
+          </p>
+        </div>
+        <div class="landing-feature-grid">
+          <article class="landing-feature">
+            <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+            <h3>Συγχρονισμός ΕΡΓΑΝΗ</h3>
+            <p>Εργαζόμενοι, ψηφιακό ωράριο, πραγματική απασχόληση και μηνιαία κατάσταση από API και portal ροές.</p>
+          </article>
+          <article class="landing-feature">
+            <i class="bi bi-calendar2-week" aria-hidden="true"></i>
+            <h3>Ψηφιακό ωράριο</h3>
+            <p>Ημερήσια και εβδομαδιαία εικόνα, με υποβολές WTODaily, WTOWeek και άδειες από το ίδιο περιβάλλον.</p>
+          </article>
+          <article class="landing-feature">
+            <i class="bi bi-credit-card-2-front" aria-hidden="true"></i>
+            <h3>Ψηφιακή κάρτα</h3>
+            <p>Καταγραφή και υποβολή κινήσεων εισόδου/εξόδου, με ιστορικό πραγματικής απασχόλησης ανά εργαζόμενο.</p>
+          </article>
+          <article class="landing-feature">
+            <i class="bi bi-bell" aria-hidden="true"></i>
+            <h3>Έξυπνες ειδοποιήσεις</h3>
+            <p>Telegram και Email links με PIN για ελλιπή χτυπήματα, σημερινές ενέργειες και άμεση επιβεβαίωση.</p>
+          </article>
+          <article class="landing-feature">
+            <i class="bi bi-clipboard2-pulse" aria-hidden="true"></i>
+            <h3>Αναφορά αποκλίσεων</h3>
+            <p>Εντοπισμός καθυστερήσεων, πρόωρων χτυπημάτων, εργασίας χωρίς ωράριο και κενών κινήσεων.</p>
+          </article>
+          <article class="landing-feature">
+            <i class="bi bi-shield-check" aria-hidden="true"></i>
+            <h3>Καταγραφές & audit</h3>
+            <p>Sync logs και audit trail για να ξέρει το γραφείο ποιος έκανε τι, πότε και για ποιο κατάστημα.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="plans" class="landing-section landing-plans-band">
+      <div class="landing-container">
+        <div class="landing-section-head">
+          <p class="landing-kicker">Συνδρομές</p>
+          <h2>Πακέτα ανάλογα με τον τρόπο που δουλεύει η ομάδα.</h2>
+          <p>
+            Οι συνδρομές είναι ενσωματωμένες στην ίδια λογική της λύσης: ξεκινάς με την κάρτα,
+            ανοίγεις ειδοποιήσεις και επεκτείνεις σε πολλαπλά καταστήματα ή πελατολόγιο γραφείου.
+          </p>
+        </div>
+
+        <div class="landing-plan-grid">
+          <article class="landing-plan">
+            <div class="landing-plan-top">
+              <p class="landing-plan-label">Starter</p>
+              <h3>Για μικρή επιχείρηση</h3>
+              <p>Βασική λειτουργία ψηφιακής κάρτας και συγχρονισμού.</p>
+            </div>
+            <div class="landing-price">Κατόπιν προσφοράς</div>
+            <ul>
+              <li>1 κατάστημα</li>
+              <li>Εργαζόμενοι και ψηφιακό ωράριο</li>
+              <li>Πραγματική απασχόληση</li>
+              <li>Χτυπήματα εισόδου/εξόδου</li>
+              <li>Βασική αναφορά ελλείψεων</li>
+            </ul>
+            <a class="landing-btn landing-btn-outline" href="#contact">
+              <i class="bi bi-envelope" aria-hidden="true"></i><span>Ζητήστε προσφορά</span>
+            </a>
+          </article>
+
+          <article class="landing-plan landing-plan-featured">
+            <div class="landing-plan-ribbon">Προτεινόμενο</div>
+            <div class="landing-plan-top">
+              <p class="landing-plan-label">Office</p>
+              <h3>Για ενεργή καθημερινή διαχείριση</h3>
+              <p>Όλες οι λειτουργίες που χρειάζεται ένα κατάστημα ή εσωτερικό λογιστήριο.</p>
+            </div>
+            <div class="landing-price">Κατόπιν προσφοράς</div>
+            <ul>
+              <li>Πολλαπλά καταστήματα</li>
+              <li>WTODaily, WTOWeek και άδειες</li>
+              <li>Telegram/Email ειδοποιήσεις με PIN</li>
+              <li>Αναφορά αποκλίσεων και σημερινών ενεργειών</li>
+              <li>Sync logs και audit ενεργειών</li>
+            </ul>
+            <a class="landing-btn landing-btn-primary" href="#contact">
+              <i class="bi bi-send" aria-hidden="true"></i><span>Μιλήστε μαζί μας</span>
+            </a>
+          </article>
+
+          <article class="landing-plan">
+            <div class="landing-plan-top">
+              <p class="landing-plan-label">Partner</p>
+              <h3>Για λογιστικά γραφεία</h3>
+              <p>Κεντρική παρακολούθηση πελατών, καταστημάτων και ειδοποιήσεων.</p>
+            </div>
+            <div class="landing-price">Κατόπιν προσφοράς</div>
+            <ul>
+              <li>Πελατολόγιο με πολλά ΑΦΜ</li>
+              <li>Ρυθμίσεις credentials ανά κατάστημα</li>
+              <li>Μαζικοί συγχρονισμοί περιόδου</li>
+              <li>Διαχωρισμός ληπτών ειδοποιήσεων</li>
+              <li>Ιστορικό ελέγχων για υποστήριξη πελατών</li>
+            </ul>
+            <a class="landing-btn landing-btn-outline" href="#contact">
+              <i class="bi bi-building-check" aria-hidden="true"></i><span>Για γραφεία</span>
+            </a>
+          </article>
+        </div>
+
+        <div class="landing-compare" aria-label="Σύγκριση συνδρομών">
+          <div class="landing-compare-row landing-compare-head">
+            <span>Δυνατότητα</span><span>Starter</span><span>Office</span><span>Partner</span>
+          </div>
+          <div class="landing-compare-row">
+            <span>Συγχρονισμός εργαζομένων, ωραρίου και πραγματικής απασχόλησης</span><span>✓</span><span>✓</span><span>✓</span>
+          </div>
+          <div class="landing-compare-row">
+            <span>Υποβολές WTODaily, WTOWeek και αδειών</span><span>—</span><span>✓</span><span>✓</span>
+          </div>
+          <div class="landing-compare-row">
+            <span>Telegram/Email ειδοποιήσεις με δημόσιους συνδέσμους</span><span>—</span><span>✓</span><span>✓</span>
+          </div>
+          <div class="landing-compare-row">
+            <span>Πολλαπλά καταστήματα και πελάτες</span><span>—</span><span>✓</span><span>✓</span>
+          </div>
+          <div class="landing-compare-row">
+            <span>Audit trail και αναλυτικές καταγραφές sync</span><span>Βασικό</span><span>✓</span><span>✓</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="accountants" class="landing-section landing-flow-band">
+      <div class="landing-container landing-flow-layout">
+        <div class="landing-section-head">
+          <p class="landing-kicker">Λογιστικά γραφεία</p>
+          <h2>Λιγότερα τηλεφωνήματα, περισσότερες καθαρές ενέργειες.</h2>
+          <p>
+            Το γραφείο βλέπει τις εκκρεμότητες, στέλνει στοχευμένες ειδοποιήσεις και κρατά ιστορικό,
+            χωρίς να ψάχνει σε διαφορετικά exports και portal οθόνες.
+          </p>
+        </div>
+        <div class="landing-flow">
+          <div><strong>1</strong><span>Συγχρονισμός καταστήματος και περιόδου</span></div>
+          <div><strong>2</strong><span>Έλεγχος αποκλίσεων κάρτας και ωραρίου</span></div>
+          <div><strong>3</strong><span>Αποστολή ειδοποίησης στον σωστό λήπτη</span></div>
+          <div><strong>4</strong><span>Υποβολή ή διόρθωση με καταγραφή audit</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" class="landing-contact">
+      <div class="landing-container landing-contact-inner">
+        <div>
+          <p class="landing-kicker">Επικοινωνία</p>
+          <h2>Στήσιμο συνδρομής με βάση τα καταστήματα, τους εργαζόμενους και τον τρόπο υποστήριξης.</h2>
+        </div>
+        <a class="landing-btn landing-btn-primary" href="mailto:info@erganios.gr">
+          <i class="bi bi-envelope-paper" aria-hidden="true"></i><span>info@erganios.gr</span>
+        </a>
+      </div>
+    </section>
+  </main>
+{% endblock %}

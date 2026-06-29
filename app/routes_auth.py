@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request, session
 
+from app.access_control import SESSION_ROLE, user_payload
 from app.office_auth import (
     SESSION_USER,
     is_office_authenticated,
     login_office_user,
     logout_office_user,
-    office_login_credentials,
     office_login_enabled,
 )
 
@@ -23,7 +23,11 @@ def auth_status():
     return jsonify({
         "login_required": True,
         "authenticated": is_office_authenticated(),
-        "user": session.get(SESSION_USER) if is_office_authenticated() else None,
+        **(
+            user_payload(session.get(SESSION_USER), session.get(SESSION_ROLE))
+            if is_office_authenticated()
+            else {"user": None, "role": None, "permissions": []}
+        ),
     })
 
 
@@ -40,7 +44,7 @@ def auth_login():
         return jsonify({"error": "Λάθος username ή password"}), 401
     return jsonify({
         "success": True,
-        "user": session.get(SESSION_USER),
+        **user_payload(session.get(SESSION_USER), session.get(SESSION_ROLE)),
     })
 
 

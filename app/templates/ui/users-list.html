@@ -1,0 +1,101 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Χρήστες' %}
+{% set shell = "office" %}
+{% set active_nav = 'users' %}
+{% set body_class = "users-page" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-person-gear" aria-hidden="true"></i> Χρήστες</h1>
+      <p class="page-desc">Διαχείριση χρηστών, ρόλων, δικαιωμάτων και πρόσβασης σε καταστήματα.</p>
+
+      <div class="card users-admin-layout">
+        <section class="users-admin-list">
+          <div class="users-panel-head">
+            <h2>Λίστα</h2>
+            <button type="button" class="btn" id="btnNewUser">
+              <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Νέος χρήστης</span>
+            </button>
+          </div>
+          <div id="usersListWrap">
+            <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+          </div>
+        </section>
+
+        <section class="users-admin-form">
+          <div class="users-panel-head">
+            <h2 id="userFormTitle">Νέος χρήστης</h2>
+            <label class="users-active-toggle">
+              <input id="userActive" type="checkbox" checked>
+              <span>Ενεργός</span>
+            </label>
+          </div>
+          <input type="hidden" id="userId" value="">
+          <div class="users-fields">
+            <label class="users-field">Username
+              <input class="field-input" id="userUsername" type="text" autocomplete="off">
+            </label>
+            <label class="users-field">Email
+              <input class="field-input" id="userEmail" type="email" autocomplete="off">
+            </label>
+            <label class="users-field">Όνομα
+              <input class="field-input" id="userFullName" type="text" autocomplete="off">
+            </label>
+            <label class="users-field">Ρόλος
+              <select class="field-input" id="userRole"></select>
+            </label>
+            <label class="users-field">Νέο password
+              <input class="field-input" id="userPassword" type="password" autocomplete="new-password">
+            </label>
+          </div>
+          <div class="users-actions">
+            <button type="button" class="btn" id="btnSaveUser">
+              <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnResetPassword">
+              <i class="bi bi-key" aria-hidden="true"></i><span>Reset password</span>
+            </button>
+          </div>
+
+          <div class="users-section-title">
+            <h3>Καταστήματα</h3>
+          </div>
+          <div class="users-store-search">
+            <label class="users-field">Αναζήτηση καταστήματος
+              <input class="field-input" id="userStoreSearch" type="search" list="userStoreSuggestions" autocomplete="off" placeholder="Όνομα ή ΑΦΜ">
+            </label>
+            <button type="button" class="btn btn-secondary" id="btnAddStore">
+              <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Προσθήκη</span>
+            </button>
+            <datalist id="userStoreSuggestions"></datalist>
+          </div>
+          <div id="userStoresWrap" class="users-check-list users-check-list-stores"></div>
+
+          <div class="users-section-title">
+            <h3>Δικαιώματα</h3>
+            <div class="users-mini-actions">
+            <button type="button" class="btn btn-secondary" id="btnRoleTemplate">
+              <i class="bi bi-magic" aria-hidden="true"></i><span>Template ρόλου</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnClearPerms">
+              <i class="bi bi-x-circle" aria-hidden="true"></i><span>Καθαρισμός</span>
+            </button>
+            </div>
+          </div>
+          <div id="userPermissionsWrap" class="users-check-list users-check-list-permissions"></div>
+        </section>
+      </div>
+      <div class="card users-permission-compare-card">
+        <div class="users-section-title users-compare-title">
+          <h3>Σύγκριση δικαιωμάτων</h3>
+          <label class="users-field">Αναζήτηση δικαιώματος
+            <input class="field-input" id="permissionCompareSearch" type="search" autocomplete="off" placeholder="τύπος, ενέργεια, component ή κωδικός">
+          </label>
+        </div>
+        <div id="permissionCompareWrap" class="users-permission-matrix-wrap">
+          <p class="table-meta">Φόρτωση...</p>
+        </div>
+      </div>
+      <div id="usersMsg" class="msg"></div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/users-list.js?v=20260629rolematrix2"></script>
+{% endblock %}

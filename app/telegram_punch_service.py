@@ -231,12 +231,9 @@ def submit_retro_hit_from_session(
             if row:
                 mark_token_used(token_id, retro_time=rt)
             clear_retro_hit_session()
-            from app.scheduled_sync import enqueue_sync_store_today_after_card
-
-            sync_triggered = enqueue_sync_store_today_after_card(cfg, work_date_iso=ref)
             data = {
                 **(data or {}),
-                "sync_triggered": sync_triggered,
+                "sync_triggered": bool((data or {}).get("work_log_sync_triggered")),
             }
         else:
             data = {

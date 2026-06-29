@@ -1,5 +1,6 @@
 """Όλες οι ρυθμίσεις εισόδου — MSSQL (pyodbc) και Ergani API."""
 
+import json
 import os
 from pathlib import Path
 
@@ -96,6 +97,7 @@ class Config:
 
     KARTA_OFFICE_LOGIN_USER = (os.environ.get("KARTA_OFFICE_LOGIN_USER") or "").strip()
     KARTA_OFFICE_LOGIN_PASSWORD = (os.environ.get("KARTA_OFFICE_LOGIN_PASSWORD") or "").strip()
+    KARTA_OFFICE_USERS = (os.environ.get("KARTA_OFFICE_USERS") or "").strip()
 
     @staticmethod
     def office_login_credentials() -> tuple[str, str]:
@@ -105,6 +107,34 @@ class Config:
         if not user and not pwd and Config.FLASK_DEBUG:
             return "admin", "ergani"
         return user, pwd
+
+    @staticmethod
+    def office_users() -> list[dict[str, str]]:
+        """Προαιρετικοί χρήστες γραφείου από JSON env, με fallback στον παλιό admin."""
+        users: list[dict[str, str]] = []
+        if Config.KARTA_OFFICE_USERS:
+            try:
+                raw = json.loads(Config.KARTA_OFFICE_USERS)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("Το KARTA_OFFICE_USERS δεν είναι έγκυρο JSON") from exc
+            if not isinstance(raw, list):
+                raise RuntimeError("Το KARTA_OFFICE_USERS πρέπει να είναι JSON array")
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                username = str(item.get("username") or "").strip()
+                password = str(item.get("password") or "")
+                role = str(item.get("role") or "admin").strip().lower()
+                if username and password:
+                    users.append({
+                        "username": username,
+                        "password": password,
+                        "role": role,
+                    })
+        user, pwd = Config.office_login_credentials()
+        if user and pwd and not any(x["username"] == user for x in users):
+            users.append({"username": user, "password": pwd, "role": "super_admin"})
+        return users
 
     @staticmethod
     def pyodbc_connection_string() -> str:
@@ -135,9 +165,8 @@ class Config:
                 missing.append("FLASK_SECRET_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
             if not Config.WORK_CARD_API_KEY:
                 missing.append("WORK_CARD_API_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
-            user, pwd = Config.office_login_credentials()
-            if not user or not pwd:
-                missing.append("KARTA_OFFICE_LOGIN_USER / KARTA_OFFICE_LOGIN_PASSWORD")
+            if not Config.office_users():
+                missing.append("KARTA_OFFICE_USERS ή KARTA_OFFICE_LOGIN_USER / KARTA_OFFICE_LOGIN_PASSWORD")
         if missing:
             raise RuntimeError(
                 "Λείπουν ρυθμίσεις περιβάλλοντος (.env):\n- "

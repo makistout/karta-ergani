@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const path = window.location.pathname || "";
   const recipientFlow =
+    path.startsWith("/ui/landing") ||
     path.startsWith("/ui/telegram-hit") ||
     path.startsWith("/ui/retro-hit") ||
     path.startsWith("/ui/today-hit") ||

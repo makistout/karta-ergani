@@ -20,6 +20,11 @@ def ui_home():
     return render_template("ui/home.html")
 
 
+@ui_bp.get("/landing")
+def ui_landing():
+    return render_template("ui/landing.html")
+
+
 @ui_bp.get("/login")
 def ui_login():
     return render_template("ui/login.html")
@@ -141,6 +146,11 @@ def ui_sync_hub():
 @ui_bp.get("/sync-log")
 def ui_sync_log():
     return render_template("ui/sync-log-list.html")
+
+
+@ui_bp.get("/users")
+def ui_users():
+    return render_template("ui/users-list.html")
 
 
 def register_ui_redirects(app):

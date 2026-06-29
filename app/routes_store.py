@@ -7,6 +7,7 @@ from typing import Any
 import requests
 from flask import Blueprint, after_this_request, jsonify, request, session
 
+from app.access_control import accessible_store_ids, can_access_store
 from app import repo_store as repo
 from app.ergani_env import env_label, normalize_ergani_env, store_api_context
 from app.ergani_env import client_for_store
@@ -58,6 +59,9 @@ def _parse_credential_body(data: dict[str, Any]) -> tuple[dict[str, Any], dict[s
 @store_bp.get("/list")
 def list_stores():
     rows = repo.list_store_configs()
+    allowed = accessible_store_ids()
+    if allowed is not None:
+        rows = [r for r in rows if int(r.get("id") or 0) in allowed]
     return jsonify(_json_rows([mask_store_secrets(r) for r in rows]))
 
 
@@ -67,6 +71,8 @@ def get_store(store_id: int):
     cfg = repo.get_store_config(store_id)
     if not cfg:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     return jsonify(_json_rows([cfg])[0])
 
 
@@ -104,6 +110,8 @@ def verify_wizard_credentials():
     data = request.get_json(silent=True) or {}
     store_id = data.get("id")
     existing = repo.get_store_config(int(store_id)) if store_id else None
+    if store_id and not can_access_store(int(store_id)):
+        return jsonify({"success": False, "error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     sec = _resolve_wizard_secrets(data, existing)
     env = normalize_ergani_env(data.get("ergani_env"))
     try:
@@ -128,6 +136,8 @@ def verify_wizard_credentials():
 def save_store_credentials():
     """Βήμα 1 wizard: admin + web διαπιστευτήρια."""
     data = request.get_json(silent=True) or {}
+    if data.get("id") and not can_access_store(int(data.get("id"))):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     fields, existing = _parse_credential_body(data)
     if not fields["name"]:
         return jsonify({"error": "Υποχρευτικό όνομα καταστήματος"}), 400
@@ -156,6 +166,8 @@ def save_store_credentials():
 @store_bp.post("/save")
 def save_store():
     data = request.get_json(silent=True) or {}
+    if data.get("id") and not can_access_store(int(data.get("id"))):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     fields, existing = _parse_credential_body(data)
     if not fields["name"]:
         return jsonify({"error": "Υποχρευτικό όνομα καταστήματος"}), 400
@@ -226,6 +238,8 @@ def record_store_sync():
 
 @store_bp.delete("/<int:store_id>")
 def delete_store(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     repo.delete_store_config(store_id)
     if session.get("active_store_id") == store_id:
         session.pop("active_store_id", None)
@@ -257,6 +271,8 @@ def select_store():
     cfg = repo.get_store_config(int(store_id))
     if not cfg:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+    if not can_access_store(int(store_id)):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     ctx = store_api_context(cfg)
     client = client_for_store(cfg)
     api_user, api_pwd, api_ut = api_login_credentials(ctx)
@@ -332,6 +348,8 @@ def get_notify_recipients(store_id: int):
     cfg = repo.get_store_config(store_id)
     if not cfg:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα", "recipients": []}), 404
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα", "recipients": []}), 403
     from app.repo_notify_recipients import (
         list_notify_recipients,
         notify_recipients_table_missing_message,
@@ -355,6 +373,8 @@ def put_notify_recipients(store_id: int):
     cfg = repo.get_store_config(store_id)
     if not cfg:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
     from app.repo_notify_recipients import (
         list_notify_recipients,
         notify_recipients_table_missing_message,

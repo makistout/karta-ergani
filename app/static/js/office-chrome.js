@@ -17,6 +17,7 @@ Object.assign(window.Office, {
       workcard: "credit-card-2-front",
       sync: "arrow-repeat",
       synclog: "journal-text",
+      users: "person-gear",
     };
     document.querySelectorAll(".sidebar nav a[data-nav]").forEach((a) => {
       if (a.querySelector(".bi")) return;

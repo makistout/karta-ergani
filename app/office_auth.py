@@ -7,6 +7,16 @@ from urllib.parse import quote
 
 from flask import Flask, jsonify, redirect, request, session
 
+from app.access_control import (
+    SESSION_PERMISSIONS,
+    SESSION_ROLE,
+    SESSION_SUPER_ADMIN,
+    SESSION_USER_ID,
+    has_permission,
+    normalize_role,
+    permission_for_path,
+    permissions_for_role,
+)
 from config import Config
 
 SESSION_LOGGED_IN = "office_logged_in"
@@ -16,6 +26,7 @@ _PUBLIC_EXACT = frozenset({
     "/health",
     "/api/local/health",
     "/api/telegram/webhook",
+    "/ui/landing",
     "/ui/login",
     "/ui/telegram-hit",
     "/ui/telegram-punch",
@@ -33,8 +44,7 @@ _PUBLIC_PREFIXES = ("/static/",)
 
 
 def office_login_enabled() -> bool:
-    user, pwd = Config.office_login_credentials()
-    return bool(user and pwd)
+    return bool(Config.office_users())
 
 
 def office_login_credentials() -> tuple[str, str]:
@@ -46,17 +56,46 @@ def is_office_authenticated() -> bool:
 
 
 def login_office_user(username: str, password: str) -> bool:
-    expected_user, expected_pwd = office_login_credentials()
-    if not expected_user or not expected_pwd:
+    try:
+        from app.repo_users import authenticate_user
+
+        db_user = authenticate_user(username, password)
+    except Exception:
+        db_user = None
+    if db_user:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = db_user["username"]
+        session[SESSION_USER_ID] = int(db_user["id"])
+        session[SESSION_ROLE] = normalize_role(db_user.get("role"))
+        session[SESSION_PERMISSIONS] = list(db_user.get("permissions") or [])
+        session[SESSION_SUPER_ADMIN] = bool(db_user.get("is_super_admin"))
+        session.permanent = True
+        return True
+
+    users = Config.office_users()
+    if not users:
         return False
     user = (username or "").strip()
     pwd = password or ""
-    if not secrets.compare_digest(user, expected_user):
-        return False
-    if not secrets.compare_digest(pwd, expected_pwd):
+    matched = None
+    for candidate in users:
+        expected_user = candidate.get("username") or ""
+        expected_pwd = candidate.get("password") or ""
+        if (
+            secrets.compare_digest(user, expected_user)
+            and secrets.compare_digest(pwd, expected_pwd)
+        ):
+            matched = candidate
+            break
+    if matched is None:
         return False
     session[SESSION_LOGGED_IN] = True
     session[SESSION_USER] = user
+    role = normalize_role(matched.get("role"))
+    session[SESSION_ROLE] = role
+    session[SESSION_USER_ID] = None
+    session[SESSION_PERMISSIONS] = sorted(permissions_for_role(role))
+    session[SESSION_SUPER_ADMIN] = role == "super_admin"
     session.permanent = True
     return True
 
@@ -64,6 +103,10 @@ def login_office_user(username: str, password: str) -> bool:
 def logout_office_user() -> None:
     session.pop(SESSION_LOGGED_IN, None)
     session.pop(SESSION_USER, None)
+    session.pop(SESSION_USER_ID, None)
+    session.pop(SESSION_ROLE, None)
+    session.pop(SESSION_PERMISSIONS, None)
+    session.pop(SESSION_SUPER_ADMIN, None)
 
 
 def _path_is_public(path: str, method: str) -> bool:
@@ -111,7 +154,19 @@ def register_login_guard(app: Flask) -> None:
         path = request.path or ""
         if _path_is_public(path, request.method):
             return None
-        if is_office_authenticated() or _office_api_token_ok():
+        token_ok = _office_api_token_ok()
+        if is_office_authenticated() or token_ok:
+            permission = permission_for_path(path, request.method)
+            role = "admin" if token_ok else str(session.get(SESSION_ROLE) or "")
+            if permission and not has_permission(permission, role=role):
+                if path.startswith("/api/"):
+                    return jsonify({
+                        "error": "Δεν έχετε δικαίωμα πρόσβασης",
+                        "permission": permission,
+                    }), 403
+                if path == "/" or path.startswith("/ui/"):
+                    return redirect("/ui/")
+                return jsonify({"error": "Δεν έχετε δικαίωμα πρόσβασης"}), 403
             return None
         if path.startswith("/api/"):
             return jsonify({
