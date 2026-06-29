@@ -1,4 +1,5 @@
 from flask import Flask, render_template_string
+import pytest
 from unittest.mock import patch
 
 from app.access_control import (
@@ -13,6 +14,12 @@ from app.office_auth import SESSION_LOGGED_IN, SESSION_USER
 from app.routes_auth import auth_bp
 from app.routes_users import users_bp
 from config import Config
+
+
+@pytest.fixture(autouse=True)
+def auth_audit_mock():
+    with patch("app.routes_auth.record_audit_event") as record:
+        yield record
 
 
 def _make_app() -> Flask:
@@ -48,6 +55,36 @@ def test_viewer_can_read_but_cannot_write():
     assert login.json["role"] == "viewer"
     assert client.get("/api/employees/list").status_code == 200
     assert client.post("/api/store/save").status_code == 403
+
+
+def test_login_and_logout_are_audited(auth_audit_mock):
+    client = _make_app().test_client()
+
+    login = client.post("/api/auth/login", json={"username": "viewer", "password": "pw"})
+    logout = client.post("/api/auth/logout")
+
+    assert login.status_code == 200
+    assert logout.status_code == 200
+    assert auth_audit_mock.call_count == 2
+    assert auth_audit_mock.call_args_list[0].kwargs["action"] == "auth.login_success"
+    assert auth_audit_mock.call_args_list[0].kwargs["entity_id"] == "viewer"
+    assert auth_audit_mock.call_args_list[0].kwargs["success"] is True
+    assert auth_audit_mock.call_args_list[1].kwargs["action"] == "auth.logout"
+    assert auth_audit_mock.call_args_list[1].kwargs["entity_id"] == "viewer"
+
+
+def test_failed_login_is_audited(auth_audit_mock):
+    client = _make_app().test_client()
+
+    response = client.post("/api/auth/login", json={"username": "viewer", "password": "bad"})
+
+    assert response.status_code == 401
+    auth_audit_mock.assert_called_once()
+    assert auth_audit_mock.call_args.kwargs["action"] == "auth.login_failed"
+    assert auth_audit_mock.call_args.kwargs["entity_id"] == "viewer"
+    assert auth_audit_mock.call_args.kwargs["success"] is False
+    assert auth_audit_mock.call_args.kwargs["http_status"] == 401
+    assert auth_audit_mock.call_args.kwargs["details"]["reason"] == "invalid_credentials"
 
 
 def test_restricted_ui_redirects_to_home():

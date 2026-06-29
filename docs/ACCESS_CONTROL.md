@@ -64,6 +64,16 @@
 
 Το role normalization αναγνωρίζει aliases όπως `office manager`, `office-manager`, `backoffice` και `store viewer`. Άγνωστος ρόλος πέφτει σε `viewer` και όχι σε `super_admin`.
 
+## Audit Login
+
+Οι καταγραφές γράφουν explicit auth events για χρήστες γραφείου:
+
+- `auth.login_success`: επιτυχές login με username, role, client IP/device και status `200`.
+- `auth.login_failed`: αποτυχημένο login με attempted username, reason (`missing_credentials` ή `invalid_credentials`), client IP/device και status `400`/`401`.
+- `auth.logout`: αποσύνδεση χρήστη με username, role, client IP/device και status `200`.
+
+Τα passwords δεν αποθηκεύονται στο audit payload.
+
 ## Dangerous Permissions
 
 Αυτά δεν πρέπει να δίνονται έμμεσα χωρίς σκέψη:

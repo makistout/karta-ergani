@@ -346,6 +346,8 @@ def register_audit_log(app: Flask) -> None:
         path = request.path or ""
         if path.startswith("/static/"):
             return response
+        if path in ("/api/auth/login", "/api/auth/logout"):
+            return response
 
         payload = _request_payload()
         safe_payload = _safe_payload(payload) if payload is not None else None
