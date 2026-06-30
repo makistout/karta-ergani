@@ -545,6 +545,28 @@ function buildTodayNotifyButton(r) {
   );
 }
 
+function minutesFromHm(hm) {
+  const norm = Office.normalizeHourMinute(hm || "");
+  if (!norm) return null;
+  const [h, m] = norm.split(":").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function canDeclareRestBeforeShift(row) {
+  const workDate = Office.parseDateGr(row.work_date || "") || String(row.work_date || "").slice(0, 10);
+  if (!workDate || workDate !== Office.todayIsoLocal()) return false;
+  if (row.work_log?.hour_from || row.work_log?.hour_to || row.card?.has_check_in || row.card?.has_check_out) return false;
+  const sched = row.schedule || {};
+  const shiftType = String(sched.shift_type || "").trim().toUpperCase();
+  if (["ΑΝ", "AN", "Ρ", "ΡΕΠΟ", "REPO"].includes(shiftType)) return false;
+  const startMin = minutesFromHm(sched.hour_from);
+  if (startMin == null) return false;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return nowMin <= startMin;
+}
+
 function buildActionCell(r) {
   const notes =
     (r.notes || []).length > 0
@@ -558,10 +580,11 @@ function buildActionCell(r) {
       `<div><button type="button" class="btn btn-secondary btn-wto-daily" data-wto-daily-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-daily-date="${Office.escapeHtml(r.work_date || "")}">` +
       `${Office.icon("calendar-week")}<span>Αλλαγή ωραρίου</span></button></div>`;
   }
-  if (r.rest_declare_eligible || r.leave_eligible || r.today_notify_kind) {
+  const restEligible = r.rest_declare_eligible || canDeclareRestBeforeShift(r);
+  if (restEligible || r.leave_eligible || r.today_notify_kind) {
     html += `<div class="report-action-btns">`;
     html += buildTodayNotifyButton(r);
-    if (r.rest_declare_eligible) {
+    if (restEligible) {
       html +=
         `<button type="button" class="btn btn-secondary btn-rest" data-wto-rest-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-rest-date="${Office.escapeHtml(r.work_date || "")}">` +
         `${Office.icon("calendar-minus")}<span>Ρεπό</span></button>`;
