@@ -12,7 +12,11 @@ from app.date_util import format_date_for_ergani, format_f_date_time
 from app.repo_card import list_card_events_for_store_date
 from app.repo_entities import flex_arrival_map_for_employer
 from app.repo_schedule import list_schedule_for_store
-from app.repo_work_log import _attach_card_punch_hint, list_work_log_for_store
+from app.repo_work_log import (
+    _attach_card_punch_hint,
+    append_card_punches_missing_from_work_log,
+    list_work_log_for_store,
+)
 from app.work_card_payload import tz_athens
 
 # Πρώτα όσοι δουλεύουν / ολοκλήρωσαν βάρδια, στο τέλος ρεπό και λοιποί.
@@ -560,6 +564,12 @@ def build_card_status_report(
 
     schedule_rows = list_schedule_for_store(employer_afm, branch_aa, work_date)
     work_log_rows = list_work_log_for_store(employer_afm, branch_aa, work_date)
+    append_card_punches_missing_from_work_log(
+        work_log_rows,
+        employer_afm,
+        branch_aa,
+        [work_date],
+    )
     card_events = list_card_events_for_store_date(
         employer_afm, branch_aa, ref_iso
     )
