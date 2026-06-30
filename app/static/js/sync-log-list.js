@@ -6,6 +6,7 @@ const syncLogState = {
   actionsLoaded: false,
   sentLoaded: false,
   punchesLoaded: false,
+  authLoaded: false,
   punchesStoreId: "",
   punchesStoreAc: null,
   storeId: "",
@@ -52,6 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnRefreshWorkCardPunches")?.addEventListener("click", () => {
     loadWorkCardPunches();
   });
+  document.getElementById("btnRefreshAuthLogs")?.addEventListener("click", () => {
+    loadAuthLogs();
+  });
   document.getElementById("btnClearWorkCardPunchesStore")?.addEventListener("click", () => {
     syncLogState.punchesStoreId = "";
     syncLogState.punchesStoreAc?.clearValue();
@@ -73,6 +77,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (location.hash === "#punches") {
     initWorkCardPunchesStorePicker().finally(() => setLogTab("punches"));
+    return;
+  }
+  if (location.hash === "#auth") {
+    setLogTab("auth");
     return;
   }
   initSyncLogStorePicker().finally(() => loadRuns());
@@ -151,7 +159,7 @@ function statusBadge(status) {
 
 function setLogTab(tab) {
   const next =
-    tab === "actions" || tab === "sent" || tab === "punches" ? tab : "sync";
+    tab === "actions" || tab === "sent" || tab === "punches" || tab === "auth" ? tab : "sync";
   syncLogState.activeTab = next;
   document.querySelectorAll("[data-log-tab]").forEach((btn) => {
     const active = btn.dataset.logTab === next;
@@ -162,6 +170,7 @@ function setLogTab(tab) {
   document.getElementById("notifyActionsPanel")?.classList.toggle("hidden", next !== "actions");
   document.getElementById("notifySentPanel")?.classList.toggle("hidden", next !== "sent");
   document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
+  document.getElementById("authLogsPanel")?.classList.toggle("hidden", next !== "auth");
   if (next === "actions") {
     history.replaceState(null, "", `${location.pathname}#actions`);
     if (!syncLogState.actionsLoaded) loadNotifyActions();
@@ -171,10 +180,128 @@ function setLogTab(tab) {
   } else if (next === "punches") {
     history.replaceState(null, "", `${location.pathname}#punches`);
     loadWorkCardPunches();
+  } else if (next === "auth") {
+    history.replaceState(null, "", `${location.pathname}#auth`);
+    if (!syncLogState.authLoaded) loadAuthLogs();
   } else {
     history.replaceState(null, "", location.pathname);
     loadRuns();
   }
+}
+
+function authActionLabel(action, details) {
+  const a = String(action || "");
+  const reason = String(details?.reason || "");
+  if (a === "auth.login_success") return "Σύνδεση";
+  if (a === "auth.logout") return "Αποσύνδεση";
+  if (a === "auth.login_failed") {
+    if (reason === "missing_credentials") return "Αποτυχημένη σύνδεση · λείπουν στοιχεία";
+    if (reason === "invalid_credentials") return "Αποτυχημένη σύνδεση · λάθος στοιχεία";
+    return "Αποτυχημένη σύνδεση";
+  }
+  return a || "Auth";
+}
+
+function authUserText(row) {
+  const details = row.details || {};
+  return details.username || row.entity_id || row.actor_name || row.office_user || "—";
+}
+
+function authRoleText(row) {
+  const details = row.details || {};
+  return details.role || "—";
+}
+
+function authDetailsText(row) {
+  const details = row.details || {};
+  const bits = [];
+  if (details.reason) bits.push(`Reason: ${details.reason}`);
+  if (row.http_status) bits.push(`HTTP ${row.http_status}`);
+  return bits.join(" · ") || "—";
+}
+
+async function loadAuthLogs() {
+  const wrap = document.getElementById("authLogsWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({
+      kind: "auth",
+      limit: "200",
+    });
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    renderAuthLogs(data.audit || []);
+    syncLogState.authLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+  }
+}
+
+function renderAuthLogs(rows) {
+  const wrap = document.getElementById("authLogsWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα καταγραφές σύνδεσης.</span></p>`;
+    return;
+  }
+
+  const t = document.createElement("table");
+  t.className = "data auth-logs-table";
+  const hr = document.createElement("tr");
+  ["Ώρα", "Ενέργεια", "Χρήστης", "Ρόλος", "Κατάσταση", "Συσκευή/IP", "Λεπτομέρειες"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  t.appendChild(hr);
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    const tdTs = document.createElement("td");
+    tdTs.className = "sync-log-ts";
+    tdTs.textContent = formatTs(row.created_at);
+    tr.appendChild(tdTs);
+
+    const tdAction = document.createElement("td");
+    tdAction.textContent = authActionLabel(row.action, row.details || {});
+    tr.appendChild(tdAction);
+
+    const tdUser = document.createElement("td");
+    tdUser.textContent = authUserText(row);
+    tr.appendChild(tdUser);
+
+    const tdRole = document.createElement("td");
+    tdRole.textContent = authRoleText(row);
+    tr.appendChild(tdRole);
+
+    const tdStatus = document.createElement("td");
+    tdStatus.innerHTML = auditSuccessBadge(row);
+    tr.appendChild(tdStatus);
+
+    const tdDevice = document.createElement("td");
+    const device = row.client_device || "";
+    const ip = row.client_ip || "";
+    tdDevice.textContent = [ip, device].filter(Boolean).join(" · ") || "—";
+    tdDevice.title = tdDevice.textContent;
+    tr.appendChild(tdDevice);
+
+    const tdDetails = document.createElement("td");
+    tdDetails.textContent = authDetailsText(row);
+    tr.appendChild(tdDetails);
+
+    t.appendChild(tr);
+  });
+
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
 }
 
 async function loadRuns(silent) {
