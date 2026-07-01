@@ -1,11 +1,11 @@
 {% extends "ui/base.html" %}
-{% set page_title = 'erganiOS - Ειδοποιήσεις' %}
+{% set page_title = 'erganiOS - Ρυθμίσεις' %}
 {% set shell = "office" %}
-{% set active_nav = 'storenotify' %}
+{% set active_nav = 'settings' %}
 {% set body_class = "" %}
 {% block content %}
-      <h1 class="page-title"><i class="bi bi-bell" aria-hidden="true"></i> Ειδοποιήσεις</h1>
-      <p class="page-desc">Λήπτες Telegram και Email ανά κατάστημα — ξεχωριστά από τη ρύθμιση διαπιστευτηρίων Ergani.</p>
+      <h1 class="page-title"><i class="bi bi-sliders" aria-hidden="true"></i> Ρυθμίσεις</h1>
+      <p class="page-desc">Ρυθμίσεις λειτουργίας ανά κατάστημα.</p>
       <div class="card notify-store-picker-card">
         <label for="notifyStoreInput">Κατάστημα</label>
         <div class="ac-wrap">
@@ -15,46 +15,83 @@
         </div>
         <input type="hidden" id="notifyStoreId">
       </div>
-      <div class="card" id="notifyRecipientsCard">
-        <p class="field-hint">
-          Όνομα, κινητό και email ανά λήπτη. Σύνδεση bot: <code>/start 69XXXXXXXX</code> (ίδιο κινητό, χωρίς κενά).
-          PIN (4 ψηφία): για ασφαλές χτύπημα κάρτας από σύνδεσμο Telegram ή Email.
-          Το <strong>Play/Stop</strong> δίπλα στο κινητό ρυθμίζει Telegram· δίπλα στο email ρυθμίζει Email.
-          Κάτω από κάθε λήπτη ορίζεται αν η ειδοποίηση θα σταλεί μία φορά ή σε κάθε συγχρονισμό μέχρι ενέργεια.
-          Το <strong>Δοκιμαστικό μήνυμα</strong> στέλνει και στα δύο κανάλια (μόνο σε ενεργούς λήπτες με έγκυρο email).
-        </p>
-        <div id="notifyRecipientsWrap" class="notify-recipients-wrap">
-          <table class="data notify-recipients-table" id="notifyRecipientsTable">
-            <thead>
-              <tr>
-                <th>Όνομα</th>
-                <th>Κινητό</th>
-                <th>Telegram ID</th>
-                <th>Email</th>
-                <th>PIN</th>
-                <th class="col-notify-actions" aria-label="Διαγραφή"></th>
-              </tr>
-            </thead>
-            <tbody id="notifyRecipientsBody"></tbody>
-          </table>
-          <p id="notifyRecipientsEmpty" class="field-hint" style="display:none;">Δεν υπάρχουν λήπτες.</p>
-        </div>
-        <div class="actions" style="margin-top:0.5rem;">
-          <button type="button" class="btn btn-secondary btn-sm" id="btnAddNotifyRecipient">
-            <i class="bi bi-person-plus" aria-hidden="true"></i><span>Προσθήκη λήπτη</span>
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnSaveNotifyRecipients" disabled>
-            <i class="bi bi-bell" aria-hidden="true"></i><span>Αποθήκευση ληπτών</span>
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnTestNotify" disabled title="Αποστολή σε ενεργούς λήπτες Telegram (Play στο κινητό) και Email (Play στο email)">
-            <i class="bi bi-send" aria-hidden="true"></i><span>Δοκιμαστικό μήνυμα</span>
-          </button>
-        </div>
+      <div class="settings-layout" id="settingsPanels">
+        <section class="card settings-section" id="notifyRecipientsCard" aria-labelledby="settingsNotificationsTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="settingsNotificationsTitle"><i class="bi bi-bell" aria-hidden="true"></i> Ειδοποιήσεις</h2>
+              <p class="field-hint">Λήπτες Telegram και Email ανά κατάστημα.</p>
+            </div>
+          </div>
+          <p class="field-hint">
+            Σύνδεση bot: <code>/start 69XXXXXXXX</code>. PIN 4 ψηφίων για ασφαλές χτύπημα κάρτας από σύνδεσμο.
+            Το Play/Stop δίπλα στο κινητό ρυθμίζει Telegram και δίπλα στο email ρυθμίζει Email.
+          </p>
+          <div id="notifyRecipientsWrap" class="notify-recipients-wrap">
+            <table class="data notify-recipients-table" id="notifyRecipientsTable">
+              <thead>
+                <tr>
+                  <th>Όνομα</th>
+                  <th>Κινητό</th>
+                  <th>Telegram ID</th>
+                  <th>Email</th>
+                  <th>PIN</th>
+                  <th class="col-notify-actions" aria-label="Διαγραφή"></th>
+                </tr>
+              </thead>
+              <tbody id="notifyRecipientsBody"></tbody>
+            </table>
+            <p id="notifyRecipientsEmpty" class="field-hint" style="display:none;">Δεν υπάρχουν λήπτες.</p>
+          </div>
+          <div class="actions settings-section-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnAddNotifyRecipient">
+              <i class="bi bi-person-plus" aria-hidden="true"></i><span>Προσθήκη λήπτη</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveNotifyRecipients" disabled>
+              <i class="bi bi-bell" aria-hidden="true"></i><span>Αποθήκευση ληπτών</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnTestNotify" disabled title="Αποστολή σε ενεργούς λήπτες Telegram (Play στο κινητό) και Email (Play στο email)">
+              <i class="bi bi-send" aria-hidden="true"></i><span>Δοκιμαστικό μήνυμα</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="card settings-section" id="storeActionsCard" aria-labelledby="settingsActionsTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="settingsActionsTitle"><i class="bi bi-lightning-charge" aria-hidden="true"></i> Ενέργειες</h2>
+              <p class="field-hint">Αυτόματες εργασίες που εκτελούνται από τον scheduled sync.</p>
+            </div>
+          </div>
+          <label class="settings-action-row" for="autoClosePrevDayEnabled">
+            <input id="autoClosePrevDayEnabled" type="checkbox">
+            <span>
+              <strong>Κλείσε αυτόματα όλες τις ανοιχτές κάρτες της προηγούμενης ημέρας</strong>
+              <small>Υποβάλλει έξοδο με ώρα εισόδου + διάρκεια ωραρίου. Σε ρεπό ή χωρίς διάρκεια εφαρμόζεται 8ωρο.</small>
+            </span>
+          </label>
+          <div class="settings-action-grid">
+            <label for="autoClosePrevDayTime">
+              Ώρα εκτέλεσης
+              <input id="autoClosePrevDayTime" type="text" class="input-time-24" inputmode="numeric"
+                placeholder="00:30" maxlength="5" autocomplete="off" value="00:30">
+            </label>
+            <div class="settings-action-meta">
+              <span>Τελευταία εκτέλεση</span>
+              <strong id="autoClosePrevDayLastRun">—</strong>
+            </div>
+          </div>
+          <div class="actions settings-section-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveActionSettings" disabled>
+              <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση ενεργειών</span>
+            </button>
+          </div>
+        </section>
       </div>
       <div id="stepMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260624storepick1"></script>
-  <script src="/static/js/store-notify.js?v=20260625notifypolicy1"></script>
+  <script src="/static/js/store-notify.js?v=20260701settings2"></script>
 {% endblock %}

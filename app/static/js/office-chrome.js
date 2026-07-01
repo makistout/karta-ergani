@@ -10,7 +10,7 @@ Object.assign(window.Office, {
     const navIcons = {
       home: "house-door",
       stores: "shop-window",
-      storenotify: "bell",
+      settings: "sliders",
       employees: "people-fill",
       schedule: "calendar-week",
       worklog: "clock-history",

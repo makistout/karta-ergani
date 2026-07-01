@@ -14,7 +14,7 @@ SESSION_PERMISSIONS = "office_permissions"
 SESSION_SUPER_ADMIN = "office_super_admin"
 
 ADMIN_NAV_ROLES = {"super_admin", "admin", "backoffice_admin"}
-ADMIN_ONLY_NAVS = {"sync", "storenotify", "synclog"}
+ADMIN_ONLY_NAVS = {"sync", "settings", "synclog"}
 
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
@@ -90,6 +90,8 @@ BACKOFFICE_ADMIN_PERMISSIONS: set[str] = STORE_MANAGER_PERMISSIONS | {
     "logs.export",
     "stores.manage",
     "stores.api_env.manage",
+    "settings.view",
+    "settings.scheduler.manage",
 }
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
@@ -124,7 +126,7 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/": "dashboard.view",
     "/ui/stores": "stores.view",
     "/ui/stores/credentials": "stores.credentials.manage",
-    "/ui/stores/notify": "notifications.view",
+    "/ui/stores/notify": "settings.view",
     "/ui/stores/branch": "stores.manage",
     "/ui/stores/mappings": "stores.manage",
     "/ui/employees": "employees.view",
@@ -150,7 +152,7 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/work-card", "nav": "workcard", "label": "Ψηφιακή κάρτα", "permission": "work_card.view"},
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
     {"href": "/ui/stores", "nav": "stores", "label": "Καταστήματα", "permission": "stores.view"},
-    {"href": "/ui/stores/notify", "nav": "storenotify", "label": "Ειδοποιήσεις", "permission": "notifications.view"},
+    {"href": "/ui/stores/notify", "nav": "settings", "label": "Ρυθμίσεις", "permission": "settings.view"},
     {"href": "/ui/sync-log", "nav": "synclog", "label": "Καταγραφές", "permission": "logs.view"},
     {"href": "/ui/users", "nav": "users", "label": "Χρήστες", "permission": "users.view"},
 )
@@ -164,6 +166,8 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/store/select/status/*", "stores.view"),
     RouteRule("GET", "/api/store/*/notify-recipients", "notifications.view"),
     RouteRule("PUT", "/api/store/*/notify-recipients", "notifications.recipients.manage"),
+    RouteRule("GET", "/api/store/*/action-settings", "settings.view"),
+    RouteRule("PUT", "/api/store/*/action-settings", "settings.scheduler.manage"),
     RouteRule("GET", "/api/store/*", "stores.credentials.manage"),
     RouteRule("POST", "/api/store/verify-*", "stores.credentials.manage"),
     RouteRule("POST", "/api/store/credentials", "stores.credentials.manage"),

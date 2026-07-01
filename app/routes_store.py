@@ -76,6 +76,38 @@ def get_store(store_id: int):
     return jsonify(_json_rows([cfg])[0])
 
 
+@store_bp.get("/<int:store_id>/action-settings")
+def get_store_action_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    try:
+        settings = repo.get_action_settings(store_id)
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 404
+    return jsonify({"success": True, "settings": settings})
+
+
+@store_bp.put("/<int:store_id>/action-settings")
+def save_store_action_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app.auto_close_cards import normalize_auto_close_time
+
+    data = request.get_json(silent=True) or {}
+    time_s = normalize_auto_close_time(data.get("auto_close_prev_day_time"))
+    try:
+        settings = repo.save_action_settings(
+            store_id,
+            auto_close_prev_day_enabled=bool(data.get("auto_close_prev_day_enabled")),
+            auto_close_prev_day_time=time_s,
+        )
+    except RuntimeError as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_store_action_settings.sql"}), 503
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 404
+    return jsonify({"success": True, "settings": settings})
+
+
 def _resolve_wizard_secrets(data: dict, existing: dict | None) -> dict[str, str]:
     store_id = data.get("id")
     ex = existing or (repo.get_store_config(int(store_id)) if store_id else None)

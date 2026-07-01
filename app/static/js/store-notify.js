@@ -27,6 +27,11 @@ function isValidNotifyEmail(value) {
 let notifyRecipients = [];
 let currentStoreId = null;
 let storeAc = null;
+let actionSettings = {
+  auto_close_prev_day_enabled: false,
+  auto_close_prev_day_time: "00:30",
+  auto_close_prev_day_last_run_date: null,
+};
 
 function storeAcLabel(item) {
   return `${item.description || "Κατάστημα"} (ID ${item.value})`;
@@ -48,8 +53,9 @@ function markStorePickerClearOnClick() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  Office.setActiveNav("storenotify");
+  Office.setActiveNav("settings");
   initNotifyRecipientButtons();
+  initActionSettingsButtons();
   await initStorePicker();
 });
 
@@ -233,7 +239,7 @@ async function selectStore(storeId, pushUrl) {
     url.searchParams.set("id", String(storeId));
     history.replaceState(null, "", url.pathname + url.search);
   }
-  await loadNotifyRecipients(storeId);
+  await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId)]);
   updateNotifyUiState();
 }
 
@@ -261,9 +267,50 @@ function updateNotifyUiState() {
   const saveBtn = document.getElementById("btnSaveNotifyRecipients");
   const testBtn = document.getElementById("btnTestNotify");
   const addBtn = document.getElementById("btnAddNotifyRecipient");
+  const actionBtn = document.getElementById("btnSaveActionSettings");
   if (saveBtn) saveBtn.disabled = !hasId;
   if (testBtn) testBtn.disabled = !hasId;
   if (addBtn) addBtn.disabled = !hasId;
+  if (actionBtn) actionBtn.disabled = !hasId;
+}
+
+function normalizeActionTime(value) {
+  const raw = String(value || "").trim();
+  const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return "00:30";
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return "00:30";
+  }
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function renderActionSettings() {
+  const enabled = document.getElementById("autoClosePrevDayEnabled");
+  const time = document.getElementById("autoClosePrevDayTime");
+  const last = document.getElementById("autoClosePrevDayLastRun");
+  if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
+  if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
+  if (last) last.textContent = actionSettings.auto_close_prev_day_last_run_date || "—";
+}
+
+function collectActionSettingsFromDom() {
+  return {
+    auto_close_prev_day_enabled: Boolean(document.getElementById("autoClosePrevDayEnabled")?.checked),
+    auto_close_prev_day_time: normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value),
+  };
+}
+
+function initActionSettingsButtons() {
+  document.getElementById("btnSaveActionSettings").onclick = () => saveActionSettings();
+  Office.bindHourMinuteInput("autoClosePrevDayTime");
+  document.getElementById("autoClosePrevDayEnabled")?.addEventListener("change", () => {
+    actionSettings.auto_close_prev_day_enabled = Boolean(document.getElementById("autoClosePrevDayEnabled")?.checked);
+  });
+  document.getElementById("autoClosePrevDayTime")?.addEventListener("input", () => {
+    actionSettings.auto_close_prev_day_time = normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value);
+  });
 }
 
 function buildNotifyToggleBtn(idx, kind, isOn, title) {
@@ -501,6 +548,74 @@ async function loadNotifyRecipients(storeId) {
     Office.showMsg("stepMsg", `Σφάλμα φόρτωσης ληπτών: ${e}`, false);
     notifyRecipients = [];
     renderNotifyRecipients();
+  }
+}
+
+async function loadActionSettings(storeId) {
+  try {
+    const res = await fetch(`/api/store/${storeId}/action-settings`, {
+      credentials: "same-origin",
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok) {
+      Office.showMsg(
+        "stepMsg",
+        data.error || data.db_setup || `Σφάλμα ενεργειών (HTTP ${res.status})`,
+        false
+      );
+      actionSettings = {
+        auto_close_prev_day_enabled: false,
+        auto_close_prev_day_time: "00:30",
+        auto_close_prev_day_last_run_date: null,
+      };
+      renderActionSettings();
+      return;
+    }
+    actionSettings = {
+      auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
+      auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
+      auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
+    };
+    renderActionSettings();
+  } catch (e) {
+    Office.showMsg("stepMsg", `Σφάλμα φόρτωσης ενεργειών: ${e}`, false);
+    renderActionSettings();
+  }
+}
+
+async function saveActionSettings() {
+  if (!currentStoreId) {
+    Office.showMsg("stepMsg", "Επιλέξτε κατάστημα.", false);
+    return false;
+  }
+  const btn = document.getElementById("btnSaveActionSettings");
+  if (btn) btn.disabled = true;
+  try {
+    const payload = collectActionSettingsFromDom();
+    const res = await fetch(`/api/store/${currentStoreId}/action-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ενεργειών", false);
+      return false;
+    }
+    actionSettings = {
+      auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
+      auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
+      auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
+    };
+    renderActionSettings();
+    Office.showMsg("stepMsg", "Οι ενέργειες αποθηκεύτηκαν.", true);
+    return true;
+  } catch (e) {
+    Office.showMsg("stepMsg", String(e), false);
+    return false;
+  } finally {
+    updateNotifyUiState();
   }
 }
 

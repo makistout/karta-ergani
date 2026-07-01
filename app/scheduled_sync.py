@@ -28,6 +28,36 @@ _after_login_sync_lock = threading.Lock()
 _after_login_sync_seen: dict[str, float] = {}
 
 
+def _run_configured_auto_actions(
+    cfg: dict[str, Any],
+    *,
+    parent_run_id: str,
+) -> dict[str, Any] | None:
+    from app.auto_close_cards import (
+        run_auto_close_prev_day_for_store,
+        should_run_auto_close_prev_day,
+    )
+
+    should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
+    if not should_run:
+        return {
+            "auto_close_prev_day": {
+                "enabled": bool(cfg.get("auto_close_prev_day_enabled")),
+                "skipped": True,
+                "reason": reason,
+                "work_date": previous_day or None,
+            }
+        }
+    result = run_auto_close_prev_day_for_store(
+        cfg,
+        work_date_iso=previous_day,
+        parent_run_id=parent_run_id,
+    )
+    if result.get("success"):
+        repo_store.mark_auto_close_prev_day_run(int(cfg["id"]), previous_day)
+    return {"auto_close_prev_day": result}
+
+
 def is_store_syncable(cfg: dict[str, Any]) -> bool:
     """Κατάστημα με credentials portal (admin) και ΑΦΜ εργοδότη."""
     if not str(cfg.get("employer_afm") or "").strip():
@@ -258,6 +288,18 @@ def sync_store_today(
         if post_sync_notifications_enqueued:
             log.info("Έγινε enqueue ασύγχρονων ειδοποιήσεων μετά το sync")
 
+    auto_actions = None
+    if op == OPERATION:
+        try:
+            refreshed_cfg = repo_store.get_store_config(sid) or cfg
+            auto_actions = _run_configured_auto_actions(
+                refreshed_cfg,
+                parent_run_id=run_id,
+            )
+        except Exception as ex:
+            auto_actions = {"auto_close_prev_day": {"success": False, "error": str(ex)}}
+            log.error(f"Σφάλμα αυτόματων ενεργειών: {ex}")
+
     result = {
         "store_id": sid,
         "store_name": name,
@@ -268,6 +310,7 @@ def sync_store_today(
         "schedule": schedule,
         "work_log": work_log,
         "post_sync_notifications_enqueued": post_sync_notifications_enqueued,
+        "auto_actions": auto_actions,
         "schedule_last_sync_at": sync_times.get("schedule_last_sync_at"),
         "work_log_last_sync_at": sync_times.get("work_log_last_sync_at"),
     }

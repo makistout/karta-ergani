@@ -75,7 +75,7 @@ async function loadStoresList() {
       );
       actInner.appendChild(mkBtn("Επεξεργασία", "btn", "pencil-square", () => editStore(store.id)));
       actInner.appendChild(
-        mkBtn("Ειδοποιήσεις", "btn btn-secondary", "bell", () => {
+        mkBtn("Ρυθμίσεις", "btn btn-secondary", "sliders", () => {
           window.location.href = `/ui/stores/notify?id=${store.id}`;
         })
       );

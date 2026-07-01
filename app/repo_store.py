@@ -8,6 +8,7 @@ from app.db import cursor
 from app.row_util import row_to_dict, rows_to_dicts
 
 _sync_meta_cols: bool | None = None
+_action_settings_cols: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -39,6 +40,37 @@ def _store_sync_select_extra() -> str:
     """
 
 
+def action_settings_columns_available() -> bool:
+    """True αν υπάρχουν οι στήλες αυτόματων ενεργειών στο κατάστημα."""
+    global _action_settings_cols
+    if _action_settings_cols is not None:
+        return _action_settings_cols
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'auto_close_prev_day_enabled')"
+            )
+            row = cur.fetchone()
+            _action_settings_cols = row is not None and row[0] is not None
+    except Exception:
+        _action_settings_cols = False
+    return _action_settings_cols
+
+
+def _store_action_select_extra() -> str:
+    if action_settings_columns_available():
+        return """
+               CAST(auto_close_prev_day_enabled AS int) AS auto_close_prev_day_enabled,
+               auto_close_prev_day_time,
+               auto_close_prev_day_last_run_date
+        """
+    return """
+               CAST(0 AS int) AS auto_close_prev_day_enabled,
+               CAST(N'00:30' AS nvarchar(5)) AS auto_close_prev_day_time,
+               CAST(NULL AS nvarchar(10)) AS auto_close_prev_day_last_run_date
+    """
+
+
 def list_store_configs() -> list[dict[str, Any]]:
     sql = f"""
         SELECT id, name, username, password, usertype,
@@ -49,7 +81,8 @@ def list_store_configs() -> list[dict[str, Any]]:
                kallikratis_code, kallikratis_desc,
                CAST(updated_at AS datetime2) AS updated_at,
                CAST(last_sync_at AS datetime2) AS last_sync_at,
-               {_store_sync_select_extra()}
+               {_store_sync_select_extra()},
+               {_store_action_select_extra()}
         FROM dbo.karta_store_config
         ORDER BY name, id
     """
@@ -93,7 +126,8 @@ def get_store_config(store_id: int) -> dict[str, Any] | None:
                kallikratis_code, kallikratis_desc,
                CAST(updated_at AS datetime2) AS updated_at,
                CAST(last_sync_at AS datetime2) AS last_sync_at,
-               {_store_sync_select_extra()}
+               {_store_sync_select_extra()},
+               {_store_action_select_extra()}
         FROM dbo.karta_store_config WHERE id = ?
     """
     with cursor(commit=False) as cur:
@@ -322,3 +356,72 @@ def effective_schedule_sync_at(cfg: dict[str, Any]) -> Any:
 
 def effective_work_log_sync_at(cfg: dict[str, Any]) -> Any:
     return cfg.get("work_log_last_sync_at") or cfg.get("last_sync_at")
+
+
+def get_action_settings(store_id: int) -> dict[str, Any]:
+    if not action_settings_columns_available():
+        return {
+            "auto_close_prev_day_enabled": False,
+            "auto_close_prev_day_time": "00:30",
+            "auto_close_prev_day_last_run_date": None,
+            "db_setup": "sql/alter_add_store_action_settings.sql",
+        }
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT
+                CAST(auto_close_prev_day_enabled AS int) AS auto_close_prev_day_enabled,
+                auto_close_prev_day_time,
+                auto_close_prev_day_last_run_date
+            FROM dbo.karta_store_config
+            WHERE id = ?
+            """,
+            (int(store_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"Δεν βρέθηκε κατάστημα id={store_id}")
+        data = row_to_dict(cur, row)
+    return {
+        "auto_close_prev_day_enabled": bool(data.get("auto_close_prev_day_enabled")),
+        "auto_close_prev_day_time": data.get("auto_close_prev_day_time") or "00:30",
+        "auto_close_prev_day_last_run_date": data.get("auto_close_prev_day_last_run_date"),
+    }
+
+
+def save_action_settings(
+    store_id: int,
+    *,
+    auto_close_prev_day_enabled: bool,
+    auto_close_prev_day_time: str,
+) -> dict[str, Any]:
+    if not action_settings_columns_available():
+        raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
+    time_s = str(auto_close_prev_day_time or "").strip()[:5] or "00:30"
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_store_config
+            SET auto_close_prev_day_enabled = ?,
+                auto_close_prev_day_time = ?,
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE id = ?
+            """,
+            (1 if auto_close_prev_day_enabled else 0, time_s, int(store_id)),
+        )
+    return get_action_settings(store_id)
+
+
+def mark_auto_close_prev_day_run(store_id: int, work_date_iso: str) -> None:
+    if not action_settings_columns_available():
+        return
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_store_config
+            SET auto_close_prev_day_last_run_date = ?,
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE id = ?
+            """,
+            (str(work_date_iso or "").strip()[:10], int(store_id)),
+        )

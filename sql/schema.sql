@@ -31,7 +31,10 @@ BEGIN
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_store_updated DEFAULT (SYSDATETIMEOFFSET()),
         last_sync_at DATETIMEOFFSET(7) NULL,
         schedule_last_sync_at DATETIMEOFFSET(7) NULL,
-        work_log_last_sync_at DATETIMEOFFSET(7) NULL
+        work_log_last_sync_at DATETIMEOFFSET(7) NULL,
+        auto_close_prev_day_enabled BIT NOT NULL CONSTRAINT DF_karta_store_auto_close_prev_day_enabled DEFAULT (0),
+        auto_close_prev_day_time NVARCHAR(5) NOT NULL CONSTRAINT DF_karta_store_auto_close_prev_day_time DEFAULT (N'00:30'),
+        auto_close_prev_day_last_run_date NVARCHAR(10) NULL
     );
     CREATE INDEX IX_karta_store_employer ON dbo.karta_store_config (employer_afm, branch_aa);
 END

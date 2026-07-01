@@ -612,6 +612,119 @@ input, select {
   box-sizing: border-box;
 }
 
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.settings-section {
+  padding: 1rem;
+}
+
+.settings-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.settings-section-actions {
+  margin-top: 0.75rem;
+}
+
+.settings-action-row {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.settings-action-row input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.12rem;
+}
+
+.settings-action-row strong,
+.settings-action-row small {
+  display: block;
+}
+
+.settings-action-row strong {
+  font-size: 0.93rem;
+  line-height: 1.35;
+}
+
+.settings-action-row small {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.settings-action-grid {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+
+.settings-action-grid label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.settings-action-grid input.input-time-24 {
+  width: 100%;
+  height: 2.25rem;
+  box-sizing: border-box;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.settings-action-meta {
+  min-height: 2.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.settings-action-meta span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.settings-action-meta strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .notify-recipients-wrap {
   margin-bottom: 0.5rem;
   overflow-x: auto;
@@ -777,6 +890,10 @@ tr.notify-recipient-row--paused td:not(.col-notify-actions) {
 
 @media (max-width: 900px) {
   .work-card-declare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-action-grid {
     grid-template-columns: 1fr;
   }
 }
