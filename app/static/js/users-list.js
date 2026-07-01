@@ -419,8 +419,8 @@ function permissionInfo(permission) {
 function renderPermissionComparison() {
   const wrap = document.getElementById("permissionCompareWrap");
   if (!wrap) return;
-  if (!usersState.users.length) {
-    wrap.innerHTML = `<p class="table-meta">Δεν υπάρχουν χρήστες.</p>`;
+  if (!usersState.roles.length) {
+    wrap.innerHTML = `<p class="table-meta">Δεν υπάρχουν ρόλοι.</p>`;
     return;
   }
   const query = normalizeSearchText(usersState.permissionQuery || "");
@@ -445,26 +445,12 @@ function renderPermissionComparison() {
     `<small>ρόλος</small>` +
     `</th>`
   )).join("");
-  const userHead = usersState.users.map((user) => (
-    `<th scope="col" class="users-permission-user-head">` +
-    `<span class="users-matrix-user">${Office.escapeHtml(user.username || "")}</span>` +
-    `<small>χρήστης · ${Office.escapeHtml(user.role || "")}</small>` +
-    `</th>`
-  )).join("");
   const rows = permissions.map((permission) => {
     const tooltip = `${permission.component}\n${permission.description}\nΚωδικός: ${permission.code}`;
     const roleCells = (usersState.roles || []).map((role) => {
       const hasPermission = roleHasPermission(role, permission.code);
       return (
         `<td class="users-permission-cell users-permission-role-cell ${hasPermission ? "has-permission" : "no-permission"}">` +
-        `${hasPermission ? "✓" : "-"}` +
-        `</td>`
-      );
-    }).join("");
-    const userCells = usersState.users.map((user) => {
-      const hasPermission = userHasPermission(user, permission.code);
-      return (
-        `<td class="users-permission-cell users-permission-user-cell ${hasPermission ? "has-permission" : "no-permission"}">` +
         `${hasPermission ? "✓" : "-"}` +
         `</td>`
       );
@@ -476,7 +462,6 @@ function renderPermissionComparison() {
       `<code>${Office.escapeHtml(permission.action)}</code>` +
       `</td>` +
       roleCells +
-      userCells +
       `</tr>`
     );
   }).join("");
@@ -485,7 +470,7 @@ function renderPermissionComparison() {
     `<thead><tr>` +
     `<th scope="col">Τύπος</th>` +
     `<th scope="col">Ενέργεια</th>` +
-    `${roleHead}${userHead}</tr></thead>` +
+    `${roleHead}</tr></thead>` +
     `<tbody>${rows}</tbody>` +
     `</table>`
   );
