@@ -70,7 +70,7 @@ def _persist_local_schedule_after_wto_daily(
             employee_afm=employee_afm,
             hour_from=None if is_rest else body.get("hour_from"),
             hour_to=None if is_rest else body.get("hour_to"),
-            shift_type="Ρεπό/ανάπαυση" if is_rest else schedule_type,
+            shift_type="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ" if is_rest else schedule_type,
             extra="local WTODaily submit",
             source_aa="local_wto_daily",
         )

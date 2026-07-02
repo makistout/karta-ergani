@@ -63,7 +63,7 @@ class WtoDailyLocalScheduleTests(unittest.TestCase):
             employee_afm="987654321",
             hour_from=None,
             hour_to=None,
-            shift_type="Ρεπό/ανάπαυση",
+            shift_type="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ",
             extra="local WTODaily submit",
             source_aa="local_wto_daily",
         )
