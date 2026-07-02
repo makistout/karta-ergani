@@ -42,6 +42,9 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 
 - Manual sync από `/ui/sync`.
 - Scheduled sync μέσω `scripts/run_scheduled_sync.py`.
+- Το scheduled sync κάνει στο βασικό run σημερινό ωράριο/πραγματική και, μία φορά μετά τα
+  μεσάνυχτα/ώρα auto-close ανά κατάστημα, ξεχωριστό sync ψηφιακού ωραρίου για αύριο και
+  μεθαύριο (`scheduled_future_schedule_sync`).
 - Sync logs από `/ui/sync-log`.
 - Post-sync Telegram/Email notifications καταγράφονται ως ξεχωριστή operation.
 

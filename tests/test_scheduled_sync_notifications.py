@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 from app import scheduled_sync
@@ -76,6 +77,133 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         thread.assert_not_called()
         sleep.assert_not_called()
         work_log_sync.assert_not_called()
+
+    def test_scheduled_sync_fetches_today_only(self):
+        class FakeLogger:
+            def __init__(self, *args, **kwargs):
+                self.run_id = "run-test"
+
+            def info(self, *args, **kwargs):
+                return None
+
+            def warning(self, *args, **kwargs):
+                return None
+
+            def error(self, *args, **kwargs):
+                return None
+
+        cfg = {
+            "id": 7,
+            "name": "Demo",
+            "employer_afm": "123456789",
+            "branch_aa": "0",
+            "username": "portal-user",
+            "password": "portal-pass",
+        }
+        schedule_result = {
+            "success": True,
+            "count": 3,
+            "days_synced": 3,
+            "fetch_source": "excel",
+        }
+        work_log_result = {"success": True, "count": 1, "fetch_source": "excel"}
+
+        with (
+            patch("app.scheduled_sync.KartaLogger", FakeLogger),
+            patch(
+                "app.scheduled_sync.sync_schedule_from_portal",
+                return_value=schedule_result,
+            ) as schedule_sync,
+            patch(
+                "app.scheduled_sync.sync_work_log_from_portal",
+                return_value=work_log_result,
+            ) as work_log_sync,
+            patch("app.scheduled_sync.repo_sync_log.finish_run"),
+            patch("app.scheduled_sync.repo_store.get_store_config", return_value=cfg),
+            patch(
+                "app.scheduled_sync.enqueue_post_sync_notifications",
+                return_value=False,
+            ),
+            patch("app.scheduled_sync._run_configured_auto_actions", return_value=None),
+        ):
+            result = scheduled_sync.sync_store_today(
+                cfg,
+                work_date_iso="2026-07-02",
+            )
+
+        self.assertTrue(result["success"])
+        schedule_kwargs = schedule_sync.call_args.kwargs
+        self.assertEqual(schedule_kwargs["from_iso"], "2026-07-02")
+        self.assertEqual(schedule_kwargs["to_iso"], "2026-07-02")
+        self.assertEqual(schedule_kwargs["max_days"], 1)
+        work_log_kwargs = work_log_sync.call_args.kwargs
+        self.assertEqual(work_log_kwargs["from_iso"], "2026-07-02")
+        self.assertEqual(work_log_kwargs["to_iso"], "2026-07-02")
+        self.assertEqual(work_log_kwargs["max_days"], 1)
+
+    def test_future_schedule_auto_action_runs_once_after_configured_time(self):
+        cfg = {
+            "id": 7,
+            "name": "Demo",
+            "auto_close_prev_day_time": "00:30",
+        }
+        with (
+            patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
+            patch(
+                "app.scheduled_sync._future_schedule_sync_run_exists",
+                return_value=False,
+            ),
+        ):
+            should_run, from_iso, to_iso, reason = (
+                scheduled_sync.should_run_future_schedule_sync(
+                    cfg,
+                    now=datetime(2026, 7, 2, 0, 31),
+                )
+            )
+
+        self.assertTrue(should_run)
+        self.assertEqual(from_iso, "2026-07-03")
+        self.assertEqual(to_iso, "2026-07-04")
+        self.assertEqual(reason, "έτοιμο")
+
+    def test_configured_auto_actions_runs_future_schedule_separately(self):
+        cfg = {
+            "id": 7,
+            "name": "Demo",
+            "auto_close_prev_day_enabled": False,
+        }
+        future_result = {
+            "success": True,
+            "from_iso": "2026-07-03",
+            "to_iso": "2026-07-04",
+        }
+
+        with (
+            patch(
+                "app.scheduled_sync.should_run_future_schedule_sync",
+                return_value=(True, "2026-07-03", "2026-07-04", "έτοιμο"),
+            ),
+            patch(
+                "app.scheduled_sync.run_future_schedule_sync_for_store",
+                return_value=future_result,
+            ) as future_sync,
+            patch(
+                "app.auto_close_cards.should_run_auto_close_prev_day",
+                return_value=(False, "2026-07-01", "ρύθμιση ανενεργή"),
+            ),
+        ):
+            actions = scheduled_sync._run_configured_auto_actions(
+                cfg,
+                parent_run_id="parent",
+            )
+
+        future_sync.assert_called_once_with(
+            cfg,
+            from_iso="2026-07-03",
+            to_iso="2026-07-04",
+        )
+        self.assertEqual(actions["future_schedule"], future_result)
+        self.assertTrue(actions["auto_close_prev_day"]["skipped"])
 
     def test_after_login_sync_enqueues_store_scope_once(self):
         class ImmediateThread:

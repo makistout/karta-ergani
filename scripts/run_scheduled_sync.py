@@ -23,7 +23,11 @@ def _env_flag(name: str, *, default: bool = True) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Συγχρονισμός όλων των καταστημάτων για σήμερα (ωράριο + πραγματική)."
+        description=(
+            "Συγχρονισμός όλων των καταστημάτων: "
+            "σημερινό ψηφιακό ωράριο/πραγματική και ημερήσια φάση "
+            "μελλοντικού ψηφιακού ωραρίου."
+        )
     )
     parser.add_argument(
         "--dry-run",
@@ -40,7 +44,10 @@ def main() -> int:
     parser.add_argument(
         "--date",
         dest="work_date",
-        help="ISO ημερομηνία (προεπιλογή σήμερα), π.χ. 2026-06-17",
+        help=(
+            "ISO ημερομηνία βάσης (προεπιλογή σήμερα), π.χ. 2026-06-17. "
+            "Η πραγματική και το βασικό ωράριο συγχρονίζονται για αυτή την ημέρα."
+        ),
     )
     parser.add_argument(
         "--force",

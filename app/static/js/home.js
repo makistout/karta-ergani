@@ -8,11 +8,12 @@ document.addEventListener("DOMContentLoaded", () => {
   reportDatePicker = Office.createDatePicker({
     mountId: "homeDatePicker",
     mode: "range",
-    autoApply: false,
-    quickPresets: ["today", "yesterday", "last7", "last30"],
+    autoApply: true,
+    onApply: () => loadCardReport(),
+    quickPresets: ["yesterday", "today", "tomorrow", "dayAfterTomorrow"],
     quickLabels: {
-      last7: "Τελευταία εβδομάδα",
-      last30: "Τελευταίος μήνας",
+      tomorrow: "Αύριο",
+      dayAfterTomorrow: "Μεθαύριο",
     },
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
@@ -153,6 +154,20 @@ function timeInputToHm(value) {
   return Office.normalizeHourMinute(value);
 }
 
+function wtoDailyProposalForRow(row) {
+  const proposal = row.wto_daily || {};
+  if (proposal.hour_from || proposal.hour_to || proposal.note || proposal.schedule_type) {
+    return proposal;
+  }
+  const sched = row.schedule || {};
+  return {
+    schedule_type: "ΕΡΓ",
+    hour_from: sched.hour_from || "",
+    hour_to: sched.hour_to || "",
+    note: "Τρέχον ψηφιακό ωράριο για την ημέρα.",
+  };
+}
+
 function openWtoDailyModal(row, opts = {}) {
   wtoDailyModalRow = { ...row, _wtoRestMode: opts.mode === "rest" };
   const modal = document.getElementById("wtoDailyModal");
@@ -160,7 +175,7 @@ function openWtoDailyModal(row, opts = {}) {
   const sub = document.getElementById("wtoDailyModalEmployee");
   const hint = document.getElementById("wtoDailyModalHint");
   const msg = document.getElementById("wtoDailyModalMsg");
-  const proposal = row.wto_daily || {};
+  const proposal = wtoDailyProposalForRow(row);
   const isRest = opts.mode === "rest";
   if (!modal || !sub) return;
   sub.textContent =
@@ -173,7 +188,7 @@ function openWtoDailyModal(row, opts = {}) {
   if (hint) {
     hint.textContent = isRest
       ? "Δήλωση ρεπό/ανάπαυσης (τύπος ΑΝ) για την ημέρα."
-      : row.action || proposal.note || "";
+      : proposal.note || row.action || "";
   }
   const hoursRow = document.getElementById("wtoDailyHoursRow");
   if (hoursRow) hoursRow.classList.toggle("hidden", isRest);
@@ -553,18 +568,44 @@ function minutesFromHm(hm) {
   return h * 60 + m;
 }
 
+function rowHasWorkSignal(row) {
+  return Boolean(
+    row.work_log?.hour_from ||
+      row.work_log?.hour_to ||
+      row.card?.has_check_in ||
+      row.card?.has_check_out
+  );
+}
+
+function scheduleIsRestLike(schedule) {
+  const shiftType = String(schedule?.shift_type || "").trim().toUpperCase();
+  return Boolean(
+    shiftType &&
+      (/^(ΑΝ|AN|Ρ)$/.test(shiftType) ||
+        /ΑΝΑΠΑΥΣ|ΡΕΠΟ|REPO|ΜΗ\s*ΕΡΓΑΣΙΑ|ΑΔΕΙΑ|ΑΡΓΙΑ/.test(shiftType))
+  );
+}
+
 function canDeclareRestBeforeShift(row) {
-  const workDate = Office.parseDateGr(row.work_date || "") || String(row.work_date || "").slice(0, 10);
-  if (!workDate || workDate !== Office.todayIsoLocal()) return false;
-  if (row.work_log?.hour_from || row.work_log?.hour_to || row.card?.has_check_in || row.card?.has_check_out) return false;
+  const workDate =
+    Office.workDateToIso?.(row.work_date) ||
+    Office.parseDateGr(row.work_date || "") ||
+    String(row.work_date || "").slice(0, 10);
+  if (!workDate) return false;
+  if (workDate < Office.todayIsoLocal()) return false;
+  if (rowHasWorkSignal(row)) return false;
   const sched = row.schedule || {};
-  const shiftType = String(sched.shift_type || "").trim().toUpperCase();
-  if (["ΑΝ", "AN", "Ρ", "ΡΕΠΟ", "REPO"].includes(shiftType)) return false;
+  if (scheduleIsRestLike(sched)) return false;
   const startMin = minutesFromHm(sched.hour_from);
   if (startMin == null) return false;
+  if (workDate > Office.todayIsoLocal()) return true;
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   return nowMin <= startMin;
+}
+
+function canChangeScheduleBeforeShift(row) {
+  return canDeclareRestBeforeShift(row);
 }
 
 function buildActionCell(r) {
@@ -575,7 +616,8 @@ function buildActionCell(r) {
           .join("")}</ul>`
       : "";
   let html = Office.escapeHtml(r.action || "—") + notes;
-  if (r.wto_daily_eligible) {
+  const scheduleChangeEligible = r.wto_daily_eligible || canChangeScheduleBeforeShift(r);
+  if (scheduleChangeEligible) {
     html +=
       `<div><button type="button" class="btn btn-secondary btn-wto-daily" data-wto-daily-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-daily-date="${Office.escapeHtml(r.work_date || "")}">` +
       `${Office.icon("calendar-week")}<span>Αλλαγή ωραρίου</span></button></div>`;

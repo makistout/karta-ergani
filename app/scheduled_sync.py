@@ -1,17 +1,18 @@
-"""Περιοδικός συγχρονισμός όλων των καταστημάτων — ωράριο + πραγματική για σήμερα."""
+"""Περιοδικός συγχρονισμός όλων των καταστημάτων — ωράριο + πραγματική."""
 
 from __future__ import annotations
 
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.ergani_env import store_api_context
 from app.karta_log import KartaLogger
 from app.portal_schedule_sync import sync_schedule_from_portal
 from app.portal_work_log_sync import sync_work_log_from_portal
+from app.work_card_payload import tz_athens
 from app import repo_store, repo_sync_log
 from app.scheduled_sync_notifications import (
     _post_sync_notify_key,
@@ -20,6 +21,8 @@ from app.scheduled_sync_notifications import (
 from config import Config
 
 OPERATION = "scheduled_today_sync"
+OPERATION_FUTURE_SCHEDULE_SYNC = "scheduled_future_schedule_sync"
+FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
 _RUNNING_GRACE_MINUTES = 15
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
 _after_login_sync_lock = threading.Lock()
@@ -36,16 +39,34 @@ def _run_configured_auto_actions(
         should_run_auto_close_prev_day,
     )
 
+    actions: dict[str, Any] = {}
+
+    future_should_run, future_from, future_to, future_reason = (
+        should_run_future_schedule_sync(cfg)
+    )
+    if future_should_run:
+        actions["future_schedule"] = run_future_schedule_sync_for_store(
+            cfg,
+            from_iso=future_from,
+            to_iso=future_to,
+        )
+    else:
+        actions["future_schedule"] = {
+            "skipped": True,
+            "reason": future_reason,
+            "from_iso": future_from or None,
+            "to_iso": future_to or None,
+        }
+
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
     if not should_run:
-        return {
-            "auto_close_prev_day": {
-                "enabled": bool(cfg.get("auto_close_prev_day_enabled")),
-                "skipped": True,
-                "reason": reason,
-                "work_date": previous_day or None,
-            }
+        actions["auto_close_prev_day"] = {
+            "enabled": bool(cfg.get("auto_close_prev_day_enabled")),
+            "skipped": True,
+            "reason": reason,
+            "work_date": previous_day or None,
         }
+        return actions
     result = run_auto_close_prev_day_for_store(
         cfg,
         work_date_iso=previous_day,
@@ -53,7 +74,8 @@ def _run_configured_auto_actions(
     )
     if result.get("success"):
         repo_store.mark_auto_close_prev_day_run(int(cfg["id"]), previous_day)
-    return {"auto_close_prev_day": result}
+    actions["auto_close_prev_day"] = result
+    return actions
 
 
 def is_store_syncable(cfg: dict[str, Any]) -> bool:
@@ -73,6 +95,137 @@ def list_syncable_stores() -> list[dict[str, Any]]:
 
 def _today_iso() -> str:
     return datetime.today().strftime("%Y-%m-%d")
+
+
+def _add_iso_days(date_iso: str, days: int) -> str:
+    base = datetime.strptime(date_iso[:10], "%Y-%m-%d").date()
+    return (base + timedelta(days=days)).isoformat()
+
+
+def _future_schedule_sync_run_exists(store_id: int, base_date_iso: str) -> bool:
+    if not repo_sync_log.tables_available():
+        return False
+    try:
+        from app.db import cursor
+
+        with cursor(commit=False) as cur:
+            cur.execute(
+                """
+                SELECT TOP (1) 1
+                FROM dbo.karta_sync_run
+                WHERE operation = ?
+                  AND store_id = ?
+                  AND LOWER(RTRIM(status)) IN (N'running', N'done')
+                  AND CONVERT(date, started_at) = CONVERT(date, ?)
+                """,
+                (OPERATION_FUTURE_SCHEDULE_SYNC, int(store_id), base_date_iso),
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
+
+def should_run_future_schedule_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str, str, str]:
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    base_date = local_now.date().isoformat()
+    from_iso = _add_iso_days(base_date, 1)
+    to_iso = _add_iso_days(base_date, FUTURE_SCHEDULE_LOOKAHEAD_DAYS)
+    run_time = "00:30"
+    try:
+        from app.auto_close_cards import normalize_auto_close_time
+
+        run_time = normalize_auto_close_time(
+            str(cfg.get("auto_close_prev_day_time") or "00:30")
+        )
+    except Exception:
+        pass
+    if local_now.strftime("%H:%M") < run_time:
+        return False, from_iso, to_iso, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, from_iso, to_iso, "λείπουν πίνακες sync log για ημερήσιο guard"
+    if _future_schedule_sync_run_exists(int(cfg["id"]), base_date):
+        return False, from_iso, to_iso, "έχει ήδη εκτελεστεί σήμερα"
+    return True, from_iso, to_iso, "έτοιμο"
+
+
+def run_future_schedule_sync_for_store(
+    cfg: dict[str, Any],
+    *,
+    from_iso: str,
+    to_iso: str,
+) -> dict[str, Any]:
+    ctx = store_api_context(cfg)
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    run_id = str(uuid.uuid4())
+    log = KartaLogger(
+        OPERATION_FUTURE_SCHEDULE_SYNC,
+        store_id=sid,
+        store_name=name,
+        run_id=run_id,
+        extra={
+            "employer_afm": ctx.get("employer_afm"),
+            "branch_aa": ctx.get("branch_aa"),
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+        },
+    )
+    log.info(
+        f"Έναρξη συγχρονισμού μελλοντικού ψηφιακού ωραρίου {from_iso} – {to_iso}",
+        from_iso=from_iso,
+        to_iso=to_iso,
+    )
+    try:
+        result = sync_schedule_from_portal(
+            ctx,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            max_days=FUTURE_SCHEDULE_LOOKAHEAD_DAYS,
+            run_id=run_id,
+        )
+        _log_portal_phase(log, "Μελλοντικό ψηφιακό ωράριο", result)
+        ok = bool(result.get("success"))
+        repo_sync_log.finish_run(
+            run_id,
+            status="done" if ok else "error",
+            message=result.get("detail") or "Μελλοντικό ψηφιακό ωράριο",
+            result={
+                "success": ok,
+                "from_iso": from_iso,
+                "to_iso": to_iso,
+                "schedule": result,
+            },
+        )
+        return {
+            "success": ok,
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "schedule": result,
+        }
+    except Exception as ex:
+        err = str(ex)
+        log.error(f"Σφάλμα μελλοντικού ψηφιακού ωραρίου: {err}")
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=err,
+            result={
+                "success": False,
+                "from_iso": from_iso,
+                "to_iso": to_iso,
+                "error": err,
+            },
+        )
+        return {
+            "success": False,
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "error": err,
+        }
 
 
 def _has_running_scheduled_sync() -> bool:

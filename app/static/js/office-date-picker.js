@@ -366,6 +366,8 @@
 
     const ALL_QUICK = [
       { id: "today", label: "Σήμερα" },
+      { id: "tomorrow", label: "Αύριο" },
+      { id: "dayAfterTomorrow", label: "Μεθαύριο" },
       { id: "yesterday", label: "Χθες" },
       { id: "last7", label: "7 ημέρες" },
       { id: "last30", label: "30 ημέρες" },
@@ -375,10 +377,14 @@
       Array.isArray(opts.quickPresets) && opts.quickPresets.length
         ? opts.quickPresets
         : ALL_QUICK.map((p) => p.id);
-    const QUICK = ALL_QUICK.filter((p) => quickIds.includes(p.id)).map((p) => ({
-      ...p,
-      label: quickLabels[p.id] || p.label,
-    }));
+    const quickById = new Map(ALL_QUICK.map((p) => [p.id, p]));
+    const QUICK = quickIds
+      .map((id) => quickById.get(id))
+      .filter(Boolean)
+      .map((p) => ({
+        ...p,
+        label: quickLabels[p.id] || p.label,
+      }));
 
     let start = isoToday();
     let end = isoToday();
@@ -431,6 +437,10 @@
       const today = isoToday();
       if (id === "today") {
         start = end = today;
+      } else if (id === "tomorrow") {
+        start = end = addDays(today, 1);
+      } else if (id === "dayAfterTomorrow") {
+        start = end = addDays(today, 2);
       } else if (id === "yesterday") {
         start = end = addDays(today, -1);
       } else if (id === "last7") {
