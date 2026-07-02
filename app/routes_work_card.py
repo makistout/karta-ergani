@@ -365,23 +365,6 @@ def _submit_work_card(
             "data": parsed,
         }), 500
 
-    sync_triggered = False
-    if resp.ok and persisted and store_id:
-        try:
-            from app import repo_store
-            from app.scheduled_sync import enqueue_sync_store_today_after_card
-
-            cfg = repo_store.get_store_config(int(store_id))
-            if cfg:
-                sync_triggered = enqueue_sync_store_today_after_card(
-                    cfg,
-                    work_date_iso=ref_date,
-                )
-        except Exception:
-            current_app.logger.exception(
-                "Αποτυχία εκκίνησης background sync πραγματικής μετά από χτύπημα κάρτας"
-            )
-
     return jsonify({
         "success": resp.ok,
         "status": resp.status_code,
@@ -392,7 +375,7 @@ def _submit_work_card(
         "f_type": resolved_type,
         "f_type_label": _f_type_label(resolved_type),
         "persisted": persisted,
-        "work_log_sync_triggered": sync_triggered,
+        "work_log_sync_triggered": False,
         "error": err_msg,
         "data": parsed,
     }), resp.status_code if not resp.ok else 200

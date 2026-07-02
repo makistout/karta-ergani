@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.ergani_client import ErganiClient
 from app.http_helpers import ensure_ergani_bearer, json_or_text, persist_safe, resolve_active_store, response_body_text
 from app.repo_card import insert_declaration, parse_ergani_submit_response
 from app.repo_entities import upsert_employee
+from app.repo_schedule import upsert_schedule_for_employee_day
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY, build_wto_daily_payload
 from app.work_card_payload import WorkCardPayloadError, norm_afm
 from app.db import cursor
@@ -43,6 +44,40 @@ def _persist_wto_daily_submit(
             req_str,
             response_body,
         )
+
+
+def _normalize_schedule_type_for_local(value: Any) -> str:
+    schedule_type = str(value or "ΕΡΓ").strip().upper()
+    if schedule_type == "AN":
+        return "ΑΝ"
+    return schedule_type or "ΕΡΓ"
+
+
+def _persist_local_schedule_after_wto_daily(
+    ctx: dict[str, Any],
+    *,
+    employee_afm: str,
+    body: dict[str, Any],
+    payload: dict[str, Any],
+) -> bool:
+    schedule_type = _normalize_schedule_type_for_local(body.get("schedule_type"))
+    is_rest = schedule_type == "ΑΝ"
+    try:
+        upsert_schedule_for_employee_day(
+            str(ctx["employer_afm"]),
+            str(ctx.get("branch_aa") or "0"),
+            payload["WTOS"]["WTO"][0]["f_from_date"],
+            employee_afm=employee_afm,
+            hour_from=None if is_rest else body.get("hour_from"),
+            hour_to=None if is_rest else body.get("hour_to"),
+            shift_type="Ρεπό/ανάπαυση" if is_rest else schedule_type,
+            extra="local WTODaily submit",
+            source_aa="local_wto_daily",
+        )
+        return True
+    except Exception:
+        current_app.logger.exception("Failed to persist local WTODaily schedule")
+        return False
 
 
 @wto_daily_bp.post("/submit")
@@ -108,9 +143,16 @@ def submit_wto_daily():
         ergani_id,
     )
 
+    local_schedule_updated = False
     if resp.ok:
         with cursor() as cur:
             upsert_employee(cur, emp_afm, last, first)
+        local_schedule_updated = _persist_local_schedule_after_wto_daily(
+            ctx,
+            employee_afm=emp_afm,
+            body=body,
+            payload=payload,
+        )
 
     err_msg = None
     if not resp.ok and isinstance(parsed, dict):
@@ -123,6 +165,7 @@ def submit_wto_daily():
         "submit_date": submit_date,
         "ergani_submission_id": ergani_id,
         "http_status": resp.status_code,
+        "local_schedule_updated": local_schedule_updated,
         "error": err_msg,
         "data": parsed,
     }), (200 if resp.ok else 502)

@@ -256,7 +256,7 @@ async function submitWtoDaily() {
     const proto = data.protocol ? ` · ${data.protocol}` : "";
     Office.showMsg(
       "wtoDailyMsg",
-      `Ωράριο υποβλήθηκε επιτυχώς${proto}. Συγχρονίστε το ψηφιακό ωράριο.`,
+      `Ωράριο υποβλήθηκε επιτυχώς${proto}. Η τοπική εικόνα ενημερώθηκε.`,
       true
     );
     await loadCardReport();

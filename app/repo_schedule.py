@@ -68,6 +68,56 @@ def replace_schedule_for_day(
         return n
 
 
+def upsert_schedule_for_employee_day(
+    employer_afm: str,
+    branch_aa: str,
+    work_date: str,
+    *,
+    employee_afm: str,
+    hour_from: str | None = None,
+    hour_to: str | None = None,
+    shift_type: str | None = None,
+    extra: str | None = None,
+    source_aa: str | None = None,
+) -> int:
+    """Αντικατάσταση τοπικού ωραρίου για έναν εργαζόμενο/ημέρα."""
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    wd = str(work_date).strip()
+    e_afm = norm_afm(employee_afm)
+    with cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM dbo.karta_schedule
+            WHERE employer_afm = ? AND branch_aa = ? AND work_date = ? AND employee_afm = ?
+            """,
+            (afm, aa, wd, e_afm),
+        )
+        cur.execute(
+            """
+            INSERT INTO dbo.karta_schedule (
+                employer_afm, branch_aa, work_date, employee_afm,
+                hour_from, hour_to, shift_type, break_minutes, break_in_work,
+                extra, source_aa
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                afm,
+                aa,
+                wd,
+                e_afm,
+                str(hour_from or "").strip()[:16] or None,
+                str(hour_to or "").strip()[:16] or None,
+                str(shift_type or "").strip()[:64] or None,
+                0,
+                0,
+                str(extra or "").strip()[:500] or None,
+                str(source_aa or "").strip()[:32] or None,
+            ),
+        )
+    return 1
+
+
 def _has_schedule_hours(row: dict[str, Any]) -> bool:
     hf = (row.get("hour_from") or "").strip()
     ht = (row.get("hour_to") or "").strip()

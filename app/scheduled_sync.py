@@ -20,9 +20,7 @@ from app.scheduled_sync_notifications import (
 from config import Config
 
 OPERATION = "scheduled_today_sync"
-OPERATION_CARD_SUBMIT = "card_submit_work_log_sync"
 _RUNNING_GRACE_MINUTES = 15
-AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS = 10
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
 _after_login_sync_lock = threading.Lock()
 _after_login_sync_seen: dict[str, float] = {}
@@ -329,88 +327,12 @@ def enqueue_sync_store_today_after_card(
     work_date_iso: str,
 ) -> bool:
     """
-    Μετά επιτυχές χτύπημα κάρτας, συγχρονισμός αποκλειστικά της
-    πραγματικής απασχόλησης για την ημερομηνία αναφοράς.
+    Απενεργοποιημένο.
+
+    Μετά από επιτυχή κάρτα η τοπική εικόνα ενημερώνεται από την καταχώρηση
+    που μόλις κάναμε, όχι με delayed portal sync πραγματικής απασχόλησης.
     """
-    ref = (work_date_iso or "").strip()[:10]
-    if not ref:
-        return False
-    if not is_store_syncable(cfg):
-        return False
-
-    cfg_snapshot = dict(cfg)
-
-    def _run() -> None:
-        try:
-            time.sleep(AFTER_CARD_WORK_LOG_SYNC_DELAY_SECONDS)
-            ctx = store_api_context(cfg_snapshot)
-            sid = int(cfg_snapshot["id"])
-            name = str(cfg_snapshot.get("name") or sid)
-            run_id = str(uuid.uuid4())
-            log = KartaLogger(
-                OPERATION_CARD_SUBMIT,
-                store_id=sid,
-                store_name=name,
-                run_id=run_id,
-                extra={
-                    "employer_afm": ctx.get("employer_afm"),
-                    "branch_aa": ctx.get("branch_aa"),
-                    "work_date": ref,
-                },
-            )
-            log.info(
-                f"Έναρξη συγχρονισμού πραγματικής μετά από χτύπημα κάρτας για {ref}",
-                work_date=ref,
-            )
-            work_log = sync_work_log_from_portal(
-                ctx,
-                from_iso=ref,
-                to_iso=ref,
-                max_days=1,
-                run_id=run_id,
-            )
-            _log_portal_phase(log, "Πραγματική απασχόληση", work_log)
-            ok = bool(work_log.get("success"))
-            refreshed_cfg = repo_store.get_store_config(sid) or {}
-            work_log_last_sync_at = _fmt_sync_ts(refreshed_cfg.get("work_log_last_sync_at"))
-            if ok and work_log_last_sync_at:
-                log.info(
-                    f"Ενημερώθηκε work_log_last_sync_at: {work_log_last_sync_at}",
-                    work_log_last_sync_at=work_log_last_sync_at,
-                )
-            elif not ok:
-                log.warning("Δεν ενημερώθηκε work_log_last_sync_at (αποτυχία sync πραγματικής)")
-            detail = (
-                f"πραγματική {work_log.get('count', 0)}"
-                if ok
-                else f"πραγματική: {work_log.get('detail') or 'αποτυχία'}"
-            )
-            result = {
-                "store_id": sid,
-                "store_name": name,
-                "work_date": ref,
-                "run_id": run_id,
-                "success": ok,
-                "detail": detail,
-                "work_log": work_log,
-                "work_log_last_sync_at": work_log_last_sync_at,
-                "trigger": "work_card_submit",
-            }
-            _finish_store_run(
-                run_id,
-                ok=ok,
-                message=f"{name}: {'OK' if ok else 'Αποτυχία'} — {detail}",
-                result=result,
-            )
-        except Exception:
-            pass
-
-    threading.Thread(
-        target=_run,
-        daemon=True,
-        name=f"card-work-log-sync-{cfg_snapshot.get('id')}",
-    ).start()
-    return True
+    return False
 
 
 def _log_batch_skip(reason: str) -> str | None:
