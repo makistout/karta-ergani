@@ -296,6 +296,47 @@ def _schedule_shows_blank(schedule: dict[str, Any] | None) -> bool:
     return not st
 
 
+def _merge_schedule_row(existing: dict[str, Any] | None, row: dict[str, Any]) -> dict[str, Any]:
+    if not existing:
+        merged = dict(row)
+        hf = (row.get("hour_from") or "").strip()
+        ht = (row.get("hour_to") or "").strip()
+        merged["intervals"] = [{"hour_from": hf, "hour_to": ht}] if hf or ht else []
+        return merged
+    hf = (row.get("hour_from") or "").strip()
+    ht = (row.get("hour_to") or "").strip()
+    if hf or ht:
+        existing.setdefault("intervals", []).append({"hour_from": hf, "hour_to": ht})
+        if not (existing.get("hour_from") or "").strip():
+            existing["hour_from"] = hf
+        existing["hour_to"] = ht or existing.get("hour_to")
+    if not (existing.get("shift_type") or "").strip() and (row.get("shift_type") or "").strip():
+        existing["shift_type"] = row.get("shift_type")
+    return existing
+
+
+def _merge_work_log_row(existing: dict[str, Any] | None, row: dict[str, Any]) -> dict[str, Any]:
+    hf = (row.get("hour_from") or "").strip()
+    ht = (row.get("hour_to") or "").strip()
+    if not existing:
+        merged = dict(row)
+        merged["intervals"] = [{"hour_from": hf, "hour_to": ht}] if hf or ht else []
+        return merged
+    if hf or ht:
+        existing.setdefault("intervals", []).append({"hour_from": hf, "hour_to": ht})
+        open_existing = any(
+            (item.get("hour_from") or "").strip() and not (item.get("hour_to") or "").strip()
+            for item in existing.get("intervals") or []
+        )
+        if open_existing or (hf and not ht):
+            existing["hour_from"] = hf or existing.get("hour_from")
+            existing["hour_to"] = ht or ""
+        else:
+            existing["hour_from"] = existing.get("hour_from") or hf
+            existing["hour_to"] = ht or existing.get("hour_to")
+    return existing
+
+
 def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
     if flex_arrival_minutes is None:
         return default
@@ -578,14 +619,14 @@ def build_card_status_report(
     sched_by_afm: dict[str, dict[str, Any]] = {}
     for row in schedule_rows:
         afm = (row.get("employee_afm") or "").strip()
-        if afm and afm not in sched_by_afm:
-            sched_by_afm[afm] = row
+        if afm:
+            sched_by_afm[afm] = _merge_schedule_row(sched_by_afm.get(afm), row)
 
     wl_by_afm: dict[str, dict[str, Any]] = {}
     for row in work_log_rows:
         afm = (row.get("employee_afm") or "").strip()
-        if afm and afm not in wl_by_afm:
-            wl_by_afm[afm] = row
+        if afm:
+            wl_by_afm[afm] = _merge_work_log_row(wl_by_afm.get(afm), row)
 
     card_in: dict[str, dict[str, Any]] = {}
     card_out: dict[str, dict[str, Any]] = {}
@@ -683,6 +724,7 @@ def build_card_status_report(
                     "hour_from": sched.get("hour_from"),
                     "hour_to": sched.get("hour_to"),
                     "shift_type": sched.get("shift_type"),
+                    "intervals": sched.get("intervals") or [],
                 }
                 if sched
                 else None
@@ -691,6 +733,7 @@ def build_card_status_report(
                 {
                     "hour_from": wl.get("hour_from"),
                     "hour_to": wl.get("hour_to"),
+                    "intervals": wl.get("intervals") or [],
                 }
                 if wl
                 else None

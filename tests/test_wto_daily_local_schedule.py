@@ -36,6 +36,45 @@ class WtoDailyLocalScheduleTests(unittest.TestCase):
             shift_type="ΕΡΓ",
             extra="local WTODaily submit",
             source_aa="local_wto_daily",
+            intervals=[{"hour_from": "10:00", "hour_to": "18:00"}],
+        )
+
+    def test_persist_local_schedule_after_wto_daily_updates_split_hours(self):
+        ctx = {"employer_afm": "123456789", "branch_aa": "0"}
+        body = {
+            "schedule_type": "ΕΡΓ",
+            "hour_from": "09:00",
+            "hour_to": "21:00",
+            "intervals": [
+                {"hour_from": "09:00", "hour_to": "13:00"},
+                {"hour_from": "17:00", "hour_to": "21:00"},
+            ],
+        }
+
+        with patch("app.routes_wto_daily.upsert_schedule_for_employee_day") as upsert:
+            self.assertTrue(
+                _persist_local_schedule_after_wto_daily(
+                    ctx,
+                    employee_afm="987654321",
+                    body=body,
+                    payload=self._payload(),
+                )
+            )
+
+        upsert.assert_called_once_with(
+            "123456789",
+            "0",
+            "2026-07-02",
+            employee_afm="987654321",
+            hour_from="09:00",
+            hour_to="21:00",
+            shift_type="ΕΡΓ",
+            extra="local WTODaily submit",
+            source_aa="local_wto_daily",
+            intervals=[
+                {"hour_from": "09:00", "hour_to": "13:00"},
+                {"hour_from": "17:00", "hour_to": "21:00"},
+            ],
         )
 
     def test_persist_local_schedule_after_wto_daily_updates_rest_day(self):
@@ -66,6 +105,7 @@ class WtoDailyLocalScheduleTests(unittest.TestCase):
             shift_type="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ",
             extra="local WTODaily submit",
             source_aa="local_wto_daily",
+            intervals=None,
         )
 
 

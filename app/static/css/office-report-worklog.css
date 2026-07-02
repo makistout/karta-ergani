@@ -167,7 +167,23 @@ table.data.report-table td.work-log-action-cell {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+.wto-daily-hours-block {
   margin-bottom: 0.75rem;
+}
+
+.wto-daily-hours-block .wto-daily-hours-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.wto-daily-hours-block .wto-daily-hours-row + .wto-daily-hours-row {
+  margin-top: 0.5rem;
+}
+
+.wto-daily-add-interval {
+  margin-top: 0.6rem;
 }
 
 .wto-daily-hours-row input.input-time-24,
@@ -175,6 +191,11 @@ table.data.report-table td.work-log-action-cell {
   width: 100%;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+.wto-daily-interval-remove {
+  align-self: end;
+  min-width: 2.75rem;
 }
 
 .office-modal {

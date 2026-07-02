@@ -178,6 +178,8 @@ def _send_post_sync_notifications(
                     schedule_hour_from=(sched or {}).get("hour_from"),
                     schedule_hour_to=(sched or {}).get("hour_to"),
                     schedule_shift_type=(sched or {}).get("shift_type"),
+                    schedule_intervals=(sched or {}).get("intervals") or [],
+                    work_intervals=wl.get("intervals") if isinstance(wl.get("intervals"), list) else [],
                 )
                 sent = int(res.get("sent") or 0)
                 total = int(res.get("total") or 0)

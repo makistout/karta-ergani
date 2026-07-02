@@ -53,6 +53,29 @@ def _normalize_schedule_type_for_local(value: Any) -> str:
     return schedule_type or "ΕΡΓ"
 
 
+def _local_schedule_intervals(body: dict[str, Any], *, is_rest: bool) -> list[dict[str, str]] | None:
+    if is_rest:
+        return None
+    raw = body.get("intervals")
+    out: list[dict[str, str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            hf = str(item.get("hour_from") or "").strip()
+            ht = str(item.get("hour_to") or "").strip()
+            if hf or ht:
+                out.append({"hour_from": hf, "hour_to": ht})
+    if out:
+        return out
+    return [
+        {
+            "hour_from": str(body.get("hour_from") or "").strip(),
+            "hour_to": str(body.get("hour_to") or "").strip(),
+        }
+    ]
+
+
 def _persist_local_schedule_after_wto_daily(
     ctx: dict[str, Any],
     *,
@@ -62,6 +85,7 @@ def _persist_local_schedule_after_wto_daily(
 ) -> bool:
     schedule_type = _normalize_schedule_type_for_local(body.get("schedule_type"))
     is_rest = schedule_type == "ΑΝ"
+    intervals = _local_schedule_intervals(body, is_rest=is_rest)
     try:
         upsert_schedule_for_employee_day(
             str(ctx["employer_afm"]),
@@ -73,6 +97,7 @@ def _persist_local_schedule_after_wto_daily(
             shift_type="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ" if is_rest else schedule_type,
             extra="local WTODaily submit",
             source_aa="local_wto_daily",
+            intervals=intervals,
         )
         return True
     except Exception:
@@ -114,6 +139,7 @@ def submit_wto_daily():
             schedule_type=str(body.get("schedule_type") or "ΕΡΓ"),
             hour_from=body.get("hour_from"),
             hour_to=body.get("hour_to"),
+            intervals=body.get("intervals") if isinstance(body.get("intervals"), list) else None,
             comments=body.get("comments"),
         )
     except WorkCardPayloadError as ex:

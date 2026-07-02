@@ -79,6 +79,7 @@ def upsert_schedule_for_employee_day(
     shift_type: str | None = None,
     extra: str | None = None,
     source_aa: str | None = None,
+    intervals: list[dict[str, Any]] | None = None,
 ) -> int:
     """Αντικατάσταση τοπικού ωραρίου για έναν εργαζόμενο/ημέρα."""
     afm = norm_afm(employer_afm)
@@ -93,29 +94,38 @@ def upsert_schedule_for_employee_day(
             """,
             (afm, aa, wd, e_afm),
         )
-        cur.execute(
-            """
-            INSERT INTO dbo.karta_schedule (
-                employer_afm, branch_aa, work_date, employee_afm,
-                hour_from, hour_to, shift_type, break_minutes, break_in_work,
-                extra, source_aa
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                afm,
-                aa,
-                wd,
-                e_afm,
-                str(hour_from or "").strip()[:16] or None,
-                str(hour_to or "").strip()[:16] or None,
-                str(shift_type or "").strip()[:64] or None,
-                0,
-                0,
-                str(extra or "").strip()[:500] or None,
-                str(source_aa or "").strip()[:32] or None,
-            ),
-        )
-    return 1
+        rows = intervals or [{"hour_from": hour_from, "hour_to": hour_to}]
+        inserted = 0
+        total = len(rows)
+        for idx, item in enumerate(rows, start=1):
+            cur.execute(
+                """
+                INSERT INTO dbo.karta_schedule (
+                    employer_afm, branch_aa, work_date, employee_afm,
+                    hour_from, hour_to, shift_type, break_minutes, break_in_work,
+                    extra, source_aa
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    afm,
+                    aa,
+                    wd,
+                    e_afm,
+                    str((item or {}).get("hour_from") or "").strip()[:16] or None,
+                    str((item or {}).get("hour_to") or "").strip()[:16] or None,
+                    str(shift_type or "").strip()[:64] or None,
+                    0,
+                    0,
+                    (
+                        f"{str(extra or '').strip()} ({idx}/{total})"[:500]
+                        if total > 1 and extra
+                        else str(extra or "").strip()[:500] or None
+                    ),
+                    str(source_aa or "").strip()[:32] or None,
+                ),
+            )
+            inserted += 1
+    return inserted
 
 
 def _has_schedule_hours(row: dict[str, Any]) -> bool:

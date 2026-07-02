@@ -131,8 +131,9 @@ function initLeaveModal() {
 function initWtoDailyModal() {
   const modal = document.getElementById("wtoDailyModal");
   if (!modal) return;
-  Office.bindHourMinuteInput("wtoDailyHourFrom");
-  Office.bindHourMinuteInput("wtoDailyHourTo");
+  document.getElementById("btnWtoDailyAddInterval")?.addEventListener("click", () => {
+    addWtoDailyIntervalRow({ hour_from: "", hour_to: "" });
+  });
   modal.querySelectorAll("[data-wto-daily-close]").forEach((el) => {
     el.addEventListener("click", closeWtoDailyModal);
   });
@@ -154,18 +155,86 @@ function timeInputToHm(value) {
   return Office.normalizeHourMinute(value);
 }
 
+function normalizeScheduleIntervals(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({
+      hour_from: hmToTimeInput(item?.hour_from || ""),
+      hour_to: hmToTimeInput(item?.hour_to || ""),
+    }))
+    .filter((item) => item.hour_from || item.hour_to);
+}
+
 function wtoDailyProposalForRow(row) {
   const proposal = row.wto_daily || {};
   if (proposal.hour_from || proposal.hour_to || proposal.note || proposal.schedule_type) {
+    if (!proposal.intervals) {
+      proposal.intervals = normalizeScheduleIntervals([
+        { hour_from: proposal.hour_from, hour_to: proposal.hour_to },
+      ]);
+    }
     return proposal;
   }
   const sched = row.schedule || {};
+  const intervals = normalizeScheduleIntervals(sched.intervals);
   return {
     schedule_type: "ΕΡΓ",
-    hour_from: sched.hour_from || "",
-    hour_to: sched.hour_to || "",
+    hour_from: intervals[0]?.hour_from || sched.hour_from || "",
+    hour_to: intervals[intervals.length - 1]?.hour_to || sched.hour_to || "",
+    intervals: intervals.length
+      ? intervals
+      : normalizeScheduleIntervals([{ hour_from: sched.hour_from, hour_to: sched.hour_to }]),
     note: "Τρέχον ψηφιακό ωράριο για την ημέρα.",
   };
+}
+
+function addWtoDailyIntervalRow(interval = {}) {
+  const wrap = document.getElementById("wtoDailyIntervals");
+  if (!wrap) return;
+  const row = document.createElement("div");
+  row.className = "wto-daily-hours-row";
+  row.innerHTML =
+    `<div><label class="field-label">Ώρα από</label>` +
+    `<input type="text" class="field-input input-time-24 wto-daily-hour-from" inputmode="numeric" placeholder="09:30" maxlength="5" autocomplete="off"></div>` +
+    `<div><label class="field-label">Ώρα έως</label>` +
+    `<input type="text" class="field-input input-time-24 wto-daily-hour-to" inputmode="numeric" placeholder="17:00" maxlength="5" autocomplete="off"></div>` +
+    `<button type="button" class="btn btn-secondary wto-daily-interval-remove" title="Αφαίρεση διαστήματος" aria-label="Αφαίρεση διαστήματος">` +
+    `${Office.icon("x-lg")}</button>`;
+  wrap.appendChild(row);
+  const fromEl = row.querySelector(".wto-daily-hour-from");
+  const toEl = row.querySelector(".wto-daily-hour-to");
+  if (fromEl) fromEl.value = hmToTimeInput(interval.hour_from);
+  if (toEl) toEl.value = hmToTimeInput(interval.hour_to);
+  row.querySelector(".wto-daily-interval-remove")?.addEventListener("click", () => {
+    if (wrap.querySelectorAll(".wto-daily-hours-row").length <= 1) {
+      if (fromEl) fromEl.value = "";
+      if (toEl) toEl.value = "";
+      return;
+    }
+    row.remove();
+  });
+  Office.bindHourMinuteElement(fromEl);
+  Office.bindHourMinuteElement(toEl);
+}
+
+function setWtoDailyIntervals(intervals, isRest) {
+  const wrap = document.getElementById("wtoDailyIntervals");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (isRest) return;
+  const rows = normalizeScheduleIntervals(intervals).length
+    ? normalizeScheduleIntervals(intervals)
+    : [{ hour_from: "", hour_to: "" }];
+  rows.forEach((item) => addWtoDailyIntervalRow(item));
+}
+
+function collectWtoDailyIntervals() {
+  return [...document.querySelectorAll("#wtoDailyIntervals .wto-daily-hours-row")]
+    .map((row) => ({
+      hour_from: timeInputToHm(row.querySelector(".wto-daily-hour-from")?.value),
+      hour_to: timeInputToHm(row.querySelector(".wto-daily-hour-to")?.value),
+    }))
+    .filter((item) => item.hour_from || item.hour_to);
 }
 
 function openWtoDailyModal(row, opts = {}) {
@@ -192,11 +261,8 @@ function openWtoDailyModal(row, opts = {}) {
   }
   const hoursRow = document.getElementById("wtoDailyHoursRow");
   if (hoursRow) hoursRow.classList.toggle("hidden", isRest);
-  const fromEl = document.getElementById("wtoDailyHourFrom");
-  const toEl = document.getElementById("wtoDailyHourTo");
   const typeEl = document.getElementById("wtoDailyScheduleType");
-  if (fromEl) fromEl.value = isRest ? "" : hmToTimeInput(proposal.hour_from);
-  if (toEl) toEl.value = isRest ? "" : hmToTimeInput(proposal.hour_to);
+  setWtoDailyIntervals(proposal.intervals, isRest);
   if (typeEl) typeEl.value = isRest ? "ΑΝ" : proposal.schedule_type || "ΕΡΓ";
   const comments = document.getElementById("wtoDailyComments");
   if (comments) comments.value = "";
@@ -226,16 +292,18 @@ async function submitWtoDaily() {
   const btn = document.getElementById("btnWtoDailySubmit");
   const ref =
     Office.parseDateGr(wtoDailyModalRow.work_date || "") || reportDate();
-  const hourFrom = timeInputToHm(document.getElementById("wtoDailyHourFrom")?.value);
-  const hourTo = timeInputToHm(document.getElementById("wtoDailyHourTo")?.value);
   const scheduleType = document.getElementById("wtoDailyScheduleType")?.value || "ΕΡΓ";
   const comments = document.getElementById("wtoDailyComments")?.value?.trim() || null;
   const isRest =
     Boolean(wtoDailyModalRow._wtoRestMode) || scheduleType === "ΑΝ" || scheduleType === "AN";
-  if (!ref || (!hourFrom && !isRest)) {
+  const intervals = isRest ? [] : collectWtoDailyIntervals();
+  const incomplete = intervals.some((item) => !item.hour_from || !item.hour_to);
+  if (!ref || (!intervals.length && !isRest) || incomplete) {
     Office.showMsg(
       "wtoDailyModalMsg",
-      isRest ? "Συμπληρώστε ημερομηνία." : "Συμπληρώστε ημερομηνία και ώρα έναρξης.",
+      isRest
+        ? "Συμπληρώστε ημερομηνία."
+        : "Συμπληρώστε ημερομηνία και ώρα από/έως για κάθε διάστημα.",
       false
     );
     return;
@@ -252,8 +320,9 @@ async function submitWtoDaily() {
         onoma: wtoDailyModalRow.onoma,
         reference_date: ref,
         schedule_type: scheduleType,
-        hour_from: isRest ? null : hourFrom,
-        hour_to: isRest ? null : hourTo || null,
+        hour_from: isRest ? null : intervals[0].hour_from,
+        hour_to: isRest ? null : intervals[intervals.length - 1].hour_to,
+        intervals: isRest ? null : intervals,
         comments,
         kind: wtoDailyModalRow.wto_daily?.kind || null,
       }),
@@ -495,6 +564,10 @@ function sortReportRows(rows) {
 
 function fmtHours(block) {
   if (!block) return "—";
+  const intervals = normalizeScheduleIntervals(block.intervals);
+  if (intervals.length > 1) {
+    return intervals.map((item) => `${item.hour_from || "—"} – ${item.hour_to || "—"}`).join(" / ");
+  }
   const a = (block.hour_from || "").trim() || "—";
   const b = (block.hour_to || "").trim() || "—";
   if (a === "—" && b === "—") return (block.shift_type || "").trim() || "—";

@@ -645,13 +645,15 @@ Object.assign(window.Office, {
 
   /** Ετικέτα ειδοποίησης τύπου 2 (σήμερα). */
   todayNotifyLabel(kind) {
+    const [base, slot] = String(kind || "").split("@");
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
       late_check_in: "καθυστέρηση εισόδου (>15' από ωράριο)",
       late_check_out: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };
-    return labels[kind] || kind || "";
+    const label = labels[base] || base || "";
+    return slot ? `${label} (${slot})` : label;
   },
 
   sendTodayPunchNotify(row, notify, btn, msgId = "workLogMsg") {

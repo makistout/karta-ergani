@@ -27,6 +27,7 @@ def build_wto_daily_payload(
     schedule_type: str = "ΕΡΓ",
     hour_from: str | None = None,
     hour_to: str | None = None,
+    intervals: list[dict[str, Any]] | None = None,
     comments: str | None = None,
 ) -> dict[str, Any]:
     emp = norm_afm(employee_afm)
@@ -47,18 +48,27 @@ def build_wto_daily_payload(
     ergani_date = format_date_for_ergani(reference_date)
     aa = str(branch_aa or "0").strip()[:5] or "0"
 
-    analytic: dict[str, Any] = {
-        "f_type": stype,
-        "f_from": _blank_field(hour_from),
-        "f_to": _blank_field(hour_to),
-    }
+    if intervals and stype != "ΑΝ":
+        analytics = []
+        for item in intervals:
+            hf = str((item or {}).get("hour_from") or "").strip()
+            ht = str((item or {}).get("hour_to") or "").strip()
+            if not hf and not ht:
+                continue
+            if not hf or not ht:
+                raise WorkCardPayloadError("Στο σπαστό ωράριο κάθε διάστημα θέλει ώρα από και έως")
+            analytics.append({"f_type": stype, "f_from": _blank_field(hf), "f_to": _blank_field(ht)})
+        if not analytics:
+            analytics = [{"f_type": stype, "f_from": _blank_field(hour_from), "f_to": _blank_field(hour_to)}]
+    else:
+        analytics = [{"f_type": stype, "f_from": _blank_field(hour_from), "f_to": _blank_field(hour_to)}]
 
     employee_block = {
         "f_afm": emp,
         "f_eponymo": ep,
         "f_onoma": on,
         "f_date": ergani_date,
-        "ErgazomenosAnalytics": {"ErgazomenosWTOAnalytics": [analytic]},
+        "ErgazomenosAnalytics": {"ErgazomenosWTOAnalytics": analytics},
     }
 
     return {

@@ -19,7 +19,6 @@ from app.repo_today_alert import (
 )
 from app.repo_work_log import enrich_work_log_rows_with_schedule
 from app.today_notify_logic import (
-    KIND_LABELS,
     WTO_DAILY_NOTIFY_KINDS,
     card_event_blocks_today_notify,
     ergani_date_to_iso,
@@ -28,6 +27,9 @@ from app.today_notify_logic import (
     merge_notify_work_hours,
     notify_auto_send_once,
     notify_db_snapshot,
+    notify_kind_base,
+    notify_kind_label,
+    schedule_interval_for_notify_kind,
     resolve_today_notify_kind,
 )
 from app.public_urls import ui_public_url
@@ -138,7 +140,7 @@ def send_wto_schedule_notifications(
     )
 
     kind = str(notify_kind or "").strip()
-    if kind not in WTO_DAILY_NOTIFY_KINDS:
+    if notify_kind_base(kind) not in WTO_DAILY_NOTIFY_KINDS:
         return {
             "sent": 0,
             "total": 0,
@@ -220,7 +222,7 @@ def send_wto_schedule_notifications(
             errors.append(f"{rec.get('name')}: {ex}")
 
     employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = KIND_LABELS.get(kind, kind)
+    kind_label = notify_kind_label(kind)
     for rec in email_recipients:
         email = str(rec.get("email") or "").strip()
         if not email:
@@ -311,6 +313,8 @@ def send_today_punch_notifications(
     schedule_hour_from: str | None = None,
     schedule_hour_to: str | None = None,
     schedule_shift_type: str | None = None,
+    schedule_intervals: list[dict[str, Any]] | None = None,
+    work_intervals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from app.email_notify import EmailNotConfigured, send_notification_email
     from app.telegram_notify import (
@@ -328,6 +332,7 @@ def send_today_punch_notifications(
         "work_date": work_date,
         "hour_from": hf,
         "hour_to": ht,
+        "work_intervals": work_intervals or [],
         "eponymo": eponymo,
         "onoma": onoma,
     }
@@ -337,6 +342,7 @@ def send_today_punch_notifications(
                 "hour_from": schedule_hour_from,
                 "hour_to": schedule_hour_to,
                 "shift_type": schedule_shift_type,
+                "intervals": schedule_intervals or [],
             }
         else:
             row["schedule"] = None
@@ -367,7 +373,11 @@ def send_today_punch_notifications(
             "skipped": "no_alert",
         }
     employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = KIND_LABELS.get(resolved_kind, resolved_kind)
+    kind_label = notify_kind_label(resolved_kind)
+    slot_interval = schedule_interval_for_notify_kind(row, resolved_kind)
+    if slot_interval:
+        schedule_hour_from = str(slot_interval.get("hour_from") or "").strip() or schedule_hour_from
+        schedule_hour_to = str(slot_interval.get("hour_to") or "").strip() or schedule_hour_to
     schedule_summary = format_digital_schedule_summary(
         schedule_hour_from,
         schedule_hour_to,
@@ -378,7 +388,7 @@ def send_today_punch_notifications(
             schedule_hour_from=schedule_hour_from,
             schedule_hour_to=schedule_hour_to,
         )
-        if resolved_kind == "late_check_out"
+        if notify_kind_base(resolved_kind) == "late_check_out"
         else None
     )
 

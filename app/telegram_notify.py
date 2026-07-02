@@ -179,15 +179,17 @@ def format_today_alert_notification(
 ) -> str:
     """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
     from app.today_notify_logic import (
-        KIND_LABELS,
         WTO_DAILY_NOTIFY_KINDS,
         format_digital_schedule_summary,
+        notify_kind_base,
+        notify_kind_label,
     )
 
     link = (hit_url or "").strip()
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
     kind = (notify_kind or "").strip()
-    problem = KIND_LABELS.get(kind, "πρόβλημα στην πραγματική απασχόληση")
+    base_kind = notify_kind_base(kind)
+    problem = notify_kind_label(kind) or "πρόβλημα στην πραγματική απασχόληση"
     store = (store_name or "").strip()
     prefix = f"erganiOS — {store}\n" if store else "erganiOS\n"
     lines = [
@@ -199,9 +201,9 @@ def format_today_alert_notification(
         lines.append(sched_line)
     entry_hm = str(hour_from or "").strip()
     exit_hm = str(expected_exit or "").strip()
-    if kind == "late_check_out" and entry_hm and exit_hm:
+    if base_kind == "late_check_out" and entry_hm and exit_hm:
         lines.append(f"Είσοδος: {entry_hm} · Αναμενόμενη έξοδος: {exit_hm}")
-    if kind in WTO_DAILY_NOTIFY_KINDS:
+    if base_kind in WTO_DAILY_NOTIFY_KINDS:
         hf = (wto_hour_from or "").strip()
         ht = (wto_hour_to or "").strip()
         if hf:

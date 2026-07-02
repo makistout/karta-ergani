@@ -70,7 +70,28 @@ AUTO_NOTIFY_SEND_ONCE_KINDS = frozenset({"late_check_in"})
 
 
 def notify_auto_send_once(notify_kind: str) -> bool:
-    return (notify_kind or "").strip() in AUTO_NOTIFY_SEND_ONCE_KINDS
+    return notify_kind_base(notify_kind) in AUTO_NOTIFY_SEND_ONCE_KINDS
+
+
+def notify_kind_base(notify_kind: str | None) -> str:
+    return str(notify_kind or "").strip().split("@", 1)[0]
+
+
+def notify_kind_slot_start(notify_kind: str | None) -> str | None:
+    parts = str(notify_kind or "").strip().split("@", 1)
+    return parts[1] if len(parts) == 2 and parts[1] else None
+
+
+def notify_kind_for_slot(base_kind: str, start_hm: str | None, *, include_slot: bool = True) -> str:
+    start = _hm_short(start_hm)
+    return f"{base_kind}@{start}" if include_slot and start else base_kind
+
+
+def notify_kind_label(notify_kind: str | None) -> str:
+    base = notify_kind_base(notify_kind)
+    label = KIND_LABELS.get(base, base)
+    slot = notify_kind_slot_start(notify_kind)
+    return f"{label} ({slot})" if slot else label
 
 
 def _parse_clock_minutes(value: str | None) -> int | None:
@@ -129,6 +150,87 @@ def _schedule_start_minutes(row: dict[str, Any]) -> int | None:
     return None
 
 
+def _schedule_intervals(row: dict[str, Any]) -> list[dict[str, Any]]:
+    sched = row.get("schedule")
+    if not isinstance(sched, dict):
+        slots = row.get("schedule_slots")
+        sched = {"intervals": slots} if isinstance(slots, list) else None
+    if not isinstance(sched, dict):
+        return []
+    raw = sched.get("intervals")
+    out: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            hf = _hm_short(str(item.get("hour_from") or ""))
+            ht = _hm_short(str(item.get("hour_to") or ""))
+            if hf and ht:
+                start = _parse_clock_minutes(hf)
+                end = _parse_clock_minutes(ht)
+                if start is not None and end is not None:
+                    out.append({"hour_from": hf, "hour_to": ht, "start": start, "end": end})
+    if out:
+        return out
+    hf = _hm_short(str(sched.get("hour_from") or ""))
+    ht = _hm_short(str(sched.get("hour_to") or ""))
+    start = _parse_clock_minutes(hf)
+    end = _parse_clock_minutes(ht)
+    if hf and ht and start is not None and end is not None:
+        return [{"hour_from": hf, "hour_to": ht, "start": start, "end": end}]
+    return []
+
+
+def _work_intervals(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("work_intervals")
+    out: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            hf = _hm_short(str(item.get("hour_from") or ""))
+            ht = _hm_short(str(item.get("hour_to") or ""))
+            if hf or ht:
+                out.append({"hour_from": hf, "hour_to": ht})
+    if out:
+        return out
+    hf = _hm_short(str(row.get("hour_from") or ""))
+    ht = _hm_short(str(row.get("hour_to") or ""))
+    return [{"hour_from": hf, "hour_to": ht}] if hf or ht else []
+
+
+def _work_entry_covers_interval(work: dict[str, Any], interval: dict[str, Any]) -> bool:
+    entry = _parse_clock_minutes(str(work.get("hour_from") or ""))
+    if entry is None:
+        return False
+    start = int(interval["start"])
+    end = int(interval["end"])
+    if end <= start:
+        end += 24 * 60
+    entry_abs = entry + (24 * 60 if entry < start and end > 24 * 60 else 0)
+    return start <= entry_abs < end
+
+
+def _completed_work_before_interval(work: dict[str, Any], interval: dict[str, Any]) -> bool:
+    out_min = _parse_clock_minutes(str(work.get("hour_to") or ""))
+    if out_min is None:
+        return False
+    return out_min <= int(interval["start"])
+
+
+def schedule_interval_for_notify_kind(
+    row: dict[str, Any],
+    notify_kind: str | None,
+) -> dict[str, Any] | None:
+    slot = notify_kind_slot_start(notify_kind)
+    intervals = _schedule_intervals(row)
+    if slot:
+        for interval in intervals:
+            if interval.get("hour_from") == slot:
+                return interval
+    return intervals[0] if intervals else None
+
+
 def _hm_short(value: str | None) -> str:
     m = re.match(r"^(\d{1,2}):(\d{2})", str(value or "").strip())
     if not m:
@@ -164,6 +266,7 @@ def notify_row_from_sources(
     schedule: dict[str, Any] | None = None,
     schedule_label: str | None = None,
     card: dict[str, Any] | None = None,
+    work_intervals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     hf, ht = merge_notify_work_hours(
         hour_from=hour_from,
@@ -175,6 +278,7 @@ def notify_row_from_sources(
         "employee_active": employee_active,
         "hour_from": hf,
         "hour_to": ht,
+        "work_intervals": work_intervals or [],
         "schedule": schedule,
         "schedule_label": schedule_label,
     }
@@ -191,7 +295,25 @@ def card_event_blocks_today_notify(
     ref = ergani_date_to_iso(work_date)
     if not ref or not str(employee_afm or "").strip():
         return False
-    k = (kind or "").strip()
+    k = notify_kind_base(kind)
+    slot = notify_kind_slot_start(kind)
+    if slot and k in ("late_check_in", "late_check_out"):
+        from app.db import cursor
+
+        f_type = "0" if k == "late_check_in" else "1"
+        with cursor(commit=False) as cur:
+            cur.execute(
+                """
+                SELECT TOP (1) 1
+                FROM dbo.karta_card_event e
+                INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+                WHERE e.f_afm = ? AND e.f_reference_date = ? AND e.f_type = ?
+                  AND d.success = 1
+                  AND CONVERT(time, e.f_date) >= CONVERT(time, ?)
+                """,
+                (employee_afm.strip(), ref, f_type, slot),
+            )
+            return cur.fetchone() is not None
     if k == "late_check_in" and card_event_exists(employee_afm, ref, "0"):
         return True
     if k in ("late_check_out", "missing_exit_8h") and card_event_exists(employee_afm, ref, "1"):
@@ -463,11 +585,52 @@ def resolve_today_notify_kind(
     if not hf and ht:
         return "exit_without_entry"
 
+    intervals = _schedule_intervals(row)
+    work_intervals = _work_intervals(row)
+    if intervals and wd_iso == today_iso:
+        open_work = next((w for w in work_intervals if w.get("hour_from") and not w.get("hour_to")), None)
+        if open_work:
+            entry_min = _parse_clock_minutes(open_work.get("hour_from"))
+            interval = next((i for i in intervals if _work_entry_covers_interval(open_work, i)), None)
+            if interval and entry_min is not None:
+                expected_exit = entry_min + (_schedule_duration_minutes(int(interval["start"]), int(interval["end"])) or 0)
+                elapsed = _minutes_after_expected_exit(
+                    expected_exit=expected_exit,
+                    entry_min=entry_min,
+                    now_min=now_min,
+                )
+                if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
+                    return notify_kind_for_slot(
+                        "late_check_out",
+                        interval.get("hour_from"),
+                        include_slot=len(intervals) > 1,
+                    )
+                return None
+        due: list[dict[str, Any]] = []
+        for interval in intervals:
+            elapsed = _elapsed_same_date_minutes(int(interval["start"]), now_min)
+            if elapsed is None or elapsed < NOTIFY_GRACE_MINUTES:
+                continue
+            if any(_work_entry_covers_interval(w, interval) for w in work_intervals):
+                continue
+            due.append(interval)
+        if due:
+            interval = due[-1]
+            return notify_kind_for_slot(
+                "late_check_in",
+                interval.get("hour_from"),
+                include_slot=len(intervals) > 1,
+            )
+
     sched_start = _schedule_start_minutes(row)
     if not hf and sched_start is not None and wd_iso == today_iso:
         elapsed = _elapsed_same_date_minutes(sched_start, now_min)
         if elapsed is not None and elapsed >= NOTIFY_GRACE_MINUTES:
-            return "late_check_in"
+            return notify_kind_for_slot(
+                "late_check_in",
+                _hm_short(str(row.get("schedule", {}).get("hour_from") if isinstance(row.get("schedule"), dict) else "")),
+                include_slot=False,
+            )
 
     if hf and not ht:
         entry_min = _parse_clock_minutes(hf)
@@ -483,7 +646,11 @@ def resolve_today_notify_kind(
                     on_next_calendar_day=overnight_exit_today,
                 )
                 if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
-                    return "late_check_out"
+                    return notify_kind_for_slot(
+                        "late_check_out",
+                        _hm_short(str((row.get("schedule") or {}).get("hour_from") if isinstance(row.get("schedule"), dict) else "")),
+                        include_slot=False,
+                    )
             return None
         elapsed = _elapsed_same_date_minutes(entry_min, now_min)
         if elapsed is not None and elapsed >= 8 * 60:
@@ -499,9 +666,9 @@ def card_action_for_today_kind(
     schedule_hour_to: str | None = None,
     hour_from: str | None = None,
 ) -> dict[str, str]:
-    k = (kind or "").strip()
+    k = notify_kind_base(kind)
     if k in ("exit_without_entry", "late_check_in"):
-        rt = (schedule_hour_from or "").strip()
+        rt = notify_kind_slot_start(kind) or (schedule_hour_from or "").strip()
         return {"card_event": "check_in", "retro_time": rt}
     if k in ("missing_exit_8h", "late_check_out"):
         rt = ""
@@ -516,7 +683,7 @@ def card_action_for_today_kind(
 
 
 def today_wto_daily_eligible(notify_kind: str) -> bool:
-    return (notify_kind or "").strip() in WTO_DAILY_NOTIFY_KINDS
+    return notify_kind_base(notify_kind) in WTO_DAILY_NOTIFY_KINDS
 
 
 def today_leave_eligible(
@@ -527,7 +694,7 @@ def today_leave_eligible(
     hour_to: str | None = None,
 ) -> bool:
     """Άδεια μόνο όταν λείπει κάρτα/πραγματική είσοδος ενώ υπάρχει ψηφ. ωράριο."""
-    if (notify_kind or "").strip() != "late_check_in":
+    if notify_kind_base(notify_kind) != "late_check_in":
         return False
     if str(hour_from or "").strip() or str(hour_to or "").strip():
         return False

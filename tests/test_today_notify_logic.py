@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 
 from app.today_notify_logic import (
     NOTIFY_GRACE_MINUTES,
+    card_action_for_today_kind,
+    notify_kind_label,
     notify_auto_send_once,
     resolve_today_notify_kind,
 )
@@ -221,8 +223,87 @@ class TodayNotifyLogicTests(unittest.TestCase):
 
     def test_only_late_check_in_auto_sends_once(self):
         self.assertTrue(notify_auto_send_once("late_check_in"))
+        self.assertTrue(notify_auto_send_once("late_check_in@17:00"))
         self.assertFalse(notify_auto_send_once("late_check_out"))
         self.assertFalse(notify_auto_send_once("missing_exit_8h"))
+
+    def test_split_schedule_late_check_in_uses_interval_slot(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "",
+            "hour_to": "",
+            "schedule": {
+                "hour_from": "09:00",
+                "hour_to": "21:00",
+                "intervals": [
+                    {"hour_from": "09:00", "hour_to": "13:00"},
+                    {"hour_from": "17:00", "hour_to": "21:00"},
+                ],
+            },
+        }
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(9, 15)),
+            "late_check_in@09:00",
+        )
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(17, 15)),
+            "late_check_in@17:00",
+        )
+
+    def test_split_schedule_afternoon_late_check_in_after_morning_completed(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "09:00",
+            "hour_to": "13:00",
+            "work_intervals": [{"hour_from": "09:00", "hour_to": "13:00"}],
+            "schedule": {
+                "hour_from": "09:00",
+                "hour_to": "21:00",
+                "intervals": [
+                    {"hour_from": "09:00", "hour_to": "13:00"},
+                    {"hour_from": "17:00", "hour_to": "21:00"},
+                ],
+            },
+        }
+        self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(14, 0)))
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(17, 15)),
+            "late_check_in@17:00",
+        )
+
+    def test_split_schedule_late_checkout_uses_interval_slot(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "09:10",
+            "hour_to": "",
+            "work_intervals": [{"hour_from": "09:10", "hour_to": ""}],
+            "schedule": {
+                "hour_from": "09:00",
+                "hour_to": "21:00",
+                "intervals": [
+                    {"hour_from": "09:00", "hour_to": "13:00"},
+                    {"hour_from": "17:00", "hour_to": "21:00"},
+                ],
+            },
+        }
+        self.assertEqual(
+            resolve_today_notify_kind(row, now=self._athens(13, 25)),
+            "late_check_out@09:00",
+        )
+
+    def test_slot_kind_label_and_card_action_use_slot(self):
+        self.assertIn("17:00", notify_kind_label("late_check_in@17:00"))
+        self.assertEqual(
+            card_action_for_today_kind(
+                "late_check_in@17:00",
+                schedule_hour_from="09:00",
+                schedule_hour_to="21:00",
+            ),
+            {"card_event": "check_in", "retro_time": "17:00"},
+        )
 
 
 if __name__ == "__main__":

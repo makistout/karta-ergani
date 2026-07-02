@@ -58,17 +58,11 @@
           <h2 id="wtoDailyModalTitle" class="office-modal-title">Τροποποίηση ωραρίου (WTODaily)</h2>
           <p id="wtoDailyModalEmployee" class="office-modal-sub"></p>
           <p id="wtoDailyModalHint" class="office-modal-sub" style="color:var(--muted);font-size:0.85rem;"></p>
-          <div id="wtoDailyHoursRow" class="wto-daily-hours-row">
-            <div>
-              <label class="field-label" for="wtoDailyHourFrom">Ώρα από</label>
-              <input type="text" id="wtoDailyHourFrom" class="field-input input-time-24" inputmode="numeric"
-                placeholder="09:30" maxlength="5" autocomplete="off">
-            </div>
-            <div>
-              <label class="field-label" for="wtoDailyHourTo">Ώρα έως</label>
-              <input type="text" id="wtoDailyHourTo" class="field-input input-time-24" inputmode="numeric"
-                placeholder="17:00" maxlength="5" autocomplete="off">
-            </div>
+          <div id="wtoDailyHoursRow" class="wto-daily-hours-block">
+            <div id="wtoDailyIntervals"></div>
+            <button type="button" class="btn btn-secondary wto-daily-add-interval" id="btnWtoDailyAddInterval">
+              <i class="bi bi-plus-lg" aria-hidden="true"></i><span>Διάστημα</span>
+            </button>
           </div>
           <input type="hidden" id="wtoDailyScheduleType" value="ΕΡΓ">
           <label class="field-label" for="wtoDailyComments">Παρατηρήσεις (προαιρετικά)</label>
@@ -104,5 +98,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260702ordered-quick-presets"></script>
-  <script src="/static/js/home.js?v=20260702quick-presets-autoapply"></script>
+  <script src="/static/js/home.js?v=20260702split-wto-daily"></script>
 {% endblock %}

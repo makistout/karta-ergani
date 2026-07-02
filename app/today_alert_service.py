@@ -32,9 +32,9 @@ from app.telegram_punch_service import (
     resolve_missing_punch_action,
 )
 from app.today_notify_logic import (
-    KIND_LABELS,
     card_action_for_today_kind,
     ergani_date_to_iso,
+    notify_kind_label,
     today_leave_eligible,
     today_wto_daily_eligible,
 )
@@ -58,7 +58,7 @@ def _context_from_today_row(row: dict[str, Any]) -> dict[str, Any]:
         "reference_date_iso": row.get("reference_date_iso")
         or ergani_date_to_iso(str(row.get("work_date_ergani") or "")),
         "notify_kind": kind,
-        "notify_kind_label": KIND_LABELS.get(kind, kind),
+        "notify_kind_label": notify_kind_label(kind),
         "hour_from": row.get("hour_from"),
         "hour_to": row.get("hour_to"),
         "schedule_hour_from": row.get("schedule_hour_from"),
@@ -125,7 +125,7 @@ def today_hit_preview(token: str) -> tuple[dict[str, Any] | None, str | None]:
         "employee_afm": row.get("employee_afm"),
         "work_date": row.get("work_date_ergani"),
         "notify_kind": kind,
-        "notify_kind_label": KIND_LABELS.get(kind, kind),
+        "notify_kind_label": notify_kind_label(kind),
         "recipient_name": row.get("recipient_name"),
         "notification_kind": "today_alert",
         "wto_daily_eligible": today_wto_daily_eligible(kind),

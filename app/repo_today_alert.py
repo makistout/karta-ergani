@@ -167,6 +167,7 @@ def enrich_card_report_rows_with_today_notify(
             schedule=row.get("schedule"),
             schedule_label=row.get("schedule_label"),
             card=card,
+            work_intervals=wl.get("intervals") if isinstance(wl.get("intervals"), list) else [],
         )
         kind = resolve_today_notify_kind(notify_row)
         if kind and card_event_blocks_today_notify(
