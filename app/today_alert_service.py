@@ -415,7 +415,12 @@ def submit_today_wto_daily(
     from app.ergani_client import ErganiClient
     from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY, build_wto_daily_payload
     from app.work_card_payload import WorkCardPayloadError
-    from app.routes_wto_daily import _persist_wto_daily_submit
+    from app.routes_wto_daily import (
+        _current_schedule_snapshot,
+        _persist_wto_daily_submit,
+        _submit_wto_daily_with_auth_retry,
+        record_wto_daily_schedule_audit,
+    )
 
     cfg = repo.get_store_config(int(ctx["store_id"]))
     if not cfg:
@@ -437,13 +442,18 @@ def submit_today_wto_daily(
         return {"success": False, "error": "Λείπουν επώνυμο/όνομα εργαζομένου"}, 400
 
     try:
+        body = {
+            "schedule_type": str(ctx.get("wto_schedule_type") or "ΕΡΓ"),
+            "hour_from": hf,
+            "hour_to": ht or None,
+        }
         payload = build_wto_daily_payload(
             branch_aa=str(cfg.get("branch_aa") or "0"),
             employee_afm=emp_afm,
             employee_last_name=last,
             employee_first_name=first,
             reference_date=ref_date,
-            schedule_type=str(ctx.get("wto_schedule_type") or "ΕΡΓ"),
+            schedule_type=body["schedule_type"],
             hour_from=hf,
             hour_to=ht or None,
             comments=comments,
@@ -451,9 +461,15 @@ def submit_today_wto_daily(
     except WorkCardPayloadError as ex:
         return {"success": False, "error": str(ex)}, 400
 
+    work_date_ergani = payload["WTOS"]["WTO"][0]["f_from_date"]
+    old_schedule = _current_schedule_snapshot(
+        cfg,
+        employee_afm=emp_afm,
+        work_date_ergani=work_date_ergani,
+    )
+
     client = ErganiClient(cfg.get("api_base_url"))
-    resp = client.document_submit(SUBMISSION_CODE_WTO_DAILY, payload, bearer)
-    parsed = json_or_text(resp)
+    resp, parsed, auth_retry = _submit_wto_daily_with_auth_retry(cfg, client, payload, bearer)
     protocol = submit_date = ergani_id = None
     if resp.ok and isinstance(parsed, list) and parsed:
         first_item = parsed[0]
@@ -480,6 +496,20 @@ def submit_today_wto_daily(
 
         with cursor() as cur:
             upsert_employee(cur, emp_afm, last, first)
+        record_wto_daily_schedule_audit(
+            cfg,
+            employee_afm=emp_afm,
+            eponymo=last,
+            onoma=first,
+            work_date_ergani=work_date_ergani,
+            body=body,
+            old_schedule=old_schedule,
+            protocol=protocol,
+            ergani_submission_id=ergani_id,
+            local_schedule_updated=False,
+            http_status=resp.status_code,
+            success=resp.ok,
+        )
         mark_today_alert_wto_done(token_id=int(ctx["token_id"]))
 
     err_msg = None
@@ -490,6 +520,7 @@ def submit_today_wto_daily(
         "success": resp.ok,
         "protocol": protocol,
         "submit_date": submit_date,
+        "auth_retry": auth_retry,
         "error": err_msg,
     }, (200 if resp.ok else 502)
 

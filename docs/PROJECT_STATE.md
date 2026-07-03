@@ -41,6 +41,12 @@
   (`09:00 – 13:00 / 17:00 – 21:00`).
 - Οι καμπάνες για σπαστό ωράριο είναι ανά διάστημα: π.χ. `late_check_in@09:00` και
   `late_check_in@17:00`. Έτσι auto-send/snooze του πρωινού δεν μπλοκάρει το απογευματινό.
+- Οι επιτυχημένες WTODaily αλλαγές ωραρίου γράφουν ειδικό audit event
+  `wto_daily.schedule_change` με παλιό/νέο ωράριο, εργαζόμενο, ημερομηνία, protocol και
+  actor/office user. Το γενικό mutating-request audit παραμένει συμπληρωματικό.
+- Οι WTODaily αποστολές χρησιμοποιούν κοινό helper με αυτόματο refresh/retry του Ergani
+  bearer όταν επιστρέφει `Authorization has been denied`, για manual αλλαγές από Αρχική
+  και αλλαγές από ροές ειδοποίησης.
 
 ## Τρέχουσες Προτεραιότητες Συντήρησης
 
