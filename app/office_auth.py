@@ -38,6 +38,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/auth/login",
     "/api/auth/status",
     "/api/auth/logout",
+    "/api/contact",
     "/api/users/verify-email",
     "/favicon.ico",
 })
