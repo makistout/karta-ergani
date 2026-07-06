@@ -24,6 +24,7 @@ SESSION_LOGGED_IN = "office_logged_in"
 SESSION_USER = "office_user"
 
 _PUBLIC_EXACT = frozenset({
+    "/",
     "/health",
     "/api/local/health",
     "/api/telegram/webhook",

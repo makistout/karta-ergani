@@ -13,7 +13,7 @@
 
 Σε production δεν πρέπει να βγαίνουν links προς `localhost`.
 
-Το canonical public marketing URL είναι **`/psifiaki-karta-ergasias/`** (το `/ui/landing` κάνει 301).
+Το canonical public marketing URL είναι **`https://erganios.gr/`**. Το `/psifiaki-karta-ergasias/` κάνει 301 στο `/` (το `/ui/landing` επίσης 301 στο `/`).
 Μετά από αλλαγές σε routes/templates του landing, κάνε recycle του IIS app pool (`erganios.gr`).
 
 ## Static Assets

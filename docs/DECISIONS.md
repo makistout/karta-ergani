@@ -29,3 +29,12 @@
 - `reference_date < σήμερα` ή `> σήμερα` → `001`
 - `reference_date == σήμερα` → έλεγχος ώρας χτυπήματος έναντι ψηφιακού ωραρίου και `flex_arrival_minutes`
 - Η υλοποίηση είναι κοινή για live punch, προγενέστερη από UI και retro-hit από Telegram (`work_card_payload.py`, `routes_work_card.py`).
+
+## Canonical Public Homepage
+
+Για SEO και branded traffic, το marketing landing είναι στο **root** (`/`), όχι σε slug path.
+
+- Canonical: `https://erganios.gr/`
+- Legacy slug `/psifiaki-karta-ergasias/` → **301** στο `/`
+- Δεν υπάρχουν δύο ενεργές σελίδες με ίδιο περιεχόμενο
+- Το `/` είναι public path (χωρίς login) και το frontend δεν πρέπει να φορτώνει office APIs στο homepage (`office-boot.js`, `office-auth.js`)

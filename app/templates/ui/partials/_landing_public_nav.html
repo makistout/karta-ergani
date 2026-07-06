@@ -1,16 +1,19 @@
   <header class="landing-nav">
     <div class="landing-container landing-nav-inner">
-      <a href="{{ landing_home_url or '/psifiaki-karta-ergasias/' }}" class="landing-logo" aria-label="erganiOS">
+      <a href="{{ landing_home_url or '/' }}" class="landing-logo" aria-label="erganiOS">
         <img src="/static/img/erganios-logo.png" alt="erganiOS — εφαρμογή ψηφιακής κάρτας εργασίας">
       </a>
 
       <nav class="landing-nav-links" aria-label="Κύρια πλοήγηση">
-        <a href="{{ landing_home_url or '/psifiaki-karta-ergasias/' }}#features">Λειτουργίες</a>
-        <a href="{{ landing_home_url or '/psifiaki-karta-ergasias/' }}#pricing">Τιμοκατάλογος</a>
-        <a href="{{ landing_home_url or '/psifiaki-karta-ergasias/' }}#guides">Οδηγοί</a>
-        <a href="{{ contact_url or '/psifiaki-karta-ergasias/#contact' }}">Επικοινωνία</a>
+        <a href="{{ landing_home_url or '/' }}#features">Λειτουργίες</a>
+        <a href="{{ landing_home_url or '/' }}#pricing">Τιμοκατάλογος</a>
+        <a href="{{ landing_home_url or '/' }}#guides">Οδηγοί</a>
+        <a href="{{ contact_url or '/#contact' }}">Επικοινωνία</a>
       </nav>
 
-      <a href="{{ contact_url or '/psifiaki-karta-ergasias/#contact' }}" class="landing-nav-cta">Μιλήστε μαζί μας</a>
+      <div class="landing-nav-actions">
+        <a href="/ui/login" class="landing-nav-login">Login</a>
+        <a href="{{ contact_url or '/#contact' }}" class="landing-nav-cta">Μιλήστε μαζί μας</a>
+      </div>
     </div>
   </header>

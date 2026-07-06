@@ -14,13 +14,14 @@
 
 ## Κύριες Ροές
 
-- `/psifiaki-karta-ergasias/`: δημόσια σελίδα παρουσίασης (canonical)· το `/ui/landing` κάνει 301 εδώ.
-- `/ui/`: αρχική αναφορά κατάστασης κάρτας.
+- `/`: δημόσια marketing landing (canonical SEO homepage).
+- `/psifiaki-karta-ergasias/`: 301 redirect προς `/`.
+- `/ui/`: αρχική αναφορά κατάστασης κάρτας (μετά από login).
 - `/ui/stores`: καταστήματα και επιλογή ενεργού καταστήματος.
 - `/ui/stores/credentials`: Ergani API/portal credentials.
 - `/ui/stores/notify`: λήπτες Telegram/Email.
 - `/ui/employees`: εργαζόμενοι και εβδομαδιαίο πρόγραμμα.
-- `/ui/schedule`: ψηφιακό ωράριο.
+- `/ui/schedule`: ψηφιακό ωράριο (quick dates: Χθες, Σήμερα, Αύριο, Μεθαύριο).
 - `/ui/work-log`: πραγματική απασχόληση.
 - `/ui/missing-cards`: ελλιπή χτυπήματα.
 - `/ui/work-card`: υποβολή ψηφιακής κάρτας.
@@ -29,9 +30,12 @@
 
 ## Public Landing
 
-- Το canonical public URL είναι **`/psifiaki-karta-ergasias/`**. Το `/ui/landing` κάνει **301 redirect** εκεί.
+- Το canonical public URL είναι **`https://erganios.gr/`**. Το `/psifiaki-karta-ergasias/` κάνει **301 redirect** εκεί. Το `/ui/landing` κάνει επίσης 301 στο `/`.
 - Η σελίδα είναι διαθέσιμη χωρίς office login και παρουσιάζει τις βασικές ροές ωραρίου, WTODaily,
   WTOWeek, ειδοποιήσεις και αποκλίσεις.
+- SEO title: «Εφαρμογή Ψηφιακής Κάρτας Εργασίας | erganiOS». H1: «Η Ψηφιακή Κάρτα Εργασίας σε τάξη, κάθε μέρα».
+- Public nav: κουμπί **Login** → `/ui/login`.
+- Το `office-boot.js` / `office-auth.js` δεν φορτώνουν office chrome ούτε κάνουν login redirect στο `/` και στα SEO slugs.
 - Προστέθηκαν **5 SEO υποσελίδες** (informational guides) μέσω `app/landing_seo.py`:
   `/psifiaki-karta-logistika-grafeia/`, `/ti-einai-i-psifiaki-karta-ergasias/`,
   `/chttypimata-kartas-ergasias/`, `/apokliseis-psifiakis-kartas/`, `/psifiako-orario-ergani/`.

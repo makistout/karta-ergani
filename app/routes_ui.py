@@ -186,10 +186,10 @@ def ui_users():
 
 def register_ui_redirects(app):
     @app.get("/")
-    def root_redirect():
-        return redirect("/ui/")
+    def root_landing():
+        return _render_landing()
 
     @app.get("/psifiaki-karta-ergasias")
     @app.get("/psifiaki-karta-ergasias/")
     def landing_seo():
-        return _render_landing()
+        return redirect("/", code=301)

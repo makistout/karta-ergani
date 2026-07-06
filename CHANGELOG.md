@@ -8,6 +8,32 @@
 
 ---
 
+## 2026-07-06 (γ) — Canonical homepage, Login και public UX
+
+### SEO homepage
+
+- Το canonical public marketing URL είναι πλέον **`https://erganios.gr/`** (όχι το slug path).
+- Το `/` σερβίρει κανονικά το landing (H1: «Η Ψηφιακή Κάρτα Εργασίας σε τάξη, κάθε μέρα»).
+- Το `/psifiaki-karta-ergasias/` κάνει **301 redirect** προς `/` (αποφυγή duplicate content).
+- Το `/ui/landing` συνεχίζει να κάνει 301 προς `/`.
+- `LANDING_HOME_PATH` στο `landing_seo.py` → `/`· canonical/links στα SEO άρθρα δείχνουν στο root.
+
+### Public navigation
+
+- Κουμπί **Login** πάνω δεξιά στο public nav → `/ui/login`.
+- Το `/` προστέθηκε στα public paths (`office_auth.py`) χωρίς απαίτηση office login.
+
+### Fix redirect στο homepage
+
+- Το `/` έδινε landing από server αλλά το `office-boot.js` φόρτωνε office APIs και το auth guard έστελνε στο `/ui/login?next=%2F`.
+- Fix: `office-boot.js` και `office-auth.js` αντιμετωπίζουν `/` και SEO landing paths ως public (χωρίς `loadActiveStore` / login redirect).
+
+### Ψηφιακό ωράριο
+
+- Στο `/ui/schedule` η σειρά quick dates: **Χθες**, Σήμερα, Αύριο, Μεθαύριο (`schedule-list.js`).
+
+---
+
 ## 2026-07-06 (β) — Ψηφιακή κάρτα: αιτιολογία, sync status, κλείδωμα χτυπημάτων
 
 ### Αιτιολογία WRKCardSE (`f_aitiologia`)
@@ -38,7 +64,7 @@
 
 ### Δημόσια σελίδα και SEO
 
-- Το canonical public landing είναι πλέον **`/psifiaki-karta-ergasias/`**· το `/ui/landing` κάνει **301 redirect** στο canonical path.
+- Το canonical public landing ήταν αρχικά **`/psifiaki-karta-ergasias/`** (βλ. ενότητα 2026-07-06 (γ) για τη μεταφορά στο `/`).
 - Ανανεώθηκε πλήρως το marketing landing (HTML/CSS): logo `erganios-logo.png` με διαφανές φόντο, slideshow, τιμοκατάλογος, φόρμα επικοινωνίας, ενότητα οδηγών.
 - Προστέθηκαν **5 SEO υποσελίδες** μέσω `app/landing_seo.py` και `register_landing_seo_routes()`:
   - `/psifiaki-karta-logistika-grafeia/`

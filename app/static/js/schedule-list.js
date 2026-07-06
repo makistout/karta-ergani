@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   datePicker = Office.createDatePicker({
     mountId: "scheduleDatePicker",
     mode: "range",
+    quickPresets: ["yesterday", "today", "tomorrow", "dayAfterTomorrow"],
     onApply: () => loadSchedule(),
   });
   const btnSync = document.getElementById("btnSyncSchedule");

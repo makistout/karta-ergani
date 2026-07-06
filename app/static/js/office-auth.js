@@ -6,6 +6,14 @@ Object.assign(window.Office, {
     const skipLoginRedirect = () => {
       const path = window.location.pathname || "";
       return (
+        path === "/" ||
+        path.startsWith("/psifiaki-karta-ergasias") ||
+        path.startsWith("/psifiaki-karta-logistika-grafeia") ||
+        path.startsWith("/ti-einai-i-psifiaki-karta-ergasias") ||
+        path.startsWith("/chttypimata-kartas-ergasias") ||
+        path.startsWith("/apokliseis-psifiakis-kartas") ||
+        path.startsWith("/psifiako-orario-ergani") ||
+        path.startsWith("/ui/landing") ||
         path.startsWith("/ui/login") ||
         path.startsWith("/ui/telegram-hit") ||
         path.startsWith("/ui/telegram-punch") ||

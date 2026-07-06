@@ -6,7 +6,7 @@ from flask import Flask, render_template
 
 from app.public_urls import effective_public_base_url
 
-LANDING_HOME_PATH = "/psifiaki-karta-ergasias/"
+LANDING_HOME_PATH = "/"
 
 SEO_PAGES: tuple[dict[str, object], ...] = (
     {

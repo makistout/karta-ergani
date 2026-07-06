@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const path = window.location.pathname || "";
   const publicLanding =
+    path === "/" ||
     path.startsWith("/psifiaki-karta-ergasias") ||
     path.startsWith("/psifiaki-karta-logistika-grafeia") ||
     path.startsWith("/ti-einai-i-psifiaki-karta-ergasias") ||
