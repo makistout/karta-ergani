@@ -74,27 +74,83 @@ def parse_event_at(raw: str | None, reference_date: str | None) -> datetime:
     return now
 
 
+def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
+    from app.card_report import _flex_tolerance_minutes as _flex
+
+    return _flex(flex_arrival_minutes, default=default)
+
+
+def _hm_to_minutes(value: str | None) -> int | None:
+    from app.card_report import _hm_to_minutes as _hm
+
+    return _hm(value)
+
+
+def wrk_card_needs_aitiologia(
+    *,
+    f_type: str,
+    reference_date: str,
+    event_at: str | None,
+    schedule_hour_from: str | None = None,
+    schedule_hour_to: str | None = None,
+    flex_arrival_minutes: int | None = None,
+) -> bool:
+    """Αν χρειάζεται f_aitiologia: προηγούμενη ημέρα πάντα· σήμερα έλεγχος ώρας+ευελιξίας."""
+    today_iso = datetime.now(tz_athens()).date().isoformat()
+    ref = str(reference_date or "").strip()[:10]
+    if not ref and event_at:
+        ref = str(event_at).strip()[:10]
+    if ref and ref != today_iso:
+        return True
+    if not event_at:
+        return False
+
+    dt = parse_event_at(event_at, ref or None)
+    punch_min = dt.hour * 60 + dt.minute
+    tol = _flex_tolerance_minutes(flex_arrival_minutes)
+    ft = str(f_type).strip()
+
+    if ft == "0":
+        s_start = _hm_to_minutes(schedule_hour_from)
+        if s_start is None:
+            return False
+        return punch_min < s_start or punch_min > s_start + tol
+
+    s_end = _hm_to_minutes(schedule_hour_to)
+    if s_end is None:
+        return False
+    return punch_min < s_end - tol or punch_min > s_end + tol
+
+
 def resolve_wrk_card_aitiologia(
     *,
     f_type: str,
     event_at: str | None,
+    reference_date: str | None,
     requested_aitiologia: str | None,
     schedule_hour_from: str | None = None,
     schedule_hour_to: str | None = None,
     flex_arrival_minutes: int | None = None,
 ) -> str | None:
-    """Κανονικοποίηση αιτιολογίας WRKCardSE.
+    """Απόφαση αιτιολογίας WRKCardSE πριν την υποβολή στην Ergani."""
+    ref = str(reference_date or "").strip()[:10] or None
+    if event_at and not ref:
+        ref = str(event_at).strip()[:10]
 
-    Για ρητή αιτιολογία (προγενέστερη καταχώρηση) την κρατάμε όπως ζητήθηκε.
-    Για τρέχουσα καταχώρηση χωρίς αιτιολογία, το route δοκιμάζει χωρίς
-    f_aitiologia και κάνει retry με 001 μόνο αν το ζητήσει η Ergani.
-    """
-    if not requested_aitiologia:
+    if not wrk_card_needs_aitiologia(
+        f_type=f_type,
+        reference_date=ref or "",
+        event_at=event_at,
+        schedule_hour_from=schedule_hour_from,
+        schedule_hour_to=schedule_hour_to,
+        flex_arrival_minutes=flex_arrival_minutes,
+    ):
         return None
-    ait = normalize_aitiologia(requested_aitiologia)
-    if not ait:
-        return None
-    return ait
+
+    if requested_aitiologia:
+        ait = normalize_aitiologia(requested_aitiologia)
+        return ait or RETRO_AITIOLOGIA_INTERNET
+    return RETRO_AITIOLOGIA_INTERNET
 
 
 def lookup_punch_schedule_context(

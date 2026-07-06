@@ -58,6 +58,16 @@
   (`/ui/missing-cards/close-all`).
 - Κοινό partial: `app/templates/ui/partials/_work_card_disclaimer.html`· CSS στο `office-work-card.css`.
 
+## Ψηφιακή Κάρτα (WRKCardSE)
+
+- Υποβολή live και προγενέστερης καταχώρησης από `/ui/work-card` και `/ui/retro-hit` (Telegram link).
+- **Αιτιολογία καθυστέρησης** (`f_aitiologia`): αποφασίζεται στο backend πριν την αποστολή στην Ergani.
+  - Ημερομηνία **≠ σήμερα** → πάντα κωδικός `001`.
+  - **Σήμερα** → αιτιολογία μόνο αν η ώρα χτυπήματος είναι εκτός ψηφιακού ωραρίου ± ευελιξία
+    (`flex_arrival_minutes`, default 15′). Εντός ορίου δεν στέλνεται πεδίο αιτιολογίας.
+- Κατά portal sync στη σελίδα κάρτας κλειδώνουν τα κουμπιά εισόδου/εξόδου μέχρι να ολοκληρωθεί το sync.
+- Το `office-sync.js` poll-άρει σωστά το status URL μετά από `work-card-sync`.
+
 ## Αρχική Αναφορά
 
 - Ο date picker της Αρχικής δείχνει μόνο **Χθες / Σήμερα / Αύριο / Μεθαύριο**.

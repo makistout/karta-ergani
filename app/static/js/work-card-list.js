@@ -2,6 +2,7 @@ let datePicker = null;
 let retroDatePicker = null;
 let employeeAc = null;
 let clockTimer = null;
+let workCardPortalSyncBusy = false;
 
 const RETRO_AITIOLOGIA = "001";
 const RETRO_AITIOLOGIA_LABEL =
@@ -189,6 +190,21 @@ function requireEmployee() {
   return true;
 }
 
+function setWorkCardPunchesLocked(locked) {
+  workCardPortalSyncBusy = Boolean(locked);
+  document
+    .querySelector(".work-card-declare-card")
+    ?.classList.toggle("work-card-punches-locked", workCardPortalSyncBusy);
+  ["btnCheckIn", "btnCheckOut", "btnRetroCheckIn", "btnRetroCheckOut"].forEach((id) => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = workCardPortalSyncBusy;
+  });
+}
+
+function punchButtonsDisabled(formEnabled) {
+  return !formEnabled || workCardPortalSyncBusy;
+}
+
 function setFormEnabled(enabled) {
   const input = document.getElementById("wcEmployeeInput");
   const btnIn = document.getElementById("btnCheckIn");
@@ -198,13 +214,13 @@ function setFormEnabled(enabled) {
   const btnRetroIn = document.getElementById("btnRetroCheckIn");
   const btnRetroOut = document.getElementById("btnRetroCheckOut");
   if (input) input.disabled = !enabled;
-  if (btnIn) btnIn.disabled = !enabled;
-  if (btnOut) btnOut.disabled = !enabled;
-  if (retroDatePicker) retroDatePicker.setDisabled(!enabled);
-  else if (retroDate) retroDate.disabled = !enabled;
-  if (retroTime) retroTime.disabled = !enabled;
-  if (btnRetroIn) btnRetroIn.disabled = !enabled;
-  if (btnRetroOut) btnRetroOut.disabled = !enabled;
+  if (btnIn) btnIn.disabled = punchButtonsDisabled(enabled);
+  if (btnOut) btnOut.disabled = punchButtonsDisabled(enabled);
+  if (retroDatePicker) retroDatePicker.setDisabled(!enabled || workCardPortalSyncBusy);
+  else if (retroDate) retroDate.disabled = !enabled || workCardPortalSyncBusy;
+  if (retroTime) retroTime.disabled = !enabled || workCardPortalSyncBusy;
+  if (btnRetroIn) btnRetroIn.disabled = punchButtonsDisabled(enabled);
+  if (btnRetroOut) btnRetroOut.disabled = punchButtonsDisabled(enabled);
 }
 
 async function initPage() {
@@ -289,6 +305,7 @@ async function refreshDayData(options = {}) {
 
   if (logWrap) Office.showTableLoading(logWrap, "Συγχρονισμός Ergani…");
   if (cardWrap) Office.showTableLoading(cardWrap, "Συγχρονισμός Ergani…");
+  setWorkCardPunchesLocked(true);
   try {
     const activeRes = await fetch("/api/store/active");
     const activeData = await activeRes.json();
@@ -325,6 +342,9 @@ async function refreshDayData(options = {}) {
     } catch {
       /* ignore */
     }
+  } finally {
+    setWorkCardPunchesLocked(false);
+    setFormEnabled(true);
   }
 }
 
@@ -521,14 +541,12 @@ function renderCardTable(wrap, rows, count, dateIso, filterInfo = null) {
 }
 
 function setSubmitButtonsDisabled(disabled) {
-  ["btnCheckIn", "btnCheckOut", "btnRetroCheckIn", "btnRetroCheckOut"].forEach((id) => {
-    const b = document.getElementById(id);
-    if (b) b.disabled = disabled;
-  });
+  setWorkCardPunchesLocked(disabled);
 }
 
 async function submitCard(eventName, options = {}) {
   const retro = Boolean(options.retro);
+  if (workCardPortalSyncBusy) return;
   if (!requireEmployee()) return;
   const afm = selectedEmployeeAfm();
 
@@ -547,7 +565,6 @@ async function submitCard(eventName, options = {}) {
       return;
     }
     eventAt = `${referenceDate}T${retroTime}:00`;
-    aitiologia = RETRO_AITIOLOGIA;
   } else {
     referenceDate = cardDate();
     if (!referenceDate) {

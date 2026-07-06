@@ -19,3 +19,13 @@
 ## Frontend Strategy
 
 Το shared UI shell ανήκει σε templates. Το page-specific behavior μένει σε ξεχωριστό JS ανά σελίδα. Κοινά browser helpers μπαίνουν σε μικρά shared JS modules και εκτίθενται μέσω του global `Office` για συμβατότητα.
+
+## WRKCardSE Aitiologia
+
+Η Ergani απαιτεί ή απαγορεύει τον κωδικό καθυστέρησης ανάλογα με το αν το χτύπημα είναι εντός ή εκτός επιτρεπόμενου ορίου. Η εφαρμογή **δεν** αφήνει το frontend να στέλνει πάντα `001` ούτε να βασίζεται μόνο σε retry από την απάντηση Ergani.
+
+Κανόνας:
+
+- `reference_date < σήμερα` ή `> σήμερα` → `001`
+- `reference_date == σήμερα` → έλεγχος ώρας χτυπήματος έναντι ψηφιακού ωραρίου και `flex_arrival_minutes`
+- Η υλοποίηση είναι κοινή για live punch, προγενέστερη από UI και retro-hit από Telegram (`work_card_payload.py`, `routes_work_card.py`).

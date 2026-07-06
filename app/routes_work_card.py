@@ -155,6 +155,24 @@ def _ergani_requires_aitiologia(parsed: Any) -> bool:
     )
 
 
+def _ergani_missing_aitiologia(parsed: Any) -> bool:
+    """Ergani ζητά λόγο καθυστέρησης (όχι όταν απαγορεύεται)."""
+    try:
+        text = json.dumps(parsed, ensure_ascii=False)
+    except TypeError:
+        text = str(parsed or "")
+    low = text.lower()
+    if "δεν πρέπει να δηλώνεται λόγος καθυστέρησης" in low:
+        return False
+    if "συμπληρώσετε" in low and "λόγο καθυστέρησης" in low:
+        return True
+    if "εκτός του επιτρεπόμενου χρονικού ορίου" in low:
+        return True
+    if "εκπρόθεσμ" in low:
+        return True
+    return _ergani_requires_aitiologia(parsed)
+
+
 def _submit_work_card(
     *,
     body: dict[str, Any],
@@ -213,7 +231,7 @@ def _submit_work_card(
     explicit_aitiologia = bool(aitiologia_raw)
     if not event_at_str:
         event_at_str = datetime.now(tz_athens()).isoformat(timespec="seconds")
-    if aitiologia_raw and event_at_str:
+    if event_at_str:
         sched_ctx = lookup_punch_schedule_context(
             employer_afm=erg_s,
             branch_aa=aa_s,
@@ -223,6 +241,7 @@ def _submit_work_card(
         aitiologia_raw = resolve_wrk_card_aitiologia(
             f_type=resolved_type,
             event_at=event_at_str,
+            reference_date=ref_date,
             requested_aitiologia=aitiologia_raw,
             schedule_hour_from=sched_ctx.get("schedule_hour_from"),
             schedule_hour_to=sched_ctx.get("schedule_hour_to"),
@@ -258,7 +277,7 @@ def _submit_work_card(
     resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
     parsed = json_or_text(resp)
     aitiologia_retry = False
-    if not resp.ok and not explicit_aitiologia and _ergani_requires_aitiologia(parsed):
+    if not resp.ok and not explicit_aitiologia and _ergani_missing_aitiologia(parsed):
         try:
             payload = build_payload(None, include_null_aitiologia=True)
         except WorkCardPayloadError as e:
@@ -266,7 +285,7 @@ def _submit_work_card(
         resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
         parsed = json_or_text(resp)
         aitiologia_retry = True
-    if not resp.ok and not explicit_aitiologia and _ergani_requires_aitiologia(parsed):
+    if not resp.ok and not explicit_aitiologia and _ergani_missing_aitiologia(parsed):
         aitiologia_raw = RETRO_AITIOLOGIA_INTERNET
         try:
             payload = build_payload(aitiologia_raw)

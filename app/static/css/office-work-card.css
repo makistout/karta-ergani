@@ -213,6 +213,15 @@ input, select {
   border-top: 1px solid var(--border);
 }
 
+.work-card-declare-card.work-card-punches-locked .work-card-actions .btn,
+.work-card-declare-card.work-card-punches-locked .work-card-actions-retro .btn {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.2);
+  box-shadow: none;
+}
+
 .work-card-declare-card {
   margin-bottom: 1rem;
 }

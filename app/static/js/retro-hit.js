@@ -1,6 +1,4 @@
-const RETRO_AITIOLOGIA = "001";
-
-let retroDatePicker = null;
+﻿let retroDatePicker = null;
 let hitContext = null;
 const hitToken = (new URLSearchParams(window.location.search).get("t") || "").trim();
 
@@ -79,6 +77,18 @@ function readRetroTimeValue() {
   return Office.normalizeHourMinute(document.getElementById("rhRetroTime")?.value || "");
 }
 
+function showRetroMsg(text, ok) {
+  const el = document.getElementById("rhMsg");
+  if (!el) return;
+  const ic = ok ? "check-circle-fill" : "exclamation-triangle-fill";
+  const normalized = String(text || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n");
+  const html = Office.escapeHtml(normalized).replace(/\n/g, "<br>");
+  el.innerHTML = `${Office.icon(ic)} <span>${html}</span>`;
+  el.className = "msg show " + (ok ? "ok" : "err");
+}
+
 async function submitRetro(eventName) {
   if (!hitContext) return;
   const referenceDate =
@@ -89,7 +99,7 @@ async function submitRetro(eventName) {
     "";
   const retroTime = readRetroTimeValue();
   if (!referenceDate || !retroTime) {
-    Office.showMsg("rhMsg", "Συμπληρώστε ημερομηνία και ώρα κτυπήματος.", false);
+    showRetroMsg("Συμπληρώστε ημερομηνία και ώρα κτυπήματος.", false);
     return;
   }
   setFormEnabled(false);
@@ -104,15 +114,13 @@ async function submitRetro(eventName) {
         event: eventName,
         reference_date: referenceDate,
         retro_time: retroTime,
-        aitiologia: RETRO_AITIOLOGIA,
         token: hitToken || undefined,
         device_info: Office.clientDeviceInfo(),
       }),
     });
     const data = await Office.parseJson(res);
     if (!res.ok || !data.success) {
-      Office.showMsg(
-        "rhMsg",
+      showRetroMsg(
         data.error || data.errors?.join(" · ") || "Αποτυχία υποβολής",
         false
       );
@@ -124,9 +132,9 @@ async function submitRetro(eventName) {
     if (data.sync_triggered) {
       ok += " · Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο.";
     }
-    Office.showMsg("rhMsg", ok, true);
+    showRetroMsg(ok, true);
   } catch (e) {
-    Office.showMsg("rhMsg", String(e), false);
+    showRetroMsg(String(e), false);
     setFormEnabled(true);
   }
 }

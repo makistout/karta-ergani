@@ -19,7 +19,9 @@ Object.assign(window.Office, {
   },
 
   _syncStatusUrl(syncUrl, jobId) {
-    const base = syncUrl.replace(/\/sync\/?$/, "");
+    // Καθαρίζει το τελικό segment του sync endpoint (π.χ. "/sync" ή "/work-card-sync")
+    // ώστε το status URL να δείχνει πάντα στο σωστό "/sync/status/<jobId>".
+    const base = syncUrl.replace(/\/[^/]*sync\/?$/, "");
     return `${base}/sync/status/${encodeURIComponent(jobId)}`;
   },
 

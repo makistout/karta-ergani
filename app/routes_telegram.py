@@ -1,4 +1,4 @@
-"""Telegram Bot — webhook σύνδεσης ληπτών + δοκιμαστική αποστολή."""
+﻿"""Telegram Bot β€” webhook ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚ Ξ»Ξ·Ο€Ο„ΟΞ½ + Ξ΄ΞΏΞΊΞΉΞΌΞ±ΟƒΟ„ΞΉΞΊΞ® Ξ±Ο€ΞΏΟƒΟ„ΞΏΞ»Ξ®."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def _audit_notification_open(action: str, *, token: str | None, ok: bool, error:
 
 
 def _reply_chat(chat_id: str, text: str) -> None:
-    """Απάντηση στον χρήστη — πάντα αθόρυβα σε σφάλμα (το webhook πρέπει να επιστρέφει 200)."""
+    """Ξ‘Ο€Ξ¬Ξ½Ο„Ξ·ΟƒΞ· ΟƒΟ„ΞΏΞ½ Ο‡ΟΞ®ΟƒΟ„Ξ· β€” Ο€Ξ¬Ξ½Ο„Ξ± Ξ±ΞΈΟΟΟ…Ξ²Ξ± ΟƒΞµ ΟƒΟ†Ξ¬Ξ»ΞΌΞ± (Ο„ΞΏ webhook Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΟ€ΞΉΟƒΟ„ΟΞ­Ο†ΞµΞΉ 200)."""
     try:
         send_telegram_message(str(chat_id), text)
     except TelegramNotConfigured:
@@ -83,7 +83,7 @@ def _reply_chat(chat_id: str, text: str) -> None:
 
 @telegram_bp.post("/webhook")
 def telegram_webhook():
-    """Ο λήπτης στέλνει: /start 6912345678 → σύνδεση chat_id με κινητό στη βάση."""
+    """Ξ Ξ»Ξ®Ο€Ο„Ξ·Ο‚ ΟƒΟ„Ξ­Ξ»Ξ½ΞµΞΉ: /start 6912345678 β†’ ΟƒΟΞ½Ξ΄ΞµΟƒΞ· chat_id ΞΌΞµ ΞΊΞΉΞ½Ξ·Ο„Ο ΟƒΟ„Ξ· Ξ²Ξ¬ΟƒΞ·."""
     update = request.get_json(silent=True) or {}
     message = update.get("message") or {}
     chat = message.get("chat") or {}
@@ -96,8 +96,8 @@ def telegram_webhook():
     if len(parts) < 2:
         _reply_chat(
             str(chat_id),
-            "erganiOS: στείλτε /start ΑΡΙΘΜΟΣ_ΚΙΝΗΤΟΥ (π.χ. /start 6912345678) "
-            "για σύνδεση ειδοποιήσεων.",
+            "erganiOS: ΟƒΟ„ΞµΞ―Ξ»Ο„Ξµ /start Ξ‘Ξ΅Ξ™ΞΞΞΞ£_ΞΞ™ΞΞ—Ξ¤ΞΞ¥ (Ο€.Ο‡. /start 6912345678) "
+            "Ξ³ΞΉΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ· ΞµΞΉΞ΄ΞΏΟ€ΞΏΞΉΞ®ΟƒΞµΟ‰Ξ½.",
         )
         return jsonify({"ok": True})
 
@@ -106,13 +106,13 @@ def telegram_webhook():
     if linked:
         _reply_chat(
             str(chat_id),
-            f"Συνδέθηκε επιτυχώς ({linked} καταχώρηση/σεις). Θα λαμβάνετε ειδοποιήσεις erganiOS.",
+            f"Ξ£Ο…Ξ½Ξ΄Ξ­ΞΈΞ·ΞΊΞµ ΞµΟ€ΞΉΟ„Ο…Ο‡ΟΟ‚ ({linked} ΞΊΞ±Ο„Ξ±Ο‡ΟΟΞ·ΟƒΞ·/ΟƒΞµΞΉΟ‚). ΞΞ± Ξ»Ξ±ΞΌΞ²Ξ¬Ξ½ΞµΟ„Ξµ ΞµΞΉΞ΄ΞΏΟ€ΞΏΞΉΞ®ΟƒΞµΞΉΟ‚ erganiOS.",
         )
     else:
         _reply_chat(
             str(chat_id),
-            "Το κινητό δεν βρέθηκε σε λήπτες καταστήματος. "
-            "Προσθέστε πρώτα όνομα και αριθμό στην επεξεργασία καταστήματος.",
+            "Ξ¤ΞΏ ΞΊΞΉΞ½Ξ·Ο„Ο Ξ΄ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞµ ΟƒΞµ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΞΊΞ±Ο„Ξ±ΟƒΟ„Ξ®ΞΌΞ±Ο„ΞΏΟ‚. "
+            "Ξ ΟΞΏΟƒΞΈΞ­ΟƒΟ„Ξµ Ο€ΟΟΟ„Ξ± ΟΞ½ΞΏΞΌΞ± ΞΊΞ±ΞΉ Ξ±ΟΞΉΞΈΞΌΟ ΟƒΟ„Ξ·Ξ½ ΞµΟ€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ± ΞΊΞ±Ο„Ξ±ΟƒΟ„Ξ®ΞΌΞ±Ο„ΞΏΟ‚.",
         )
     return jsonify({"ok": True, "linked": linked})
 
@@ -121,10 +121,10 @@ def telegram_webhook():
 def telegram_test_store(store_id: int):
     cfg = repo.get_store_config(store_id)
     if not cfg:
-        return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
+        return jsonify({"error": "Ξ”ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞµ ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ±"}), 404
     data = request.get_json(silent=True) or {}
     text = (data.get("message") or "").strip() or (
-        f"Δοκιμαστική ειδοποίηση erganiOS — {cfg.get('name') or store_id}"
+        f"Ξ”ΞΏΞΊΞΉΞΌΞ±ΟƒΟ„ΞΉΞΊΞ® ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· erganiOS β€” {cfg.get('name') or store_id}"
     )
     try:
         result = notify_store_recipients(store_id, text)
@@ -135,17 +135,17 @@ def telegram_test_store(store_id: int):
 
 @telegram_bp.post("/notify/missing-punch")
 def telegram_notify_missing_punch():
-    """Ειδοποίηση ληπτών για ελλιπή είσοδο/έξοδο (σελίδα ελλειπών χτυπημάτων)."""
+    """Ξ•ΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· Ξ»Ξ·Ο€Ο„ΟΞ½ Ξ³ΞΉΞ± ΞµΞ»Ξ»ΞΉΟ€Ξ® ΞµΞ―ΟƒΞΏΞ΄ΞΏ/Ξ­ΞΎΞΏΞ΄ΞΏ (ΟƒΞµΞ»Ξ―Ξ΄Ξ± ΞµΞ»Ξ»ΞµΞΉΟ€ΟΞ½ Ο‡Ο„Ο…Ο€Ξ·ΞΌΞ¬Ο„Ο‰Ξ½)."""
     from app.http_helpers import resolve_active_store
 
     ctx = resolve_active_store()
     if not ctx:
-        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+        return jsonify({"error": "Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ Ο€ΟΟΟ„Ξ± ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ±"}), 400
     data = request.get_json(silent=True) or {}
     employee_afm = str(data.get("employee_afm") or "").strip()
     work_date = str(data.get("work_date") or "").strip()
     if not employee_afm or not work_date:
-        return jsonify({"error": "Λείπουν employee_afm ή work_date"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞΏΟ…Ξ½ employee_afm Ξ® work_date"}), 400
     try:
         result = send_missing_punch_notifications(
             store_id=int(ctx["id"]),
@@ -167,37 +167,37 @@ def telegram_notify_missing_punch():
     if result.get("skipped") == "already_submitted":
         payload["success"] = False
         payload["error"] = (
-            "Υπάρχει ήδη δήλωση κάρτας στη βάση για αυτό το χτύπημα — "
-            "δεν αποστέλλεται ξανά ειδοποίηση."
+            "Ξ¥Ο€Ξ¬ΟΟ‡ΞµΞΉ Ξ®Ξ΄Ξ· Ξ΄Ξ®Ξ»Ο‰ΟƒΞ· ΞΊΞ¬ΟΟ„Ξ±Ο‚ ΟƒΟ„Ξ· Ξ²Ξ¬ΟƒΞ· Ξ³ΞΉΞ± Ξ±Ο…Ο„Ο Ο„ΞΏ Ο‡Ο„ΟΟ€Ξ·ΞΌΞ± β€” "
+            "Ξ΄ΞµΞ½ Ξ±Ο€ΞΏΟƒΟ„Ξ­Ξ»Ξ»ΞµΟ„Ξ±ΞΉ ΞΎΞ±Ξ½Ξ¬ ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·."
         )
         return jsonify(payload), 400
     if result.get("skipped") and not ok:
         payload["success"] = False
-        payload["error"] = "Δεν ορίστηκε ενέργεια ειδοποίησης για αυτή τη γραμμή."
+        payload["error"] = "Ξ”ΞµΞ½ ΞΏΟΞ―ΟƒΟ„Ξ·ΞΊΞµ ΞµΞ½Ξ­ΟΞ³ΞµΞΉΞ± ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·Ο‚ Ξ³ΞΉΞ± Ξ±Ο…Ο„Ξ® Ο„Ξ· Ξ³ΟΞ±ΞΌΞΌΞ®."
         return jsonify(payload), 400
     if not ok and not result["total"]:
         payload["error"] = (
-            "Δεν υπάρχουν λήπτες με συνδεδεμένο Telegram. "
-            "Προσθέστε λήπτες στο κατάστημα και /start στο bot."
+            "Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΞΌΞµ ΟƒΟ…Ξ½Ξ΄ΞµΞ΄ΞµΞΌΞ­Ξ½ΞΏ Telegram. "
+            "Ξ ΟΞΏΟƒΞΈΞ­ΟƒΟ„Ξµ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΟƒΟ„ΞΏ ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ± ΞΊΞ±ΞΉ /start ΟƒΟ„ΞΏ bot."
         )
     elif not ok:
-        payload["error"] = "Η αποστολή απέτυχε για όλους τους λήπτες"
+        payload["error"] = "Ξ— Ξ±Ο€ΞΏΟƒΟ„ΞΏΞ»Ξ® Ξ±Ο€Ξ­Ο„Ο…Ο‡Ξµ Ξ³ΞΉΞ± ΟΞ»ΞΏΟ…Ο‚ Ο„ΞΏΟ…Ο‚ Ξ»Ξ®Ο€Ο„ΞµΟ‚"
     return jsonify(payload), (200 if ok else 400)
 
 
 @telegram_bp.post("/notify/today-punch")
 def telegram_notify_today_punch():
-    """Ειδοποίηση τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
+    """Ξ•ΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· Ο„ΟΟ€ΞΏΟ… 2 β€” Ο€ΟΟΞ²Ξ»Ξ·ΞΌΞ± Ο„ΟΞ­Ο‡ΞΏΟ…ΟƒΞ±Ο‚ Ξ·ΞΌΞ­ΟΞ±Ο‚."""
     from app.http_helpers import resolve_active_store
 
     ctx = resolve_active_store()
     if not ctx:
-        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+        return jsonify({"error": "Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ Ο€ΟΟΟ„Ξ± ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ±"}), 400
     data = request.get_json(silent=True) or {}
     employee_afm = str(data.get("employee_afm") or "").strip()
     work_date = str(data.get("work_date") or "").strip()
     if not employee_afm or not work_date:
-        return jsonify({"error": "Λείπουν employee_afm ή work_date"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞΏΟ…Ξ½ employee_afm Ξ® work_date"}), 400
     try:
         result = send_today_punch_notifications(
             store_id=int(ctx["id"]),
@@ -219,37 +219,37 @@ def telegram_notify_today_punch():
     payload = {"success": ok, **result}
     if result.get("skipped") == "snoozed":
         payload["success"] = False
-        payload["error"] = "Η ειδοποίηση είναι σε αναβολή (snooze) για αυτή την περίπτωση."
+        payload["error"] = "Ξ— ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· ΞµΞ―Ξ½Ξ±ΞΉ ΟƒΞµ Ξ±Ξ½Ξ±Ξ²ΞΏΞ»Ξ® (snooze) Ξ³ΞΉΞ± Ξ±Ο…Ο„Ξ® Ο„Ξ·Ξ½ Ο€ΞµΟΞ―Ο€Ο„Ο‰ΟƒΞ·."
         return jsonify(payload), 400
     if result.get("skipped") in ("no_alert", "kind_mismatch"):
         payload["success"] = False
-        payload["error"] = "Δεν ισχύει πλέον συνθήκη ειδοποίησης για αυτή τη γραμμή."
+        payload["error"] = "Ξ”ΞµΞ½ ΞΉΟƒΟ‡ΟΞµΞΉ Ο€Ξ»Ξ­ΞΏΞ½ ΟƒΟ…Ξ½ΞΈΞ®ΞΊΞ· ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·Ο‚ Ξ³ΞΉΞ± Ξ±Ο…Ο„Ξ® Ο„Ξ· Ξ³ΟΞ±ΞΌΞΌΞ®."
         return jsonify(payload), 400
     if not ok and not result["total"]:
         payload["error"] = (
-            "Δεν υπάρχουν λήπτες με συνδεδεμένο Telegram. "
-            "Προσθέστε λήπτες στο κατάστημα και /start στο bot."
+            "Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΞΌΞµ ΟƒΟ…Ξ½Ξ΄ΞµΞ΄ΞµΞΌΞ­Ξ½ΞΏ Telegram. "
+            "Ξ ΟΞΏΟƒΞΈΞ­ΟƒΟ„Ξµ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΟƒΟ„ΞΏ ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ± ΞΊΞ±ΞΉ /start ΟƒΟ„ΞΏ bot."
         )
     elif not ok:
-        payload["error"] = "Η αποστολή απέτυχε για όλους τους λήπτες"
+        payload["error"] = "Ξ— Ξ±Ο€ΞΏΟƒΟ„ΞΏΞ»Ξ® Ξ±Ο€Ξ­Ο„Ο…Ο‡Ξµ Ξ³ΞΉΞ± ΟΞ»ΞΏΟ…Ο‚ Ο„ΞΏΟ…Ο‚ Ξ»Ξ®Ο€Ο„ΞµΟ‚"
     return jsonify(payload), (200 if ok else 400)
 
 
 @telegram_bp.post("/notify/schedule-fix")
 def telegram_notify_schedule_fix():
-    """Ειδοποίηση Telegram — ρεπό/ανάπαυση με καταγραφή εργασίας (WTODaily)."""
+    """Ξ•ΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· Telegram β€” ΟΞµΟ€Ο/Ξ±Ξ½Ξ¬Ο€Ξ±Ο…ΟƒΞ· ΞΌΞµ ΞΊΞ±Ο„Ξ±Ξ³ΟΞ±Ο†Ξ® ΞµΟΞ³Ξ±ΟƒΞ―Ξ±Ο‚ (WTODaily)."""
     from app.http_helpers import resolve_active_store
     from app.today_alert_service import send_wto_schedule_notifications
 
     ctx = resolve_active_store()
     if not ctx:
-        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+        return jsonify({"error": "Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ Ο€ΟΟΟ„Ξ± ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ±"}), 400
     data = request.get_json(silent=True) or {}
     employee_afm = str(data.get("employee_afm") or "").strip()
     work_date = str(data.get("work_date") or "").strip()
     notify_kind = str(data.get("notify_kind") or "rest_with_card").strip()
     if not employee_afm or not work_date:
-        return jsonify({"error": "Λείπουν employee_afm ή work_date"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞΏΟ…Ξ½ employee_afm Ξ® work_date"}), 400
     try:
         result = send_wto_schedule_notifications(
             store_id=int(ctx["id"]),
@@ -271,19 +271,19 @@ def telegram_notify_schedule_fix():
     payload = {"success": ok, **result}
     if result.get("skipped") == "snoozed":
         payload["success"] = False
-        payload["error"] = "Η ειδοποίηση είναι σε αναβολή (snooze) για αυτή την περίπτωση."
+        payload["error"] = "Ξ— ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· ΞµΞ―Ξ½Ξ±ΞΉ ΟƒΞµ Ξ±Ξ½Ξ±Ξ²ΞΏΞ»Ξ® (snooze) Ξ³ΞΉΞ± Ξ±Ο…Ο„Ξ® Ο„Ξ·Ξ½ Ο€ΞµΟΞ―Ο€Ο„Ο‰ΟƒΞ·."
         return jsonify(payload), 400
     if result.get("skipped") in ("no_alert", "invalid_kind"):
         payload["success"] = False
-        payload["error"] = "Δεν ισχύει πλέον συνθήκη ειδοποίησης για αυτή τη γραμμή."
+        payload["error"] = "Ξ”ΞµΞ½ ΞΉΟƒΟ‡ΟΞµΞΉ Ο€Ξ»Ξ­ΞΏΞ½ ΟƒΟ…Ξ½ΞΈΞ®ΞΊΞ· ΞµΞΉΞ΄ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·Ο‚ Ξ³ΞΉΞ± Ξ±Ο…Ο„Ξ® Ο„Ξ· Ξ³ΟΞ±ΞΌΞΌΞ®."
         return jsonify(payload), 400
     if not ok and not result["total"]:
         payload["error"] = (
-            "Δεν υπάρχουν λήπτες με συνδεδεμένο Telegram. "
-            "Προσθέστε λήπτες στο κατάστημα και /start στο bot."
+            "Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΞΌΞµ ΟƒΟ…Ξ½Ξ΄ΞµΞ΄ΞµΞΌΞ­Ξ½ΞΏ Telegram. "
+            "Ξ ΟΞΏΟƒΞΈΞ­ΟƒΟ„Ξµ Ξ»Ξ®Ο€Ο„ΞµΟ‚ ΟƒΟ„ΞΏ ΞΊΞ±Ο„Ξ¬ΟƒΟ„Ξ·ΞΌΞ± ΞΊΞ±ΞΉ /start ΟƒΟ„ΞΏ bot."
         )
     elif not ok:
-        payload["error"] = "Η αποστολή απέτυχε για όλους τους λήπτες"
+        payload["error"] = "Ξ— Ξ±Ο€ΞΏΟƒΟ„ΞΏΞ»Ξ® Ξ±Ο€Ξ­Ο„Ο…Ο‡Ξµ Ξ³ΞΉΞ± ΟΞ»ΞΏΟ…Ο‚ Ο„ΞΏΟ…Ο‚ Ξ»Ξ®Ο€Ο„ΞµΟ‚"
     return jsonify(payload), (200 if ok else 400)
 
 
@@ -307,9 +307,9 @@ def telegram_today_hit_confirm(token: str):
     data = request.get_json(silent=True) or {}
     pin = str(data.get("pin") or "").strip()
     if not pin:
-        return jsonify({"error": "Λείπει PIN"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞµΞΉ PIN"}), 400
     if not is_valid_notify_pin(pin):
-        return jsonify({"error": "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία"}), 400
+        return jsonify({"error": "Ξ PIN Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΞ―Ξ½Ξ±ΞΉ Ξ±ΞΊΟΞΉΞ²ΟΟ‚ 4 Ξ±ΟΞΉΞΈΞΌΞ·Ο„ΞΉΞΊΞ¬ ΟΞ·Ο†Ξ―Ξ±"}), 400
     result, status = confirm_today_hit_with_pin(token, pin)
     return jsonify(result), status
 
@@ -325,9 +325,9 @@ def telegram_today_action_context():
             "telegram.telegram_today_action_context",
             token=token,
             ok=False,
-            error=err or "Λήξη συνεδρίας",
+            error=err or "Ξ›Ξ®ΞΎΞ· ΟƒΟ…Ξ½ΞµΞ΄ΟΞ―Ξ±Ο‚",
         )
-        return jsonify({"error": err or "Λήξη συνεδρίας"}), 401
+        return jsonify({"error": err or "Ξ›Ξ®ΞΎΞ· ΟƒΟ…Ξ½ΞµΞ΄ΟΞ―Ξ±Ο‚"}), 401
     _audit_notification_open("telegram.telegram_today_action_context", token=token, ok=True)
     payload = {"ok": True, "context": ctx}
     if ctx.get("leave_eligible"):
@@ -371,7 +371,7 @@ def telegram_today_action_leave():
     data = request.get_json(silent=True) or {}
     leave_type = str(data.get("leave_type") or "").strip()
     if not leave_type:
-        return jsonify({"error": "Λείπει leave_type"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞµΞΉ leave_type"}), 400
     token = str(data.get("token") or "").strip() or None
     result, status = submit_today_leave(
         leave_type=leave_type,
@@ -396,9 +396,9 @@ def telegram_hit_confirm(token: str):
     data = request.get_json(silent=True) or {}
     pin = str(data.get("pin") or "").strip()
     if not pin:
-        return jsonify({"error": "Λείπει PIN"}), 400
+        return jsonify({"error": "Ξ›ΞµΞ―Ο€ΞµΞΉ PIN"}), 400
     if not is_valid_notify_pin(pin):
-        return jsonify({"error": "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία"}), 400
+        return jsonify({"error": "Ξ PIN Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΞ―Ξ½Ξ±ΞΉ Ξ±ΞΊΟΞΉΞ²ΟΟ‚ 4 Ξ±ΟΞΉΞΈΞΌΞ·Ο„ΞΉΞΊΞ¬ ΟΞ·Ο†Ξ―Ξ±"}), 400
     result, status = confirm_punch_with_pin(token, pin)
     return jsonify(result), status
 
@@ -408,7 +408,7 @@ def telegram_retro_hit_context():
     token = str(request.args.get("t") or "").strip() or None
     ctx, err = get_retro_hit_context(token=token)
     if err or not ctx:
-        return jsonify({"error": err or "Λήξη συνεδρίας"}), 401
+        return jsonify({"error": err or "Ξ›Ξ®ΞΎΞ· ΟƒΟ…Ξ½ΞµΞ΄ΟΞ―Ξ±Ο‚"}), 401
     return jsonify({"ok": True, "context": ctx})
 
 
@@ -418,7 +418,7 @@ def telegram_retro_hit_submit():
     event = str(data.get("event") or "").strip()
     reference_date = str(data.get("reference_date") or "").strip()
     retro_time = str(data.get("retro_time") or "").strip()
-    aitiologia = str(data.get("aitiologia") or "001").strip() or "001"
+    aitiologia = str(data.get("aitiologia") or "").strip() or None
     token = str(data.get("token") or "").strip() or None
     result, status = submit_retro_hit_from_session(
         event=event,
@@ -428,3 +428,4 @@ def telegram_retro_hit_submit():
         token=token,
     )
     return jsonify(result), status
+

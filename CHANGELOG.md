@@ -8,6 +8,32 @@
 
 ---
 
+## 2026-07-06 (β) — Ψηφιακή κάρτα: αιτιολογία, sync status, κλείδωμα χτυπημάτων
+
+### Αιτιολογία WRKCardSE (`f_aitiologia`)
+
+- Η απόφαση για αιτιολογία γίνεται **πριν** την υποβολή στην Ergani (`resolve_wrk_card_aitiologia` στο `work_card_payload.py`).
+- **Προηγούμενη ημέρα** (ή οποιαδήποτε ημερομηνία ≠ σήμερα): **πάντα** κωδικός `001`.
+- **Σήμερα**: σύγκριση ώρας χτυπήματος με ψηφιακό ωράριο + ευελιξία άφιξης (`flex_arrival_minutes`, default 15′):
+  - **Είσοδος**: αιτιολογία αν η ώρα είναι πριν την έναρξη ή μετά την έναρξη + flex.
+  - **Έξοδος**: αιτιολογία αν η ώρα είναι πριν το τέλος − flex ή μετά το τέλος + flex.
+- Εντός ορίου: **δεν** στέλνεται `f_aitiologia` (αποφεύγεται σφάλμα Ergani «Δεν πρέπει να δηλώνεται λόγος καθυστέρησης»).
+- Το frontend **δεν** στέλνει πλέον hardcoded `001`· αποφασίζει το backend (`work-card-list.js`, `retro-hit.js`).
+- Fallback retry: αναγνώριση ελληνικών μηνυμάτων Ergani (`_ergani_missing_aitiologia` στο `routes_work_card.py`).
+- Unit tests: `tests/test_work_card_aitiologia.py`.
+
+### Sync ψηφιακής κάρτας
+
+- Fix στο `office-sync.js`: το status URL για `/api/work-log/work-card-sync` δείχνει σωστά στο `/api/work-log/sync/status/<job_id>` (δεν κολλούσε πλέον στο «έναρξη…»).
+- Κατά το portal sync στη σελίδα κάρτας, τα κουμπιά εισόδου/εξόδου κλειδώνουν (`workCardPortalSyncBusy`, CSS `work-card-punches-locked`).
+
+### Retro-hit (Telegram / UI)
+
+- Πολυγραμμικά μηνύματα στο `/ui/retro-hit` (`showRetroMsg` με `\n` → `<br>`).
+- Αφαίρεση σταθερού `aitiologia: "001"` από frontend· η λογική αιτιολογίας είναι κοινή με τη ροή κάρτας.
+
+---
+
 ## 2026-07-06 — SEO landing, disclaimer κάρτας και κανόνες Ρεπό/Άδεια
 
 ### Δημόσια σελίδα και SEO
