@@ -41,8 +41,21 @@
 ### Λοιπά
 
 - Fix στο `scripts/setup_scheduled_sync_task.ps1` για έλεγχο legacy scheduled tasks σε Windows.
+- Fix αόρατου κειμένου στο CTA κουμπί του μπλε banner landing (`landing-btn-cta`: ρητό χρώμα αντί για `color: inherit` από το banner).
+
+### Φόρμα επικοινωνίας (landing)
+
+- Η φόρμα στο `#contact` στέλνει `POST /api/contact` (`landing-contact.js` → `app/routes_contact.py`).
+- Η αποστολή γίνεται μέσω **SMTP Mailgun** (`app/email_notify.py`, ρυθμίσεις `SMTP_*` στο `.env`).
+- **Από:** `SMTP_FROM_NAME` + `SMTP_FROM_EMAIL` (π.χ. `erganiOS <noreply@erganios.gr>`).
+- **Προς:** `info@erganios.gr` (σταθερά `CONTACT_TO_EMAIL`).
+- Honeypot: κρυφό πεδίο `website` — αν συμπληρωθεί, επιστρέφει επιτυχία χωρίς αποστολή.
+- Το `info@erganios.gr` δίπλα στο κουμπί είναι `mailto:` εναλλακτικό, όχι ο μηχανισμός αποστολής.
+- Αν δεν φτάνει το email: έλεγξε logs στο Mailgun, spam στο mailbox, ότι υπάρχει `info@` στο `mail.erganios.gr`, DNS SPF (`include:mailgun.org`).
 
 ---
+
+## 2026-07-04 — Public landing, τιμοκατάλογος και ανωνυμοποιημένα screenshots
 
 - Ανανεώθηκε η δημόσια σελίδα `/ui/landing` με καθαρό marketing περιεχόμενο για τις
   λειτουργίες ωραρίου, WTODaily, WTOWeek, ειδοποιήσεις και καθημερινή εικόνα αποκλίσεων.

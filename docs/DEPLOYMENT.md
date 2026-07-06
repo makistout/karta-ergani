@@ -36,3 +36,22 @@
 - Telegram bot/webhook,
 - SMTP,
 - Ergani API/portal settings.
+
+## Φόρμα επικοινωνίας landing
+
+Ροή: φόρμα `#contact` → `POST /api/contact` → `send_email_message()` → SMTP Mailgun.
+
+| Ρύθμιση | Περιγραφή |
+|---------|-----------|
+| `SMTP_HOST` | Mailgun SMTP (π.χ. `smtp.eu.mailgun.org`) |
+| `SMTP_FROM_EMAIL` / `SMTP_FROM_NAME` | Αποστολέας (π.χ. `noreply@erganios.gr`) |
+| `CONTACT_TO_EMAIL` | Σταθερά `info@erganios.gr` στο `routes_contact.py` |
+
+**Διάγνωση αν δεν φτάνει email:**
+
+1. Η φόρμα έδειξε «Θα επικοινωνήσουμε σύντομα»; Αν όχι, μπορεί να πυροδοτήθηκε honeypot (`website`) ή SMTP error (502/503).
+2. Έλεγξε **Mailgun → Logs** για accepted/delivered/bounced.
+3. Έλεγξε **spam** και ότι υπάρχει mailbox `info@` στο `mail.erganios.gr` (MX του `erganios.gr`).
+4. DNS: SPF πρέπει να περιλαμβάνει `include:mailgun.org`.
+
+Μετά από αλλαγές CSS landing, ενημέρωσε cache-bust στο `office.css`.

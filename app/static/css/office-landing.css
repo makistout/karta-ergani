@@ -35,10 +35,19 @@
   color: #ffffff;
 }
 
+.landing-body a.landing-btn-cta {
+  color: var(--lp-primary);
+}
+
 .landing-body a.landing-nav-cta:hover,
 .landing-body a.landing-btn-primary:hover,
 .landing-body button.landing-btn-primary:hover {
   color: #ffffff;
+  text-decoration: underline;
+}
+
+.landing-body a.landing-btn-cta:hover {
+  color: var(--lp-primary-dark);
   text-decoration: underline;
 }
 
