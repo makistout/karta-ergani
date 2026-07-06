@@ -21,7 +21,7 @@ $TaskCmd = "`"$Python`" `"$Script`""
 
 # Αφαίρεση παλιών tasks (αν υπάρχουν)
 foreach ($LegacyTaskName in $LegacyTaskNames) {
-    schtasks /query /tn $LegacyTaskName 2>$null | Out-Null
+    cmd /c "schtasks /query /tn `"$LegacyTaskName`" >nul 2>nul"
     if ($LASTEXITCODE -eq 0) {
         schtasks /delete /tn $LegacyTaskName /f | Out-Null
         Write-Host "Removed legacy task: $LegacyTaskName"

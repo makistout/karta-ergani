@@ -1,135 +1,219 @@
 {% extends "ui/base.html" %}
-{% set page_title = 'erganiOS - Ψηφιακή Κάρτα Εργασίας' %}
+{% set page_title = 'Εφαρμογή Ψηφιακής Κάρτας Εργασίας | erganiOS' %}
 {% set shell = "public" %}
 {% set body_class = "landing-body" %}
+{% block extra_head %}
+  <meta
+    name="description"
+    content="Το erganiOS οργανώνει την Ψηφιακή Κάρτα Εργασίας, τα ωράρια, τα χτυπήματα και τις αποκλίσεις σε ένα καθαρό περιβάλλον για επιχειρήσεις και λογιστικά γραφεία."
+  />
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Εφαρμογή Ψηφιακής Κάρτας Εργασίας | erganiOS">
+  <meta property="og:description" content="Το erganiOS οργανώνει την Ψηφιακή Κάρτα Εργασίας, τα ωράρια, τα χτυπήματα και τις αποκλίσεις σε ένα καθαρό περιβάλλον για επιχειρήσεις και λογιστικά γραφεία.">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:locale" content="el_GR">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "erganiOS",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "Εφαρμογή ψηφιακής κάρτας εργασίας για επιχειρήσεις και λογιστικά γραφεία. Ωρομέτρηση προσωπικού ΕΡΓΑΝΗ, χτυπήματα κάρτας, ψηφιακό ωράριο και αναφορά αποκλίσεων.",
+    "url": "{{ canonical_url }}",
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "EUR",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
+{% endblock %}
 {% block public_content %}
-  <header class="landing-nav" aria-label="erganiOS">
-    <a class="landing-brand" href="#top" aria-label="erganiOS">
-      <img src="/static/img/erganios-logo.png" alt="erganiOS">
-    </a>
-    <nav class="landing-links" aria-label="Ενότητες">
-      <a href="#features">Λειτουργίες</a>
-      <a href="#workflow">Ωράριο</a>
-      <a href="#screens">Οθόνες</a>
-      <a href="#plans">Τιμοκατάλογος</a>
-      <a href="#accountants">Λογιστικά γραφεία</a>
-    </nav>
-    <a class="landing-nav-cta" href="#contact">Επικοινωνία</a>
-  </header>
+  {% include "ui/partials/_landing_public_nav.html" %}
 
   <main id="top" class="landing-page">
-    <section class="landing-hero" aria-labelledby="landingHeroTitle">
-      <div class="landing-hero-bg" aria-hidden="true"></div>
-      <div class="landing-container landing-hero-inner">
-        <p class="landing-eyebrow">Ψηφιακη Καρτα Εργασιας χωρις χαμενες κινησεις</p>
-        <h1 id="landingHeroTitle">erganiOS</h1>
-        <p class="landing-hero-copy">
-          Cloud εργαλείο για επιχειρήσεις και λογιστικά γραφεία που συγχρονίζει ΕΡΓΑΝΗ,
-          εντοπίζει αποκλίσεις και οδηγεί την καθημερινή διαχείριση ωραρίου και ειδοποιήσεων.
-        </p>
-        <div class="landing-hero-actions">
-          <a class="landing-btn landing-btn-primary" href="#plans">
-            <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i><span>Τιμοκατάλογος</span>
-          </a>
-          <a class="landing-btn landing-btn-secondary" href="#features">
-            <i class="bi bi-check2-circle" aria-hidden="true"></i><span>Λειτουργίες</span>
-          </a>
+    <section class="landing-hero">
+      <div class="landing-container landing-hero-grid">
+        <div>
+          <div class="landing-eyebrow">
+            <span class="landing-eyebrow-dot" aria-hidden="true"></span>
+            Ψηφιακή Κάρτα Εργασίας
+          </div>
+
+          <h1 id="landingHeroTitle">Η Ψηφιακή Κάρτα Εργασίας σε τάξη, κάθε μέρα</h1>
+
+          <p class="landing-hero-lead">
+            Το <strong>erganiOS</strong> είναι εφαρμογή ψηφιακής κάρτας εργασίας για επιχειρήσεις
+            και λογιστικά γραφεία. Συγκεντρώνει ωράρια, χτυπήματα κάρτας, αποκλίσεις και εκκρεμότητες
+            σε ένα καθαρό περιβάλλον, ώστε να έχετε καθημερινά πλήρη εικόνα της ψηφιακής κάρτας εργασίας.
+          </p>
+
+          <p class="landing-hero-proof">
+            Λιγότερα τηλέφωνα. Λιγότερο ψάξιμο. Πιο καθαρή καθημερινή λειτουργία.
+          </p>
+
+          <div class="landing-hero-actions">
+            <a class="landing-btn landing-btn-primary" href="#pricing">Δείτε τιμοκατάλογο</a>
+            <a class="landing-btn landing-btn-secondary" href="#contact">Μιλήστε μαζί μας</a>
+          </div>
         </div>
-        <div class="landing-proof" aria-label="Κύριες δυνατότητες">
-          <span><strong>WTODaily</strong> αλλαγή ωραρίου ημέρας</span>
-          <span><strong>WTOWeek</strong> σταθερό εβδομαδιαίο πρόγραμμα</span>
-          <span><strong>PIN links</strong> άμεσες ενέργειες από κινητό</span>
-        </div>
+
+        <aside class="landing-hero-card" aria-label="Παράδειγμα ημερήσιας εικόνας">
+          <div class="landing-dashboard">
+            <div class="landing-dashboard-top">
+              <div class="landing-dashboard-title">Σημερινή εικόνα</div>
+              <div class="landing-status">Live έλεγχος</div>
+            </div>
+
+            <div class="landing-dashboard-body">
+              <div class="landing-dash-row">
+                <div>
+                  <div class="landing-dash-name">Μαρία Π.</div>
+                  <div class="landing-dash-info">Ωράριο 09:00–17:00 · Χτύπημα 08:58</div>
+                </div>
+                <span class="landing-pill landing-pill-ok">ΟΚ</span>
+              </div>
+
+              <div class="landing-dash-row">
+                <div>
+                  <div class="landing-dash-name">Νίκος Κ.</div>
+                  <div class="landing-dash-info">Ωράριο 10:00–18:00 · Λείπει έξοδος</div>
+                </div>
+                <span class="landing-pill landing-pill-warn">Έλεγχος</span>
+              </div>
+
+              <div class="landing-dash-row">
+                <div>
+                  <div class="landing-dash-name">Ελένη Δ.</div>
+                  <div class="landing-dash-info">Χτύπημα χωρίς δηλωμένο ωράριο</div>
+                </div>
+                <span class="landing-pill landing-pill-danger">Εκκρεμότητα</span>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
 
-    <section id="features" class="landing-section landing-feature-band">
+    <section id="features" class="landing-section">
       <div class="landing-container">
-        <div class="landing-section-head">
-          <p class="landing-kicker">Λειτουργιες</p>
-          <h2>Όλα όσα χρειάζεται η καθημερινή οργάνωση σε μία οθόνη.</h2>
-          <p>
-            Το erganiOS συνδέει προγραμματισμένο ωράριο, πραγματική απασχόληση και ειδοποιήσεις,
-            ώστε οι εκκρεμότητες να φαίνονται πριν γίνουν πρόβλημα.
+        <div class="landing-section-header">
+          <div class="landing-kicker">Λειτουργίες</div>
+          <h2>Όλα όσα χρειάζεται η καθημερινή οργάνωση, σε μία οθόνη</h2>
+          <p class="landing-section-text">
+            Η ψηφιακή κάρτα εργασίας δεν χρειάζεται να γίνει πονοκέφαλος.
+            Με αυτό το λογισμικό ψηφιακής κάρτας εργασίας βλέπετε τι ισχύει, τι λείπει
+            και τι χρειάζεται άμεση ενέργεια.
           </p>
         </div>
-        <div class="landing-feature-grid">
-          <article class="landing-feature">
-            <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-            <h3>Συγχρονισμός ΕΡΓΑΝΗ</h3>
-            <p>Εργαζόμενοι, ψηφιακό ωράριο, πραγματική απασχόληση και μηνιαία κατάσταση από API και portal ροές.</p>
+
+        <div class="landing-grid-3">
+          <article class="landing-card">
+            <div class="landing-icon">01</div>
+            <h3>Συγχρονισμός με ΕΡΓΑΝΗ</h3>
+            <p>
+              Ωρομέτρηση προσωπικού ΕΡΓΑΝΗ: εργαζόμενοι, ψηφιακό ωράριο ΕΡΓΑΝΗ,
+              πραγματική απασχόληση και μηνιαία εικόνα σε ένα σημείο.
+            </p>
           </article>
-          <article class="landing-feature">
-            <i class="bi bi-calendar2-week" aria-hidden="true"></i>
+
+          <article class="landing-card">
+            <div class="landing-icon">02</div>
             <h3>Αλλαγή ωραρίου</h3>
-            <p>Ημερήσιες αλλαγές WTODaily με ενιαία φόρμα, σπαστό ωράριο και καθαρή εικόνα υποβολής.</p>
+            <p>
+              Ημερήσια αλλαγή ωραρίου στο ψηφιακό ωράριο ΕΡΓΑΝΗ — πρόωρη εργασία,
+              σπαστά ωράρια και καθαρή φόρμα υποβολής.
+            </p>
           </article>
-          <article class="landing-feature">
-            <i class="bi bi-calendar-range" aria-hidden="true"></i>
+
+          <article class="landing-card">
+            <div class="landing-icon">03</div>
             <h3>Εβδομαδιαίο πρόγραμμα</h3>
-            <p>Σταθερό WTOWeek ανά εργαζόμενο με αντιγραφή ημερών, πλήρη εβδομάδα και προαιρετική ημερομηνία λήξης.</p>
+            <p>
+              Εβδομαδιαίο πρόγραμμα εργασίας για σταθερές βάρδιες — λιγότερες
+              επαναλαμβανόμενες καθημερινές κινήσεις.
+            </p>
           </article>
-          <article class="landing-feature">
-            <i class="bi bi-bell" aria-hidden="true"></i>
+
+          <article class="landing-card">
+            <div class="landing-icon">04</div>
             <h3>Έξυπνες ειδοποιήσεις</h3>
-            <p>Telegram και Email links με PIN για εκκρεμότητες ωραρίου, σημερινές ενέργειες και άμεση επιβεβαίωση.</p>
+            <p>
+              Ειδοποιήσεις ψηφιακής κάρτας για εκκρεμότητες, σημερινές ενέργειες
+              και αλλαγές που χρειάζονται επιβεβαίωση — Telegram ή Email.
+            </p>
           </article>
-          <article class="landing-feature">
-            <i class="bi bi-clipboard2-pulse" aria-hidden="true"></i>
+
+          <article class="landing-card">
+            <div class="landing-icon">05</div>
             <h3>Αναφορά αποκλίσεων</h3>
-            <p>Εντοπισμός καθυστερήσεων, πρόωρων χτυπημάτων, εργασίας χωρίς ωράριο και κενών κινήσεων.</p>
+            <p>
+              Αναφορά αποκλίσεων και αποκλίσεις ψηφιακής κάρτας: καθυστερήσεις,
+              πρόωρα χτυπήματα, εργασία χωρίς ωράριο και ελλιπή χτυπήματα.
+            </p>
+          </article>
+
+          <article class="landing-card">
+            <div class="landing-icon">06</div>
+            <h3>Καθαρή καθημερινή εικόνα</h3>
+            <p>
+              Πρόγραμμα ψηφιακής κάρτας εργασίας σε μία οθόνη: ποιος έχει σωστό ωράριο,
+              ποιος χτύπησε κάρτα και πού υπάρχει πρόβλημα.
+            </p>
           </article>
         </div>
       </div>
     </section>
 
-    <section id="workflow" class="landing-section landing-workflow-band">
-      <div class="landing-container landing-workflow-layout">
-        <div class="landing-section-head">
-          <p class="landing-kicker">Ωραριο & ενεργειες</p>
-          <h2>Από το πρόγραμμα μέχρι τη διόρθωση, χωρίς άνοιγμα πολλών portal οθονών.</h2>
-          <p>
-            Οι νέες ροές κάνουν το ωράριο πρακτικό εργαλείο καθημερινής λειτουργίας:
-            βλέπεις τι ισχύει, αλλάζεις ημέρα όταν χρειάζεται και δηλώνεις σταθερή εβδομάδα
-            για εργαζόμενους που δουλεύουν με επαναλαμβανόμενο πρόγραμμα.
+    <section id="schedule" class="landing-section landing-soft">
+      <div class="landing-container landing-grid-2">
+        <div>
+          <div class="landing-kicker">Ωράριο &amp; ενέργειες</div>
+          <h2>Από το πρόγραμμα μέχρι τη διόρθωση, χωρίς άνοιγμα πολλών οθονών</h2>
+          <p class="landing-section-text">
+            Το erganiOS κάνει το ψηφιακό ωράριο ΕΡΓΑΝΗ πρακτικό εργαλείο καθημερινής λειτουργίας.
+            Βλέπετε τι έχει δηλωθεί, τι έγινε στην πράξη και τι χρειάζεται αλλαγή ωραρίου.
           </p>
         </div>
-        <div class="landing-workflow-list" aria-label="Ροή διαχείρισης ωραρίου">
-          <article>
-            <i class="bi bi-clock-history" aria-hidden="true"></i>
+
+        <div class="landing-workflow">
+          <div class="landing-workflow-item">
             <div>
-              <h3>Σημερινή εικόνα</h3>
-              <p>Ψηφιακό ωράριο και πραγματική απασχόληση εμφανίζονται μαζί για άμεσο έλεγχο.</p>
+              <strong>Σημερινή εικόνα</strong>
+              <span>Βλέπετε το ψηφιακό ωράριο και την πραγματική απασχόληση σε μία οθόνη.</span>
             </div>
-          </article>
-          <article>
-            <i class="bi bi-pencil-square" aria-hidden="true"></i>
+          </div>
+
+          <div class="landing-workflow-item">
             <div>
-              <h3>Αλλαγή ημέρας</h3>
-              <p>Υποβολή τροποποιούμενου ωραρίου WTODaily για έκτακτη αλλαγή, πρόωρη εργασία ή σπαστό ωράριο.</p>
+              <strong>Αλλαγή ημέρας</strong>
+              <span>Κάνετε ημερήσια αλλαγή όταν προκύπτει έκτακτη ανάγκη.</span>
             </div>
-          </article>
-          <article>
-            <i class="bi bi-calendar-check" aria-hidden="true"></i>
+          </div>
+
+          <div class="landing-workflow-item">
             <div>
-              <h3>Σταθερή εβδομάδα</h3>
-              <p>Δήλωση εβδομαδιαίου WTOWeek ανά εργαζόμενο, ώστε το επαναλαμβανόμενο πρόγραμμα να περνά καθαρά.</p>
+              <strong>Σταθερή εβδομάδα</strong>
+              <span>Οργανώνετε εργαζόμενους με σταθερό πρόγραμμα σε εβδομαδιαία βάση.</span>
             </div>
-          </article>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="screens" class="landing-section landing-screens-band">
+    <section id="screens" class="landing-section">
       <div class="landing-container">
-        <div class="landing-section-head">
-          <p class="landing-kicker">Οθονες προγραμματος</p>
-          <h2>Η καθημερινή εικόνα μέσα από το περιβάλλον του erganiOS.</h2>
-          <p>
-            Ενδεικτικές οθόνες από πραγματικές ροές: αρχική εικόνα, εργαζόμενοι,
-            εβδομαδιαίο πρόγραμμα, ελλείψεις και αλλαγές ωραρίου.
+        <div class="landing-section-header">
+          <div class="landing-kicker">Οθόνες προγράμματος</div>
+          <h2>Καθαρό περιβάλλον για την καθημερινή δουλειά</h2>
+          <p class="landing-section-text">
+            Το erganiOS σχεδιάστηκε για ανθρώπους που θέλουν να κάνουν τη δουλειά τους γρήγορα.
+            Βλέπετε την εικόνα, εντοπίζετε το πρόβλημα και κάνετε την ενέργεια που χρειάζεται.
           </p>
         </div>
+
         <div class="landing-screen-slider" data-screen-slider>
           <div class="landing-screen-stage">
             <figure class="landing-screen-slide is-active" data-screen-slide>
@@ -176,9 +260,7 @@
             </figure>
           </div>
           <div class="landing-screen-controls" aria-label="Έλεγχος slideshow">
-            <button type="button" class="landing-screen-btn" data-screen-prev aria-label="Προηγούμενη οθόνη">
-              <i class="bi bi-chevron-left" aria-hidden="true"></i>
-            </button>
+            <button type="button" class="landing-screen-btn" data-screen-prev aria-label="Προηγούμενη οθόνη">‹</button>
             <div class="landing-screen-dots" aria-label="Οθόνες">
               <button type="button" class="is-active" data-screen-dot aria-label="Αρχική"></button>
               <button type="button" data-screen-dot aria-label="Εργαζόμενοι"></button>
@@ -187,202 +269,239 @@
               <button type="button" data-screen-dot aria-label="Ρεπό"></button>
               <button type="button" data-screen-dot aria-label="Αλλαγή ωραρίου"></button>
             </div>
-            <button type="button" class="landing-screen-btn" data-screen-next aria-label="Επόμενη οθόνη">
-              <i class="bi bi-chevron-right" aria-hidden="true"></i>
-            </button>
+            <button type="button" class="landing-screen-btn" data-screen-next aria-label="Επόμενη οθόνη">›</button>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="plans" class="landing-section landing-plans-band">
+    <section id="pricing" class="landing-section landing-soft">
       <div class="landing-container">
-        <div class="landing-section-head">
-          <p class="landing-kicker">Τιμοκαταλογος</p>
-          <h2>Συνδρομή με βάση το πλήθος εργαζομένων.</h2>
-          <p>
-            Κάθε πακέτο περιλαμβάνει τις βασικές ροές ωραρίου και ειδοποιήσεων. Η τελική προσφορά
-            διαμορφώνεται με βάση τα καταστήματα, τον τρόπο ειδοποιήσεων και το επίπεδο υποστήριξης.
+        <div class="landing-section-header">
+          <div class="landing-kicker">Τιμοκατάλογος</div>
+          <h2>Πακέτα ψηφιακής κάρτας εργασίας ανάλογα με το μέγεθος της ομάδας σας</h2>
+          <p class="landing-section-text">
+            Κάθε επιχείρηση έχει διαφορετικές ανάγκες.
+            Το erganiOS προσφέρει πακέτα ψηφιακής κάρτας εργασίας με βάση τον αριθμό εργαζομένων,
+            τα καταστήματα, τις ειδοποιήσεις και το επίπεδο υποστήριξης που χρειάζεστε.
           </p>
         </div>
 
-        <div class="landing-pricing-grid">
-          <article class="landing-plan">
-            <div class="landing-plan-top">
-              <p class="landing-plan-label">2-5 εργαζομενοι</p>
-              <h3>Small</h3>
-              <p>Για μικρές ομάδες που θέλουν καθαρό έλεγχο ωραρίου.</p>
-            </div>
-            <div class="landing-price">Πακέτο εκκίνησης</div>
-            <ul>
+        <div class="landing-pricing">
+          <article class="landing-price-card">
+            <div class="landing-plan-label">Για 2–5 εργαζόμενους</div>
+            <h3>Small</h3>
+            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για μικρές επιχειρήσεις — απλός και καθαρός έλεγχος.</p>
+
+            <ul class="landing-features">
               <li>1 κατάστημα</li>
               <li>Συγχρονισμός εργαζομένων και ωραρίου</li>
-              <li>Πραγματική απασχόληση</li>
-              <li>Αναφορά αποκλίσεων ωραρίου</li>
+              <li>Εικόνα πραγματικής απασχόλησης</li>
+              <li>Αναφορά αποκλίσεων</li>
               <li>Βασικές ειδοποιήσεις εκκρεμοτήτων</li>
             </ul>
-            <a class="landing-btn landing-btn-outline" href="#contact">
-              <i class="bi bi-envelope" aria-hidden="true"></i><span>Ζητήστε προσφορά</span>
-            </a>
+
+            <a class="landing-btn landing-btn-secondary" href="#contact">Ζητήστε προσφορά</a>
           </article>
 
-          <article class="landing-plan landing-plan-featured">
-            <div class="landing-plan-top">
-              <p class="landing-plan-label">6-15 εργαζομενοι</p>
-              <h3>Team</h3>
-              <p>Για επιχειρήσεις με καθημερινές αλλαγές και ανάγκη άμεσης ενημέρωσης.</p>
-            </div>
-            <div class="landing-price">Πλήρης καθημερινή χρήση</div>
-            <ul>
+          <article class="landing-price-card landing-price-card-featured">
+            <div class="landing-plan-label">Για 6–15 εργαζόμενους</div>
+            <h3>Team</h3>
+            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για επιχειρήσεις με συχνές αλλαγές και καθημερινές κινήσεις.</p>
+
+            <ul class="landing-features">
               <li>Όλα του Small</li>
-              <li>WTODaily και WTOWeek</li>
-              <li>Telegram/Email ειδοποιήσεις με PIN</li>
-              <li>Αναφορά αποκλίσεων και σημερινών ενεργειών</li>
+              <li>Ημερήσιες και εβδομαδιαίες αλλαγές ωραρίου</li>
+              <li>Ειδοποιήσεις μέσω Telegram ή Email</li>
+              <li>Αναφορά σημερινών ενεργειών</li>
               <li>Ρυθμίσεις ειδοποιήσεων ανά λήπτη</li>
             </ul>
-            <a class="landing-btn landing-btn-primary" href="#contact">
-              <i class="bi bi-send" aria-hidden="true"></i><span>Μιλήστε μαζί μας</span>
-            </a>
+
+            <a class="landing-btn landing-btn-primary" href="#contact">Μιλήστε μαζί μας</a>
           </article>
 
-          <article class="landing-plan">
-            <div class="landing-plan-top">
-              <p class="landing-plan-label">16-30 εργαζομενοι</p>
-              <h3>Business</h3>
-              <p>Για ομάδες με περισσότερα καταστήματα, βάρδιες και συχνή υποστήριξη.</p>
-            </div>
-            <div class="landing-price">Για πολλαπλές ροές</div>
-            <ul>
+          <article class="landing-price-card">
+            <div class="landing-plan-label">Για 16–30 εργαζόμενους</div>
+            <h3>Business</h3>
+            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για επιχειρήσεις με περισσότερες βάρδιες και καταστήματα.</p>
+
+            <ul class="landing-features">
               <li>Όλα του Team</li>
               <li>Πολλαπλά καταστήματα</li>
-              <li>Ρυθμίσεις credentials ανά κατάστημα</li>
+              <li>Ρυθμίσεις πρόσβασης ανά κατάστημα</li>
               <li>Μαζικοί συγχρονισμοί περιόδου</li>
               <li>Διαχωρισμός ληπτών ειδοποιήσεων</li>
             </ul>
-            <a class="landing-btn landing-btn-outline" href="#contact">
-              <i class="bi bi-building-check" aria-hidden="true"></i><span>Ζητήστε προσφορά</span>
-            </a>
+
+            <a class="landing-btn landing-btn-secondary" href="#contact">Ζητήστε προσφορά</a>
           </article>
 
-          <article class="landing-plan">
-            <div class="landing-plan-top">
-              <p class="landing-plan-label">30+ εργαζομενοι</p>
-              <h3>Enterprise</h3>
-              <p>Για μεγαλύτερες επιχειρήσεις και λογιστικά γραφεία με πελατολόγιο.</p>
-            </div>
-            <div class="landing-price">Εξατομικευμένη προσφορά</div>
-            <ul>
+          <article class="landing-price-card">
+            <div class="landing-plan-label">Για 30+ εργαζόμενους</div>
+            <h3>Enterprise</h3>
+            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για λογιστικά γραφεία και μεγαλύτερες επιχειρήσεις.</p>
+
+            <ul class="landing-features">
               <li>Όλα του Business</li>
-              <li>Πελατολόγιο με πολλά ΑΦΜ</li>
-              <li>Ρόλοι χρηστών και πρόσβαση ανά κατάστημα</li>
-              <li>Προτεραιότητα σε υποστήριξη και παραμετροποίηση</li>
-              <li>Ιστορικό ελέγχων για υποστήριξη πελατών</li>
+              <li>Διαχείριση πολλών ΑΦΜ</li>
+              <li>Ρόλοι χρηστών</li>
+              <li>Πρόσβαση ανά κατάστημα ή πελάτη</li>
+              <li>Προτεραιότητα στην υποστήριξη</li>
             </ul>
-            <a class="landing-btn landing-btn-outline" href="#contact">
-              <i class="bi bi-diagram-3" aria-hidden="true"></i><span>Για 30+</span>
-            </a>
-          </article>
-        </div>
 
-        <div class="landing-compare" aria-label="Σύγκριση συνδρομών">
-          <div class="landing-compare-row landing-compare-head">
-            <span>Δυνατότητα</span><span>2-5</span><span>6-15</span><span>16-30</span><span>30+</span>
-          </div>
-          <div class="landing-compare-row">
-            <span>Συγχρονισμός εργαζομένων, ωραρίου και πραγματικής απασχόλησης</span><span>✓</span><span>✓</span><span>✓</span><span>✓</span>
-          </div>
-          <div class="landing-compare-row">
-            <span>Υποβολές WTODaily, WTOWeek και αδειών</span><span>—</span><span>✓</span><span>✓</span><span>✓</span>
-          </div>
-          <div class="landing-compare-row">
-            <span>Telegram/Email ειδοποιήσεις με δημόσιους συνδέσμους</span><span>—</span><span>✓</span><span>✓</span><span>✓</span>
-          </div>
-          <div class="landing-compare-row">
-            <span>Πολλαπλά καταστήματα και πελάτες</span><span>—</span><span>—</span><span>✓</span><span>✓</span>
-          </div>
-          <div class="landing-compare-row">
-            <span>Ρόλοι χρηστών και πρόσβαση ανά κατάστημα</span><span>—</span><span>—</span><span>✓</span><span>✓</span>
-          </div>
+            <a class="landing-btn landing-btn-secondary" href="#contact">Μιλήστε μαζί μας</a>
+          </article>
         </div>
       </div>
     </section>
 
-    <section id="accountants" class="landing-section landing-flow-band">
-      <div class="landing-container landing-flow-layout">
-        <div class="landing-section-head">
-          <p class="landing-kicker">Λογιστικα γραφεια</p>
-          <h2>Λιγότερα τηλεφωνήματα, περισσότερες καθαρές ενέργειες.</h2>
-          <p>
-            Το γραφείο βλέπει τις εκκρεμότητες και στέλνει στοχευμένες ειδοποιήσεις,
-            χωρίς να ψάχνει σε διαφορετικά exports και portal οθόνες.
+    <section id="accountants" class="landing-section">
+      <div class="landing-container landing-grid-2">
+        <div>
+          <div class="landing-kicker">Για λογιστικά γραφεία</div>
+          <h2>Ψηφιακή κάρτα εργασίας για λογιστικά γραφεία</h2>
+          <p class="landing-section-text">
+            Τα λογιστικά γραφεία σηκώνουν μεγάλο βάρος με την Ψηφιακή Κάρτα Εργασίας.
+            Το erganiOS βοηθά στη διαχείριση πελατών ΕΡΓΑΝΗ: εκκρεμότητες ψηφιακής κάρτας,
+            αποκλίσεις ωραρίου και αλλαγές — χωρίς συνεχές ψάξιμο σε exports και portal οθόνες.
+            Λιγότερα τηλεφωνήματα με πελάτες, περισσότερες καθαρές ενέργειες.
           </p>
         </div>
-        <div class="landing-flow">
-          <div><strong>1</strong><span>Συγχρονισμός καταστήματος και περιόδου</span></div>
-          <div><strong>2</strong><span>Έλεγχος αποκλίσεων ωραρίου και πραγματικής απασχόλησης</span></div>
-          <div><strong>3</strong><span>Αλλαγή ημερήσιου ή εβδομαδιαίου ωραρίου όπου χρειάζεται</span></div>
-          <div><strong>4</strong><span>Αποστολή ειδοποίησης στον σωστό λήπτη</span></div>
+
+        <div class="landing-workflow">
+          <div class="landing-workflow-item">
+            <div>
+              <strong>Συγχρονίζετε</strong>
+              <span>Διαχείριση πελατών ΕΡΓΑΝΗ — κατάστημα και περίοδο σε ένα καθαρό περιβάλλον.</span>
+            </div>
+          </div>
+
+          <div class="landing-workflow-item">
+            <div>
+              <strong>Ελέγχετε</strong>
+              <span>Αποκλίσεις ωραρίου και πραγματικής απασχόλησης σε μία οθόνη.</span>
+            </div>
+          </div>
+
+          <div class="landing-workflow-item">
+            <div>
+              <strong>Ενεργείτε</strong>
+              <span>Κάνετε αλλαγές, ειδοποιείτε τον σωστό άνθρωπο και κλείνετε εκκρεμότητες.</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="contact" class="landing-contact">
-      <div class="landing-container landing-contact-inner">
-        <div class="landing-contact-copy">
-          <p class="landing-kicker">Επικοινωνια</p>
-          <h2>Στήσιμο συνδρομής με βάση τα καταστήματα, τους εργαζόμενους και τον τρόπο υποστήριξης.</h2>
-          <p>Στείλτε μας τα βασικά στοιχεία και θα επιστρέψουμε με πρόταση για το κατάλληλο πακέτο.</p>
-        </div>
-        <form class="landing-contact-form" id="landingContactForm" novalidate>
-          <div class="landing-form-grid">
-            <label>
-              <span>Όνομα</span>
-              <input id="contactName" name="name" type="text" autocomplete="name" required>
-            </label>
-            <label>
-              <span>Email</span>
-              <input id="contactEmail" name="email" type="email" autocomplete="email" required>
-            </label>
-            <label>
-              <span>Τηλέφωνο</span>
-              <input id="contactPhone" name="phone" type="tel" autocomplete="tel">
-            </label>
-            <label>
-              <span>Εργαζόμενοι</span>
-              <select id="contactEmployees" name="employees">
-                <option value="">Επιλογή</option>
-                <option value="2-5">2-5</option>
-                <option value="6-15">6-15</option>
-                <option value="16-30">16-30</option>
-                <option value="30+">30+</option>
-              </select>
-            </label>
+    <section class="landing-section">
+      <div class="landing-container">
+        <div class="landing-cta-band">
+          <div>
+            <h2>Δείτε τι λείπει σήμερα από την Ψηφιακή Κάρτα σας</h2>
+            <p>
+              Οργανώστε ωράρια και χτυπήματα χωρίς άγχος.
+              Μειώστε τα λάθη πριν γίνουν πρόβλημα.
+            </p>
           </div>
-          <label>
-            <span>Επιχείρηση ή λογιστικό γραφείο</span>
-            <input id="contactCompany" name="company" type="text" autocomplete="organization">
-          </label>
-          <label>
-            <span>Μήνυμα</span>
-            <textarea id="contactMessage" name="message" rows="4" required></textarea>
-          </label>
+
+          <a class="landing-btn landing-btn-cta" href="#contact">Ζητήστε προσφορά</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="guides" class="landing-section">
+      <div class="landing-container">
+        <div class="landing-section-header">
+          <div class="landing-kicker">Οδηγοί</div>
+          <h2>Γνώση και πρακτική για την Ψηφιακή Κάρτα Εργασίας</h2>
+          <p class="landing-section-text">
+            Ενημερωτικοί οδηγοί για επιχειρήσεις και λογιστικά γραφεία — τι ισχύει,
+            τι να προσέχετε και πώς οργανώνετε την καθημερινή λειτουργία.
+          </p>
+        </div>
+        {% if seo_guides %}
+        <div class="landing-guides-grid">
+          {% for guide in seo_guides %}
+          <a class="landing-guide-card" href="{{ guide.url }}">
+            <span class="landing-guide-card-title">{{ guide.label }}</span>
+            <span class="landing-guide-card-arrow" aria-hidden="true">→</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section id="contact" class="landing-section landing-soft">
+      <div class="landing-container landing-contact">
+        <div>
+          <div class="landing-kicker">Επικοινωνία</div>
+          <h2>Βρείτε το κατάλληλο πακέτο για την επιχείρησή σας</h2>
+          <p class="landing-section-text">
+            Στείλτε μας τα βασικά στοιχεία της επιχείρησης ή του λογιστικού γραφείου σας.
+            Θα δούμε αριθμό εργαζομένων, καταστήματα, ειδοποιήσεις και επίπεδο υποστήριξης.
+            Έτσι, θα σας προτείνουμε το πακέτο που ταιριάζει καλύτερα στη δική σας λειτουργία.
+          </p>
+        </div>
+
+        <form class="landing-contact-form" id="landingContactForm" novalidate>
+          <div class="landing-field">
+            <label for="contactName">Ονοματεπώνυμο</label>
+            <input id="contactName" name="name" type="text" autocomplete="name" placeholder="Π.χ. Γιώργος Παπαδόπουλος" required>
+          </div>
+
+          <div class="landing-field">
+            <label for="contactCompany">Επιχείρηση / Λογιστικό γραφείο</label>
+            <input id="contactCompany" name="company" type="text" autocomplete="organization" placeholder="Π.χ. ABC ΙΚΕ">
+          </div>
+
+          <div class="landing-field">
+            <label for="contactEmail">Email</label>
+            <input id="contactEmail" name="email" type="email" autocomplete="email" placeholder="name@example.com" required>
+          </div>
+
+          <div class="landing-field">
+            <label for="contactPhone">Τηλέφωνο</label>
+            <input id="contactPhone" name="phone" type="tel" autocomplete="tel" placeholder="Π.χ. 210 0000000">
+          </div>
+
+          <div class="landing-field">
+            <label for="contactEmployees">Αριθμός εργαζομένων</label>
+            <select id="contactEmployees" name="employees">
+              <option value="">Επιλέξτε πακέτο</option>
+              <option value="2-5">2–5 εργαζόμενοι</option>
+              <option value="6-15">6–15 εργαζόμενοι</option>
+              <option value="16-30">16–30 εργαζόμενοι</option>
+              <option value="30+">30+ εργαζόμενοι</option>
+            </select>
+          </div>
+
+          <div class="landing-field">
+            <label for="contactMessage">Μήνυμα</label>
+            <textarea id="contactMessage" name="message" placeholder="Γράψτε μας τι χρειάζεστε." required></textarea>
+          </div>
+
           <label class="landing-hp" aria-hidden="true">
             <span>Website</span>
             <input id="contactWebsite" name="website" type="text" tabindex="-1" autocomplete="off">
           </label>
+
           <div class="landing-contact-actions">
             <button class="landing-btn landing-btn-primary" type="submit" id="landingContactSubmit">
-              <i class="bi bi-send" aria-hidden="true"></i><span>Αποστολή</span>
+              <span>Μιλήστε μαζί μας</span>
             </button>
             <a class="landing-contact-email" href="mailto:info@erganios.gr">info@erganios.gr</a>
           </div>
+
           <div class="msg" id="landingContactMsg" role="status" aria-live="polite"></div>
         </form>
       </div>
     </section>
   </main>
+
+  {% include "ui/partials/_landing_public_footer.html" %}
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/landing-screens.js?v=20260704screens1"></script>
-  <script src="/static/js/landing-contact.js?v=20260704contact1"></script>
+  <script src="/static/js/landing-screens.js?v=20260706landing2"></script>
+  <script src="/static/js/landing-contact.js?v=20260706landing2"></script>
 {% endblock %}

@@ -111,6 +111,20 @@ def _is_rest_day(shift_type: str | None, hour_from: str | None, hour_to: str | N
     return False
 
 
+def _is_editable_work_date(work_date_ergani: str) -> bool:
+    parts = (work_date_ergani or "").strip().split("/")
+    if len(parts) != 3:
+        return True
+    try:
+        d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+        if y < 100:
+            y += 2000
+        ref = datetime(y, m, d, tzinfo=tz_athens()).date()
+    except ValueError:
+        return True
+    return ref >= datetime.now(tz_athens()).date()
+
+
 def _card_time_label(f_date: str | None) -> str | None:
     """Ώρα κίνησης κάρτας — όπως ergani (HH:MM:SS από ISO f_date)."""
     if not f_date:
@@ -353,6 +367,8 @@ def _is_leave_eligible(
     now_min: int,
     tol: int,
 ) -> bool:
+    """Ρεπό/άδεια μόνο πριν την έναρξη του ψηφιακού ωραρίου (όχι μετά)."""
+    del tol  # η ευελιξία άφιξης δεν επηρεάζει τη δυνατότητα αλλαγής ωραρίου
     if not sched:
         return False
     shift_type = (sched or {}).get("shift_type")
@@ -368,7 +384,7 @@ def _is_leave_eligible(
         return False
     if s_start is None:
         return False
-    return now_min > s_start + tol + 1
+    return now_min < s_start
 
 
 def _evaluate_row(
@@ -413,13 +429,16 @@ def _evaluate_row(
             note = "Υπάρχει δήλωση εισόδου στην κάρτα, όχι ακόμα έξοδος"
             if note not in rest_notes:
                 rest_notes.append(note)
+        rest_actions_always = _is_editable_work_date(work_date_ergani)
         return {
             "status": rest_status,
             "status_label": rest_label,
             "action": (wto_fix or {}).get("action") or rest_action,
             "notes": rest_notes,
             "card": card_block,
-            "leave_eligible": False,
+            "leave_eligible": rest_actions_always,
+            "rest_declare_eligible": rest_actions_always,
+            "rest_day_actions_always": rest_actions_always,
             "wto_daily": wto_fix,
         }
 
@@ -521,7 +540,7 @@ def _evaluate_row(
 
     if a_start is None:
         leave_action = (
-            "Δήλωση ρεπό (WTODaily) ή άδειας (WTOLeave) — πέραν ευελιξίας προσέλευσης"
+            "Δήλωση ρεπό (WTODaily) ή άδειας (WTOLeave) — πριν την έναρξη της βάρδιας"
             if leave_eligible
             else None
         )
@@ -532,7 +551,8 @@ def _evaluate_row(
                 "action": f"Προσέλευση (είσοδος) πριν/στις {sched_from or '—'}",
                 "notes": notes,
                 "card": card_block,
-                "leave_eligible": False,
+                "leave_eligible": leave_eligible,
+                "rest_declare_eligible": leave_eligible,
             }
         if s_end is not None and now_min > s_end:
             return {
@@ -561,7 +581,7 @@ def _evaluate_row(
             "notes": notes,
             "card": card_block,
             "leave_eligible": leave_eligible,
-            "rest_declare_eligible": False,
+            "rest_declare_eligible": leave_eligible,
         }
 
     return {
@@ -745,7 +765,11 @@ def build_card_status_report(
             "notes": row_notes,
             "leave_eligible": bool(ev.get("leave_eligible")),
             "rest_declare_eligible": bool(ev.get("rest_declare_eligible")),
-            "wto_daily_eligible": bool(wto_fix and wto_fix.get("eligible")),
+            "rest_day_actions_always": bool(ev.get("rest_day_actions_always")),
+            "wto_daily_eligible": bool(
+                ev.get("rest_day_actions_always")
+                or (wto_fix and wto_fix.get("eligible"))
+            ),
             "wto_daily": wto_fix,
             **_card_punch_fields(sched, wl),
         })

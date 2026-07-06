@@ -4,6 +4,8 @@
 {% set active_nav = 'workcard' %}
 {% set body_class = "" %}
 {% block content %}
+      {% include "ui/partials/_work_card_disclaimer.html" %}
+
       <h1 class="page-title"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i> Ψηφιακή κάρτα</h1>
       <p class="page-desc" id="workCardDesc">Δηλώσεις εισόδου/εξόδου (WRKCardSE) στο Ergani API για το ενεργό κατάστημα.</p>
       <p class="page-desc sync-meta-line" id="workCardWorkLogSyncMeta"></p>

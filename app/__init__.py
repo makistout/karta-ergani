@@ -12,6 +12,7 @@ from app.routes_sync import sync_bp
 from app.routes_period_sync import period_sync_bp
 from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
+from app.landing_seo import register_landing_seo_routes
 from app.routes_leave import leave_bp
 from app.routes_wto_daily import wto_daily_bp
 from app.routes_wto_week import wto_week_bp
@@ -59,6 +60,7 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)
     register_ui_redirects(app)
+    register_landing_seo_routes(app)
     register_audit_log(app)
 
     @app.get("/api")

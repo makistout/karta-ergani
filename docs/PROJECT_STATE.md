@@ -14,7 +14,7 @@
 
 ## Κύριες Ροές
 
-- `/ui/landing`: δημόσια σελίδα παρουσίασης, τιμοκατάλογος και φόρμα επικοινωνίας.
+- `/psifiaki-karta-ergasias/`: δημόσια σελίδα παρουσίασης (canonical)· το `/ui/landing` κάνει 301 εδώ.
 - `/ui/`: αρχική αναφορά κατάστασης κάρτας.
 - `/ui/stores`: καταστήματα και επιλογή ενεργού καταστήματος.
 - `/ui/stores/credentials`: Ergani API/portal credentials.
@@ -29,8 +29,13 @@
 
 ## Public Landing
 
-- Η δημόσια σελίδα `/ui/landing` είναι διαθέσιμη χωρίς office login και παρουσιάζει τις
-  βασικές ροές ωραρίου, WTODaily, WTOWeek, ειδοποιήσεις και αποκλίσεις.
+- Το canonical public URL είναι **`/psifiaki-karta-ergasias/`**. Το `/ui/landing` κάνει **301 redirect** εκεί.
+- Η σελίδα είναι διαθέσιμη χωρίς office login και παρουσιάζει τις βασικές ροές ωραρίου, WTODaily,
+  WTOWeek, ειδοποιήσεις και αποκλίσεις.
+- Προστέθηκαν **5 SEO υποσελίδες** (informational guides) μέσω `app/landing_seo.py`:
+  `/psifiaki-karta-logistika-grafeia/`, `/ti-einai-i-psifiaki-karta-ergasias/`,
+  `/chttypimata-kartas-ergasias/`, `/apokliseis-psifiakis-kartas/`, `/psifiako-orario-ergani/`.
+- Κοινά partials: `_landing_public_nav.html`, `_landing_public_footer.html`· base άρθρου `landing-article.html`.
 - Το public περιεχόμενο δεν προβάλλει audit/καταγραφές ως feature και αποφεύγει αναφορές
   σε ιστορικό κινήσεων εργαζομένων.
 - Ο τιμοκατάλογος οργανώνεται σε εύρη εργαζομένων **2-5**, **6-15**, **16-30**, **30+**.
@@ -40,8 +45,16 @@
   στοιχεία εργοδότη/καταστήματος και φόντο πίσω από modal όπου εμφανίζονται προσωπικά
   ή αναγνωριστικά στοιχεία.
 - Τα public screenshot filenames είναι ουδέτερα, χωρίς όνομα πραγματικού καταστήματος.
+- SEO: canonical, meta tags, Open Graph, JSON-LD. Logo `erganios-logo.png` με διαφανές φόντο.
 - Τα μικρά uppercase labels του landing γράφονται άτονα στο template, ώστε να αποδίδονται
   καθαρά όταν εφαρμόζεται `text-transform: uppercase`.
+
+## Disclaimer Ψηφιακής Κάρτας
+
+- Κόκκινο box «**Τι απαγορεύεται**» με απαγορεύσεις χρήσης κάρτας και disclaimer ευθύνης **erganiOS**.
+- Εμφανίζεται στη **Ψηφιακή κάρτα** (`/ui/work-card`) και στο **Κλείστε όλα**
+  (`/ui/missing-cards/close-all`).
+- Κοινό partial: `app/templates/ui/partials/_work_card_disclaimer.html`· CSS στο `office-work-card.css`.
 
 ## Αρχική Αναφορά
 
@@ -49,7 +62,11 @@
 - Τα quick buttons της Αρχικής κάνουν άμεσο load της αναφοράς. Το κουμπί **Ανανέωση**
   παραμένει για χειροκίνητο refresh ή αλλαγές από τα πεδία ημερομηνίας.
 - Πριν από την έναρξη του ψηφιακού ωραρίου, και εφόσον δεν υπάρχει πραγματική απασχόληση ή
-  χτύπημα κάρτας, η γραμμή εμφανίζει και **Αλλαγή ωραρίου** και **Ρεπό**.
+  χτύπημα κάρτας, η γραμμή εμφανίζει και **Αλλαγή ωραρίου** και **Ρεπό/Άδεια**.
+- Τα κουμπιά **Ρεπό** και **Άδεια** εμφανίζονται μόνο **πριν την έναρξη** του ωραρίου κάθε
+  εργαζομένου (`leave_eligible` / `canDeclareRestBeforeShift`), όχι με σταθερή ώρα.
+- Για ημέρες **ρεπό / μη εργασίας** τα actions **Ρεπό** και **Αλλαγή ωραρίου** παραμένουν
+  πάντα διαθέσιμα (`rest_day_actions_always`), σήμερα και σε μελλοντικές ημέρες.
 - Για μελλοντικές ημέρες τα actions βασίζονται στο καταχωρημένο ψηφιακό ωράριο που έχει
   συγχρονιστεί για την ημέρα.
 - Η αλλαγή ωραρίου WTODaily από την Αρχική υποστηρίζει σπαστό ωράριο με πολλαπλά

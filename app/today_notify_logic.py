@@ -693,9 +693,6 @@ def today_leave_eligible(
     hour_from: str | None = None,
     hour_to: str | None = None,
 ) -> bool:
-    """Άδεια μόνο όταν λείπει κάρτα/πραγματική είσοδος ενώ υπάρχει ψηφ. ωράριο."""
-    if notify_kind_base(notify_kind) != "late_check_in":
-        return False
-    if str(hour_from or "").strip() or str(hour_to or "").strip():
-        return False
-    return bool(str(schedule_hour_from or "").strip())
+    """Άδεια μόνο πριν την έναρξη ψηφ. ωραρίου — όχι μετά (ούτε σε late_check_in alert)."""
+    del schedule_hour_from, hour_from, hour_to
+    return False

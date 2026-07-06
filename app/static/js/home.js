@@ -659,11 +659,28 @@ function scheduleIsRestLike(schedule) {
   );
 }
 
-function canDeclareRestBeforeShift(row) {
-  const workDate =
+function rowWorkDateIso(row) {
+  return (
     Office.workDateToIso?.(row.work_date) ||
     Office.parseDateGr(row.work_date || "") ||
-    String(row.work_date || "").slice(0, 10);
+    String(row.work_date || "").slice(0, 10)
+  );
+}
+
+function isEditableWorkDate(row) {
+  const workDate = rowWorkDateIso(row);
+  return Boolean(workDate && workDate >= Office.todayIsoLocal());
+}
+
+function restDayAlwaysShowActions(row) {
+  return Boolean(
+    row.rest_day_actions_always ||
+      (isEditableWorkDate(row) && scheduleIsRestLike(row.schedule))
+  );
+}
+
+function canDeclareRestBeforeShift(row) {
+  const workDate = rowWorkDateIso(row);
   if (!workDate) return false;
   if (workDate < Office.todayIsoLocal()) return false;
   if (rowHasWorkSignal(row)) return false;
@@ -674,7 +691,7 @@ function canDeclareRestBeforeShift(row) {
   if (workDate > Office.todayIsoLocal()) return true;
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  return nowMin <= startMin;
+  return nowMin < startMin;
 }
 
 function canChangeScheduleBeforeShift(row) {
@@ -689,14 +706,18 @@ function buildActionCell(r) {
           .join("")}</ul>`
       : "";
   let html = Office.escapeHtml(r.action || "—") + notes;
-  const scheduleChangeEligible = r.wto_daily_eligible || canChangeScheduleBeforeShift(r);
+  const restDayAlways = restDayAlwaysShowActions(r);
+  const beforeShift = canDeclareRestBeforeShift(r);
+  const scheduleChangeEligible =
+    restDayAlways || (r.wto_daily_eligible && beforeShift) || canChangeScheduleBeforeShift(r);
   if (scheduleChangeEligible) {
     html +=
       `<div><button type="button" class="btn btn-secondary btn-wto-daily" data-wto-daily-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-daily-date="${Office.escapeHtml(r.work_date || "")}">` +
       `${Office.icon("calendar-week")}<span>Αλλαγή ωραρίου</span></button></div>`;
   }
-  const restEligible = r.rest_declare_eligible || canDeclareRestBeforeShift(r);
-  if (restEligible || r.leave_eligible || r.today_notify_kind) {
+  const restEligible = restDayAlways || beforeShift;
+  const leaveEligible = restDayAlways || (beforeShift && Boolean(r.leave_eligible));
+  if (restEligible || leaveEligible || r.today_notify_kind) {
     html += `<div class="report-action-btns">`;
     html += buildTodayNotifyButton(r);
     if (restEligible) {
@@ -704,7 +725,7 @@ function buildActionCell(r) {
         `<button type="button" class="btn btn-secondary btn-rest" data-wto-rest-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-rest-date="${Office.escapeHtml(r.work_date || "")}">` +
         `${Office.icon("calendar-minus")}<span>Ρεπό</span></button>`;
     }
-    if (r.leave_eligible) {
+    if (leaveEligible) {
       html +=
         `<button type="button" class="btn btn-secondary btn-leave" data-leave-afm="${Office.escapeHtml(r.employee_afm || "")}" data-leave-date="${Office.escapeHtml(r.work_date || "")}">` +
         `${Office.icon("calendar-x")}<span>Άδεια</span></button>`;

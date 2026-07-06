@@ -17,6 +17,7 @@ from app.access_control import (
     permission_for_path,
     permissions_for_role,
 )
+from app.landing_seo import seo_public_paths
 from config import Config
 
 SESSION_LOGGED_IN = "office_logged_in"
@@ -26,6 +27,8 @@ _PUBLIC_EXACT = frozenset({
     "/health",
     "/api/local/health",
     "/api/telegram/webhook",
+    "/psifiaki-karta-ergasias",
+    "/psifiaki-karta-ergasias/",
     "/ui/landing",
     "/ui/login",
     "/ui/verify-email",
@@ -41,7 +44,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/contact",
     "/api/users/verify-email",
     "/favicon.ico",
-})
+}) | seo_public_paths()
 
 _PUBLIC_PREFIXES = ("/static/",)
 

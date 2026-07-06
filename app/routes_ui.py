@@ -4,7 +4,33 @@ from __future__ import annotations
 
 from flask import Blueprint, redirect, render_template
 
+from app.landing_seo import LANDING_HOME_PATH, SEO_PAGES
+from app.public_urls import effective_public_base_url
+
 ui_bp = Blueprint("ui", __name__, url_prefix="/ui")
+
+_LANDING_CANONICAL_PATH = LANDING_HOME_PATH
+
+
+def _landing_context() -> dict[str, object]:
+    base = effective_public_base_url().rstrip("/")
+    return {
+        "canonical_url": f"{base}{_LANDING_CANONICAL_PATH}",
+        "landing_home_url": _LANDING_CANONICAL_PATH,
+        "contact_url": f"{_LANDING_CANONICAL_PATH}#contact",
+        "seo_guides": [
+            {
+                "slug": str(p["slug"]),
+                "label": str(p["nav_label"]),
+                "url": f"/{p['slug']}/",
+            }
+            for p in SEO_PAGES
+        ],
+    }
+
+
+def _render_landing():
+    return render_template("ui/landing.html", **_landing_context())
 
 
 @ui_bp.after_request
@@ -22,7 +48,7 @@ def ui_home():
 
 @ui_bp.get("/landing")
 def ui_landing():
-    return render_template("ui/landing.html")
+    return redirect(_LANDING_CANONICAL_PATH, code=301)
 
 
 @ui_bp.get("/login")
@@ -162,3 +188,8 @@ def register_ui_redirects(app):
     @app.get("/")
     def root_redirect():
         return redirect("/ui/")
+
+    @app.get("/psifiaki-karta-ergasias")
+    @app.get("/psifiaki-karta-ergasias/")
+    def landing_seo():
+        return _render_landing()

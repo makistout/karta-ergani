@@ -1,0 +1,62 @@
+{% extends "ui/base.html" %}
+{% set shell = "public" %}
+{% set body_class = "landing-body" %}
+{% block extra_head %}
+  <meta name="description" content="{{ meta_description }}">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:locale" content="el_GR">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": {{ page_title | tojson }},
+    "description": {{ meta_description | tojson }},
+    "url": {{ canonical_url | tojson }},
+    "publisher": {
+      "@type": "Organization",
+      "name": "erganiOS"
+    }
+  }
+  </script>
+{% endblock %}
+{% block public_content %}
+  {% include "ui/partials/_landing_public_nav.html" %}
+
+  <main class="landing-article-main">
+    <div class="landing-container">
+      <p class="landing-breadcrumb">
+        <a href="{{ landing_home_url }}">Αρχική</a>
+        <span aria-hidden="true">/</span>
+        <span>{{ breadcrumb_label }}</span>
+      </p>
+
+      {% block article_content %}{% endblock %}
+
+      {% if related_pages %}
+      <aside class="landing-related" aria-label="Σχετικοί οδηγοί">
+        <h2>Διαβάστε επίσης</h2>
+        <ul>
+          {% for page in related_pages %}
+          <li><a href="{{ page.url }}">{{ page.label }}</a></li>
+          {% endfor %}
+        </ul>
+      </aside>
+      {% endif %}
+
+      <div class="landing-article-cta">
+        <h2>Θέλετε εφαρμογή ψηφιακής κάρτας εργασίας χωρίς άγχος;</h2>
+        <p>
+          Το erganiOS συγκεντρώνει ωράρια, χτυπήματα και αποκλίσεις σε ένα καθαρό περιβάλλον
+          για επιχειρήσεις και λογιστικά γραφεία.
+        </p>
+        <a class="landing-btn landing-btn-primary" href="{{ contact_url }}">Μιλήστε μαζί μας</a>
+      </div>
+    </div>
+  </main>
+
+  {% include "ui/partials/_landing_public_footer.html" %}
+{% endblock %}

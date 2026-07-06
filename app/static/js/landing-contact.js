@@ -14,7 +14,8 @@
     submitBtn.disabled = loading;
     submitBtn.classList.toggle("is-loading", loading);
     const label = submitBtn.querySelector("span");
-    if (label) label.textContent = loading ? "Αποστολή..." : "Αποστολή";
+    const defaultLabel = label ? label.textContent : "Μιλήστε μαζί μας";
+    if (label) label.textContent = loading ? "Αποστολή..." : defaultLabel;
   }
 
   form.addEventListener("submit", async (event) => {

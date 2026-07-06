@@ -8,7 +8,41 @@
 
 ---
 
-## 2026-07-04 — Public landing, τιμοκατάλογος και ανωνυμοποιημένα screenshots
+## 2026-07-06 — SEO landing, disclaimer κάρτας και κανόνες Ρεπό/Άδεια
+
+### Δημόσια σελίδα και SEO
+
+- Το canonical public landing είναι πλέον **`/psifiaki-karta-ergasias/`**· το `/ui/landing` κάνει **301 redirect** στο canonical path.
+- Ανανεώθηκε πλήρως το marketing landing (HTML/CSS): logo `erganios-logo.png` με διαφανές φόντο, slideshow, τιμοκατάλογος, φόρμα επικοινωνίας, ενότητα οδηγών.
+- Προστέθηκαν **5 SEO υποσελίδες** μέσω `app/landing_seo.py` και `register_landing_seo_routes()`:
+  - `/psifiaki-karta-logistika-grafeia/`
+  - `/ti-einai-i-psifiaki-karta-ergasias/`
+  - `/chttypimata-kartas-ergasias/`
+  - `/apokliseis-psifiakis-kartas/`
+  - `/psifiako-orario-ergani/`
+- Κοινά partials για public nav/footer (`_landing_public_nav.html`, `_landing_public_footer.html`) και base άρθρου `landing-article.html`.
+- Τα public paths (landing + SEO slugs) είναι χωρίς office login (`office_auth.py`, `office-boot.js` χωρίς office chrome).
+- SEO: canonical URLs, meta description/keywords, Open Graph, JSON-LD.
+
+### Disclaimer ψηφιακής κάρτας
+
+- Προστέθηκε κόκκινο disclaimer box «**Τι απαγορεύεται**» με απαγορεύσεις χρήσης κάρτας και disclaimer ευθύνης **erganiOS**.
+- Εμφανίζεται στη **Ψηφιακή κάρτα** (`/ui/work-card`) και στη σελίδα **Κλείστε όλα** (`/ui/missing-cards/close-all`).
+- Κοινό partial: `app/templates/ui/partials/_work_card_disclaimer.html`· styles στο `office-work-card.css`.
+
+### Αρχική — Ρεπό / Άδεια
+
+- Τα κουμπιά **Ρεπό** και **Άδεια** εμφανίζονται μόνο **πριν την έναρξη** του ψηφιακού ωραρίου κάθε εργαζομένου (όχι σταθερά ώρα, π.χ. 10:00).
+- Για ημέρες **ρεπό / μη εργασίας** (`rest_day_actions_always`): τα actions **Ρεπό** και **Αλλαγή ωραρίου** παραμένουν πάντα διαθέσιμα (σήμερα και μελλοντικές ημέρες).
+- Backend: `_is_leave_eligible()` στο `card_report.py`· frontend: `canDeclareRestBeforeShift()`, `restDayAlwaysShowActions()` στο `home.js`.
+- Οι σημερινές ειδοποιήσεις άδειας απενεργοποιήθηκαν (`today_leave_eligible()` → πάντα `False` στο `today_notify_logic.py`).
+- Unit tests: `tests/test_card_report_leave_eligible.py`.
+
+### Λοιπά
+
+- Fix στο `scripts/setup_scheduled_sync_task.ps1` για έλεγχο legacy scheduled tasks σε Windows.
+
+---
 
 - Ανανεώθηκε η δημόσια σελίδα `/ui/landing` με καθαρό marketing περιεχόμενο για τις
   λειτουργίες ωραρίου, WTODaily, WTOWeek, ειδοποιήσεις και καθημερινή εικόνα αποκλίσεων.

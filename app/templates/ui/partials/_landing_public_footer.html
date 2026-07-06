@@ -1,0 +1,16 @@
+  <footer class="landing-footer">
+    <div class="landing-container landing-footer-inner">
+      <div>© erganiOS. Όλα τα δικαιώματα διατηρούνται.</div>
+      <div>Ψηφιακή κάρτα εργασίας · Ωρομέτρηση ΕΡΓΑΝΗ · Χτυπήματα · Αποκλίσεις</div>
+    </div>
+    {% if seo_guides %}
+    <div class="landing-container landing-footer-guides">
+      <p class="landing-footer-guides-title">Οδηγοί ψηφιακής κάρτας</p>
+      <nav class="landing-footer-guides-links" aria-label="Οδηγοί">
+        {% for guide in seo_guides %}
+        <a href="{{ guide.url }}">{{ guide.label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    {% endif %}
+  </footer>
