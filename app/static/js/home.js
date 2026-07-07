@@ -706,6 +706,26 @@ function buildActionCell(r) {
           .join("")}</ul>`
       : "";
   let html = Office.escapeHtml(r.action || "—") + notes;
+  const notifyBase = String(r.today_notify_kind || "").trim().split("@", 1)[0];
+  if (notifyBase === "exit_needs_correction") {
+    const notifyRow = {
+      ...r,
+      hour_from: r.work_log?.hour_from || r.hour_from || "",
+      hour_to: r.work_log?.hour_to || r.hour_to || "",
+    };
+    const entry = Office.escapeHtml(notifyRow.hour_from || "—");
+    const wrongExit = Office.escapeHtml(notifyRow.hour_to || "—");
+    const expectedExit = Office.escapeHtml(
+      Office.expectedExitTimeForRow(notifyRow) || "—"
+    );
+    html =
+      `<div class="report-correction-box">` +
+      `<div class="report-correction-title">${Office.icon("exclamation-triangle")} Χρειάζεται διόρθωση εξόδου</div>` +
+      `<div class="report-correction-body">Υπάρχει έξοδος <strong>${wrongExit}</strong> πριν από την είσοδο <strong>${entry}</strong>. ` +
+      `Στείλτε διορθωτική έξοδο περίπου στις <strong>${expectedExit}</strong> (είσοδος + διάρκεια ωραρίου).</div>` +
+      `</div>` +
+      html;
+  }
   const restDayAlways = restDayAlwaysShowActions(r);
   const beforeShift = canDeclareRestBeforeShift(r);
   const scheduleChangeEligible =

@@ -203,6 +203,12 @@ def format_today_alert_notification(
     exit_hm = str(expected_exit or "").strip()
     if base_kind == "late_check_out" and entry_hm and exit_hm:
         lines.append(f"Είσοδος: {entry_hm} · Αναμενόμενη έξοδος: {exit_hm}")
+    if base_kind == "exit_needs_correction" and entry_hm and exit_hm:
+        lines.append(
+            f"Υπάρχει λάθος έξοδος πριν από την είσοδο. "
+            f"Είσοδος: {entry_hm} · Προτεινόμενη διορθωτική έξοδος: {exit_hm} "
+            f"(είσοδος + διάρκεια ψηφ. ωραρίου)"
+        )
     if base_kind in WTO_DAILY_NOTIFY_KINDS:
         hf = (wto_hour_from or "").strip()
         ht = (wto_hour_to or "").strip()

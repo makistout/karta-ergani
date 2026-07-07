@@ -500,6 +500,15 @@ Object.assign(window.Office, {
     return entryMin + duration;
   },
 
+  expectedExitTimeForRow(row) {
+    const mins = this.expectedExitMinutesFromRow(row);
+    if (mins == null) return null;
+    const wrapped = mins % (24 * 60);
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  },
+
   minutesAfterExpectedExit(expectedExit, entryMin, nowMin, onNextCalendarDay = false) {
     if (expectedExit == null || entryMin == null || nowMin == null) return null;
     let nowAbs;
@@ -676,6 +685,7 @@ Object.assign(window.Office, {
       exit_without_entry: "εξόδος χωρίς είσοδο",
       late_check_in: "καθυστέρηση εισόδου (>15' από ωράριο)",
       late_check_out: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
+      exit_needs_correction: "χρειάζεται διόρθωση χτυπήματος εξόδου",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };
     const label = labels[base] || base || "";
@@ -752,6 +762,16 @@ Object.assign(window.Office, {
       };
     }
 
+    const exitBeforeEntry =
+      hf &&
+      ht &&
+      this.parseClockToMinutes(hf) != null &&
+      this.parseClockToMinutes(ht) != null &&
+      this.elapsedSameDateMinutes(
+        this.parseClockToMinutes(hf),
+        this.parseClockToMinutes(ht)
+      ) == null;
+
     if (!hf && this.workLogHasDigitalSchedule(row) && isToday) {
       const schedStart = this.scheduleStartMinutesFromRow(row);
       const elapsed = this.elapsedSameDateMinutes(schedStart, nowMin);
@@ -763,49 +783,39 @@ Object.assign(window.Office, {
       }
     }
 
-    if (hf && !ht) {
+    if (hf && (!ht || exitBeforeEntry)) {
       const entryMin = this.parseClockToMinutes(hf);
-      const schedStart = this.scheduleStartMinutesFromRow(row);
-      let schedEndRaw = null;
-      const sched = row?.schedule;
-      if (sched && sched.hour_to) {
-        schedEndRaw = this.parseClockToMinutes(sched.hour_to);
-      }
-      if (schedEndRaw == null) {
-        const label = String(row?.schedule_label || "").trim();
-        if (label && label !== "—" && !/ρεπο|ανάπαυση/i.test(label)) {
-          const parts = label.split("·").map((x) => x.trim()).filter(Boolean);
-          const last = parts[parts.length - 1] || label;
-          const match = last.match(/\s[–\-]\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$/);
-          if (match) schedEndRaw = this.parseClockToMinutes(match[1]);
-        }
-      }
-      if (entryMin != null && schedStart != null && schedEndRaw != null) {
-        const duration = this.scheduleDurationMinutes(schedStart, schedEndRaw);
-        if (duration != null) {
-          const expectedExit = entryMin + duration;
-          const elapsedEnd = this.minutesAfterExpectedExit(
-            expectedExit,
-            entryMin,
-            nowMin,
-            overnightExit
-          );
-          if (elapsedEnd != null && elapsedEnd >= 10) {
+      const expectedExit = this.expectedExitMinutesFromRow(row);
+      if (entryMin != null && expectedExit != null && this.workLogHasDigitalSchedule(row)) {
+        const elapsedEnd = this.minutesAfterExpectedExit(
+          expectedExit,
+          entryMin,
+          nowMin,
+          overnightExit
+        );
+        if (elapsedEnd != null && elapsedEnd >= 10) {
+          if (exitBeforeEntry) {
             return {
-              kind: "late_check_out",
-              label: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
+              kind: "exit_needs_correction",
+              label: "χρειάζεται διόρθωση χτυπήματος εξόδου",
             };
           }
-          return null;
+          return {
+            kind: "late_check_out",
+            label: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
+          };
         }
+        return null;
       }
-      const startMin = this.parseClockToMinutes(hf);
-      const elapsed = this.elapsedSameDateMinutes(startMin, nowMin);
-      if (elapsed != null && elapsed >= 8 * 60) {
-        return {
-          kind: "missing_exit_8h",
-          label: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
-        };
+      if (!ht) {
+        const startMin = this.parseClockToMinutes(hf);
+        const elapsed = this.elapsedSameDateMinutes(startMin, nowMin);
+        if (elapsed != null && elapsed >= 8 * 60) {
+          return {
+            kind: "missing_exit_8h",
+            label: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
+          };
+        }
       }
     }
 

@@ -141,6 +141,28 @@ table.data.report-table td.work-log-action-cell {
   margin-top: 0.35rem;
 }
 
+.report-correction-box {
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed #d97706;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.report-correction-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.report-correction-body {
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
 .report-action-btns .btn-leave,
 .report-action-btns .btn-rest,
 .report-action-btns .btn-wto-daily {

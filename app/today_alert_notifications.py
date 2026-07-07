@@ -388,7 +388,7 @@ def send_today_punch_notifications(
             schedule_hour_from=schedule_hour_from,
             schedule_hour_to=schedule_hour_to,
         )
-        if notify_kind_base(resolved_kind) == "late_check_out"
+        if notify_kind_base(resolved_kind) in ("late_check_out", "exit_needs_correction")
         else None
     )
 

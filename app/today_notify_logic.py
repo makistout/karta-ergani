@@ -14,7 +14,11 @@ Grace: 15 λεπτά (NOTIFY_GRACE_MINUTES) για είσοδο και έξοδ�
    αναμενόμενη έξοδος = είσοδος + (τέλος_ωραρίου − αρχή_ωραρίου).
    Alert αν πέρασαν ≥15' από την αναμενόμενη έξοδο (συμπ. μετά τα μεσάνυχτα).
 
-4. missing_exit_8h — μόνο όταν ΔΕΝ υπάρχει ψηφ. ωράριο εργασίας σήμερα
+4. exit_needs_correction — έξοδος πριν από την είσοδο (λάθος χτύπημα).
+   Αναμενόμενη έξοδος = είσοδος + (τέλος_ωραρίου − αρχή_ωραρίου) — όπως
+   στο late_check_out. Alert αν πέρασαν ≥15' από την αναμενόμενη έξοδο.
+
+5. missing_exit_8h — μόνο όταν ΔΕΝ υπάρχει ψηφ. ωράριο εργασίας σήμερα
    (ρεπό, «—», χωρίς ώρες): είσοδος χωρίς έξοδο και πέρασαν ≥8 ώρες.
 
 Ακύρωση: card_event_blocks_today_notify — δεν στέλνει αν υπάρχει αντίστοιχο
@@ -42,6 +46,7 @@ TODAY_NOTIFY_KINDS = frozenset(
         "exit_without_entry",
         "late_check_in",
         "late_check_out",
+        "exit_needs_correction",
         "missing_exit_8h",
         "rest_with_card",
         "rest_day",
@@ -55,6 +60,7 @@ KIND_LABELS = {
     "exit_without_entry": "εξόδος χωρίς είσοδο",
     "late_check_in": "καθυστέρηση εισόδου (>15' από ωράριο)",
     "late_check_out": "έλλειψη εξόδου (>15' από είσοδο+διάρκεια ωραρίου)",
+    "exit_needs_correction": "χρειάζεται διόρθωση χτυπήματος εξόδου",
     "missing_exit_8h": "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     "rest_with_card": "ρεπό/ανάπαυση με καταγραφή εργασίας",
     "rest_day": "ημέρα ρεπό/ανάπαυση",
@@ -499,6 +505,14 @@ def _minutes_after_expected_exit(
     return elapsed if elapsed >= 0 else None
 
 
+def _has_exit_before_entry_anomaly(row: dict[str, Any]) -> bool:
+    entry_min = _parse_clock_minutes(str(row.get("hour_from") or "").strip())
+    exit_min = _parse_clock_minutes(str(row.get("hour_to") or "").strip())
+    if entry_min is None or exit_min is None:
+        return False
+    return _elapsed_same_date_minutes(entry_min, exit_min) is None
+
+
 def _format_minutes_as_clock(total_min: int) -> str:
     wrapped = total_min % (24 * 60)
     h, m = divmod(wrapped, 60)
@@ -632,7 +646,8 @@ def resolve_today_notify_kind(
                 include_slot=False,
             )
 
-    if hf and not ht:
+    exit_before_entry = bool(hf and ht and _has_exit_before_entry_anomaly(row))
+    if hf and (not ht or exit_before_entry):
         entry_min = _parse_clock_minutes(hf)
         if entry_min is None:
             return None
@@ -646,15 +661,18 @@ def resolve_today_notify_kind(
                     on_next_calendar_day=overnight_exit_today,
                 )
                 if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
+                    if exit_before_entry:
+                        return "exit_needs_correction"
                     return notify_kind_for_slot(
                         "late_check_out",
                         _hm_short(str((row.get("schedule") or {}).get("hour_from") if isinstance(row.get("schedule"), dict) else "")),
                         include_slot=False,
                     )
             return None
-        elapsed = _elapsed_same_date_minutes(entry_min, now_min)
-        if elapsed is not None and elapsed >= 8 * 60:
-            return "missing_exit_8h"
+        if not ht:
+            elapsed = _elapsed_same_date_minutes(entry_min, now_min)
+            if elapsed is not None and elapsed >= 8 * 60:
+                return "missing_exit_8h"
 
     return None
 
@@ -670,9 +688,9 @@ def card_action_for_today_kind(
     if k in ("exit_without_entry", "late_check_in"):
         rt = notify_kind_slot_start(kind) or (schedule_hour_from or "").strip()
         return {"card_event": "check_in", "retro_time": rt}
-    if k in ("missing_exit_8h", "late_check_out"):
+    if k in ("missing_exit_8h", "late_check_out", "exit_needs_correction"):
         rt = ""
-        if k == "late_check_out":
+        if k in ("late_check_out", "exit_needs_correction"):
             rt = expected_exit_from_schedule_and_entry(
                 hour_from=hour_from,
                 schedule_hour_from=schedule_hour_from,
