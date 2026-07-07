@@ -447,6 +447,25 @@ tr.work-log-row--deficient .work-log-time-missing {
   color: var(--err);
 }
 
+.work-log-time-corrected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.work-log-time-corrected-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.38rem;
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 table.data tbody tr.work-log-row--deficient td,
 table.data tbody tr.work-log-row--deficient td strong {
   color: var(--err);

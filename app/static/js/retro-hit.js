@@ -89,7 +89,8 @@ function showRetroMsg(text, ok) {
   el.className = "msg show " + (ok ? "ok" : "err");
 }
 
-async function submitRetro(eventName) {
+async function submitRetro(eventName, options = {}) {
+  const correctionMode = Boolean(options.correctionMode);
   if (!hitContext) return;
   const referenceDate =
     retroDatePicker?.getIso() ||
@@ -115,10 +116,24 @@ async function submitRetro(eventName) {
         reference_date: referenceDate,
         retro_time: retroTime,
         token: hitToken || undefined,
+        correction_mode: correctionMode || undefined,
         device_info: Office.clientDeviceInfo(),
       }),
     });
     const data = await Office.parseJson(res);
+    if (res.status === 409 && data.correction_available && !correctionMode) {
+      const go = window.confirm(
+        `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
+        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
+      );
+      if (go) {
+        await submitRetro(eventName, { correctionMode: true });
+      } else {
+        showRetroMsg(data.error || "Η διόρθωση ακυρώθηκε.", false);
+        setFormEnabled(true);
+      }
+      return;
+    }
     if (!res.ok || !data.success) {
       showRetroMsg(
         data.error || data.errors?.join(" · ") || "Αποτυχία υποβολής",
@@ -128,6 +143,7 @@ async function submitRetro(eventName) {
       return;
     }
     let ok = `Επιτυχία — ${data.f_type_label || label}`;
+    if (data.correction_mode) ok += " · διορθωτικό";
     if (data.protocol) ok += ` · Πρωτόκολο: ${data.protocol}`;
     if (data.sync_triggered) {
       ok += " · Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο.";

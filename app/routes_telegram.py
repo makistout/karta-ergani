@@ -420,12 +420,14 @@ def telegram_retro_hit_submit():
     retro_time = str(data.get("retro_time") or "").strip()
     aitiologia = str(data.get("aitiologia") or "").strip() or None
     token = str(data.get("token") or "").strip() or None
+    correction_mode = bool(data.get("correction_mode"))
     result, status = submit_retro_hit_from_session(
         event=event,
         reference_date=reference_date,
         retro_time=retro_time,
         aitiologia=aitiologia,
         token=token,
+        correction_mode=correction_mode,
     )
     return jsonify(result), status
 

@@ -124,6 +124,66 @@ def insert_card_event(
     )
 
 
+def _delete_existing_card_events_for_correction(
+    cur: pyodbc.Cursor,
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date: str,
+    f_type: str,
+) -> None:
+    cur.execute(
+        """
+        SELECT e.id, e.declaration_id
+        FROM dbo.karta_card_event e
+        WHERE e.f_afm_ergodoti = ?
+          AND e.f_aa = ?
+          AND e.f_afm = ?
+          AND e.f_reference_date = ?
+          AND e.f_type = ?
+        """,
+        (
+            norm_afm(employer_afm),
+            str(branch_aa or "0").strip()[:32] or "0",
+            norm_afm(employee_afm),
+            str(reference_date or "").strip()[:32],
+            str(f_type or "").strip()[:16],
+        ),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return
+    decl_ids = sorted({int(r[1]) for r in rows if r[1] is not None})
+    cur.execute(
+        """
+        DELETE FROM dbo.karta_card_event
+        WHERE f_afm_ergodoti = ?
+          AND f_aa = ?
+          AND f_afm = ?
+          AND f_reference_date = ?
+          AND f_type = ?
+        """,
+        (
+            norm_afm(employer_afm),
+            str(branch_aa or "0").strip()[:32] or "0",
+            norm_afm(employee_afm),
+            str(reference_date or "").strip()[:32],
+            str(f_type or "").strip()[:16],
+        ),
+    )
+    for decl_id in decl_ids:
+        cur.execute(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.karta_card_event WHERE declaration_id = ?
+            )
+            DELETE FROM dbo.karta_declaration WHERE id = ?
+            """,
+            (decl_id, decl_id),
+        )
+
+
 def persist_wrk_card_submit(
     submission_code: str,
     http_status: int,
@@ -134,6 +194,7 @@ def persist_wrk_card_submit(
     submit_date_text: str | None,
     ergani_submission_id: str | None = None,
     *,
+    replace_existing: bool = False,
     client_ip: str | None = None,
     client_device: str | None = None,
 ) -> None:
@@ -173,6 +234,15 @@ def persist_wrk_card_submit(
                 cur, employer_id, str(card.get("f_aa") or card.get("F_aa") or "0")
             )
             for d in lines:
+                if replace_existing:
+                    _delete_existing_card_events_for_correction(
+                        cur,
+                        employer_afm=card.get("f_afm_ergodoti") or card.get("F_afm_ergodoti"),
+                        branch_aa=card.get("f_aa") or card.get("F_aa") or "0",
+                        employee_afm=d.get("f_afm") or d.get("F_afm"),
+                        reference_date=d.get("f_reference_date") or d.get("F_reference_date"),
+                        f_type=d.get("f_type") or d.get("F_type"),
+                    )
                 eafm = norm_afm(d.get("f_afm") or d.get("F_afm"))
                 emp_id = upsert_employee(
                     cur,

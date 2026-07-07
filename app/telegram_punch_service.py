@@ -160,6 +160,7 @@ def submit_retro_hit_from_session(
     retro_time: str,
     aitiologia: str = RETRO_AITIOLOGIA,
     token: str | None = None,
+    correction_mode: bool = False,
 ) -> tuple[dict[str, Any], int]:
     ctx, err = get_retro_hit_context(token=token)
     if err or not ctx:
@@ -207,6 +208,7 @@ def submit_retro_hit_from_session(
         "event": ev,
         "reference_date": ref,
         "event_at": f"{ref}T{rt}:00",
+        "correction_mode": correction_mode,
     }
     if aitiologia:
         body["aitiologia"] = aitiologia

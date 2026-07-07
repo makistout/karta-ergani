@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   datePicker = Office.createDatePicker({
     mountId: "workLogDatePicker",
     mode: "range",
+    quickPresets: ["yesterday", "today", "tomorrow", "dayAfterTomorrow"],
     onApply: () => loadWorkLog(),
   });
   const btnSync = document.getElementById("btnSyncWorkLog");
@@ -148,12 +149,17 @@ function renderTablePage() {
       if (i === 0) {
         td.innerHTML = Office.formatWorkLogEponymoCell(row);
       } else if (i === colHourFrom) {
-        td.innerHTML = Office.formatWorkLogTimeCell(txt, "Λείπει ώρα εισόδου").html;
+        td.innerHTML = Office.formatWorkLogTimeCell(
+          txt,
+          "Λείπει ώρα εισόδου",
+          row.card_db_in || null
+        ).html;
       } else if (i === colHourTo) {
         const pending = Office.workLogExitStillPending(row);
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,
-          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+          pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου",
+          row.card_db_out || null
         ).html;
       } else {
         td.textContent = txt;

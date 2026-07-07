@@ -578,10 +578,36 @@ Object.assign(window.Office, {
     return timelineNow < expectedExit;
   },
 
-  formatWorkLogTimeCell(value, title = "Λείπει ώρα") {
+  formatWorkLogTimeCell(value, title = "Λείπει ώρα", cardMeta = null) {
     const txt = String(value || "").trim();
     if (txt) {
-      return { html: this.escapeHtml(txt), isMissing: false };
+      const corrected =
+        cardMeta &&
+        ((Array.isArray(cardMeta.previous_events) && cardMeta.previous_events.length > 0) ||
+          String(cardMeta.corrected_previous_time || "").trim()) &&
+        String(cardMeta.time || "").trim() === txt;
+      if (!corrected) {
+        return { html: this.escapeHtml(txt), isMissing: false };
+      }
+      const previous = cardMeta.previous_events
+        .map((ev) => String(ev?.time || "").trim())
+        .filter(Boolean)
+        .join(", ");
+      const correctedPrevious = String(cardMeta.corrected_previous_time || "").trim();
+      const previousLabel = [correctedPrevious, previous].filter(Boolean).join(", ");
+      const hint = previous
+        ? `Διορθωτικό χτύπημα. Προηγούμενο: ${previousLabel}`
+        : correctedPrevious
+          ? `Διορθωτικό χτύπημα. Προηγούμενο: ${correctedPrevious}`
+        : "Διορθωτικό χτύπημα";
+      return {
+        html:
+          `<span class="work-log-time-corrected" title="${this.escapeHtml(hint)}">` +
+          `${this.escapeHtml(txt)}` +
+          `<span class="work-log-time-corrected-badge">διορθ.</span>` +
+          `</span>`,
+        isMissing: false,
+      };
     }
     return {
       html:
@@ -885,10 +911,15 @@ Object.assign(window.Office, {
       const hf = String(row.hour_from || "").trim();
       const ht = String(row.hour_to || "").trim();
       const pending = this.workLogExitStillPending(row);
-      const apoCell = this.formatWorkLogTimeCell(hf, "Λείπει ώρα εισόδου");
+      const apoCell = this.formatWorkLogTimeCell(
+        hf,
+        "Λείπει ώρα εισόδου",
+        row.card_db_in || null
+      );
       const ewsCell = this.formatWorkLogTimeCell(
         ht,
-        pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου"
+        pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου",
+        row.card_db_out || null
       );
       const cardCell = this.renderWorkLogHistoryCardLinkCell(row, ctx);
       const sched = (row.schedule_label || "—").trim() || "—";

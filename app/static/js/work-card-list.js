@@ -546,7 +546,8 @@ function setSubmitButtonsDisabled(disabled) {
 
 async function submitCard(eventName, options = {}) {
   const retro = Boolean(options.retro);
-  if (workCardPortalSyncBusy) return;
+  const correctionMode = Boolean(options.correctionMode);
+  if (workCardPortalSyncBusy && !correctionMode) return;
   if (!requireEmployee()) return;
   const afm = selectedEmployeeAfm();
 
@@ -587,6 +588,7 @@ async function submitCard(eventName, options = {}) {
     };
     if (eventAt) body.event_at = eventAt;
     if (aitiologia) body.aitiologia = aitiologia;
+    if (correctionMode) body.correction_mode = true;
     body.device_info = Office.clientDeviceInfo();
 
     const res = await fetch("/api/work-card/submit", {
@@ -597,6 +599,19 @@ async function submitCard(eventName, options = {}) {
     const data = await Office.parseJson(res);
     if (data._parseError) {
       showWorkCardMsg(data._parseError, false);
+      return;
+    }
+    if (res.status === 409 && data.correction_available && !correctionMode) {
+      const go = window.confirm(
+        `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
+        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
+      );
+      if (go) {
+        setSubmitButtonsDisabled(false);
+        await submitCard(eventName, { ...options, correctionMode: true });
+      } else {
+        showWorkCardMsg(data.error || "Η διόρθωση ακυρώθηκε.", false);
+      }
       return;
     }
     if (!res.ok || !data.success) {
@@ -613,6 +628,7 @@ async function submitCard(eventName, options = {}) {
       datePicker.setRange(referenceDate, referenceDate);
     }
     let okMsg = `Επιτυχία — ${data.f_type_label || label}`;
+    if (data.correction_mode) okMsg += " · διορθωτικό";
     if (retro) okMsg += ` · ${referenceDate}`;
     if (data.protocol) okMsg += ` · ${data.protocol}`;
     showWorkCardMsg(okMsg, true);
@@ -621,6 +637,7 @@ async function submitCard(eventName, options = {}) {
   } catch (e) {
     showWorkCardMsg(String(e), false);
   } finally {
+    setSubmitButtonsDisabled(false);
     setFormEnabled(true);
   }
 }

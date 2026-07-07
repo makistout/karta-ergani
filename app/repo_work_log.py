@@ -211,13 +211,43 @@ def _card_db_details_by_employee_work_date(
             "onoma": str(card.get("f_onoma") or "").strip() or None,
             "protocol": str(card.get("protocol") or "").strip() or None,
             "recorded_at": _format_recorded_at(card.get("declaration_created_at")),
+            "card_event_id": card.get("id"),
         }
         if ft == "1":
-            slot["check_out"] = entry
+            if slot.get("check_out") is None:
+                slot["check_out"] = {**entry, "previous_events": []}
+            else:
+                prev = slot.get("check_out") or {}
+                prev_list = prev.get("previous_events") if isinstance(prev.get("previous_events"), list) else []
+                prev_list.append({
+                    "time": prev.get("time"),
+                    "protocol": prev.get("protocol"),
+                    "recorded_at": prev.get("recorded_at"),
+                    "card_event_id": prev.get("card_event_id"),
+                })
+                slot["check_out"] = {**prev, "previous_events": prev_list}
         else:
-            slot["check_in"] = entry
+            if slot.get("check_in") is None:
+                slot["check_in"] = {**entry, "previous_events": []}
+            else:
+                prev = slot.get("check_in") or {}
+                prev_list = prev.get("previous_events") if isinstance(prev.get("previous_events"), list) else []
+                prev_list.append({
+                    "time": prev.get("time"),
+                    "protocol": prev.get("protocol"),
+                    "recorded_at": prev.get("recorded_at"),
+                    "card_event_id": prev.get("card_event_id"),
+                })
+                slot["check_in"] = {**prev, "previous_events": prev_list}
         slot["types"].add(ft)
     return out
+
+
+def _card_entry_is_correction(entry: dict[str, Any] | None) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    prev = entry.get("previous_events")
+    return isinstance(prev, list) and len(prev) > 0
 
 
 def _card_types_by_employee_work_date(
@@ -334,11 +364,47 @@ def enrich_work_log_rows_with_card_punch(
     if not dates:
         return rows
     by_key = _schedule_slots_by_employee_date(employer_afm, branch_aa, dates)
+    card_details = _card_db_details_by_employee_work_date(employer_afm, branch_aa, dates)
     card_types = _card_types_by_employee_work_date(employer_afm, branch_aa, dates)
     for row in rows:
         afm = norm_afm(row.get("employee_afm") or "")
         wd = (row.get("work_date") or "").strip()
         slots = by_key.get((afm, wd), [])
+        detail = card_details.get((afm, wd)) or {}
+        check_in = detail.get("check_in") or {}
+        check_out = detail.get("check_out") or {}
+        if check_in:
+            row["card_db_in"] = check_in
+            existing_from = str(row.get("hour_from") or "").strip()
+            card_from = str(check_in.get("time") or "").strip()
+            if card_from and existing_from and existing_from != card_from:
+                check_in = {
+                    **check_in,
+                    "corrected_previous_time": existing_from,
+                    "previous_events": list(check_in.get("previous_events") or []),
+                }
+                row["card_db_in"] = check_in
+                row["hour_from"] = card_from
+                row["hour_from_source"] = "card_event_correction"
+            elif _card_entry_is_correction(check_in):
+                row["hour_from"] = check_in.get("time") or row.get("hour_from") or ""
+                row["hour_from_source"] = "card_event_correction"
+        if check_out:
+            row["card_db_out"] = check_out
+            existing_to = str(row.get("hour_to") or "").strip()
+            card_to = str(check_out.get("time") or "").strip()
+            if card_to and existing_to and existing_to != card_to:
+                check_out = {
+                    **check_out,
+                    "corrected_previous_time": existing_to,
+                    "previous_events": list(check_out.get("previous_events") or []),
+                }
+                row["card_db_out"] = check_out
+                row["hour_to"] = card_to
+                row["hour_to_source"] = "card_event_correction"
+            elif _card_entry_is_correction(check_out):
+                row["hour_to"] = check_out.get("time") or row.get("hour_to") or ""
+                row["hour_to_source"] = "card_event_correction"
         submitted = card_types.get((afm, wd), set())
         _attach_card_punch_hint(row, slots, submitted_types=submitted)
     return rows
@@ -375,11 +441,15 @@ def append_card_punches_missing_from_work_log(
         check_out = detail.get("check_out") or {}
         row.setdefault("card_db_in", check_in or None)
         row.setdefault("card_db_out", check_out or None)
-        if not str(row.get("hour_from") or "").strip() and check_in.get("time"):
+        if check_in.get("time") and (
+            not str(row.get("hour_from") or "").strip() or _card_entry_is_correction(check_in)
+        ):
             row["hour_from"] = check_in.get("time") or ""
             row["hour_from_source"] = "card_event_fallback"
             row["from_card_event_fallback"] = True
-        if not str(row.get("hour_to") or "").strip() and check_out.get("time"):
+        if check_out.get("time") and (
+            not str(row.get("hour_to") or "").strip() or _card_entry_is_correction(check_out)
+        ):
             row["hour_to"] = check_out.get("time") or ""
             row["hour_to_source"] = "card_event_fallback"
             row["from_card_event_fallback"] = True

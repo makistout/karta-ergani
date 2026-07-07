@@ -21,6 +21,7 @@ from app.http_helpers import (
 )
 from app.repo_card import (
     card_event_exists,
+    list_card_events_for_store_date,
     list_card_events_for_store_range,
     persist_wrk_card_submit,
 )
@@ -173,6 +174,81 @@ def _ergani_missing_aitiologia(parsed: Any) -> bool:
     return _ergani_requires_aitiologia(parsed)
 
 
+def _ergani_duplicate_registration(parsed: Any) -> bool:
+    try:
+        text = json.dumps(parsed, ensure_ascii=False)
+    except TypeError:
+        text = str(parsed or "")
+    low = text.lower()
+    return "υπάρχει ήδη είσοδος" in low or "υπάρχει ήδη έξοδος" in low
+
+
+def _latest_existing_card_event(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date: str,
+    f_type: str,
+) -> dict[str, Any] | None:
+    rows = list_card_events_for_store_date(
+        employer_afm,
+        branch_aa,
+        reference_date,
+        limit=100,
+    )
+    for row in rows:
+        if (
+            str(row.get("f_afm") or "").strip() == str(employee_afm or "").strip()
+            and str(row.get("f_type") or "").strip() == str(f_type or "").strip()
+        ):
+            return row
+    return None
+
+
+def _correction_offer_payload(
+    *,
+    employee_afm: str,
+    employee_name: str,
+    reference_date: str,
+    f_type: str,
+    attempted_event_at: str | None,
+    existing_event: dict[str, Any] | None,
+) -> dict[str, Any]:
+    label = _f_type_label(f_type)
+    existing_time = format_f_date_time((existing_event or {}).get("f_date"))
+    attempted_time = format_f_date_time(attempted_event_at)
+    msg = (
+        f"Υπάρχει ήδη {label} για {employee_name or employee_afm} στις "
+        f"{format_date_for_ergani(reference_date)}"
+    )
+    if existing_time:
+        msg += f" ώρα {existing_time}"
+    if attempted_time:
+        msg += f". Νέο χτύπημα: {attempted_time}."
+    else:
+        msg += "."
+    msg += " Θέλετε να προχωρήσουμε σε διόρθωση;"
+    return {
+        "success": False,
+        "correction_available": True,
+        "error": msg,
+        "f_type": f_type,
+        "f_type_label": label,
+        "reference_date": reference_date,
+        "employee_afm": employee_afm,
+        "employee_name": employee_name or None,
+        "existing_event": {
+            "time": existing_time,
+            "protocol": (existing_event or {}).get("protocol"),
+            "ergani_id": (existing_event or {}).get("ergani_submission_id"),
+        },
+        "attempted_event": {
+            "time": attempted_time,
+        },
+    }
+
+
 def _submit_work_card(
     *,
     body: dict[str, Any],
@@ -219,14 +295,28 @@ def _submit_work_card(
     ref_date = (body.get("reference_date") or "").strip()[:10]
     if not ref_date:
         ref_date = datetime.now(tz_athens()).date().isoformat()
-
-    if card_event_exists(emp_afm, ref_date, resolved_type):
-        label = "Είσοδος" if resolved_type == "0" else "Έξοδος"
-        return jsonify({
-            "error": f"Υπάρχει ήδη {label} για {emp_afm} στις {ref_date}"
-        }), 400
-
     event_at_str = str(body.get("event_at") or "").strip() or None
+    correction_mode = bool(body.get("correction_mode"))
+    employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
+    if card_event_exists(emp_afm, ref_date, resolved_type) and not correction_mode:
+        existing_event = _latest_existing_card_event(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date=ref_date,
+            f_type=resolved_type,
+        )
+        return jsonify(
+            _correction_offer_payload(
+                employee_afm=emp_afm,
+                employee_name=employee_display,
+                reference_date=ref_date,
+                f_type=resolved_type,
+                attempted_event_at=event_at_str,
+                existing_event=existing_event,
+            )
+        ), 409
+
     aitiologia_raw = str(body.get("aitiologia") or "").strip() or None
     explicit_aitiologia = bool(aitiologia_raw)
     if not event_at_str:
@@ -294,6 +384,24 @@ def _submit_work_card(
         resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
         parsed = json_or_text(resp)
         aitiologia_retry = True
+    if not resp.ok and not correction_mode and _ergani_duplicate_registration(parsed):
+        existing_event = _latest_existing_card_event(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date=ref_date,
+            f_type=resolved_type,
+        )
+        return jsonify(
+            _correction_offer_payload(
+                employee_afm=emp_afm,
+                employee_name=employee_display,
+                reference_date=ref_date,
+                f_type=resolved_type,
+                attempted_event_at=event_at_str,
+                existing_event=existing_event,
+            )
+        ), 409
     protocol = submit_date = ergani_id = None
     if resp.ok and isinstance(parsed, list) and parsed:
         first_item = parsed[0]
@@ -315,6 +423,7 @@ def _submit_work_card(
             protocol,
             submit_date,
             ergani_id,
+            replace_existing=correction_mode,
             client_ip=client_ip,
             client_device=client_device,
         )
@@ -328,7 +437,6 @@ def _submit_work_card(
 
     err_msg = _wrk_card_error_message(resp, parsed)
     submit_source = str(body.get("source") or "office_ui").strip()[:32] or "office_ui"
-    employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
     record_audit_event(
         action="work_card_punch_submit",
         success=bool(resp.ok and persisted),
@@ -357,6 +465,7 @@ def _submit_work_card(
             "auth_retry": bool(body.get("auth_retry")),
             "aitiologia_retry": aitiologia_retry,
             "aitiologia": aitiologia_raw,
+            "correction_mode": correction_mode,
             "error": err_msg,
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),
@@ -394,6 +503,7 @@ def _submit_work_card(
         "f_type": resolved_type,
         "f_type_label": _f_type_label(resolved_type),
         "persisted": persisted,
+        "correction_mode": correction_mode,
         "work_log_sync_triggered": False,
         "error": err_msg,
         "data": parsed,
