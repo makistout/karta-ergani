@@ -175,6 +175,8 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("POST", "/api/store/record-sync", "stores.manage"),
     RouteRule("POST", "/api/store/select", "stores.select"),
     RouteRule("DELETE", "/api/store/*", "stores.manage"),
+    RouteRule("GET", "/api/schedule/import/*", "schedule.submit_daily"),
+    RouteRule("POST", "/api/schedule/import/*", "schedule.submit_daily"),
     RouteRule("GET", "/api/schedule/*", "schedule.view"),
     RouteRule("POST", "/api/schedule/sync", "schedule.sync"),
     RouteRule("GET", "/api/work-log/list", "work_log.view"),

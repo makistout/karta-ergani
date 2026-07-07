@@ -185,6 +185,57 @@ table.data.report-table td.work-log-action-cell {
   flex-shrink: 0;
 }
 
+.schedule-import-panel {
+  margin-top: 1rem;
+}
+
+.schedule-import-panel.hidden {
+  display: none;
+}
+
+.schedule-import-head {
+  margin-bottom: 0.75rem;
+}
+
+.schedule-import-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.schedule-import-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.schedule-import-summary {
+  margin-bottom: 0.75rem;
+}
+
+.schedule-import-wrap {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.schedule-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.schedule-import-table .col-name {
+  white-space: nowrap;
+}
+
+.schedule-import-note {
+  color: var(--err);
+  font-size: 0.82rem;
+}
+
+.schedule-import-btn {
+  cursor: pointer;
+}
+
 .wto-daily-hours-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

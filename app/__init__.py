@@ -3,6 +3,7 @@ from flask import Flask, jsonify
 from config import Config
 from app.routes_employees import employees_bp
 from app.routes_schedule import schedule_bp
+from app.routes_schedule_import import schedule_import_bp
 from app.routes_work_log import work_log_bp
 from app.routes_dashboard import dashboard_bp
 from app.routes_ergani import ergani_bp
@@ -54,6 +55,7 @@ def create_app() -> Flask:
     app.register_blueprint(sync_log_bp)
     app.register_blueprint(employees_bp)
     app.register_blueprint(schedule_bp)
+    app.register_blueprint(schedule_import_bp)
     app.register_blueprint(work_log_bp)
     app.register_blueprint(monthly_status_bp)
     app.register_blueprint(telegram_bp)
