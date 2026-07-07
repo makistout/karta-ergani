@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnSync = document.getElementById("btnSyncSchedule");
   if (btnSync) btnSync.onclick = () => runSync();
   initScheduleImportUi();
+  initScheduleTemplateDownload();
 
   const activeData = await Office.fetchActiveStore();
   Office.applyActiveStoreChrome(activeData);
@@ -282,6 +283,55 @@ async function runSync(bodyOverride, opts = {}) {
   }
 }
 
+function initScheduleTemplateDownload() {
+  const menu = document.querySelector(".schedule-download-menu");
+  if (!menu) return;
+  menu.querySelectorAll("[data-schedule-template]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const week = String(btn.getAttribute("data-schedule-template") || "current");
+      menu.open = false;
+      void downloadScheduleTemplate(week);
+    });
+  });
+  document.addEventListener("click", (event) => {
+    if (!menu.open) return;
+    if (!menu.contains(event.target)) menu.open = false;
+  });
+}
+
+async function downloadScheduleTemplate(week) {
+  Office.showMsg("schedMsg", "Δημιουργία Excel…", true);
+  try {
+    const res = await fetch(`/api/schedule/import/template?week=${encodeURIComponent(week)}`, {
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      Office.showMsg("schedMsg", data.error || `Σφάλμα HTTP ${res.status}`, false);
+      return;
+    }
+    const blob = await res.blob();
+    let filename = "weekly_schedule.xlsx";
+    const cd = res.headers.get("Content-Disposition") || "";
+    const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i.exec(cd);
+    if (match) {
+      filename = decodeURIComponent(match[1] || match[2] || filename);
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    const label = week === "next" ? "επόμενη" : "τρέχουσα";
+    Office.showMsg("schedMsg", `Κατέβηκε template (${label} εβδομάδα)`, true);
+  } catch (e) {
+    Office.showMsg("schedMsg", String(e), false);
+  }
+}
+
 function initScheduleImportUi() {
   const fileInput = document.getElementById("scheduleImportFile");
   const btnConfirm = document.getElementById("btnScheduleImportConfirm");
@@ -336,6 +386,65 @@ function changeKindClass(kind) {
   return map[kind] || "status-muted";
 }
 
+function formatImportRowNote(row) {
+  const errs = (row.validation_errors || []).join(" · ");
+  if (errs) return { text: errs, tone: "error" };
+  if (String(row.import_action || "") === "absent") {
+    const status = String(row.apply_status || "").trim().toLowerCase();
+    if (!status || status === "pending") {
+      return { text: "Λείπει από Excel → χωρίς εργασία", tone: "none" };
+    }
+  }
+  const status = String(row.apply_status || "").trim().toLowerCase();
+  const msg = String(row.apply_message || "").trim();
+  if (!status || status === "pending") return { text: "", tone: "none" };
+  if (status === "success") {
+    return { text: msg || "Εφαρμόστηκε στο Ergani", tone: "success" };
+  }
+  if (status === "failed") {
+    return { text: msg || "Αποτυχία αποστολής", tone: "error" };
+  }
+  return { text: msg || status, tone: "error" };
+}
+
+function scrollToScheduleImportMsg() {
+  const msg = document.getElementById("schedMsg");
+  if (msg) {
+    msg.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function scheduleImportResultMessage(data) {
+  const applied = data.applied || 0;
+  const failed = data.failed || 0;
+  const parts = [];
+  if (data.success) {
+    parts.push(`Εφαρμόστηκαν ${applied} αλλαγές στο Ergani`);
+  } else if (applied || failed) {
+    parts.push(`Ολοκληρώθηκε με σφάλματα — επιτυχία: ${applied}, αποτυχία: ${failed}`);
+  }
+  const sync = data.schedule_sync;
+  if (sync?.attempted) {
+    if (sync.success) {
+      parts.push(`Συγχρονίστηκε ψηφ. ωράριο ${sync.from} έως ${sync.to}`);
+    } else {
+      parts.push(`Συγχρονισμός ωραρίου: ${sync.detail || "αποτυχία"}`);
+    }
+  }
+  return parts.join(" · ");
+}
+
+async function afterScheduleImportConfirm(data) {
+  if (data.schedule_sync?.success) {
+    await Office.recordStoreSync("schedule");
+  }
+  const fresh = await Office.fetchActiveStore({ refresh: true });
+  Office.applyActiveStoreChrome(fresh);
+  await loadSchedule(fresh);
+}
+
 function renderScheduleImportPreview(preview, fileErrors) {
   const panel = document.getElementById("scheduleImportPanel");
   const metaEl = document.getElementById("scheduleImportMeta");
@@ -359,6 +468,7 @@ function renderScheduleImportPreview(preview, fileErrors) {
     ["new", "Νέες", "status-info"],
     ["same", "Ίδιες", "status-muted"],
     ["skip", "Χωρίς αλλαγή", "status-muted"],
+    ["absent", "Λείπουν από Excel", "status-warn"],
     ["error", "Σφάλματα", "status-err"],
   ];
   summaryEl.innerHTML =
@@ -404,7 +514,7 @@ function renderScheduleImportPreview(preview, fileErrors) {
       const badge = document.createElement("span");
       badge.className = `status-badge ${changeKindClass(row.change_kind)}`;
       badge.textContent = changeKindLabel(row.change_kind);
-      const notes = (row.validation_errors || []).join(" · ");
+      const note = formatImportRowNote(row);
       const cells = [
         row.work_date || "",
         row.eponymo || "",
@@ -413,13 +523,20 @@ function renderScheduleImportPreview(preview, fileErrors) {
         badge.outerHTML,
         row.current_label || "—",
         row.proposed_label || "—",
-        notes || (row.apply_status ? `${row.apply_status}: ${row.apply_message || ""}` : ""),
+        note.text,
       ];
       cells.forEach((html, i) => {
         const td = document.createElement("td");
         if (i === 4) td.innerHTML = html;
         else if (i >= 7) {
-          td.innerHTML = html ? `<span class="schedule-import-note">${Office.escapeHtml(html)}</span>` : "";
+          if (!note.text) td.innerHTML = "";
+          else {
+            const noteCls =
+              note.tone === "success"
+                ? "schedule-import-note schedule-import-note--ok"
+                : "schedule-import-note schedule-import-note--err";
+            td.innerHTML = `<span class="${noteCls}">${Office.escapeHtml(note.text)}</span>`;
+          }
         } else td.textContent = html;
         tr.appendChild(td);
       });
@@ -463,7 +580,8 @@ async function uploadScheduleImport(file) {
 async function confirmScheduleImport(batchId) {
   const btnConfirm = document.getElementById("btnScheduleImportConfirm");
   if (btnConfirm) btnConfirm.disabled = true;
-  Office.showLoading("schedMsg", "Αποστολή αλλαγών στο Ergani (WTODaily)…");
+  scrollToScheduleImportMsg();
+  Office.showLoading("schedMsg", "Εφαρμογή προς Ergani και συγχρονισμός ωραρίου…");
   try {
     const res = await fetch(`/api/schedule/import/confirm/${batchId}`, {
       method: "POST",
@@ -471,27 +589,20 @@ async function confirmScheduleImport(batchId) {
       headers: { "Content-Type": "application/json" },
     });
     const data = await Office.parseJson(res);
+    const resultMsg = scheduleImportResultMessage(data);
     if (!res.ok || !data.success) {
-      const failed = data.failed || 0;
-      const applied = data.applied || 0;
-      Office.showMsg(
-        "schedMsg",
-        data.error ||
-          `Ολοκληρώθηκε με σφάλματα — επιτυχία: ${applied}, αποτυχία: ${failed}`,
-        false
-      );
+      Office.showMsg("schedMsg", data.error || resultMsg || "Αποτυχία εφαρμογής", false);
+      scrollToScheduleImportMsg();
       const previewRes = await fetch(`/api/schedule/import/preview/${batchId}`);
       const previewData = await Office.parseJson(previewRes);
       if (previewRes.ok) renderScheduleImportPreview(previewData, []);
+      await afterScheduleImportConfirm(data);
       return;
     }
-    Office.showMsg(
-      "schedMsg",
-      `Εφαρμόστηκαν ${data.applied || 0} αλλαγές στο Ergani`,
-      true
-    );
+    Office.showMsg("schedMsg", resultMsg || `Εφαρμόστηκαν ${data.applied || 0} αλλαγές στο Ergani`, true);
+    scrollToScheduleImportMsg();
     hideScheduleImportPanel();
-    await loadSchedule(await Office.fetchActiveStore({ refresh: true }));
+    await afterScheduleImportConfirm(data);
   } catch (e) {
     Office.showMsg("schedMsg", String(e), false);
     if (btnConfirm) btnConfirm.disabled = false;

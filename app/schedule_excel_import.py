@@ -134,6 +134,104 @@ def _current_snapshot_for_employee(
     return _snapshot_from_intervals(intervals=intervals, is_rest=False)
 
 
+def _build_import_row(
+    *,
+    row_no: int,
+    sheet_name: str,
+    work_date: str,
+    afm: str,
+    eponymo: str | None,
+    onoma: str | None,
+    import_action: str,
+    intervals: list[dict[str, str]],
+    schedule_type: str | None,
+    current_schedule: list[dict[str, Any]],
+    row_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    errors = list(row_errors or [])
+    current_snapshot = _current_snapshot_for_employee(current_schedule, afm)
+    if import_action == "skip":
+        proposed_snapshot = current_snapshot
+        change_kind = "skip"
+    elif import_action in ("rest", "absent"):
+        proposed_snapshot = _snapshot_from_intervals(intervals=[], is_rest=True)
+        if errors:
+            change_kind = "error"
+        elif not current_snapshot:
+            change_kind = "new"
+        elif _snapshots_equal(current_snapshot, proposed_snapshot):
+            change_kind = "same"
+        else:
+            change_kind = "update"
+    else:
+        proposed_snapshot = _snapshot_from_intervals(
+            intervals=intervals,
+            is_rest=False,
+            schedule_type=schedule_type or "ΕΡΓ",
+        )
+        if errors:
+            change_kind = "error"
+        elif not current_snapshot:
+            change_kind = "new"
+        elif _snapshots_equal(current_snapshot, proposed_snapshot):
+            change_kind = "same"
+        else:
+            change_kind = "update"
+
+    hf1 = intervals[0].get("hour_from") if len(intervals) > 0 else None
+    ht1 = intervals[0].get("hour_to") if len(intervals) > 0 else None
+    hf2 = intervals[1].get("hour_from") if len(intervals) > 1 else None
+    ht2 = intervals[1].get("hour_to") if len(intervals) > 1 else None
+    return {
+        "row_no": row_no,
+        "sheet_name": sheet_name,
+        "work_date": work_date,
+        "employee_afm": afm,
+        "eponymo": eponymo,
+        "onoma": onoma,
+        "import_action": import_action,
+        "hour_from_1": hf1 or None,
+        "hour_to_1": ht1 or None,
+        "hour_from_2": hf2 or None,
+        "hour_to_2": ht2 or None,
+        "schedule_type": schedule_type,
+        "change_kind": change_kind,
+        "current_snapshot": current_snapshot,
+        "proposed_snapshot": proposed_snapshot,
+        "validation_errors": errors,
+    }
+
+
+def _employee_name_from_schedule(
+    schedule_rows: list[dict[str, Any]],
+    employee_afm: str,
+) -> tuple[str | None, str | None]:
+    emp = norm_afm(employee_afm)
+    for row in schedule_rows:
+        if norm_afm(row.get("employee_afm") or "") != emp:
+            continue
+        eponymo = str(row.get("eponymo") or "").strip() or None
+        onoma = str(row.get("onoma") or "").strip() or None
+        if eponymo or onoma:
+            return eponymo, onoma
+    return None, None
+
+
+def _afms_missing_from_sheet(
+    *,
+    sheet_afms: set[str],
+    known_afms: set[str],
+    current_schedule: list[dict[str, Any]],
+) -> set[str]:
+    scheduled_afms = {
+        norm_afm(row.get("employee_afm") or "")
+        for row in current_schedule
+        if norm_afm(row.get("employee_afm") or "")
+    }
+    universe = known_afms | scheduled_afms
+    return {afm for afm in universe if afm not in sheet_afms}
+
+
 def _validate_proposed_row(
     *,
     import_action: str,
@@ -142,7 +240,7 @@ def _validate_proposed_row(
     errors: list[str] = []
     if import_action == "skip":
         return errors
-    if import_action == "rest":
+    if import_action in ("rest", "absent"):
         return errors
     if not intervals:
         errors.append("Λείπουν ώρες εργασίας")
@@ -170,9 +268,9 @@ def _build_intervals(
 
 
 def _read_instructions(ws: Any) -> dict[str, Any]:
-    week_label = str(ws["A2"].value or "").strip() or None
+    instructions_week_label = str(ws["A2"].value or "").strip() or None
     week_from = week_to = None
-    m = _WEEK_RANGE.search(week_label or "")
+    m = _WEEK_RANGE.search(instructions_week_label or "")
     if m:
         week_from, week_to = m.group(1), m.group(2)
     store_id_raw = ws["B16"].value
@@ -181,13 +279,30 @@ def _read_instructions(ws: Any) -> dict[str, Any]:
     except (TypeError, ValueError):
         store_id = None
     return {
-        "week_label": week_label,
+        "week_label": instructions_week_label,
+        "instructions_week_label": instructions_week_label,
         "week_from": week_from,
         "week_to": week_to,
         "store_id": store_id,
         "employer_afm": str(ws["B17"].value or "").strip() or None,
         "branch_aa": str(ws["B18"].value or "").strip() or None,
     }
+
+
+def _week_label_from_dates(dates: list[str]) -> tuple[str | None, str | None, str | None]:
+    parsed: list[date] = []
+    for value in dates:
+        try:
+            parsed.append(datetime.strptime(str(value).strip(), "%d/%m/%Y").date())
+        except ValueError:
+            continue
+    if not parsed:
+        return None, None, None
+    start = min(parsed)
+    end = max(parsed)
+    week_from = start.strftime("%d/%m/%Y")
+    week_to = end.strftime("%d/%m/%Y")
+    return f"Εβδομάδα {week_from} - {week_to}", week_from, week_to
 
 
 def parse_weekly_schedule_workbook(
@@ -227,12 +342,15 @@ def parse_weekly_schedule_workbook(
         if header_vals[:4] != HEADERS[:4]:
             errors.append(f"Το φύλλο «{sheet_name}» δεν έχει τα αναμενόμενα headers στη γραμμή 3")
 
+        sheet_afms: set[str] = set()
+
         for r in range(4, ws.max_row + 1):
             afm_raw = str(ws.cell(r, 1).value or "").strip()
             if not afm_raw:
                 continue
             row_no += 1
             afm = norm_afm(afm_raw)
+            sheet_afms.add(afm)
             eponymo = str(ws.cell(r, 2).value or "").strip()
             onoma = str(ws.cell(r, 3).value or "").strip()
             action = str(ws.cell(r, 4).value or "").strip().upper()
@@ -263,60 +381,66 @@ def parse_weekly_schedule_workbook(
                 intervals = []
                 schedule_type = None
 
-            current_snapshot = _current_snapshot_for_employee(current_schedule, afm)
-            if import_action == "skip":
-                proposed_snapshot = current_snapshot
-                change_kind = "skip"
-            elif import_action == "rest":
-                proposed_snapshot = _snapshot_from_intervals(intervals=[], is_rest=True)
-                if row_errors:
-                    change_kind = "error"
-                elif not current_snapshot:
-                    change_kind = "new"
-                elif _snapshots_equal(current_snapshot, proposed_snapshot):
-                    change_kind = "same"
-                else:
-                    change_kind = "update"
-            else:
-                proposed_snapshot = _snapshot_from_intervals(
-                    intervals=intervals,
-                    is_rest=False,
-                    schedule_type=schedule_type or "ΕΡΓ",
-                )
-                if row_errors:
-                    change_kind = "error"
-                elif not current_snapshot:
-                    change_kind = "new"
-                elif _snapshots_equal(current_snapshot, proposed_snapshot):
-                    change_kind = "same"
-                else:
-                    change_kind = "update"
-
             parsed_rows.append(
-                {
-                    "row_no": row_no,
-                    "sheet_name": sheet_name,
-                    "work_date": work_date,
-                    "employee_afm": afm,
-                    "eponymo": eponymo or (employees.get(afm) or {}).get("eponymo"),
-                    "onoma": onoma or (employees.get(afm) or {}).get("onoma"),
-                    "import_action": import_action,
-                    "hour_from_1": hf1 or None,
-                    "hour_to_1": ht1 or None,
-                    "hour_from_2": hf2 or None,
-                    "hour_to_2": ht2 or None,
-                    "schedule_type": schedule_type,
-                    "change_kind": change_kind,
-                    "current_snapshot": current_snapshot,
-                    "proposed_snapshot": proposed_snapshot,
-                    "validation_errors": row_errors,
-                }
+                _build_import_row(
+                    row_no=row_no,
+                    sheet_name=sheet_name,
+                    work_date=work_date,
+                    afm=afm,
+                    eponymo=eponymo or (employees.get(afm) or {}).get("eponymo"),
+                    onoma=onoma or (employees.get(afm) or {}).get("onoma"),
+                    import_action=import_action,
+                    intervals=intervals,
+                    schedule_type=schedule_type,
+                    current_schedule=current_schedule,
+                    row_errors=row_errors,
+                )
+            )
+
+        for afm in sorted(
+            _afms_missing_from_sheet(
+                sheet_afms=sheet_afms,
+                known_afms=known_afms,
+                current_schedule=current_schedule,
+            )
+        ):
+            row_no += 1
+            emp = employees.get(afm) or {}
+            sched_ep, sched_on = _employee_name_from_schedule(current_schedule, afm)
+            parsed_rows.append(
+                _build_import_row(
+                    row_no=row_no,
+                    sheet_name=sheet_name,
+                    work_date=work_date,
+                    afm=afm,
+                    eponymo=str(emp.get("eponymo") or sched_ep or "").strip() or None,
+                    onoma=str(emp.get("onoma") or sched_on or "").strip() or None,
+                    import_action="absent",
+                    intervals=[],
+                    schedule_type="ΑΝ",
+                    current_schedule=current_schedule,
+                    row_errors=[],
+                )
+            )
+
+    work_dates_unique = sorted(set(work_dates), key=lambda d: datetime.strptime(d, "%d/%m/%Y"))
+    actual_label, actual_from, actual_to = _week_label_from_dates(work_dates_unique)
+    if actual_label:
+        instructions_label = str(meta.get("instructions_week_label") or meta.get("week_label") or "").strip()
+        meta["week_label"] = actual_label
+        meta["week_from"] = actual_from
+        meta["week_to"] = actual_to
+        if instructions_label and instructions_label != actual_label:
+            errors.append(
+                "Η εβδομάδα στο φύλλο «Οδηγίες» "
+                f"({instructions_label}) διαφέρει από τις ημερομηνίες των φύλλων "
+                f"({actual_label}) — χρησιμοποιούνται οι πραγματικές ημερομηνίες."
             )
 
     summary = summarize_import_rows(parsed_rows)
     return {
         "meta": meta,
-        "work_dates": sorted(set(work_dates), key=lambda d: datetime.strptime(d, "%d/%m/%Y")),
+        "work_dates": work_dates_unique,
         "rows": parsed_rows,
         "errors": errors,
         "summary": summary,
@@ -332,12 +456,15 @@ def summarize_import_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
         "update": 0,
         "error": 0,
         "apply": 0,
+        "absent": 0,
     }
     for row in rows:
         counts["total"] += 1
         kind = str(row.get("change_kind") or "").strip()
         if kind in counts:
             counts[kind] += 1
+        if str(row.get("import_action") or "") == "absent":
+            counts["absent"] += 1
         if kind in ("new", "update") and not row.get("validation_errors"):
             counts["apply"] += 1
     return counts

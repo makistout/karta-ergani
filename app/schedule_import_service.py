@@ -25,6 +25,8 @@ from app.routes_wto_daily import (
     record_wto_daily_schedule_audit,
 )
 from app.schedule_excel_import import summarize_import_rows
+from app.schedule_sync import fetch_and_save_schedule_for_ctx
+from app.audit_log import record_audit_event
 from app.today_notify_logic import ergani_date_to_iso
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY, build_wto_daily_payload
 from app.work_card_payload import WorkCardPayloadError
@@ -39,7 +41,7 @@ def _import_row_to_body(row: dict[str, Any]) -> dict[str, Any]:
         "onoma": str(row.get("onoma") or "").strip(),
         "comments": "Εισαγωγή εβδομαδιαίου ωραρίου από Excel",
     }
-    if str(row.get("import_action") or "") == "rest":
+    if str(row.get("import_action") or "") in ("rest", "absent"):
         body["schedule_type"] = "ΑΝ"
         return body
 
@@ -60,7 +62,13 @@ def _import_row_to_body(row: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def apply_import_row(ctx: dict[str, Any], row: dict[str, Any], bearer: str) -> dict[str, Any]:
+def apply_import_row(
+    ctx: dict[str, Any],
+    row: dict[str, Any],
+    bearer: str,
+    *,
+    batch_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     body = _import_row_to_body(row)
     emp_afm = str(body.get("employee_afm") or "").strip()
     ref_date = str(body.get("reference_date") or "").strip()
@@ -121,20 +129,6 @@ def apply_import_row(ctx: dict[str, Any], row: dict[str, Any], bearer: str) -> d
             body=body,
             payload=payload,
         )
-        record_wto_daily_schedule_audit(
-            ctx,
-            employee_afm=emp_afm,
-            eponymo=last,
-            onoma=first,
-            work_date_ergani=work_date_ergani,
-            body=body,
-            old_schedule=old_schedule,
-            protocol=protocol,
-            ergani_submission_id=ergani_id,
-            local_schedule_updated=local_schedule_updated,
-            http_status=resp.status_code,
-            success=resp.ok,
-        )
 
     err_msg = None
     if not resp.ok:
@@ -142,6 +136,28 @@ def apply_import_row(ctx: dict[str, Any], row: dict[str, Any], bearer: str) -> d
             err_msg = str(parsed.get("message") or parsed.get("Message") or "").strip() or None
         if not err_msg:
             err_msg = response_body_text(resp)[:500] or "Αποτυχία WTODaily"
+
+    meta = batch_meta if isinstance(batch_meta, dict) else {}
+    record_wto_daily_schedule_audit(
+        ctx,
+        employee_afm=emp_afm,
+        eponymo=last,
+        onoma=first,
+        work_date_ergani=work_date_ergani,
+        body=body,
+        old_schedule=old_schedule,
+        protocol=protocol,
+        ergani_submission_id=ergani_id,
+        local_schedule_updated=local_schedule_updated,
+        http_status=resp.status_code,
+        success=resp.ok,
+        source="excel_import",
+        import_batch_id=meta.get("batch_id"),
+        import_row_id=row.get("id"),
+        original_filename=meta.get("original_filename"),
+        week_label=meta.get("week_label"),
+        error_message=err_msg,
+    )
 
     return {
         "success": resp.ok,
@@ -154,6 +170,50 @@ def apply_import_row(ctx: dict[str, Any], row: dict[str, Any], bearer: str) -> d
         "error": err_msg,
         "data": parsed,
     }
+
+
+def _import_batch_date_range_iso(batch_id: int) -> tuple[str | None, str | None]:
+    rows = list_import_rows(batch_id)
+    isos: list[str] = []
+    for row in rows:
+        iso = ergani_date_to_iso(str(row.get("work_date") or ""))
+        if iso:
+            isos.append(iso)
+    if not isos:
+        return None, None
+    isos.sort()
+    return isos[0], isos[-1]
+
+
+def _sync_schedule_after_import(ctx: dict[str, Any], batch_id: int) -> dict[str, Any] | None:
+    from_iso, to_iso = _import_batch_date_range_iso(batch_id)
+    if not from_iso or not to_iso:
+        return None
+    try:
+        result = fetch_and_save_schedule_for_ctx(
+            ctx,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            max_days=31,
+        )
+        return {
+            "attempted": True,
+            "success": bool(result.get("success")),
+            "from": from_iso,
+            "to": to_iso,
+            "count": int(result.get("count") or 0),
+            "detail": str(result.get("detail") or "").strip() or None,
+        }
+    except Exception as ex:
+        current_app.logger.exception("schedule import post-sync failed")
+        return {
+            "attempted": True,
+            "success": False,
+            "from": from_iso,
+            "to": to_iso,
+            "count": 0,
+            "detail": str(ex),
+        }
 
 
 def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
@@ -177,11 +237,16 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
     applied = 0
     failed = 0
     results: list[dict[str, Any]] = []
+    batch_meta = {
+        "batch_id": batch_id,
+        "original_filename": batch.get("original_filename"),
+        "week_label": batch.get("week_label"),
+    }
 
     for row in rows:
         row_id = int(row["id"])
         try:
-            result = apply_import_row(ctx, row, bearer)
+            result = apply_import_row(ctx, row, bearer, batch_meta=batch_meta)
         except Exception as ex:
             current_app.logger.exception("schedule import apply failed")
             result = {"success": False, "error": str(ex), "http_status": 500}
@@ -217,11 +282,36 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
     summary["applied_ok"] = applied
     summary["applied_failed"] = failed
     final_status = "applied" if failed == 0 else "failed"
+    schedule_sync = None
+    if applied > 0 or failed > 0:
+        schedule_sync = _sync_schedule_after_import(ctx, batch_id)
+        if schedule_sync:
+            summary["schedule_sync"] = schedule_sync
     update_batch_status(batch_id, final_status, summary=summary)
+    record_audit_event(
+        action="schedule_import.batch_applied",
+        success=failed == 0,
+        store_id=int(ctx["id"]),
+        employer_afm=str(ctx.get("employer_afm") or ""),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+        entity_type="schedule_import_batch",
+        entity_id=str(batch_id),
+        details={
+            "batch_id": batch_id,
+            "original_filename": batch.get("original_filename"),
+            "week_label": batch.get("week_label"),
+            "applied": applied,
+            "failed": failed,
+            "final_status": final_status,
+            "summary": summary,
+            "schedule_sync": schedule_sync,
+        },
+    )
     return {
         "success": failed == 0,
         "applied": applied,
         "failed": failed,
         "results": results,
         "summary": summary,
+        "schedule_sync": schedule_sync,
     }

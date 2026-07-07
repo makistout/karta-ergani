@@ -57,6 +57,22 @@
   - επιβεβαίωση → αποστολή **WTODaily** στο Ergani ανά αλλαγή και ενημέρωση τοπικού `karta_schedule`.
   - Κανόνας Excel: `ΡΕΠΟ` = ρεπό, κενή ενέργεια + ώρες = αλλαγή, κενό παντού = χωρίς αλλαγή.
 
+### Excel εισαγωγή — βελτιώσεις (07/07, απογευματική συνεδρία)
+
+- **Κατέβασμα template** στο `/ui/schedule` → «Κατέβασμα Excel» με επιλογές **Τρέχουσα** / **Επόμενη εβδομάδα**.
+  - API: `GET /api/schedule/import/template?week=current|next`
+  - Κοινή λογική: `app/schedule_excel_template.py` (και `scripts/make_weekly_template.py`).
+- **Λείπουν από φύλλο ημέρας → ΡΕΠΟ**: εργαζόμενος που δεν υπάρχει καθόλου στο tab μιας ημέρας
+  θεωρείται χωρίς εργασία (`import_action=absent`) και στέλνεται WTODaily ΑΝ αν χρειάζεται.
+- **Καταγραφή αλλαγών Excel** στο audit:
+  - ανά γραμμή `wto_daily.schedule_change` με `source=excel_import`, batch/αρχείο,
+  - συνολικό `schedule_import.batch_applied` μετά την επιβεβαίωση,
+  - νέα καρτέλα **Αλλαγές ωραρίου** στο `/ui/sync-log#schedule`.
+- **Μετά την επιβεβαίωση** τρέχει συγχρονισμός ωραρίου portal για το διάστημα του Excel.
+- **UX**: `#schedMsg` πάνω από τον πίνακα ωραρίου· λευκό background στο dropdown κατεβάσματος.
+- Script `scripts/apply_excel_absent_rest.py` για μαζική αποστολή ΡΕΠΟ σε absent γραμμές.
+- Tests: `tests/test_schedule_excel_import.py`.
+
 ---
 
 ## 2026-07-06 (γ) — Canonical homepage, Login και public UX

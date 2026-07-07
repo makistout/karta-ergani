@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pyodbc
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from app.access_control import current_user_id
 from app.http_helpers import resolve_active_store
@@ -16,6 +16,7 @@ from app.repo_schedule_import import (
     update_batch_status,
 )
 from app.schedule_excel_import import parse_weekly_schedule_workbook
+from app.schedule_excel_template import build_weekly_schedule_template_bytes, resolve_week_monday
 from app.schedule_import_service import confirm_import_batch
 
 schedule_import_bp = Blueprint("schedule_import", __name__, url_prefix="/api/schedule/import")
@@ -26,6 +27,34 @@ def _import_db_error(exc: Exception):
     if msg:
         return jsonify({"error": msg, "db_setup": "sql/alter_add_schedule_import_staging.sql"}), 503
     raise exc
+
+
+@schedule_import_bp.route("/template", methods=["GET"])
+def download_schedule_import_template():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+
+    week = str(request.args.get("week") or "current").strip().lower()
+    try:
+        week_monday = resolve_week_monday(week)
+        content, filename, _meta = build_weekly_schedule_template_bytes(
+            store_id=int(ctx["id"]),
+            week_monday=week_monday,
+        )
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 400
+    except Exception as ex:
+        return jsonify({"error": f"Αποτυχία δημιουργίας template: {ex}"}), 500
+
+    from io import BytesIO
+
+    return send_file(
+        BytesIO(content),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @schedule_import_bp.post("/upload")

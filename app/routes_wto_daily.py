@@ -211,16 +211,46 @@ def record_wto_daily_schedule_audit(
     local_schedule_updated: bool,
     http_status: int,
     success: bool,
+    source: str = "manual",
+    import_batch_id: int | None = None,
+    import_row_id: int | None = None,
+    original_filename: str | None = None,
+    week_label: str | None = None,
+    error_message: str | None = None,
 ) -> None:
-    new_schedule = (
-        _current_schedule_snapshot(
+    if local_schedule_updated:
+        new_schedule = _current_schedule_snapshot(
             ctx,
             employee_afm=employee_afm,
             work_date_ergani=work_date_ergani,
         )
-        if local_schedule_updated
-        else _requested_schedule_snapshot(body)
-    )
+    elif success:
+        new_schedule = _requested_schedule_snapshot(body)
+    else:
+        new_schedule = old_schedule
+    details: dict[str, Any] = {
+        "source": (source or "manual")[:32],
+        "employee_afm": norm_afm(employee_afm),
+        "employee_name": f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or None,
+        "work_date": work_date_ergani,
+        "old_schedule": old_schedule,
+        "new_schedule": new_schedule,
+        "requested_schedule": _requested_schedule_snapshot(body),
+        "schedule_type": _normalize_schedule_type_for_local(body.get("schedule_type")),
+        "protocol": protocol,
+        "ergani_submission_id": ergani_submission_id,
+        "local_schedule_updated": bool(local_schedule_updated),
+    }
+    if import_batch_id is not None:
+        details["import_batch_id"] = int(import_batch_id)
+    if import_row_id is not None:
+        details["import_row_id"] = int(import_row_id)
+    if original_filename:
+        details["original_filename"] = str(original_filename).strip()[:255]
+    if week_label:
+        details["week_label"] = str(week_label).strip()[:128]
+    if error_message:
+        details["error_message"] = str(error_message).strip()[:500]
     record_audit_event(
         action="wto_daily.schedule_change",
         success=success,
@@ -230,18 +260,7 @@ def record_wto_daily_schedule_audit(
         branch_aa=str(ctx.get("branch_aa") or "0"),
         entity_type="employee",
         entity_id=norm_afm(employee_afm),
-        details={
-            "employee_afm": norm_afm(employee_afm),
-            "employee_name": f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or None,
-            "work_date": work_date_ergani,
-            "old_schedule": old_schedule,
-            "new_schedule": new_schedule,
-            "requested_schedule": _requested_schedule_snapshot(body),
-            "schedule_type": _normalize_schedule_type_for_local(body.get("schedule_type")),
-            "protocol": protocol,
-            "ergani_submission_id": ergani_submission_id,
-            "local_schedule_updated": bool(local_schedule_updated),
-        },
+        details=details,
     )
 
 

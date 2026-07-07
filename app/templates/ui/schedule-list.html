@@ -10,6 +10,19 @@
         <div class="toolbar-dates-row">
           <div id="scheduleDatePicker"></div>
           {% if office_has_permission('schedule.submit_daily') %}
+          <details class="schedule-download-menu">
+            <summary class="btn btn-secondary schedule-download-trigger">
+              <i class="bi bi-download" aria-hidden="true"></i><span>Κατέβασμα Excel</span>
+            </summary>
+            <div class="schedule-download-panel" role="menu">
+              <button type="button" class="schedule-download-option" data-schedule-template="current">
+                Τρέχουσα εβδομάδα
+              </button>
+              <button type="button" class="schedule-download-option" data-schedule-template="next">
+                Επόμενη εβδομάδα
+              </button>
+            </div>
+          </details>
           <label class="btn btn-secondary schedule-import-btn" for="scheduleImportFile">
             <i class="bi bi-file-earmark-excel" aria-hidden="true"></i><span>Ανέβασμα Excel</span>
           </label>
@@ -22,10 +35,10 @@
           {% endif %}
         </div>
       </div>
+      <div id="schedMsg" class="msg"></div>
       <div class="card list-card">
         <div id="scheduleWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
       </div>
-      <div id="schedMsg" class="msg"></div>
 
       <div id="scheduleImportPanel" class="card schedule-import-panel hidden">
         <div class="schedule-import-head">
@@ -59,5 +72,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/schedule-list.js?v=20260707excel-import"></script>
+  <script src="/static/js/schedule-list.js?v=20260707excel-download2"></script>
 {% endblock %}

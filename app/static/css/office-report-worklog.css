@@ -228,12 +228,74 @@ table.data.report-table td.work-log-action-cell {
 }
 
 .schedule-import-note {
-  color: var(--err);
   font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.schedule-import-note--err {
+  color: var(--err);
+}
+
+.schedule-import-note--ok {
+  color: var(--ok);
+  font-weight: 500;
 }
 
 .schedule-import-btn {
   cursor: pointer;
+}
+
+.schedule-download-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.schedule-download-menu > summary {
+  list-style: none;
+}
+
+.schedule-download-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.schedule-download-trigger {
+  cursor: pointer;
+  user-select: none;
+}
+
+.schedule-download-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 30;
+  min-width: 12.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.schedule-download-menu:not([open]) .schedule-download-panel {
+  display: none;
+}
+
+.schedule-download-option {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-download-option:hover,
+.schedule-download-option:focus-visible {
+  background: var(--bg-soft, #f1f5f9);
 }
 
 .wto-daily-hours-row {

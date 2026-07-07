@@ -6,6 +6,9 @@ const syncLogState = {
   actionsLoaded: false,
   sentLoaded: false,
   punchesLoaded: false,
+  scheduleLoaded: false,
+  scheduleStoreId: "",
+  scheduleStoreAc: null,
   authLoaded: false,
   punchesStoreId: "",
   punchesStoreAc: null,
@@ -53,6 +56,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnRefreshWorkCardPunches")?.addEventListener("click", () => {
     loadWorkCardPunches();
   });
+  document.getElementById("btnRefreshScheduleChanges")?.addEventListener("click", () => {
+    loadScheduleChanges();
+  });
+  document.getElementById("btnClearScheduleChangesStore")?.addEventListener("click", () => {
+    syncLogState.scheduleStoreId = "";
+    syncLogState.scheduleStoreAc?.clearValue();
+    document.getElementById("scheduleChangesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
+    loadScheduleChanges();
+  });
   document.getElementById("btnRefreshAuthLogs")?.addEventListener("click", () => {
     loadAuthLogs();
   });
@@ -79,12 +91,17 @@ document.addEventListener("DOMContentLoaded", () => {
     initWorkCardPunchesStorePicker().finally(() => setLogTab("punches"));
     return;
   }
+  if (location.hash === "#schedule") {
+    initScheduleChangesStorePicker().finally(() => setLogTab("schedule"));
+    return;
+  }
   if (location.hash === "#auth") {
     setLogTab("auth");
     return;
   }
   initSyncLogStorePicker().finally(() => loadRuns());
   initWorkCardPunchesStorePicker();
+  initScheduleChangesStorePicker();
 });
 
 function formatTs(iso) {
@@ -159,7 +176,9 @@ function statusBadge(status) {
 
 function setLogTab(tab) {
   const next =
-    tab === "actions" || tab === "sent" || tab === "punches" || tab === "auth" ? tab : "sync";
+    tab === "actions" || tab === "sent" || tab === "punches" || tab === "schedule" || tab === "auth"
+      ? tab
+      : "sync";
   syncLogState.activeTab = next;
   document.querySelectorAll("[data-log-tab]").forEach((btn) => {
     const active = btn.dataset.logTab === next;
@@ -170,6 +189,7 @@ function setLogTab(tab) {
   document.getElementById("notifyActionsPanel")?.classList.toggle("hidden", next !== "actions");
   document.getElementById("notifySentPanel")?.classList.toggle("hidden", next !== "sent");
   document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
+  document.getElementById("scheduleChangesPanel")?.classList.toggle("hidden", next !== "schedule");
   document.getElementById("authLogsPanel")?.classList.toggle("hidden", next !== "auth");
   if (next === "actions") {
     history.replaceState(null, "", `${location.pathname}#actions`);
@@ -180,6 +200,9 @@ function setLogTab(tab) {
   } else if (next === "punches") {
     history.replaceState(null, "", `${location.pathname}#punches`);
     loadWorkCardPunches();
+  } else if (next === "schedule") {
+    history.replaceState(null, "", `${location.pathname}#schedule`);
+    loadScheduleChanges();
   } else if (next === "auth") {
     history.replaceState(null, "", `${location.pathname}#auth`);
     if (!syncLogState.authLoaded) loadAuthLogs();
@@ -621,7 +644,199 @@ function actionLabel(action, path) {
   if (a.endsWith("today_action_card") || p.includes("/today-action/card")) return "Προετοιμασία κάρτας";
   if (a.endsWith("today_action_leave") || p.includes("/today-action/leave")) return "Υποβολή άδειας";
   if (a.endsWith("today_action_wto_daily") || p.includes("/today-action/wto-daily")) return "Υποβολή WTODaily";
+  if (a === "wto_daily.schedule_change") return "Αλλαγή ωραρίου";
+  if (a === "schedule_import.batch_applied") return "Εισαγωγή Excel (σύνολο)";
+  if (a.includes("schedule_import")) return "Εισαγωγή Excel";
   return a || p || "Ενέργεια";
+}
+
+function scheduleChangeSourceLabel(source) {
+  const s = String(source || "").trim().toLowerCase();
+  if (s === "excel_import") return "Excel";
+  if (s === "telegram") return "Ειδοποίηση";
+  if (s === "manual") return "Χειροκίνητα";
+  return source || "—";
+}
+
+function scheduleSnapshotText(snapshot) {
+  if (!Array.isArray(snapshot) || !snapshot.length) return "—";
+  const parts = snapshot.map((item) => {
+    if (!item || typeof item !== "object") return "";
+    const st = String(item.shift_type || "").toUpperCase();
+    if (st.includes("ΑΝΑΠΑΥ") || st.includes("ΡΕΠΟ") || st === "ΑΝ") return "ΡΕΠΟ";
+    const hf = String(item.hour_from || "").slice(0, 5);
+    const ht = String(item.hour_to || "").slice(0, 5);
+    if (hf || ht) return `${hf || "—"}–${ht || "—"}`;
+    return st || "—";
+  }).filter(Boolean);
+  return parts.join(" / ") || "—";
+}
+
+function scheduleChangeEmployeeText(row) {
+  const d = row.details || {};
+  const name = d.employee_name || "";
+  const afm = d.employee_afm || row.entity_id || "";
+  return [name, afm].filter(Boolean).join(" · ") || "—";
+}
+
+function scheduleChangeDetailsText(row) {
+  const d = row.details || {};
+  const action = String(row.action || "");
+  if (action === "schedule_import.batch_applied") {
+    const bits = [];
+    if (d.original_filename) bits.push(d.original_filename);
+    if (d.week_label) bits.push(d.week_label);
+    if (d.applied != null || d.failed != null) {
+      bits.push(`Επιτυχίες: ${d.applied ?? 0}, αποτυχίες: ${d.failed ?? 0}`);
+    }
+    const sync = d.schedule_sync;
+    if (sync && typeof sync === "object" && sync.attempted) {
+      bits.push(sync.success ? "Συγχρονισμός OK" : `Συγχρονισμός: ${sync.detail || "αποτυχία"}`);
+    }
+    return bits.join(" · ") || "—";
+  }
+  const bits = [];
+  const oldText = scheduleSnapshotText(d.old_schedule);
+  const newText = scheduleSnapshotText(d.requested_schedule || d.new_schedule);
+  if (oldText !== newText) bits.push(`${oldText} → ${newText}`);
+  else if (newText !== "—") bits.push(newText);
+  if (d.protocol) bits.push(`Πρωτόκολο: ${d.protocol}`);
+  if (d.original_filename) bits.push(d.original_filename);
+  if (d.week_label) bits.push(d.week_label);
+  if (d.error_message) bits.push(d.error_message);
+  if (!bits.length && row.http_status) bits.push(`HTTP ${row.http_status}`);
+  return bits.join(" · ") || "—";
+}
+
+async function initScheduleChangesStorePicker() {
+  const input = document.getElementById("scheduleChangesStoreInput");
+  if (!input || syncLogState.scheduleStoreAc) return;
+  syncLogState.scheduleStoreAc = Office.createAutocomplete({
+    inputId: "scheduleChangesStoreInput",
+    listId: "scheduleChangesStoreList",
+    hiddenId: "scheduleChangesStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.scheduleStoreId = String(item.value || "");
+      loadScheduleChanges();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    syncLogState.scheduleStoreAc?.setItems(
+      (stores || []).map((s) => ({
+        value: String(s.id),
+        description: s.name || "Κατάστημα",
+      }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => {
+    syncLogState.scheduleStoreAc?.openAll(false);
+  };
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
+async function loadScheduleChanges() {
+  const wrap = document.getElementById("scheduleChangesWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({
+      kind: "schedule_changes",
+      limit: "200",
+    });
+    if (syncLogState.scheduleStoreId) qs.set("store_id", syncLogState.scheduleStoreId);
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    renderScheduleChanges(data.audit || []);
+    syncLogState.scheduleLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+  }
+}
+
+function renderScheduleChanges(rows) {
+  const wrap = document.getElementById("scheduleChangesWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα καταγραφές αλλαγών ωραρίου.</span></p>`;
+    return;
+  }
+
+  const t = document.createElement("table");
+  t.className = "data work-card-punches-table";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  ["Ώρα", "Πηγή", "Εργαζόμενος", "Ημ/νία", "Ενέργεια", "Κατάστημα", "Κατάσταση", "Λεπτομέρειες"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  t.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const d = row.details || {};
+    const tr = document.createElement("tr");
+
+    const tdTs = document.createElement("td");
+    tdTs.className = "sync-log-ts work-card-punch-col-ts";
+    tdTs.textContent = formatTs(row.created_at);
+    tr.appendChild(tdTs);
+
+    const tdSource = document.createElement("td");
+    tdSource.textContent = scheduleChangeSourceLabel(d.source || (row.action || "").includes("schedule_import") ? "excel_import" : "");
+    tr.appendChild(tdSource);
+
+    const tdEmp = document.createElement("td");
+    tdEmp.textContent =
+      row.action === "schedule_import.batch_applied"
+        ? `Batch #${d.batch_id || row.entity_id || "—"}`
+        : scheduleChangeEmployeeText(row);
+    tr.appendChild(tdEmp);
+
+    const tdDate = document.createElement("td");
+    tdDate.textContent = d.work_date || "—";
+    tr.appendChild(tdDate);
+
+    const tdAction = document.createElement("td");
+    tdAction.textContent = actionLabel(row.action, row.request_path);
+    tr.appendChild(tdAction);
+
+    const tdStore = document.createElement("td");
+    tdStore.textContent = row.store_id ? `ID ${row.store_id}` : "—";
+    tr.appendChild(tdStore);
+
+    const tdStatus = document.createElement("td");
+    tdStatus.innerHTML = auditSuccessBadge(row);
+    tr.appendChild(tdStatus);
+
+    const tdDetails = document.createElement("td");
+    tdDetails.className = "work-card-punch-details";
+    tdDetails.textContent = scheduleChangeDetailsText(row);
+    if (row.success === false || row.success === 0) {
+      tdDetails.title = scheduleChangeDetailsText(row);
+    }
+    tr.appendChild(tdDetails);
+
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody);
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
 }
 
 function auditSuccessBadge(row) {

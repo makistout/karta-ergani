@@ -82,11 +82,18 @@
 
 ## Excel Template Εβδομαδιαίου Ωραρίου
 
-- Υπάρχει script `scripts/make_weekly_template.py` για παραγωγή `.xlsx` template ανά κατάστημα/εβδομάδα.
-- Στο `/ui/schedule` υπάρχει **εισαγωγή Excel** (ανέβασμα → προεπισκόπηση → επιβεβαίωση):
+- Λογική template: `app/schedule_excel_template.py` · script `scripts/make_weekly_template.py`.
+- Στο `/ui/schedule`:
+  - **Κατέβασμα Excel** (τρέχουσα / επόμενη εβδομάδα) → κενό `.xlsx` με οδηγίες και όλους τους εργαζόμενους.
+  - **Ανέβασμα Excel** (ανέβασμα → προεπισκόπηση → επιβεβαίωση):
   - ενδιάμεσοι πίνακες `karta_schedule_import_batch` / `karta_schedule_import_row`,
   - σύγκριση τρέχοντος ψηφ. ωραρίου με τις τιμές του Excel,
-  - εφαρμογή μόνο για γραμμές `new` / `update` μέσω WTODaily στο Ergani.
+  - εφαρμογή μόνο για γραμμές `new` / `update` μέσω WTODaily στο Ergani,
+  - **μετά την επιβεβαίωση** συγχρονισμός portal για το διάστημα του αρχείου.
+- Κανόνες γραμμής:
+  - `ΡΕΠΟ` = ρεπό · κενή ενέργεια + ώρες = αλλαγή · κενό παντού = skip.
+  - **Λείπει εντελώς από το φύλλο ημέρας** = χωρίς εργασία (ΡΕΠΟ, `absent`).
+- Καταγραφές: audit `wto_daily.schedule_change` (πηγή `excel_import`) + `schedule_import.batch_applied` · προβολή στο `/ui/sync-log#schedule`.
 - Το template υποστηρίζει:
   - ένα φύλλο ανά ημέρα,
   - πραγματική ημερομηνία σε κάθε tab,

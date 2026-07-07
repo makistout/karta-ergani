@@ -243,6 +243,16 @@ def list_audit_events(
         filters.append("action = 'work_card_punch_submit'")
     elif kind == "auth":
         filters.append("action LIKE 'auth.%'")
+    elif kind == "schedule_changes":
+        filters.append(
+            """
+            (
+                action = 'wto_daily.schedule_change'
+                OR action = 'schedule_import.batch_applied'
+                OR action LIKE 'schedule_import.%'
+            )
+            """
+        )
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
     with cursor(commit=False) as cur:
         cur.execute(
