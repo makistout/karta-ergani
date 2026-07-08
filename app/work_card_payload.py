@@ -112,6 +112,8 @@ def wrk_card_needs_aitiologia(
 
     if ft == "0":
         s_start = _hm_to_minutes(schedule_hour_from)
+        # Αν δεν έχουμε ωράριο/ευελιξία, δεν μπορούμε να αποφανθούμε.
+        # Αφήνουμε το retry/error-handling στους routes να χειριστεί XSD/Ergani μηνύματα.
         if s_start is None:
             return False
         return punch_min < s_start or punch_min > s_start + tol

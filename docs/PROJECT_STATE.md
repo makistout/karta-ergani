@@ -126,6 +126,9 @@
 - Οι WTODaily αποστολές χρησιμοποιούν κοινό helper με αυτόματο refresh/retry του Ergani
   bearer όταν επιστρέφει `Authorization has been denied`, για manual αλλαγές από Αρχική
   και αλλαγές από ροές ειδοποίησης.
+- Οι δηλώσεις `WRKCardSE` χειρίζονται και το ειδικό case όπου ο Ergani πρώτα απορρίπτει
+  το `f_aitiologia` ως μη επιτρεπτό και μετά απαιτεί το στοιχείο στο XSD: γίνεται retry
+  με `f_aitiologia: null`.
 
 ## Τρέχουσες Προτεραιότητες Συντήρησης
 

@@ -174,6 +174,17 @@ def _ergani_missing_aitiologia(parsed: Any) -> bool:
     return _ergani_requires_aitiologia(parsed)
 
 
+def _ergani_forbids_aitiologia(parsed: Any) -> bool:
+    """Ergani απαγορεύει να δηλωθεί λόγος καθυστέρησης (οπότε πρέπει να το παραλείψουμε)."""
+    try:
+        text = json.dumps(parsed, ensure_ascii=False)
+    except TypeError:
+        text = str(parsed or "")
+    low = text.lower()
+    # Αγγίζει τις περιπτώσεις όπου το Ergani επιστρέφει μήνυμα ότι ΔΕΝ πρέπει να υπάρχει λόγος.
+    return "δεν πρέπει να δηλώνεται λόγος καθυστέρησης" in low
+
+
 def _ergani_duplicate_registration(parsed: Any) -> bool:
     try:
         text = json.dumps(parsed, ensure_ascii=False)
@@ -379,6 +390,18 @@ def _submit_work_card(
         aitiologia_raw = RETRO_AITIOLOGIA_INTERNET
         try:
             payload = build_payload(aitiologia_raw)
+        except WorkCardPayloadError as e:
+            return jsonify({"error": str(e)}), 400
+        resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
+        parsed = json_or_text(resp)
+        aitiologia_retry = True
+
+    # Αν ο Ergani απαγορεύει τη δήλωση λόγου, κάνουμε retry *χωρίς* f_aitiologia.
+    if not resp.ok and not explicit_aitiologia and _ergani_forbids_aitiologia(parsed):
+        try:
+            # Κρατάμε το στοιχείο f_aitiologia (null) ώστε να ικανοποιείται το XSD,
+            # αλλά δεν δηλώνουμε λόγο καθυστέρησης.
+            payload = build_payload(None, include_null_aitiologia=True)
         except WorkCardPayloadError as e:
             return jsonify({"error": str(e)}), 400
         resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
