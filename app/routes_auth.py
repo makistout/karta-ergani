@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request, session
 
-from app.access_control import SESSION_ROLE, user_payload
+from app.access_control import SESSION_ROLE, accessible_store_ids, is_admin_role, user_payload
 from app.audit_log import record_audit_event
 from app.office_auth import (
     SESSION_USER,
@@ -15,6 +15,42 @@ from app.office_auth import (
 )
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+def _auto_select_default_store_for_non_admin() -> None:
+    role = str(session.get(SESSION_ROLE) or "").strip()
+    if is_admin_role(role):
+        return
+
+    allowed = accessible_store_ids()
+    if not allowed:
+        return
+
+    current_id = session.get("active_store_id")
+    try:
+        current_id = int(current_id) if current_id is not None else None
+    except (TypeError, ValueError):
+        current_id = None
+
+    if current_id in allowed:
+        return
+
+    from app import repo_store as repo
+    from app.ergani_env import store_api_context
+
+    rows = repo.list_store_configs()
+    candidate = next((row for row in rows if int(row.get("id") or 0) in allowed), None)
+    if not candidate:
+        return
+
+    ctx = store_api_context(candidate)
+    session["active_store_id"] = int(candidate["id"])
+    session["employer_afm"] = ctx["employer_afm"]
+    session["branch_aa"] = ctx["branch_aa"]
+    session["ergani_env"] = ctx["ergani_env"]
+    session.pop("ergani_bearer", None)
+    session.pop("ergani_bearer_store_id", None)
+    session.pop("ergani_bearer_env", None)
 
 
 def _record_auth_event(
@@ -45,6 +81,8 @@ def _record_auth_event(
 def auth_status():
     if not office_login_enabled():
         return jsonify({"login_required": False, "authenticated": True})
+    if is_office_authenticated():
+        _auto_select_default_store_for_non_admin()
     return jsonify({
         "login_required": True,
         "authenticated": is_office_authenticated(),
@@ -81,6 +119,7 @@ def auth_login():
             reason="invalid_credentials",
         )
         return jsonify({"error": "Λάθος username ή password"}), 401
+    _auto_select_default_store_for_non_admin()
     _record_auth_event(
         "auth.login_success",
         username=str(session.get(SESSION_USER) or username),

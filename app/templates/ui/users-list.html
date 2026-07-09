@@ -54,18 +54,24 @@
               <i class="bi bi-key" aria-hidden="true"></i><span>Reset password</span>
             </button>
           </div>
+          <div id="usersMsg" class="msg"></div>
 
           <div class="users-section-title">
             <h3>Καταστήματα</h3>
           </div>
           <div class="users-store-search">
             <label class="users-field">Αναζήτηση καταστήματος
-              <input class="field-input" id="userStoreSearch" type="search" list="userStoreSuggestions" autocomplete="off" placeholder="Όνομα ή ΑΦΜ">
+              <div class="ac-wrap">
+                <input class="field-input" id="userStoreSearch" type="search" autocomplete="off"
+                  placeholder="Όνομα ή ΑΦΜ" role="combobox" aria-autocomplete="list"
+                  aria-controls="userStoreSuggestions" aria-expanded="false">
+                <ul id="userStoreSuggestions" class="ac-list" role="listbox"></ul>
+              </div>
             </label>
+            <input type="hidden" id="userStoreSearchId">
             <button type="button" class="btn btn-secondary" id="btnAddStore">
               <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Προσθήκη</span>
             </button>
-            <datalist id="userStoreSuggestions"></datalist>
           </div>
           <div id="userStoresWrap" class="users-check-list users-check-list-stores"></div>
 
@@ -94,8 +100,8 @@
           <p class="table-meta">Φόρτωση...</p>
         </div>
       </div>
-      <div id="usersMsg" class="msg"></div>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/users-list.js?v=20260701rolesonly1"></script>
+  <script src="/static/js/office-autocomplete.js?v=20260624storepick1"></script>
+  <script src="/static/js/users-list.js?v=20260709store-autocomplete1"></script>
 {% endblock %}

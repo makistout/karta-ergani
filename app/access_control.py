@@ -145,12 +145,12 @@ UI_PERMISSIONS: dict[str, str] = {
 
 NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/", "nav": "home", "label": "Αρχική", "permission": "dashboard.view"},
-    {"href": "/ui/employees", "nav": "employees", "label": "Εργαζόμενοι", "permission": "employees.view"},
     {"href": "/ui/schedule", "nav": "schedule", "label": "Ψηφιακό ωράριο", "permission": "schedule.view"},
     {"href": "/ui/work-log", "nav": "worklog", "label": "Πραγματική απασχόληση", "permission": "work_log.view"},
     {"href": "/ui/missing-cards", "nav": "missingcards", "label": "Ελλειπή Χτυπήματα", "permission": "missing_cards.view"},
     {"href": "/ui/work-card", "nav": "workcard", "label": "Ψηφιακή κάρτα", "permission": "work_card.view"},
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
+    {"href": "/ui/employees", "nav": "employees", "label": "Εργαζόμενοι", "permission": "employees.view"},
     {"href": "/ui/stores", "nav": "stores", "label": "Καταστήματα", "permission": "stores.view"},
     {"href": "/ui/stores/notify", "nav": "settings", "label": "Ρυθμίσεις", "permission": "settings.view"},
     {"href": "/ui/sync-log", "nav": "synclog", "label": "Καταγραφές", "permission": "logs.view"},

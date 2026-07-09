@@ -10,6 +10,8 @@ let usersState = {
   permissionQuery: "",
 };
 
+let userStoreAc = null;
+
 const PERMISSION_COMPONENTS = {
   "*": {
     label: "Όλα",
@@ -136,6 +138,7 @@ const ROLE_LABELS = {
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("users");
+  initStoreAutocomplete();
   document.getElementById("btnNewUser")?.addEventListener("click", () => selectUser(null));
   document.getElementById("userRole")?.addEventListener("change", applyRoleTemplate);
   document.getElementById("btnSaveUser")?.addEventListener("click", saveUser);
@@ -260,12 +263,30 @@ async function selectUser(id) {
   }
 }
 
+function initStoreAutocomplete() {
+  userStoreAc = Office.createAutocomplete({
+    inputId: "userStoreSearch",
+    listId: "userStoreSuggestions",
+    hiddenId: "userStoreSearchId",
+    maxItems: 50,
+    labelFn: (store) => storeOptionText(store),
+    onSelect: () => {
+      document.querySelector(".users-store-search .ac-wrap.field-err")?.classList.remove("field-err");
+    },
+  });
+  const input = document.getElementById("userStoreSearch");
+  if (!input) return;
+  const openAll = () => userStoreAc?.openAll(false);
+  input.addEventListener("focus", openAll);
+  input.addEventListener("click", openAll);
+  input.addEventListener("input", () => {
+    document.getElementById("userStoreSearchId").value = "";
+    input.closest(".ac-wrap")?.classList.remove("field-err");
+  });
+}
+
 function renderStoreSuggestions() {
-  const list = document.getElementById("userStoreSuggestions");
-  if (!list) return;
-  list.innerHTML = usersState.stores.map((store) => (
-    `<option value="${Office.escapeHtml(storeOptionText(store))}"></option>`
-  )).join("");
+  userStoreAc?.setItems(usersState.stores || []);
 }
 
 function storeOptionText(store) {
@@ -353,13 +374,21 @@ function findStoreBySearchValue(value) {
 
 function addStoreFromSearch() {
   const input = document.getElementById("userStoreSearch");
-  const store = findStoreBySearchValue(input?.value || "");
+  const pickedId = document.getElementById("userStoreSearchId")?.value || "";
+  const store = usersState.stores.find((item) => String(item.id) === String(pickedId))
+    || findStoreBySearchValue(input?.value || "");
   if (!store) {
     Office.showMsg("usersMsg", "Δεν βρέθηκε κατάστημα για προσθήκη.", false);
+    input?.focus();
+    input?.closest(".ac-wrap")?.classList.add("field-err");
     return;
   }
   usersState.selectedStoreIds.add(Number(store.id));
-  if (input) input.value = "";
+  if (input) {
+    input.value = "";
+    input.closest(".ac-wrap")?.classList.remove("field-err");
+  }
+  document.getElementById("userStoreSearchId").value = "";
   usersState.storeQuery = "";
   renderStores();
 }

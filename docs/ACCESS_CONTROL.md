@@ -114,6 +114,14 @@
 - Λοιποί χρήστες: κάνουν background sync μόνο στα assigned stores τους.
 - Χρήστης χωρίς assigned stores: δεν ξεκινά sync.
 - Το login δεν περιμένει να τελειώσει το sync. Ο συγχρονισμός μπαίνει σε background thread.
+- Για non-admin χρήστες, αν δεν υπάρχει ήδη `active_store_id` στο session, επιλέγεται
+  αυτόματα το πρώτο διαθέσιμο assigned store ώστε το UI να μη μένει χωρίς ενεργό
+  κατάστημα μετά το login ή στο πρώτο `GET /api/store/active`.
+
+Στο audit/auth logging η IP προτιμά forwarded/proxy headers
+(`X-Forwarded-For`, `X-Real-IP`, `X-Original-For`, `X-ARR-ClientIP`, `True-Client-IP`,
+`CF-Connecting-IP`, `Forwarded`) και πέφτει στο `remote_addr` μόνο ως fallback.
+Στο `client_device` αποθηκεύεται και `ip_source` για troubleshooting πίσω από IIS/reverse proxy.
 
 ## Φάσεις
 

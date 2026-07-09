@@ -39,9 +39,41 @@ def active_store_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ensure_default_active_store() -> int | None:
+    raw = session.get("active_store_id")
+    try:
+        current_id = int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        current_id = None
+    if current_id:
+        return current_id
+
+    try:
+        from app.access_control import SESSION_ROLE, accessible_store_ids, is_admin_role
+        from app import repo_store as repo
+
+        role = str(session.get(SESSION_ROLE) or "").strip()
+        if is_admin_role(role):
+            return None
+
+        allowed = accessible_store_ids()
+        if not allowed:
+            return None
+
+        rows = repo.list_store_configs()
+        candidate = next((row for row in rows if int(row.get("id") or 0) in allowed), None)
+        if not candidate:
+            return None
+
+        session["active_store_id"] = int(candidate["id"])
+        return int(candidate["id"])
+    except Exception:
+        return None
+
+
 def resolve_active_store(*, refresh_session: bool = True) -> dict[str, Any] | None:
     """Ενεργό κατάστημα από session + DB (συμπληρώνει employer_afm αν λείπει)."""
-    sid = session.get("active_store_id")
+    sid = session.get("active_store_id") or _ensure_default_active_store()
     if not sid:
         return None
     from app import repo_store as repo

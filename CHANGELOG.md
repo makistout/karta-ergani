@@ -8,6 +8,37 @@
 
 ---
 
+## 2026-07-09 — Login/store defaults, auth IP και UI βελτιώσεις
+
+### Active store για non-admin
+
+- Μετά το login και στο πρώτο `GET /api/store/active`, αν ο χρήστης δεν είναι admin και
+  δεν έχει ήδη `active_store_id`, επιλέγεται αυτόματα το πρώτο assigned store.
+- Η διόρθωση καλύπτει περιπτώσεις όπου το UI έμενε με μήνυμα
+  «Επιλέξτε ενεργό κατάστημα» αμέσως μετά τη σύνδεση.
+
+### Audit / auth IP
+
+- Η καταγραφή `client_ip` προτιμά πλέον forwarded/proxy headers:
+  `X-Forwarded-For`, `X-Real-IP`, `X-Original-For`, `X-ARR-ClientIP`,
+  `True-Client-IP`, `CF-Connecting-IP`, `Forwarded`.
+- Το `remote_addr` χρησιμοποιείται μόνο ως fallback.
+- Στο `client_device` αποθηκεύονται και μεταδεδομένα όπως `ip_source`,
+  `remote_addr`, `x_forwarded_for`, `x_arr_clientip` για debugging πίσω από IIS/reverse proxy.
+
+### Sidebar / users / landing
+
+- Το menu item **Εργαζόμενοι** μετακινήθηκε ώστε να εμφανίζεται ακριβώς πάνω από το
+  **Καταστήματα** στο sidebar.
+- Στο `/ui/users` το μήνυμα `usersMsg` μεταφέρθηκε κάτω από τα action buttons.
+- Στο `/ui/users` η αναζήτηση καταστήματος έγινε με `office-autocomplete.js`
+  αντί για `datalist`, ώστε τα αποτελέσματα να μη χάνονται στο typing.
+- Στο public landing page μπήκε νέο hero με:
+  **«Ψηφιακή Κάρτα Εργασίας χωρίς άγχος. Συμβατή με το ΕΡΓΑΝΗ ΙΙ.»**,
+  CTA **Δωρεάν Δοκιμή** / **Δείτε Demo** και metrics για πιο καθαρό conversion messaging.
+
+---
+
 ## 2026-07-08 — Retry αιτιολογίας WRKCardSE
 
 ### Ψηφιακή κάρτα (`WRKCardSE`)
