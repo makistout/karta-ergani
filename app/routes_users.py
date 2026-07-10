@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, jsonify, request
 
 from app.access_control import ROLE_PERMISSIONS, all_permission_codes
@@ -12,6 +14,7 @@ from app.store_credentials_util import mask_store_secrets
 from app.user_email_verification import send_verification_email
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users")
+logger = logging.getLogger(__name__)
 
 
 def _require_tables():
@@ -60,10 +63,10 @@ def _json_user(user: dict) -> dict:
     return out
 
 
-def _send_created_user_verification(user_id: int, user: dict) -> str | None:
+def _send_user_verification_email(user_id: int, user: dict) -> str | None:
     email = str(user.get("email") or "").strip()
     if not email:
-        return None
+        return "Ο χρήστης δεν έχει email."
     token = repo_users.create_email_verification_token(user_id)
     if not token:
         return "Δεν έχουν εφαρμοστεί τα πεδία email verification στη βάση."
@@ -72,6 +75,12 @@ def _send_created_user_verification(user_id: int, user: dict) -> str | None:
         username=str(user.get("username") or ""),
         full_name=str(user.get("full_name") or "") or None,
         token=token,
+    )
+    logger.info(
+        "Verification email sent user_id=%s username=%s to=%s",
+        user_id,
+        user.get("username"),
+        email,
     )
     return None
 
@@ -147,7 +156,7 @@ def create_user():
     email_warning = None
     if user:
         try:
-            email_warning = _send_created_user_verification(int(user_id), user)
+            email_warning = _send_user_verification_email(int(user_id), user)
         except EmailNotConfigured as ex:
             email_warning = str(ex)
         except Exception as ex:
@@ -197,6 +206,25 @@ def update_user(user_id: int):
         repo_users.replace_user_stores(user_id, _parse_store_ids(data))
     user = repo_users.get_user(user_id)
     return jsonify({"success": True, "user": _json_user(user or {})})
+
+
+@users_bp.post("/<int:user_id>/resend-verification-email")
+def resend_verification_email(user_id: int):
+    unavailable = _require_tables()
+    if unavailable:
+        return unavailable
+    user = repo_users.get_user(user_id)
+    if not user:
+        return jsonify({"error": "Δεν βρέθηκε χρήστης"}), 404
+    try:
+        email_warning = _send_user_verification_email(user_id, user)
+    except EmailNotConfigured as ex:
+        return jsonify({"error": str(ex)}), 503
+    except Exception as ex:
+        return jsonify({"error": f"Αποτυχία αποστολής email επιβεβαίωσης: {ex}"}), 502
+    if email_warning:
+        return jsonify({"error": email_warning}), 400
+    return jsonify({"success": True, "message": "Στάλθηκε email επιβεβαίωσης."})
 
 
 @users_bp.post("/<int:user_id>/password")

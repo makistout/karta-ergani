@@ -22,6 +22,8 @@ from config import Config
 
 OPERATION = "scheduled_today_sync"
 OPERATION_FUTURE_SCHEDULE_SYNC = "scheduled_future_schedule_sync"
+OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
+OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
 FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
 _RUNNING_GRACE_MINUTES = 15
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
@@ -56,6 +58,42 @@ def _run_configured_auto_actions(
             "reason": future_reason,
             "from_iso": future_from or None,
             "to_iso": future_to or None,
+        }
+
+    recent_should_run, recent_from, recent_to, recent_reason = (
+        should_run_recent_work_log_sync(cfg)
+    )
+    if recent_should_run:
+        actions["recent_work_log"] = run_work_log_range_sync_for_store(
+            cfg,
+            from_iso=recent_from,
+            to_iso=recent_to,
+            operation=OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC,
+        )
+    else:
+        actions["recent_work_log"] = {
+            "skipped": True,
+            "reason": recent_reason,
+            "from_iso": recent_from or None,
+            "to_iso": recent_to or None,
+        }
+
+    weekly_should_run, weekly_from, weekly_to, weekly_reason = (
+        should_run_weekly_repair_work_log_sync(cfg)
+    )
+    if weekly_should_run:
+        actions["weekly_repair_work_log"] = run_work_log_range_sync_for_store(
+            cfg,
+            from_iso=weekly_from,
+            to_iso=weekly_to,
+            operation=OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC,
+        )
+    else:
+        actions["weekly_repair_work_log"] = {
+            "skipped": True,
+            "reason": weekly_reason,
+            "from_iso": weekly_from or None,
+            "to_iso": weekly_to or None,
         }
 
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
@@ -102,7 +140,7 @@ def _add_iso_days(date_iso: str, days: int) -> str:
     return (base + timedelta(days=days)).isoformat()
 
 
-def _future_schedule_sync_run_exists(store_id: int, base_date_iso: str) -> bool:
+def _operation_run_exists(operation: str, store_id: int, base_date_iso: str) -> bool:
     if not repo_sync_log.tables_available():
         return False
     try:
@@ -118,11 +156,20 @@ def _future_schedule_sync_run_exists(store_id: int, base_date_iso: str) -> bool:
                   AND LOWER(RTRIM(status)) IN (N'running', N'done')
                   AND CONVERT(date, started_at) = CONVERT(date, ?)
                 """,
-                (OPERATION_FUTURE_SCHEDULE_SYNC, int(store_id), base_date_iso),
+                (operation, int(store_id), base_date_iso),
             )
             return cur.fetchone() is not None
     except Exception:
         return False
+
+
+def _normalized_sync_time(raw: str, *, default: str) -> str:
+    try:
+        from app.auto_close_cards import normalize_auto_close_time
+
+        return normalize_auto_close_time(str(raw or default))
+    except Exception:
+        return default
 
 
 def should_run_future_schedule_sync(
@@ -134,22 +181,161 @@ def should_run_future_schedule_sync(
     base_date = local_now.date().isoformat()
     from_iso = _add_iso_days(base_date, 1)
     to_iso = _add_iso_days(base_date, FUTURE_SCHEDULE_LOOKAHEAD_DAYS)
-    run_time = "00:30"
-    try:
-        from app.auto_close_cards import normalize_auto_close_time
-
-        run_time = normalize_auto_close_time(
-            str(cfg.get("auto_close_prev_day_time") or "00:30")
-        )
-    except Exception:
-        pass
+    run_time = _normalized_sync_time(
+        str(cfg.get("auto_close_prev_day_time") or "00:30"),
+        default="00:30",
+    )
     if local_now.strftime("%H:%M") < run_time:
         return False, from_iso, to_iso, f"αναμονή μέχρι {run_time}"
     if not repo_sync_log.tables_available():
         return False, from_iso, to_iso, "λείπουν πίνακες sync log για ημερήσιο guard"
-    if _future_schedule_sync_run_exists(int(cfg["id"]), base_date):
+    if _operation_run_exists(OPERATION_FUTURE_SCHEDULE_SYNC, int(cfg["id"]), base_date):
         return False, from_iso, to_iso, "έχει ήδη εκτελεστεί σήμερα"
     return True, from_iso, to_iso, "έτοιμο"
+
+
+def should_run_recent_work_log_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str, str, str]:
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_RECENT_WORK_LOG_ENABLED:
+        return False, "", "", "απενεργοποιημένο από ρύθμιση"
+    days = max(1, int(Config.KARTA_SCHEDULED_RECENT_WORK_LOG_DAYS or 30))
+    base_date = local_now.date().isoformat()
+    from_iso = _add_iso_days(base_date, -(days - 1))
+    to_iso = base_date
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_RECENT_WORK_LOG_TIME,
+        default="03:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, from_iso, to_iso, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, from_iso, to_iso, "λείπουν πίνακες sync log για ημερήσιο guard"
+    if _operation_run_exists(
+        OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC,
+        int(cfg["id"]),
+        base_date,
+    ):
+        return False, from_iso, to_iso, "έχει ήδη εκτελεστεί σήμερα"
+    return True, from_iso, to_iso, "έτοιμο"
+
+
+def should_run_weekly_repair_work_log_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str, str, str]:
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_WEEKLY_REPAIR_ENABLED:
+        return False, "", "", "απενεργοποιημένο από ρύθμιση"
+    weekday = int(Config.KARTA_SCHEDULED_WEEKLY_REPAIR_WEEKDAY or 6)
+    days = max(1, int(Config.KARTA_SCHEDULED_WEEKLY_REPAIR_DAYS or 90))
+    base_date = local_now.date().isoformat()
+    from_iso = _add_iso_days(base_date, -(days - 1))
+    to_iso = base_date
+    if local_now.weekday() != weekday:
+        return False, from_iso, to_iso, "δεν είναι ημέρα weekly repair"
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_WEEKLY_REPAIR_TIME,
+        default="05:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, from_iso, to_iso, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, from_iso, to_iso, "λείπουν πίνακες sync log για εβδομαδιαίο guard"
+    if _operation_run_exists(
+        OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC,
+        int(cfg["id"]),
+        base_date,
+    ):
+        return False, from_iso, to_iso, "έχει ήδη εκτελεστεί αυτή την Κυριακή"
+    return True, from_iso, to_iso, "έτοιμο"
+
+
+def run_work_log_range_sync_for_store(
+    cfg: dict[str, Any],
+    *,
+    from_iso: str,
+    to_iso: str,
+    operation: str,
+) -> dict[str, Any]:
+    ctx = store_api_context(cfg)
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    run_id = str(uuid.uuid4())
+    days = max(1, (datetime.strptime(to_iso, "%Y-%m-%d").date() - datetime.strptime(from_iso, "%Y-%m-%d").date()).days + 1)
+    log = KartaLogger(
+        operation,
+        store_id=sid,
+        store_name=name,
+        run_id=run_id,
+        extra={
+            "employer_afm": ctx.get("employer_afm"),
+            "branch_aa": ctx.get("branch_aa"),
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "days": days,
+        },
+    )
+    log.info(
+        f"Έναρξη συγχρονισμού πραγματικής {from_iso} – {to_iso}",
+        from_iso=from_iso,
+        to_iso=to_iso,
+        days=days,
+    )
+    try:
+        result = sync_work_log_from_portal(
+            ctx,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            max_days=days,
+            run_id=run_id,
+        )
+        _log_portal_phase(log, "Πραγματική απασχόληση", result)
+        ok = bool(result.get("success"))
+        repo_sync_log.finish_run(
+            run_id,
+            status="done" if ok else "error",
+            message=result.get("detail") or "Συγχρονισμός πραγματικής",
+            result={
+                "success": ok,
+                "from_iso": from_iso,
+                "to_iso": to_iso,
+                "work_log": result,
+            },
+        )
+        return {
+            "success": ok,
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "days": days,
+            "work_log": result,
+        }
+    except Exception as ex:
+        err = str(ex)
+        log.error(f"Σφάλμα συγχρονισμού πραγματικής: {err}")
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=err,
+            result={
+                "success": False,
+                "from_iso": from_iso,
+                "to_iso": to_iso,
+                "days": days,
+                "error": err,
+            },
+        )
+        return {
+            "success": False,
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "days": days,
+            "error": err,
+        }
 
 
 def run_future_schedule_sync_for_store(
@@ -340,6 +526,7 @@ def sync_store_today(
     *,
     work_date_iso: str | None = None,
     operation: str | None = None,
+    run_configured_auto_actions: bool = True,
 ) -> dict[str, Any]:
     """Συγχρονισμός μίας ημέρας (προεπιλογή σήμερα): ωράριο + πραγματική + καταγραφή."""
     ctx = store_api_context(cfg)
@@ -440,7 +627,7 @@ def sync_store_today(
             log.info("Έγινε enqueue ασύγχρονων ειδοποιήσεων μετά το sync")
 
     auto_actions = None
-    if op == OPERATION:
+    if op == OPERATION and run_configured_auto_actions:
         try:
             refreshed_cfg = repo_store.get_store_config(sid) or cfg
             auto_actions = _run_configured_auto_actions(
@@ -537,6 +724,7 @@ def enqueue_sync_allowed_stores_after_login(
             run_scheduled_sync(
                 store_ids=ids_snapshot,
                 skip_if_running=True,
+                run_configured_auto_actions=False,
             )
         except Exception:
             pass
@@ -555,6 +743,7 @@ def run_scheduled_sync(
     work_date_iso: str | None = None,
     dry_run: bool = False,
     skip_if_running: bool = True,
+    run_configured_auto_actions: bool = True,
 ) -> dict[str, Any]:
     """
     Συγχρονισμός όλων των διαθέσιμων καταστημάτων για μία ημέρα.
@@ -603,7 +792,13 @@ def run_scheduled_sync(
 
     results: list[dict[str, Any]] = []
     for cfg in stores:
-        results.append(sync_store_today(cfg, work_date_iso=today))
+        results.append(
+            sync_store_today(
+                cfg,
+                work_date_iso=today,
+                run_configured_auto_actions=run_configured_auto_actions,
+            )
+        )
 
     ok_count = sum(1 for r in results if r.get("success"))
     fail_count = len(results) - ok_count

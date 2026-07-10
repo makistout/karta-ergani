@@ -177,7 +177,7 @@
     });
   }
 
-  function openCalendar(fieldEl, ctx) {
+    function openCalendar(fieldEl, ctx) {
     const popup = fieldEl.querySelector(".dp-cal-popup");
     if (!popup) return;
     closeOpenPopup();
@@ -248,7 +248,10 @@
         maxIso,
         rangeStart: fieldEl._rangeStart,
         rangeEnd: fieldEl._rangeEnd,
-        onPick: (picked) => setIso(picked),
+        onPick: (picked) => {
+          setIso(picked);
+          if (typeof opts.onDayClick === "function") opts.onDayClick(picked);
+        },
       });
     });
 
@@ -475,10 +478,13 @@
     }
 
     const bounds = getBounds();
+    const onDayClick = typeof opts.onDayClick === "function" ? opts.onDayClick : null;
+
     startField = bindGreekDateField(startEl, {
       initialIso: start,
       ...bounds,
       getRangeHighlight: () => ({ start, end }),
+      onDayClick,
       onChange(iso) {
         start = iso;
         if (singleDay) end = start;
@@ -493,6 +499,7 @@
         initialIso: end,
         ...bounds,
         getRangeHighlight: () => ({ start, end }),
+        onDayClick,
         onChange(iso) {
           end = iso;
           if (start > end) start = end;

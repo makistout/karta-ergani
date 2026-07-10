@@ -17,9 +17,11 @@ from app.notify_pin import (
 from app.row_util import rows_to_dicts
 
 NOTIFY_REPEAT_ONCE_SNOOZE = "once_snooze"
+NOTIFY_REPEAT_TWICE_SNOOZE = "twice_snooze"
 NOTIFY_REPEAT_UNTIL_ACTION = "repeat_until_action"
 NOTIFY_REPEAT_POLICIES = {
     NOTIFY_REPEAT_ONCE_SNOOZE,
+    NOTIFY_REPEAT_TWICE_SNOOZE,
     NOTIFY_REPEAT_UNTIL_ACTION,
 }
 

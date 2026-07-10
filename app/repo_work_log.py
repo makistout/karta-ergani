@@ -22,9 +22,40 @@ from app.repo_work_log_schedule import (
     _format_schedule_slot,
     enrich_work_log_rows_with_schedule,
 )
+from app.work_log_overnight import (
+    ergani_next_day,
+    ergani_prev_day,
+    merge_overnight_exits_across_days,
+)
 
 
+def normalize_overnight_work_log_rows(
+    rows: list[dict[str, Any]],
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    ergani_dates: list[str],
+) -> list[dict[str, Any]]:
+    """Ενοποίηση νυχτερινών εξόδων για προβολή (ίδια λογική με sync)."""
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        wd = str(row.get("work_date") or "").strip()
+        if wd:
+            by_day.setdefault(wd, []).append(dict(row))
 
+    if len(ergani_dates) == 1:
+        wd = ergani_dates[0]
+        for extra_wd in (ergani_prev_day(wd), ergani_next_day(wd)):
+            if extra_wd not in by_day:
+                extra = list_work_log_for_store(employer_afm, branch_aa, extra_wd)
+                if extra:
+                    by_day[extra_wd] = [dict(r) for r in extra]
+
+    by_day = merge_overnight_exits_across_days(by_day)
+    result: list[dict[str, Any]] = []
+    for wd in ergani_dates:
+        result.extend(by_day.get(wd, []))
+    return result
 
 
 def _pick_schedule_slot(
@@ -309,8 +340,6 @@ def _split_missing_rows_by_db_closure(
     pending: list[dict[str, Any]] = []
     closed: list[dict[str, Any]] = []
     for row in rows:
-        if not _employee_row_is_active(row):
-            continue
         afm = norm_afm(row.get("employee_afm") or "")
         wd = str(row.get("work_date") or "").strip()
         gaps = _work_log_missing_gaps(row)

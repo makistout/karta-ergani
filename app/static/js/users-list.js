@@ -209,22 +209,46 @@ function renderUsersList() {
     const active = u.is_active ? "Ενεργός" : "Ανενεργός";
     const activeCls = u.is_active ? "ok" : "err";
     const selected = usersState.selected && Number(usersState.selected.id) === Number(u.id);
+    const emailLine = (u.email || "").trim()
+      ? (
+        `<span class="user-row-email-line">` +
+        `<small>${Office.escapeHtml(u.email)}</small>` +
+        `<button type="button" class="user-row-resend-email" data-resend-user-id="${u.id}" ` +
+        `title="Επαναποστολή email επιβεβαίωσης" ` +
+        `aria-label="Επαναποστολή email επιβεβαίωσης για ${Office.escapeHtml(u.username || "")}">` +
+        `<i class="bi bi-envelope" aria-hidden="true"></i>` +
+        `</button>` +
+        `</span>`
+      )
+      : `<small>${Office.escapeHtml(u.full_name || "")}</small>`;
     return (
-      `<button type="button" class="user-row${selected ? " is-selected" : ""}" data-user-id="${u.id}">` +
+      `<div class="user-row${selected ? " is-selected" : ""}" data-user-id="${u.id}" role="button" tabindex="0">` +
       `<span class="user-row-main">` +
       `<strong>${Office.escapeHtml(u.username || "")}</strong>` +
-      `<small>${Office.escapeHtml(u.email || u.full_name || "")}</small>` +
+      `${emailLine}` +
       `</span>` +
       `<span class="user-row-meta">` +
       `<code>${Office.escapeHtml(u.role || "")}</code>` +
       `<span class="${activeCls}">${active}</span>` +
       `</span>` +
-      `</button>`
+      `</div>`
     );
   }).join("");
   wrap.innerHTML = `<div class="users-list-items">${rows}</div>`;
-  wrap.querySelectorAll("[data-user-id]").forEach((btn) => {
-    btn.addEventListener("click", () => selectUser(Number(btn.dataset.userId)));
+  wrap.querySelectorAll("[data-user-id]").forEach((row) => {
+    row.addEventListener("click", () => selectUser(Number(row.dataset.userId)));
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectUser(Number(row.dataset.userId));
+    });
+  });
+  wrap.querySelectorAll("[data-resend-user-id]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resendVerificationEmail(Number(btn.dataset.resendUserId), btn);
+    });
   });
 }
 
@@ -256,6 +280,7 @@ async function selectUser(id) {
     document.getElementById("userActive").checked = Boolean(user.is_active);
     document.getElementById("userRole").value = user.role || "viewer";
     usersState.selectedStoreIds = new Set((user.store_ids || []).map(Number));
+    renderUsersList();
     renderStores();
     renderPermissions(user.permissions || []);
   } catch (e) {
@@ -589,6 +614,21 @@ async function saveUser() {
     Office.showMsg("usersMsg", String(e), false);
   } finally {
     Office.setButtonLoading(saveBtn, false);
+  }
+}
+
+async function resendVerificationEmail(userId, btn) {
+  Office.setButtonLoading(btn, true);
+  Office.showMsg("usersMsg", "Αποστολή email…", true);
+  try {
+    const res = await fetch(`/api/users/${userId}/resend-verification-email`, { method: "POST" });
+    const data = await Office.parseJson(res);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    Office.showMsg("usersMsg", data.message || "Στάλθηκε email επιβεβαίωσης.", true);
+  } catch (e) {
+    Office.showMsg("usersMsg", String(e), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
   }
 }
 

@@ -24,7 +24,10 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
                 return_value="late_check_in",
             ),
             patch("app.today_alert_notifications.is_snoozed", return_value=False),
-            patch("app.today_alert_notifications.is_notify_sent", return_value=False),
+            patch(
+                "app.today_alert_notifications.get_recipient_notify_send_count",
+                return_value=0,
+            ),
             patch("app.today_alert_notifications.card_event_blocks_today_notify", return_value=False),
             patch("app.today_alert_notifications.notify_db_snapshot", return_value={}),
             patch("app.today_alert_notifications.list_email_deliverable_recipients", return_value=[]),
@@ -119,7 +122,7 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
     def test_late_check_in_auto_post_sync_skips_when_already_sent(self):
         self._patch_common()
         with patch(
-            "app.today_alert_notifications.is_notify_sent",
+            "app.today_alert_notifications.is_snoozed",
             return_value=True,
         ), patch(
             "app.today_alert_notifications.list_deliverable_recipients",
@@ -184,6 +187,73 @@ class TodayAlertNotificationPolicyTests(unittest.TestCase):
         self.assertEqual(res["sent"], 1)
         send.assert_called_once()
         snooze.assert_not_called()
+
+    def test_twice_policy_snoozes_only_after_second_send(self):
+        self._patch_common()
+        tracker = {"count": 0}
+
+        def fake_get_count(**kwargs):
+            return tracker["count"]
+
+        def fake_incr(**kwargs):
+            tracker["count"] += 1
+            return tracker["count"]
+
+        with patch(
+            "app.today_alert_notifications.list_deliverable_recipients",
+            return_value=[
+                {
+                    "id": 14,
+                    "name": "Twice",
+                    "telegram_chat_id": "789",
+                    "notify_repeat_policy": "twice_snooze",
+                }
+            ],
+        ), patch("app.today_alert_notifications.mark_notify_sent"), patch(
+            "app.today_alert_notifications.get_recipient_notify_send_count",
+            side_effect=fake_get_count,
+        ), patch(
+            "app.today_alert_notifications.increment_recipient_notify_send_count",
+            side_effect=fake_incr,
+        ) as incr, patch(
+            "app.today_alert_notifications.create_snooze"
+        ) as snooze, patch("app.telegram_notify.send_telegram_message") as send:
+            first = today_alert_notifications.send_today_punch_notifications(
+                store_id=1,
+                store_name="Store",
+                employer_afm="123456789",
+                branch_aa="0",
+                employee_afm="987654321",
+                eponymo="Last",
+                onoma="First",
+                work_date="25/06/2026",
+                hour_from=None,
+                hour_to=None,
+                notify_kind="late_check_in",
+                public_base_url="",
+                auto_post_sync=True,
+            )
+            second = today_alert_notifications.send_today_punch_notifications(
+                store_id=1,
+                store_name="Store",
+                employer_afm="123456789",
+                branch_aa="0",
+                employee_afm="987654321",
+                eponymo="Last",
+                onoma="First",
+                work_date="25/06/2026",
+                hour_from=None,
+                hour_to=None,
+                notify_kind="late_check_in",
+                public_base_url="",
+                auto_post_sync=True,
+            )
+        self.assertEqual(first["sent"], 1)
+        self.assertEqual(second["sent"], 1)
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(incr.call_count, 2)
+        snooze.assert_called_once()
+        self.assertEqual(snooze.call_args.kwargs["recipient_id"], 14)
 
     def test_successful_send_logs_recipient_employee_and_channel(self):
         self._patch_common()

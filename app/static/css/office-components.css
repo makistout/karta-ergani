@@ -492,6 +492,12 @@ body.users-page .main {
   width: 100%;
 }
 
+.user-row:focus-visible {
+  border-color: var(--brand-light);
+  box-shadow: 0 0 0 2px rgba(42, 111, 148, 0.12);
+  outline: none;
+}
+
 .user-row:hover,
 .user-row.is-selected {
   border-color: var(--brand-light);
@@ -508,7 +514,24 @@ body.users-page .main {
 .user-row-main strong,
 .user-row-main small,
 .user-row-meta code,
-.user-row-meta span {
+.user-row-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-row-email-line {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.user-row-email-line small {
+  color: var(--muted);
+  flex: 1 1 auto;
+  font-size: 0.75rem;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -521,6 +544,32 @@ body.users-page .main {
 
 .user-row-meta {
   justify-items: end;
+}
+
+.user-row-resend-email {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  height: 1.55rem;
+  justify-content: center;
+  padding: 0;
+  width: 1.55rem;
+}
+
+.user-row-resend-email:hover {
+  border-color: var(--brand-light);
+  color: var(--brand);
+}
+
+.user-row-resend-email:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .user-row-meta code {

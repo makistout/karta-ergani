@@ -49,6 +49,102 @@ def is_snoozed(
         return cur.fetchone() is not None
 
 
+def _recipient_send_table_available() -> bool:
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = N'dbo'
+                  AND TABLE_NAME = N'karta_today_notify_recipient_send'
+                """
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
+
+def get_recipient_notify_send_count(
+    *,
+    store_id: int,
+    recipient_id: int,
+    employee_afm: str,
+    work_date_ergani: str,
+    notify_kind: str,
+) -> int:
+    rid = int(recipient_id)
+    if rid <= 0 or not _recipient_send_table_available():
+        return 0
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT send_count
+            FROM dbo.karta_today_notify_recipient_send
+            WHERE store_id = ? AND recipient_id = ? AND employee_afm = ?
+              AND work_date_ergani = ? AND notify_kind = ?
+            """,
+            (
+                int(store_id),
+                rid,
+                norm_afm(employee_afm),
+                work_date_ergani.strip()[:32],
+                notify_kind.strip()[:32],
+            ),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+
+
+def increment_recipient_notify_send_count(
+    *,
+    store_id: int,
+    recipient_id: int,
+    employee_afm: str,
+    work_date_ergani: str,
+    notify_kind: str,
+) -> int:
+    rid = int(recipient_id)
+    if rid <= 0:
+        return 0
+    if not _recipient_send_table_available():
+        return 1
+    with cursor() as cur:
+        cur.execute(
+            """
+            MERGE dbo.karta_today_notify_recipient_send AS t
+            USING (
+                SELECT ? AS store_id, ? AS recipient_id, ? AS employee_afm,
+                       ? AS work_date_ergani, ? AS notify_kind
+            ) AS s
+            ON t.store_id = s.store_id
+               AND t.recipient_id = s.recipient_id
+               AND t.employee_afm = s.employee_afm
+               AND t.work_date_ergani = s.work_date_ergani
+               AND t.notify_kind = s.notify_kind
+            WHEN MATCHED THEN
+                UPDATE SET
+                    send_count = t.send_count + 1,
+                    last_sent_at = SYSDATETIMEOFFSET()
+            WHEN NOT MATCHED THEN
+                INSERT (
+                    store_id, recipient_id, employee_afm, work_date_ergani,
+                    notify_kind, send_count
+                )
+                VALUES (s.store_id, s.recipient_id, s.employee_afm, s.work_date_ergani, s.notify_kind, 1)
+            OUTPUT INSERTED.send_count;
+            """,
+            (
+                int(store_id),
+                rid,
+                norm_afm(employee_afm),
+                work_date_ergani.strip()[:32],
+                notify_kind.strip()[:32],
+            ),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 1
+
+
 def list_today_notify_snoozes(
     store_id: int,
     work_dates_ergani: list[str],

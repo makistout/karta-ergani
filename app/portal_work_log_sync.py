@@ -72,6 +72,9 @@ def _dedupe_work_log_day_items(items: list[dict[str, Any]]) -> list[dict[str, An
     return [best_by_afm[afm] for afm in order]
 
 
+from app.work_log_overnight import merge_overnight_exits_across_days as _merge_overnight_exits_across_days
+
+
 def _work_log_empty_not_error(msg: str) -> bool:
     """Κενή πραγματική απασχόληση — όχι σφάλμα συγχρονισμού."""
     text = (msg or "").strip()
@@ -286,6 +289,7 @@ def _persist_work_log_items(
         wd = str(it.get("work_date") or "").strip()
         if wd:
             by_day.setdefault(wd, []).append(it)
+    by_day = _merge_overnight_exits_across_days(by_day)
 
     total = 0
     for wd in work_dates:

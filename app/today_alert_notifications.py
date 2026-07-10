@@ -6,6 +6,8 @@ from typing import Any
 
 from app.repo_notify_recipients import (
     NOTIFY_REPEAT_ONCE_SNOOZE,
+    NOTIFY_REPEAT_TWICE_SNOOZE,
+    NOTIFY_REPEAT_UNTIL_ACTION,
     list_deliverable_recipients,
     list_email_deliverable_recipients,
     normalize_notify_repeat_policy,
@@ -13,7 +15,8 @@ from app.repo_notify_recipients import (
 from app.repo_today_alert import (
     create_snooze,
     create_today_alert_token,
-    is_notify_sent,
+    get_recipient_notify_send_count,
+    increment_recipient_notify_send_count,
     is_snoozed,
     mark_notify_sent,
 )
@@ -47,7 +50,69 @@ def _recipient_key(rec: dict[str, Any]) -> int:
     return int(rec.get("id") or 0)
 
 
-def _auto_snooze_after_send(
+def _recipient_should_receive_send(
+    *,
+    rec: dict[str, Any],
+    store_id: int,
+    employee_afm: str,
+    work_date: str,
+    notify_kind: str,
+) -> bool:
+    rid = _recipient_key(rec)
+    if not rid:
+        return False
+    if is_snoozed(
+        store_id=store_id,
+        employee_afm=employee_afm,
+        work_date_ergani=work_date,
+        notify_kind=notify_kind,
+        recipient_id=rid,
+    ):
+        return False
+    policy = _recipient_repeat_policy(rec)
+    if policy == NOTIFY_REPEAT_UNTIL_ACTION:
+        return True
+    if policy == NOTIFY_REPEAT_TWICE_SNOOZE:
+        return (
+            get_recipient_notify_send_count(
+                store_id=store_id,
+                recipient_id=rid,
+                employee_afm=employee_afm,
+                work_date_ergani=work_date,
+                notify_kind=notify_kind,
+            )
+            < 2
+        )
+    return True
+
+
+def _has_pending_recipients_for_auto_send(
+    *,
+    store_id: int,
+    employee_afm: str,
+    work_date: str,
+    notify_kind: str,
+    recipients: list[dict[str, Any]],
+    email_recipients: list[dict[str, Any]],
+) -> bool:
+    seen: set[int] = set()
+    for rec in recipients + email_recipients:
+        rid = _recipient_key(rec)
+        if rid <= 0 or rid in seen:
+            continue
+        seen.add(rid)
+        if _recipient_should_receive_send(
+            rec=rec,
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date=work_date,
+            notify_kind=notify_kind,
+        ):
+            return True
+    return False
+
+
+def _after_recipient_send_success(
     *,
     rec: dict[str, Any],
     store_id: int,
@@ -59,13 +124,47 @@ def _auto_snooze_after_send(
     employee_name: str | None = None,
     kind_label: str | None = None,
 ) -> None:
-    """Μία φορά ανά λήπτη: snooze αμέσως μετά την επιτυχή αποστολή."""
+    """Μετά από επιτυχή αποστολή: μέτρηση twice_snooze ή αυτόματο snooze."""
     if not auto_post_sync:
-        return
-    if _recipient_repeat_policy(rec) != NOTIFY_REPEAT_ONCE_SNOOZE:
         return
     rid = _recipient_key(rec)
     if not rid:
+        return
+    policy = _recipient_repeat_policy(rec)
+    if policy == NOTIFY_REPEAT_TWICE_SNOOZE:
+        send_count = increment_recipient_notify_send_count(
+            store_id=store_id,
+            recipient_id=rid,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=notify_kind,
+        )
+        if send_count < 2:
+            return
+        create_snooze(
+            store_id=store_id,
+            recipient_id=rid,
+            employee_afm=employee_afm,
+            work_date_ergani=work_date,
+            notify_kind=notify_kind,
+            acted_by_name="Αυτόματη αναβολή μετά από 2 ειδοποιήσεις",
+            acted_via="auto_post_sync",
+        )
+        if log is not None:
+            log.info(
+                "Αυτόματο snooze μετά από δεύτερη ειδοποίηση",
+                event="today_notification_auto_snooze",
+                notify_kind=notify_kind,
+                notify_kind_label=kind_label,
+                employee_afm=employee_afm,
+                employee_name=employee_name,
+                work_date=work_date,
+                recipient_id=rid,
+                recipient_name=rec.get("name"),
+                send_count=send_count,
+            )
+        return
+    if policy != NOTIFY_REPEAT_ONCE_SNOOZE:
         return
     create_snooze(
         store_id=store_id,
@@ -88,6 +187,32 @@ def _auto_snooze_after_send(
             recipient_id=rid,
             recipient_name=rec.get("name"),
         )
+
+
+def _auto_snooze_after_send(
+    *,
+    rec: dict[str, Any],
+    store_id: int,
+    employee_afm: str,
+    work_date: str,
+    notify_kind: str,
+    auto_post_sync: bool,
+    log: Any | None = None,
+    employee_name: str | None = None,
+    kind_label: str | None = None,
+) -> None:
+    """Συμβατότητα — χρησιμοποιεί _after_recipient_send_success."""
+    _after_recipient_send_success(
+        rec=rec,
+        store_id=store_id,
+        employee_afm=employee_afm,
+        work_date=work_date,
+        notify_kind=notify_kind,
+        auto_post_sync=auto_post_sync,
+        log=log,
+        employee_name=employee_name,
+        kind_label=kind_label,
+    )
 
 
 def _find_wto_daily_proposal(
@@ -417,17 +542,21 @@ def send_today_punch_notifications(
             "skipped": "kind_mismatch",
         }
     log_step("Έλεγχος snooze ειδοποίησης")
+    recipients = list_deliverable_recipients(store_id)
+    email_recipients = list_email_deliverable_recipients(store_id)
     if (
         auto_post_sync
         and notify_auto_send_once(resolved_kind)
-        and is_notify_sent(
+        and not _has_pending_recipients_for_auto_send(
             store_id=store_id,
             employee_afm=employee_afm,
-            work_date_ergani=work_date,
+            work_date=work_date,
             notify_kind=resolved_kind,
+            recipients=recipients,
+            email_recipients=email_recipients,
         )
     ):
-        log_step("Παράλειψη — ήδη στάλθηκε αυτόματη ειδοποίηση σήμερα")
+        log_step("Παράλειψη — όλοι οι λήπτες έχουν ολοκληρώσει την πολιτική ειδοποίησης")
         return {
             "sent": 0,
             "total": 0,
@@ -435,8 +564,6 @@ def send_today_punch_notifications(
             "skipped": "already_sent",
             "notify_kind": resolved_kind,
         }
-    recipients = list_deliverable_recipients(store_id)
-    email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
     errors: list[str] = []
     ref_iso = ergani_date_to_iso(work_date)
@@ -495,8 +622,6 @@ def send_today_punch_notifications(
         notify_input_hour_from=hf,
         notify_input_hour_to=ht,
     )
-    recipients = list_deliverable_recipients(store_id)
-    email_recipients = list_email_deliverable_recipients(store_id)
     log_step(
         "Βρέθηκαν λήπτες ειδοποίησης",
         telegram_recipients=len(recipients),
@@ -507,12 +632,12 @@ def send_today_punch_notifications(
         chat_id = str(rec.get("telegram_chat_id") or "").strip()
         if not chat_id:
             continue
-        if is_snoozed(
+        if not _recipient_should_receive_send(
+            rec=rec,
             store_id=store_id,
             employee_afm=employee_afm,
-            work_date_ergani=work_date,
+            work_date=work_date,
             notify_kind=resolved_kind,
-            recipient_id=int(rec["id"]),
         ):
             continue
         hit_url = None
@@ -573,7 +698,7 @@ def send_today_punch_notifications(
                 channel="telegram",
                 extra={"telegram_chat_id": chat_id, "sent": True, **db_snapshot},
             )
-            _auto_snooze_after_send(
+            _after_recipient_send_success(
                 rec=rec,
                 store_id=store_id,
                 employee_afm=employee_afm,
@@ -601,12 +726,12 @@ def send_today_punch_notifications(
         email = str(rec.get("email") or "").strip()
         if not email:
             continue
-        if is_snoozed(
+        if not _recipient_should_receive_send(
+            rec=rec,
             store_id=store_id,
             employee_afm=employee_afm,
-            work_date_ergani=work_date,
+            work_date=work_date,
             notify_kind=resolved_kind,
-            recipient_id=int(rec["id"]),
         ):
             continue
         hit_url = None
@@ -690,7 +815,7 @@ def send_today_punch_notifications(
                 channel="email",
                 extra={"sent": True, **db_snapshot},
             )
-            _auto_snooze_after_send(
+            _after_recipient_send_success(
                 rec=rec,
                 store_id=store_id,
                 employee_afm=employee_afm,
@@ -726,7 +851,18 @@ def send_today_punch_notifications(
                 extra={"sent": False, "error": str(ex)},
             )
 
-    if auto_post_sync and sent > 0 and notify_auto_send_once(resolved_kind):
+    if (
+        auto_post_sync
+        and notify_auto_send_once(resolved_kind)
+        and not _has_pending_recipients_for_auto_send(
+            store_id=store_id,
+            employee_afm=employee_afm,
+            work_date=work_date,
+            notify_kind=resolved_kind,
+            recipients=list_deliverable_recipients(store_id),
+            email_recipients=list_email_deliverable_recipients(store_id),
+        )
+    ):
         mark_notify_sent(
             store_id=store_id,
             employee_afm=employee_afm,

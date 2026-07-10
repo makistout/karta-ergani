@@ -68,7 +68,9 @@ function asNotifyFlag(value, defaultValue = false) {
 
 function normalizeNotifyRepeatPolicy(value) {
   const v = String(value || "").trim();
-  return v === "repeat_until_action" ? "repeat_until_action" : "once_snooze";
+  if (v === "repeat_until_action") return "repeat_until_action";
+  if (v === "twice_snooze") return "twice_snooze";
+  return "once_snooze";
 }
 
 function mapRecipientRow(r) {
@@ -335,6 +337,10 @@ function buildNotifyPolicyRow(row, idx) {
     `<label class="notify-policy-option">` +
     `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="once_snooze"${policy === "once_snooze" ? " checked" : ""}>` +
     `<span>Μία φορά και αυτόματο snooze</span>` +
+    `</label>` +
+    `<label class="notify-policy-option">` +
+    `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="twice_snooze"${policy === "twice_snooze" ? " checked" : ""}>` +
+    `<span>Δύο φορές και αυτόματο snooze</span>` +
     `</label>` +
     `<label class="notify-policy-option">` +
     `<input type="radio" class="notify-policy-radio" name="notify-policy-${idx}" value="repeat_until_action"${policy === "repeat_until_action" ? " checked" : ""}>` +

@@ -45,6 +45,13 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 - Το scheduled sync κάνει στο βασικό run σημερινό ωράριο/πραγματική και, μία φορά μετά τα
   μεσάνυχτα/ώρα auto-close ανά κατάστημα, ξεχωριστό sync ψηφιακού ωραρίου για αύριο και
   μεθαύριο (`scheduled_future_schedule_sync`).
+- Επιπλέον τρέχει αυτόματα:
+  - νυχτερινό `30ήμερο` sync πραγματικής για όλα τα καταστήματα
+    (`scheduled_recent_work_log_sync`, προεπιλογή `03:00`)
+  - κυριακάτικο `90ήμερο` repair sync πραγματικής
+    (`scheduled_weekly_repair_work_log_sync`, προεπιλογή `05:00`)
+- Οι νέες φάσεις γράφουν ξεχωριστά runs στα sync logs και προστατεύονται με ημερήσιο /
+  εβδομαδιαίο guard ώστε να εκτελούνται μία φορά ανά κατάστημα.
 - Sync logs από `/ui/sync-log`.
 - Post-sync Telegram/Email notifications καταγράφονται ως ξεχωριστή operation.
 

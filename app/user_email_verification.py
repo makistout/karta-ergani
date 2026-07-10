@@ -13,6 +13,7 @@ from app.public_urls import ui_public_url
 
 TOKEN_BYTES = 32
 TOKEN_TTL_HOURS = 48
+NEW_MEMBER_EMAIL_BCC = "info@erganios.gr"
 
 
 def new_verification_token() -> tuple[str, str]:
@@ -32,8 +33,22 @@ def verification_url(token: str) -> str:
     return ui_public_url("/ui/verify-email", token=token)
 
 
+def _greeting_name(full_name: str | None, username: str) -> str:
+    """Ονοματεπώνυμο για χαιρετισμό — όχι username."""
+    name = (full_name or "").strip()
+    if name:
+        return name
+    return "χρήστη"
+
+
+_ROBOTO_FONT_STACK = "'Roboto', Arial, Helvetica, sans-serif"
+_ROBOTO_HEAD = (
+    '<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;800&display=swap" rel="stylesheet">'
+)
+
+
 def build_verification_email(*, username: str, full_name: str | None, url: str) -> tuple[str, str]:
-    display = (full_name or username or "χρήστη").strip()
+    display = _greeting_name(full_name, username)
     subject_name = html.escape(display)
     safe_url = html.escape(url, quote=True)
     text = "\n".join([
@@ -48,25 +63,29 @@ def build_verification_email(*, username: str, full_name: str | None, url: str) 
     ])
     html_body = f"""<!doctype html>
 <html lang="el">
-  <body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 12px;">
+  <head>
+    <meta charset="utf-8">
+    {_ROBOTO_HEAD}
+  </head>
+  <body style="margin:0;background:#f1f5f9;font-family:{_ROBOTO_FONT_STACK};color:#0f172a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 12px;font-family:{_ROBOTO_FONT_STACK};">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e2e8f0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e2e8f0;font-family:{_ROBOTO_FONT_STACK};">
             <tr>
-              <td style="padding:26px 28px;background:#1f5b7a;">
+              <td style="padding:26px 28px;background:#1f5b7a;font-family:{_ROBOTO_FONT_STACK};">
                 <div style="color:#dbeafe;font-size:12px;font-weight:800;letter-spacing:.04em;">erganiOS</div>
-                <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.2;">Επιβεβαίωση email</h1>
+                <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.2;font-family:{_ROBOTO_FONT_STACK};font-weight:800;">Επιβεβαίωση email</h1>
               </td>
             </tr>
             <tr>
-              <td style="padding:28px;">
-                <p style="margin:0;color:#334155;font-size:16px;line-height:1.55;">Γεια σας <strong>{subject_name}</strong>,</p>
-                <p style="color:#334155;font-size:16px;line-height:1.55;">Πατήστε το κουμπί για να επιβεβαιώσετε το email σας στο erganiOS.</p>
+              <td style="padding:28px;font-family:{_ROBOTO_FONT_STACK};">
+                <p style="margin:0;color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">Γεια σας <strong>{subject_name}</strong>,</p>
+                <p style="color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">Πατήστε το κουμπί για να επιβεβαιώσετε το email σας στο erganiOS.</p>
                 <div style="margin:26px 0 10px;">
-                  <a href="{safe_url}" style="display:inline-block;background:#1f5b7a;color:#ffffff;text-decoration:none;padding:13px 18px;border-radius:10px;font-weight:800;font-size:14px;">Επιβεβαίωση email</a>
+                  <a href="{safe_url}" style="display:inline-block;background:#1f5b7a;color:#ffffff;text-decoration:none;padding:13px 18px;border-radius:10px;font-weight:800;font-size:14px;font-family:{_ROBOTO_FONT_STACK};">Επιβεβαίωση email</a>
                 </div>
-                <p style="margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.55;">Ο σύνδεσμος λήγει σε {TOKEN_TTL_HOURS} ώρες.</p>
+                <p style="margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">Ο σύνδεσμος λήγει σε {TOKEN_TTL_HOURS} ώρες.</p>
               </td>
             </tr>
           </table>
@@ -90,4 +109,5 @@ def send_verification_email(*, email: str, username: str, full_name: str | None,
         "Επιβεβαίωση email erganiOS",
         text,
         html_body=html_body,
+        bcc=NEW_MEMBER_EMAIL_BCC,
     )

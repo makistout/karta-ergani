@@ -358,3 +358,29 @@ def test_user_email_verify_endpoint_consumes_token():
     assert response.status_code == 200
     assert response.json["success"] is True
     verify.assert_called_once_with("tok")
+
+
+def test_user_resend_verification_email_endpoint():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+    user = {
+        "id": 9,
+        "username": "new-user",
+        "email": "new@example.gr",
+        "full_name": "New User",
+        "role": "office",
+        "is_active": True,
+    }
+
+    with (
+        patch("app.repo_users.tables_available", return_value=True),
+        patch("app.repo_users.get_user", return_value=user),
+        patch("app.routes_users._send_user_verification_email", return_value=None) as send_email,
+    ):
+        response = client.post("/api/users/9/resend-verification-email")
+
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    send_email.assert_called_once_with(9, user)

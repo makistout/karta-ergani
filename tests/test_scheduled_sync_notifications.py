@@ -150,7 +150,7 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         with (
             patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
             patch(
-                "app.scheduled_sync._future_schedule_sync_run_exists",
+                "app.scheduled_sync._operation_run_exists",
                 return_value=False,
             ),
         ):
@@ -231,7 +231,11 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 )
             )
 
-        run_sync.assert_called_once_with(store_ids=[7, 9], skip_if_running=True)
+        run_sync.assert_called_once_with(
+            store_ids=[7, 9],
+            skip_if_running=True,
+            run_configured_auto_actions=False,
+        )
 
     def test_after_login_sync_super_admin_uses_all_stores(self):
         class ImmediateThread:
@@ -253,7 +257,59 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 )
             )
 
-        run_sync.assert_called_once_with(store_ids=None, skip_if_running=True)
+        run_sync.assert_called_once_with(
+            store_ids=None,
+            skip_if_running=True,
+            run_configured_auto_actions=False,
+        )
+
+    def test_recent_work_log_sync_runs_once_after_configured_time(self):
+        cfg = {"id": 7, "name": "Demo"}
+        with (
+            patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
+            patch("app.scheduled_sync._operation_run_exists", return_value=False),
+        ):
+            should_run, from_iso, to_iso, reason = (
+                scheduled_sync.should_run_recent_work_log_sync(
+                    cfg,
+                    now=datetime(2026, 7, 2, 3, 15),
+                )
+            )
+
+        self.assertTrue(should_run)
+        self.assertEqual(from_iso, "2026-06-03")
+        self.assertEqual(to_iso, "2026-07-02")
+        self.assertEqual(reason, "έτοιμο")
+
+    def test_weekly_repair_sync_runs_only_on_configured_weekday(self):
+        cfg = {"id": 7, "name": "Demo"}
+        with (
+            patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
+            patch("app.scheduled_sync._operation_run_exists", return_value=False),
+        ):
+            should_run, from_iso, to_iso, reason = (
+                scheduled_sync.should_run_weekly_repair_work_log_sync(
+                    cfg,
+                    now=datetime(2026, 7, 5, 5, 15),
+                )
+            )
+
+        self.assertTrue(should_run)
+        self.assertEqual(from_iso, "2026-04-07")
+        self.assertEqual(to_iso, "2026-07-05")
+        self.assertEqual(reason, "έτοιμο")
+
+    def test_weekly_repair_sync_skips_other_weekdays(self):
+        cfg = {"id": 7, "name": "Demo"}
+        should_run, _from_iso, _to_iso, reason = (
+            scheduled_sync.should_run_weekly_repair_work_log_sync(
+                cfg,
+                now=datetime(2026, 7, 6, 5, 15),
+            )
+        )
+
+        self.assertFalse(should_run)
+        self.assertEqual(reason, "δεν είναι ημέρα weekly repair")
 
 
 if __name__ == "__main__":

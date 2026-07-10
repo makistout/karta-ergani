@@ -84,6 +84,29 @@ class Config:
         "KARTA_PORTAL_EXCEL_DEBUG_TODAY",
         default=True,
     )
+    KARTA_SCHEDULED_RECENT_WORK_LOG_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_RECENT_WORK_LOG_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_RECENT_WORK_LOG_DAYS = int(
+        (os.environ.get("KARTA_SCHEDULED_RECENT_WORK_LOG_DAYS") or "30").strip() or "30"
+    )
+    KARTA_SCHEDULED_RECENT_WORK_LOG_TIME = (
+        os.environ.get("KARTA_SCHEDULED_RECENT_WORK_LOG_TIME") or "03:00"
+    ).strip() or "03:00"
+    KARTA_SCHEDULED_WEEKLY_REPAIR_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_WEEKLY_REPAIR_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_WEEKLY_REPAIR_DAYS = int(
+        (os.environ.get("KARTA_SCHEDULED_WEEKLY_REPAIR_DAYS") or "90").strip() or "90"
+    )
+    KARTA_SCHEDULED_WEEKLY_REPAIR_WEEKDAY = int(
+        (os.environ.get("KARTA_SCHEDULED_WEEKLY_REPAIR_WEEKDAY") or "6").strip() or "6"
+    )
+    KARTA_SCHEDULED_WEEKLY_REPAIR_TIME = (
+        os.environ.get("KARTA_SCHEDULED_WEEKLY_REPAIR_TIME") or "05:00"
+    ).strip() or "05:00"
     PORTAL_EXCEL_DEBUG_DIR = Path(
         os.environ.get("KARTA_PORTAL_EXCEL_DEBUG_DIR")
         or (_ROOT / "data" / "portal_excel_debug")

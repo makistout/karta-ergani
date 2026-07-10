@@ -298,6 +298,132 @@ table.data.report-table td.work-log-action-cell {
   background: var(--bg-soft, #f1f5f9);
 }
 
+.schedule-day-form-date-section {
+  margin-bottom: 0.75rem;
+}
+
+.schedule-day-form-wrap--pending {
+  padding: 0.35rem 0;
+}
+
+.schedule-day-form-pick-hint {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.schedule-day-form-actions.hidden {
+  display: none;
+}
+
+.schedule-day-form-panel {
+  margin-top: 0.75rem;
+}
+
+.schedule-day-form-panel.hidden {
+  display: none;
+}
+
+.schedule-day-form-head {
+  margin-bottom: 0.75rem;
+}
+
+.schedule-day-form-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.schedule-day-form-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.schedule-day-form-msg {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.schedule-day-form-wrap {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.schedule-day-form-preview {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+
+.schedule-day-form-preview.hidden {
+  display: none;
+}
+
+.schedule-day-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+table.data.schedule-day-form-table {
+  font-size: 0.72rem;
+}
+
+table.data.schedule-day-form-table th,
+table.data.schedule-day-form-table td {
+  vertical-align: middle;
+}
+
+table.data.schedule-day-form-table .col-name {
+  white-space: nowrap;
+  min-width: 8rem;
+}
+
+table.data.schedule-day-form-table .col-current {
+  color: var(--muted);
+  font-size: 0.68rem;
+  max-width: 9rem;
+}
+
+.schedule-day-form-energia {
+  min-width: 6.5rem;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.schedule-day-form-hours {
+  display: grid;
+  grid-template-columns: 3.2rem 3.2rem 3.2rem 3.2rem;
+  gap: 0.25rem;
+}
+
+.schedule-day-form-hours input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-day-form-hours input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.schedule-day-form-hours-label {
+  display: block;
+  font-size: 0.58rem;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 0.1rem;
+}
+
 .wto-daily-hours-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

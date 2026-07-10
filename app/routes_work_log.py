@@ -28,6 +28,7 @@ from app.repo_work_log import (
     enrich_work_log_rows_with_card_punch,
     append_card_punches_missing_from_work_log,
     list_work_log_missing_cards_paged,
+    normalize_overnight_work_log_rows,
 )
 from app.repo_schedule import schedule_table_missing_message
 from app.work_card_payload import norm_afm, tz_athens
@@ -74,6 +75,12 @@ def work_log_list():
             )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    rows = normalize_overnight_work_log_rows(
+        rows,
+        employer_afm=ctx["employer_afm"],
+        branch_aa=ctx["branch_aa"],
+        ergani_dates=ergani_dates,
+    )
     append_card_punches_missing_from_work_log(
         rows, ctx["employer_afm"], ctx["branch_aa"], ergani_dates
     )

@@ -1,4 +1,5 @@
 from app.portal_work_log_sync import _dedupe_work_log_day_items
+from app.work_log_overnight import merge_overnight_exits_across_days as _merge_overnight_exits_across_days
 from app.card_report import build_card_status_report
 from app.repo_work_log import append_card_punches_missing_from_work_log
 
@@ -29,6 +30,69 @@ def test_dedupe_work_log_prefers_row_with_exit():
 
     assert len(deduped) == 1
     assert deduped[0]["hour_to"] == "16:05"
+
+
+def test_merge_overnight_exit_moves_to_previous_day():
+    by_day = {
+        "09/07/2026": [
+            {
+                "employee_afm": "169433007",
+                "eponymo": "ΒΑΣΙΛΑΚΗΣ",
+                "onoma": "ΕΥΑΓΓΕΛΟΣ",
+                "work_date": "09/07/2026",
+                "hour_from": "17:01",
+                "hour_to": "",
+                "source_aa": "0",
+                "is_end_date_different": 0,
+            }
+        ],
+        "10/07/2026": [
+            {
+                "employee_afm": "169433007",
+                "eponymo": "ΒΑΣΙΛΑΚΗΣ",
+                "onoma": "ΕΥΑΓΓΕΛΟΣ",
+                "work_date": "10/07/2026",
+                "hour_from": "",
+                "hour_to": "00:56",
+                "source_aa": "0",
+                "is_end_date_different": 0,
+            }
+        ],
+    }
+
+    merged = _merge_overnight_exits_across_days(by_day)
+
+    assert merged["09/07/2026"][0]["hour_to"] == "00:56"
+    assert merged["09/07/2026"][0]["is_end_date_different"] == 1
+    assert merged["10/07/2026"] == []
+
+
+def test_merge_overnight_exit_drops_duplicate_when_previous_day_complete():
+    by_day = {
+        "09/07/2026": [
+            {
+                "employee_afm": "169433007",
+                "work_date": "09/07/2026",
+                "hour_from": "17:01",
+                "hour_to": "00:56",
+                "is_end_date_different": 1,
+            }
+        ],
+        "10/07/2026": [
+            {
+                "employee_afm": "169433007",
+                "work_date": "10/07/2026",
+                "hour_from": "",
+                "hour_to": "00:56",
+                "is_end_date_different": 0,
+            }
+        ],
+    }
+
+    merged = _merge_overnight_exits_across_days(by_day)
+
+    assert merged["09/07/2026"][0]["hour_to"] == "00:56"
+    assert merged["10/07/2026"] == []
 
 
 def test_append_card_punches_missing_from_work_log(monkeypatch):

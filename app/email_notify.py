@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import os
 import smtplib
 from email.message import EmailMessage
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 class EmailNotConfigured(Exception):
@@ -57,19 +60,31 @@ def send_email_message(
     text_body: str,
     *,
     html_body: str | None = None,
+    bcc: str | list[str] | None = None,
 ) -> dict[str, Any]:
     settings = _smtp_settings()
     to_addr = str(to_email or "").strip()
     if not to_addr:
         raise ValueError("Λείπει email παραλήπτη")
 
+    bcc_addrs: list[str] = []
+    if isinstance(bcc, str):
+        bcc_addrs = [bcc.strip()] if bcc.strip() else []
+    elif bcc:
+        bcc_addrs = [str(addr).strip() for addr in bcc if str(addr).strip()]
+
     msg = EmailMessage()
     msg["From"] = _sender_header(settings)
     msg["To"] = to_addr
     msg["Subject"] = str(subject or "erganiOS")
+    if bcc_addrs:
+        msg["Bcc"] = ", ".join(bcc_addrs)
     msg.set_content(text_body or "")
     if html_body:
         msg.add_alternative(html_body, subtype="html")
+
+    recipients = [to_addr, *bcc_addrs]
+    recipients = list(dict.fromkeys(addr for addr in recipients if addr))
 
     if settings["use_ssl"]:
         smtp: smtplib.SMTP = smtplib.SMTP_SSL(settings["host"], settings["port"], timeout=30)
@@ -80,8 +95,26 @@ def send_email_message(
             smtp.starttls()
         if settings["username"]:
             smtp.login(settings["username"], settings["password"])
-        smtp.send_message(msg)
-    return {"ok": True, "to": to_addr}
+        refused = smtp.send_message(
+            msg,
+            from_addr=settings["from_email"],
+            to_addrs=recipients,
+        )
+    if refused:
+        refused_list = ", ".join(f"{addr}: {err}" for addr, err in refused.items())
+        logger.error("SMTP refused recipients: %s", refused_list)
+        raise smtplib.SMTPRecipientsRefused(refused)
+    logger.info(
+        "SMTP sent subject=%r to=%r bcc=%r via=%s",
+        msg["Subject"],
+        to_addr,
+        bcc_addrs,
+        settings["host"],
+    )
+    out: dict[str, Any] = {"ok": True, "to": to_addr}
+    if bcc_addrs:
+        out["bcc"] = bcc_addrs
+    return out
 
 
 def _pill(label: str, value: str | None) -> str:

@@ -16,6 +16,7 @@ from app.repo_work_log import (
     _attach_card_punch_hint,
     append_card_punches_missing_from_work_log,
     list_work_log_for_store,
+    normalize_overnight_work_log_rows,
 )
 from app.work_card_payload import tz_athens
 
@@ -625,6 +626,12 @@ def build_card_status_report(
 
     schedule_rows = list_schedule_for_store(employer_afm, branch_aa, work_date)
     work_log_rows = list_work_log_for_store(employer_afm, branch_aa, work_date)
+    work_log_rows = normalize_overnight_work_log_rows(
+        work_log_rows,
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        ergani_dates=[work_date],
+    )
     append_card_punches_missing_from_work_log(
         work_log_rows,
         employer_afm,

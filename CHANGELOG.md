@@ -8,6 +8,65 @@
 
 ---
 
+## 2026-07-10 — Νυχτερινή πραγματική, φόρμα ημερήσιου ωραρίου, ειδοποιήσεις και email χρηστών
+
+### Νυχτερινές βάρδιες / orphan εξόδους πραγματικής
+
+- Νέο module `app/work_log_overnight.py`: εντοπισμός και συγχώνευση orphan εξόδων (`— / 00:56`)
+  σε λάθος ημέρα, όταν το ΕΡΓΑΝΗ στέλνει πλήρη βάρδια στη D και μόνο έξοδο στη D+1.
+- Κλήσεις repair/normalize από `portal_work_log_sync`, `repo_work_log`
+  (`normalize_overnight_work_log_rows`), `card_report` (`/ui/home`) και `routes_work_log`.
+- Script `scripts/repair_overnight_work_log_all_stores.py [days]` (προεπιλογή 30, έως 90):
+  pre-repair DB → portal sync → post-repair, με JSON αναφορά στο `data/`.
+- Script `scripts/run_90day_work_log_repair.py` για one-off 90ήμερο sync όλων των καταστημάτων.
+
+### Scheduled sync πραγματικής (30ήμερο / 90ήμερο repair)
+
+- Νυχτερινό **30ήμερο** sync: `scheduled_recent_work_log_sync` (`KARTA_SCHEDULED_RECENT_WORK_LOG_*`,
+  προεπιλογή `03:00`).
+- Κυριακάτικο **90ήμερο** repair: `scheduled_weekly_repair_work_log_sync`
+  (`KARTA_SCHEDULED_WEEKLY_REPAIR_*`, προεπιλογή `05:00`, weekday `6`).
+- Το login-triggered background sync **δεν** πυροδοτεί τα βαρέα maintenance jobs.
+- Ενημέρωση `docs/RUNBOOK.md` και tests `test_scheduled_sync_notifications.py`.
+
+### Φόρμα ημερήσιου ωραρίου HTML (`/ui/schedule`)
+
+- Backend: `schedule_day_form_service.py`, `routes_schedule_day_form.py`
+  (`GET/POST /api/schedule/day-form`, preview, submit) — ίδια λογική με Excel import
+  (`_build_import_row`, `apply_import_row`, WTODaily).
+- UI: inline panel κάτω από toolbar (όχι modal). Κουμπί **Συμπλήρωση ημέρας** → επιλογή
+  ημερομηνίας μέσα στο panel → λίστα εργαζομένων με ενέργεια (εργασία/ρεπό) και 2 διαστήματα
+  ωραρίου → προεπισκόπηση → αποστολή Ergani + αυτόματος συγχρονισμός ωραρίου.
+- Αφαιρέθηκε η επιλογή διαστήματος Από–Έως από το toolbar· ο πίνακας ωραρίου δείχνει
+  προεπιλογή **σήμερα** (μετά από επιτυχή submit, την ημέρα που υποβλήθηκε).
+- Δικαίωμα `schedule.submit_daily`· CSS/JS cache-bust `?v=20260710dayform3`.
+
+### Ειδοποιήσεις σημερινών καμπανών — πολιτική ανά παραλήπτη
+
+- Νέος πίνακας `karta_today_notify_recipient_send` (`sql/alter_add_today_notify_recipient_send.sql`,
+  migration `scripts/run_migration_today_notify_recipient_send.py`): καταγραφή αποστολών ανά
+  παραλήπτη/εργαζόμενο/ημέρα.
+- Πολιτικές `notify_repeat_policy` στο `/ui/stores/notify`: `once_snooze`, `twice_snooze`,
+  `repeat_until_action` — εφαρμόζονται στο `today_alert_notifications.py` και `repo_today_alert.py`.
+- Tests: `test_today_alert_notifications_policy.py`, `test_portal_work_log_sync.py`.
+
+### Email επαλήθευσης νέων χρηστών
+
+- BCC `info@erganios.gr` στο verification email (`user_email_verification.py`, `email_notify.py` με `bcc`).
+- Roboto font stack, χαιρετισμός με `full_name` (όχι username).
+- API `POST /api/users/<id>/resend-verification-email` και κουμπί επαναποστολής στο `/ui/users`
+  (`users-list.js` — `div role="button"` αντί nested button).
+- Tests: `test_email_notify.py`, `test_access_control.py`.
+
+### Λοιπά
+
+- `schedule_import_service.py`: `comments` από row, `source` από `batch_meta` (`html_day_form`).
+- `office-date-picker.js`: `onDayClick` hook στο `bindGreekDateField` (χρησιμοποιείται στη φόρμα ημέρας).
+
+Μετά από deploy: **recycle** IIS app pool `erganios.gr` και **Ctrl+F5** στο browser.
+
+---
+
 ## 2026-07-09 — Login/store defaults, auth IP και UI βελτιώσεις
 
 ### Active store για non-admin

@@ -281,6 +281,8 @@ def create_email_verification_token(user_id: int) -> str | None:
             expiry_utc(),
             int(user_id),
         )
+        if cur.rowcount == 0:
+            return None
     return token
 
 

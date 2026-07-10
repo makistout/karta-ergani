@@ -8,7 +8,6 @@
       <p class="page-desc sync-meta-line" id="scheduleSyncMeta"></p>
       <div class="toolbar-dates card">
         <div class="toolbar-dates-row">
-          <div id="scheduleDatePicker"></div>
           {% if office_has_permission('schedule.submit_daily') %}
           <details class="schedule-download-menu">
             <summary class="btn btn-secondary schedule-download-trigger">
@@ -27,6 +26,9 @@
             <i class="bi bi-file-earmark-excel" aria-hidden="true"></i><span>Ανέβασμα Excel</span>
           </label>
           <input type="file" id="scheduleImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          <button type="button" class="btn btn-secondary" id="btnScheduleDayForm">
+            <i class="bi bi-pencil-square" aria-hidden="true"></i><span>Συμπλήρωση ημέρας</span>
+          </button>
           {% endif %}
           {% if office_is_admin_role() %}
           <button type="button" class="btn" id="btnSyncSchedule" disabled>
@@ -35,6 +37,31 @@
           {% endif %}
         </div>
       </div>
+
+      <div id="scheduleDayFormPanel" class="card schedule-day-form-panel hidden">
+        <div class="schedule-day-form-head">
+          <h2 id="scheduleDayFormTitle" class="schedule-day-form-title"><i class="bi bi-pencil-square" aria-hidden="true"></i> Συμπλήρωση ωραρίου ημέρας</h2>
+          <p id="scheduleDayFormMeta" class="schedule-day-form-meta">Επιλέξτε ημερομηνία.</p>
+        </div>
+        <div id="scheduleDayFormDateSection" class="schedule-day-form-date-section">
+          <div id="scheduleDayFormDatePicker"></div>
+        </div>
+        <div id="scheduleDayFormMsg" class="msg schedule-day-form-msg"></div>
+        <div id="scheduleDayFormWrap" class="schedule-day-form-wrap schedule-day-form-wrap--pending">
+          <p class="schedule-day-form-pick-hint" style="color:var(--muted);"><i class="bi bi-calendar3"></i> Επιλέξτε ημερομηνία για να εμφανιστεί η λίστα εργαζομένων.</p>
+        </div>
+        <div id="scheduleDayFormPreview" class="schedule-day-form-preview hidden"></div>
+        <div class="schedule-day-form-actions hidden" id="scheduleDayFormActions">
+          <button type="button" class="btn btn-secondary" id="btnScheduleDayFormPreview">
+            <i class="bi bi-eye" aria-hidden="true"></i><span>Προεπισκόπηση</span>
+          </button>
+          <button type="button" class="btn" id="btnScheduleDayFormSubmit" disabled>
+            <i class="bi bi-send" aria-hidden="true"></i><span>Αποστολή Ergani</span>
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnScheduleDayFormCancel">Ακύρωση</button>
+        </div>
+      </div>
+
       <div id="schedMsg" class="msg"></div>
       <div class="card list-card">
         <div id="scheduleWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
@@ -71,6 +98,6 @@
     
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/schedule-list.js?v=20260707excel-download2"></script>
+  <script src="/static/js/office-date-picker.js?v=20260710dayform3"></script>
+  <script src="/static/js/schedule-list.js?v=20260710dayform3"></script>
 {% endblock %}

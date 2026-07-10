@@ -39,7 +39,8 @@ def _import_row_to_body(row: dict[str, Any]) -> dict[str, Any]:
         "reference_date": ref_iso,
         "eponymo": str(row.get("eponymo") or "").strip(),
         "onoma": str(row.get("onoma") or "").strip(),
-        "comments": "Εισαγωγή εβδομαδιαίου ωραρίου από Excel",
+        "comments": str(row.get("comments") or "").strip()
+        or "Εισαγωγή εβδομαδιαίου ωραρίου από Excel",
     }
     if str(row.get("import_action") or "") in ("rest", "absent"):
         body["schedule_type"] = "ΑΝ"
@@ -151,7 +152,7 @@ def apply_import_row(
         local_schedule_updated=local_schedule_updated,
         http_status=resp.status_code,
         success=resp.ok,
-        source="excel_import",
+        source=str(meta.get("source") or "excel_import"),
         import_batch_id=meta.get("batch_id"),
         import_row_id=row.get("id"),
         original_filename=meta.get("original_filename"),

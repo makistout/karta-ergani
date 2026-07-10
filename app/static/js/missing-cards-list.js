@@ -280,6 +280,7 @@ function renderClosedTablePage(rows) {
   rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.classList.add("work-log-row--resolved-db");
+    Office.decorateWorkLogTableRow(tr, row);
     const tdAfm = document.createElement("td");
     tdAfm.innerHTML = `<strong>${Office.escapeHtml(row.employee_afm || "")}</strong>`;
     tr.appendChild(tdAfm);
