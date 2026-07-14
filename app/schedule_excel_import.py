@@ -11,10 +11,18 @@ from openpyxl import load_workbook
 
 from app.repo_entities import list_employees_for_employer
 from app.repo_schedule import list_schedule_for_store
+from app.schedule_excel_layout import (
+    BASE_HEADERS,
+    INSTRUCTIONS_SHEET,
+    LEGACY_DAY_HEADERS,
+    SINGLE_SHEET_DATA_START_ROW,
+    SINGLE_SHEET_HEADER_ROW_FIELDS,
+    WEEK_SHEET,
+    single_sheet_day_col,
+)
 from app.work_card_payload import norm_afm
 
-INSTRUCTIONS_SHEET = "Οδηγίες"
-HEADERS = ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ενέργεια", "Από1", "Έως1", "Από2", "Έως2"]
+HEADERS = LEGACY_DAY_HEADERS
 _DATE_IN_TITLE = re.compile(r"(\d{1,2}/\d{1,2}/\d{4})")
 _WEEK_RANGE = re.compile(
     r"(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})"
@@ -305,23 +313,156 @@ def _week_label_from_dates(dates: list[str]) -> tuple[str | None, str | None, st
     return f"Εβδομάδα {week_from} - {week_to}", week_from, week_to
 
 
-def parse_weekly_schedule_workbook(
-    file_bytes: bytes,
+def _monday_from_meta(meta: dict[str, Any]) -> date | None:
+    week_from = meta.get("week_from")
+    if week_from:
+        try:
+            return datetime.strptime(str(week_from).strip(), "%d/%m/%Y").date()
+        except ValueError:
+            pass
+    label = str(meta.get("week_label") or meta.get("instructions_week_label") or "").strip()
+    m = _WEEK_RANGE.search(label)
+    if m:
+        try:
+            return datetime.strptime(m.group(1), "%d/%m/%Y").date()
+        except ValueError:
+            pass
+    return None
+
+
+def _parse_excel_day_entry(
     *,
+    action_raw: str,
+    hf1: str,
+    ht1: str,
+    hf2: str,
+    ht2: str,
+    afm: str,
+    known_afms: set[str],
+) -> tuple[str, list[dict[str, str]], str | None, list[str]]:
+    row_errors: list[str] = []
+    if afm not in known_afms:
+        row_errors.append(f"Άγνωστο ΑΦΜ {afm} για το κατάστημα")
+
+    action = str(action_raw or "").strip().upper()
+    if action == "ΡΕΠΟ":
+        if any((hf1, ht1, hf2, ht2)):
+            row_errors.append("Σε ΡΕΠΟ δεν πρέπει να υπάρχουν ώρες")
+        return "rest", [], "ΑΝ", row_errors
+    if any((hf1, ht1, hf2, ht2)):
+        intervals = _build_intervals(hf1, ht1, hf2, ht2)
+        row_errors.extend(
+            _validate_proposed_row(import_action="work", intervals=intervals)
+        )
+        return "work", intervals, "ΕΡΓ", row_errors
+    return "skip", [], None, row_errors
+
+
+def _parse_single_week_sheet(
+    wb: Any,
+    *,
+    meta: dict[str, Any],
     employer_afm: str,
     branch_aa: str,
+    employees: dict[str, dict[str, Any]],
+    known_afms: set[str],
 ) -> dict[str, Any]:
-    wb = load_workbook(filename=__import__("io").BytesIO(file_bytes), data_only=True)
-    if INSTRUCTIONS_SHEET not in wb.sheetnames:
-        raise ValueError("Το αρχείο δεν περιέχει φύλλο «Οδηγίες»")
+    monday = _monday_from_meta(meta)
+    if not monday:
+        raise ValueError(
+            "Το φύλλο «Οδηγίες» δεν έχει έγκυρη εβδομάδα (A2) — απαιτείται ημερομηνία Δευτέρας"
+        )
 
-    meta = _read_instructions(wb[INSTRUCTIONS_SHEET])
-    employees = {
-        norm_afm(emp.get("afm") or ""): emp
-        for emp in list_employees_for_employer(employer_afm, branch_aa)
+    ws = wb[WEEK_SHEET]
+    errors: list[str] = []
+    work_dates = [(monday + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(7)]
+    schedule_by_date = {
+        wd: list_schedule_for_store(employer_afm, branch_aa, wd) for wd in work_dates
     }
-    known_afms = set(employees.keys())
 
+    base_headers = [str(ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, c).value or "").strip() for c in range(1, 4)]
+    if base_headers != BASE_HEADERS:
+        errors.append(
+            f"Το φύλλο «{WEEK_SHEET}» δεν έχει τα αναμενόμενα headers "
+            f"({', '.join(BASE_HEADERS)}) στη γραμμή {SINGLE_SHEET_HEADER_ROW_FIELDS}"
+        )
+
+    parsed_rows: list[dict[str, Any]] = []
+    row_no = 0
+
+    for r in range(SINGLE_SHEET_DATA_START_ROW, ws.max_row + 1):
+        afm_raw = str(ws.cell(r, 1).value or "").strip()
+        if not afm_raw:
+            continue
+        afm = norm_afm(afm_raw)
+        eponymo = str(ws.cell(r, 2).value or "").strip()
+        onoma = str(ws.cell(r, 3).value or "").strip()
+
+        for day_idx, work_date in enumerate(work_dates):
+            energia_col = single_sheet_day_col(day_idx, 0)
+            action_raw = str(ws.cell(r, energia_col).value or "")
+            hf1 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 1)).value)
+            ht1 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 2)).value)
+            hf2 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 3)).value)
+            ht2 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 4)).value)
+
+            import_action, intervals, schedule_type, row_errors = _parse_excel_day_entry(
+                action_raw=action_raw,
+                hf1=hf1,
+                ht1=ht1,
+                hf2=hf2,
+                ht2=ht2,
+                afm=afm,
+                known_afms=known_afms,
+            )
+            row_no += 1
+            parsed_rows.append(
+                _build_import_row(
+                    row_no=row_no,
+                    sheet_name=WEEK_SHEET,
+                    work_date=work_date,
+                    afm=afm,
+                    eponymo=eponymo or (employees.get(afm) or {}).get("eponymo"),
+                    onoma=onoma or (employees.get(afm) or {}).get("onoma"),
+                    import_action=import_action,
+                    intervals=intervals,
+                    schedule_type=schedule_type,
+                    current_schedule=schedule_by_date[work_date],
+                    row_errors=row_errors,
+                )
+            )
+
+    actual_label, actual_from, actual_to = _week_label_from_dates(work_dates)
+    if actual_label:
+        instructions_label = str(meta.get("instructions_week_label") or meta.get("week_label") or "").strip()
+        meta["week_label"] = actual_label
+        meta["week_from"] = actual_from
+        meta["week_to"] = actual_to
+        if instructions_label and instructions_label != actual_label:
+            errors.append(
+                "Η εβδομάδα στο φύλλο «Οδηγίες» "
+                f"({instructions_label}) διαφέρει από την αναμενόμενη "
+                f"({actual_label}) — χρησιμοποιούνται οι ημερομηνίες του template."
+            )
+
+    return {
+        "meta": meta,
+        "work_dates": work_dates,
+        "rows": parsed_rows,
+        "errors": errors,
+        "summary": summarize_import_rows(parsed_rows),
+    }
+
+
+def _parse_legacy_multi_sheet(
+    wb: Any,
+    *,
+    meta: dict[str, Any],
+    employer_afm: str,
+    branch_aa: str,
+    employees: dict[str, dict[str, Any]],
+    known_afms: set[str],
+) -> dict[str, Any]:
     parsed_rows: list[dict[str, Any]] = []
     errors: list[str] = []
     work_dates: list[str] = []
@@ -359,27 +500,15 @@ def parse_weekly_schedule_workbook(
             hf2 = _format_time_cell(ws.cell(r, 7).value)
             ht2 = _format_time_cell(ws.cell(r, 8).value)
 
-            row_errors: list[str] = []
-            if afm not in known_afms:
-                row_errors.append(f"Άγνωστο ΑΦΜ {afm} για το κατάστημα")
-
-            if action == "ΡΕΠΟ":
-                import_action = "rest"
-                intervals: list[dict[str, str]] = []
-                if any((hf1, ht1, hf2, ht2)):
-                    row_errors.append("Σε ΡΕΠΟ δεν πρέπει να υπάρχουν ώρες")
-                schedule_type = "ΑΝ"
-            elif any((hf1, ht1, hf2, ht2)):
-                import_action = "work"
-                intervals = _build_intervals(hf1, ht1, hf2, ht2)
-                schedule_type = "ΕΡΓ"
-                row_errors.extend(
-                    _validate_proposed_row(import_action=import_action, intervals=intervals)
-                )
-            else:
-                import_action = "skip"
-                intervals = []
-                schedule_type = None
+            import_action, intervals, schedule_type, row_errors = _parse_excel_day_entry(
+                action_raw=action,
+                hf1=hf1,
+                ht1=ht1,
+                hf2=hf2,
+                ht2=ht2,
+                afm=afm,
+                known_afms=known_afms,
+            )
 
             parsed_rows.append(
                 _build_import_row(
@@ -445,6 +574,43 @@ def parse_weekly_schedule_workbook(
         "errors": errors,
         "summary": summary,
     }
+
+
+def parse_weekly_schedule_workbook(
+    file_bytes: bytes,
+    *,
+    employer_afm: str,
+    branch_aa: str,
+) -> dict[str, Any]:
+    wb = load_workbook(filename=__import__("io").BytesIO(file_bytes), data_only=True)
+    if INSTRUCTIONS_SHEET not in wb.sheetnames:
+        raise ValueError("Το αρχείο δεν περιέχει φύλλο «Οδηγίες»")
+
+    meta = _read_instructions(wb[INSTRUCTIONS_SHEET])
+    employees = {
+        norm_afm(emp.get("afm") or ""): emp
+        for emp in list_employees_for_employer(employer_afm, branch_aa)
+    }
+    known_afms = set(employees.keys())
+
+    if WEEK_SHEET in wb.sheetnames:
+        return _parse_single_week_sheet(
+            wb,
+            meta=meta,
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            employees=employees,
+            known_afms=known_afms,
+        )
+
+    return _parse_legacy_multi_sheet(
+        wb,
+        meta=meta,
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employees=employees,
+        known_afms=known_afms,
+    )
 
 
 def summarize_import_rows(rows: list[dict[str, Any]]) -> dict[str, int]:

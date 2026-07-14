@@ -2,6 +2,11 @@ Object.assign(window.Office, {
   showMsg(elId, text, ok) {
     const el = document.getElementById(elId);
     if (!el) return;
+    if (!String(text || "").trim()) {
+      el.innerHTML = "";
+      el.className = "msg";
+      return;
+    }
     const ic = ok ? "check-circle-fill" : "exclamation-triangle-fill";
     el.innerHTML = `${this.icon(ic)} <span>${this.escapeHtml(text)}</span>`;
     el.className = "msg show " + (ok ? "ok" : "err");

@@ -1,4 +1,4 @@
-"""Δημιουργία κενού Excel template εβδομαδιαίου ωραρίου."""
+"""Δημιουργία κενού Excel template εβδομαδιαίου ωραρίου (ένα φύλλο)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,20 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from app.repo_entities import list_employees_for_employer
 from app.repo_store import get_store_config
+from app.schedule_excel_layout import (
+    BASE_COL_COUNT,
+    BASE_HEADERS,
+    DAY_COUNT,
+    DAY_FIELD_COUNT,
+    DAY_FIELD_HEADERS,
+    INSTRUCTIONS_SHEET,
+    SINGLE_SHEET_DATA_START_ROW,
+    SINGLE_SHEET_HEADER_ROW_DAY,
+    SINGLE_SHEET_HEADER_ROW_FIELDS,
+    WEEK_SHEET,
+    single_sheet_day_col,
+    single_sheet_last_col,
+)
 
 DAYS = [
     ("Δευτέρα", 0),
@@ -23,8 +37,6 @@ DAYS = [
     ("Σάββατο", 5),
     ("Κυριακή", 6),
 ]
-HEADERS = ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ενέργεια", "Από1", "Έως1", "Από2", "Έως2"]
-TIME_COLS = [5, 6, 7, 8]
 
 
 def resolve_week_monday(which: str, *, today: date | None = None) -> date:
@@ -55,17 +67,21 @@ def build_weekly_schedule_template_bytes(
 
     employees = list_employees_for_employer(store["employer_afm"], store["branch_aa"])
     sunday = week_monday + timedelta(days=6)
+    last_col = single_sheet_last_col()
+    last_letter = get_column_letter(last_col)
 
     thin = Side(style="thin", color="D9E2F2")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     header_fill = PatternFill("solid", fgColor="1F4E78")
+    day_fill = PatternFill("solid", fgColor="2E75B6")
     warn_fill = PatternFill("solid", fgColor="FFF2CC")
     header_font = Font(color="FFFFFF", bold=True)
+    day_font = Font(color="FFFFFF", bold=True, size=10)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     wb = Workbook()
     info = wb.active
-    info.title = "Οδηγίες"
+    info.title = INSTRUCTIONS_SHEET
     info["A1"] = f"Εβδομαδιαίο ωράριο - {store['name']}"
     info["A1"].font = Font(bold=True, size=14)
     info["A2"] = f"Εβδομάδα {week_monday.strftime('%d/%m/%Y')} - {sunday.strftime('%d/%m/%Y')}"
@@ -73,16 +89,15 @@ def build_weekly_schedule_template_bytes(
     instructions = [
         "",
         "Οδηγίες:",
-        "1. Κάθε ημέρα είναι ξεχωριστό φύλλο (tab) κάτω-κάτω.",
-        "2. Κάθε φύλλο δείχνει την πραγματική ημερομηνία στον τίτλο.",
-        "3. Μία γραμμή ανά εργαζόμενο.",
+        "1. Όλες οι ημέρες της εβδομάδας είναι στο φύλλο «Εβδομάδα».",
+        "2. Μία γραμμή ανά εργαζόμενο· κάθε ημέρα έχει 5 στήλες.",
+        "3. Ανά ημέρα: Ενέργεια, Από1, Έως1, Από2, Έως2.",
         "4. Στήλη Ενέργεια: μόνο ΡΕΠΟ ή κενό.",
         "   - ΡΕΠΟ = ρεπό εκείνη την ημέρα (οι ώρες αγνοούνται).",
         "   - Κενό + ώρες συμπληρωμένες = αλλαγή ωραρίου.",
-        "   - Κενό + κενές ώρες = καμία αλλαγή.",
-        "   - Αν λείπει εντελώς από το φύλλο = χωρίς εργασία (ΡΕΠΟ).",
+        "   - Κενό + κενές ώρες = καμία αλλαγή για την ημέρα.",
         "5. Οι ώρες γράφονται ΩΩ:ΛΛ (π.χ. 09:00, 17:30).",
-        "6. Για σπαστό ωράριο συμπλήρωσε και Από2/Έως2.",
+        "6. Για σπαστό ωράριο συμπλήρωσε και Από2/Έως2 (2ο διάστημα).",
     ]
     r = 3
     for text in instructions:
@@ -94,67 +109,105 @@ def build_weekly_schedule_template_bytes(
     info["B17"] = store["employer_afm"]
     info["A18"] = "Branch AA"
     info["B18"] = store["branch_aa"]
-    info.column_dimensions["A"].width = 40
+    info.column_dimensions["A"].width = 44
     info.column_dimensions["B"].width = 24
 
-    for day_name, offset in DAYS:
-        d = week_monday + timedelta(days=offset)
-        ws = wb.create_sheet(f"{day_name} {d.strftime('%d-%m')}")
-        ws["A1"] = f"{day_name} {d.strftime('%d/%m/%Y')}"
-        ws["A1"].font = Font(bold=True, size=12)
-        ws.merge_cells("A1:H1")
-        ws["A2"] = "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες: ΩΩ:ΛΛ"
-        ws["A2"].font = Font(italic=True)
-        ws["A2"].fill = warn_fill
-        ws.merge_cells("A2:H2")
+    ws = wb.create_sheet(WEEK_SHEET)
+    ws["A1"] = (
+        f"Εβδομαδιαίο ωράριο — {week_monday.strftime('%d/%m/%Y')} έως "
+        f"{sunday.strftime('%d/%m/%Y')}"
+    )
+    ws["A1"].font = Font(bold=True, size=12)
+    ws.merge_cells(f"A1:{last_letter}1")
+    ws["A2"] = (
+        "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες: ΩΩ:ΛΛ  |  "
+        "Σπαστό: συμπλήρωσε Από2/Έως2"
+    )
+    ws["A2"].font = Font(italic=True)
+    ws["A2"].fill = warn_fill
+    ws.merge_cells(f"A2:{last_letter}2")
 
-        for c_idx, title in enumerate(HEADERS, start=1):
-            cell = ws.cell(row=3, column=c_idx, value=title)
+    for day_idx, (day_name, offset) in enumerate(DAYS):
+        d = week_monday + timedelta(days=offset)
+        start_col = single_sheet_day_col(day_idx, 0)
+        end_col = single_sheet_day_col(day_idx, DAY_FIELD_COUNT - 1)
+        cell = ws.cell(
+            row=SINGLE_SHEET_HEADER_ROW_DAY,
+            column=start_col,
+            value=f"{day_name}\n{d.strftime('%d/%m/%Y')}",
+        )
+        cell.fill = day_fill
+        cell.font = day_font
+        cell.alignment = center
+        cell.border = border
+        ws.merge_cells(
+            f"{get_column_letter(start_col)}{SINGLE_SHEET_HEADER_ROW_DAY}:"
+            f"{get_column_letter(end_col)}{SINGLE_SHEET_HEADER_ROW_DAY}"
+        )
+
+    for c_idx, title in enumerate(BASE_HEADERS, start=1):
+        cell = ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=c_idx, value=title)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        cell.border = border
+
+    for day_idx in range(DAY_COUNT):
+        for f_idx, title in enumerate(DAY_FIELD_HEADERS):
+            col = single_sheet_day_col(day_idx, f_idx)
+            cell = ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=col, value=title)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = center
             cell.border = border
 
-        start_row = 4
-        for i, emp in enumerate(employees, start=start_row):
-            ws.cell(row=i, column=1, value=str(emp.get("afm") or ""))
-            ws.cell(row=i, column=2, value=str(emp.get("eponymo") or ""))
-            ws.cell(row=i, column=3, value=str(emp.get("onoma") or ""))
-            for c in range(1, 9):
-                cell = ws.cell(row=i, column=c)
-                cell.border = border
-                cell.alignment = center
-            for tc in TIME_COLS:
-                ws.cell(row=i, column=tc).number_format = "hh:mm"
+    start_row = SINGLE_SHEET_DATA_START_ROW
+    for i, emp in enumerate(employees, start=start_row):
+        ws.cell(row=i, column=1, value=str(emp.get("afm") or ""))
+        ws.cell(row=i, column=2, value=str(emp.get("eponymo") or ""))
+        ws.cell(row=i, column=3, value=str(emp.get("onoma") or ""))
+        for c in range(1, last_col + 1):
+            cell = ws.cell(row=i, column=c)
+            cell.border = border
+            cell.alignment = center
+        for day_idx in range(DAY_COUNT):
+            for f_idx in (1, 2, 3, 4):
+                col = single_sheet_day_col(day_idx, f_idx)
+                ws.cell(row=i, column=col).number_format = "hh:mm"
 
-        max_row = start_row + len(employees) - 1 if employees else start_row
+    max_row = start_row + len(employees) - 1 if employees else start_row
 
+    for day_idx in range(DAY_COUNT):
+        energia_col = get_column_letter(single_sheet_day_col(day_idx, 0))
         dv_action = DataValidation(
             type="list", formula1='"ΡΕΠΟ"', allow_blank=True, showDropDown=False
         )
         dv_action.errorTitle = "Μη έγκυρη τιμή"
         dv_action.error = "Επιτρέπεται μόνο ΡΕΠΟ ή κενό."
-        dv_action.promptTitle = "Ενέργεια"
-        dv_action.prompt = "Άφησε κενό ή επίλεξε ΡΕΠΟ"
         ws.add_data_validation(dv_action)
-        dv_action.add(f"D{start_row}:D{max_row}")
+        if employees:
+            dv_action.add(f"{energia_col}{start_row}:{energia_col}{max_row}")
 
         dv_time = DataValidation(type="time", allow_blank=True)
         dv_time.errorTitle = "Μη έγκυρη ώρα"
         dv_time.error = "Δώσε ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 09:00)."
-        dv_time.promptTitle = "Ώρα"
-        dv_time.prompt = "Μορφή ΩΩ:ΛΛ, π.χ. 09:00"
         ws.add_data_validation(dv_time)
-        for tc in TIME_COLS:
-            col = get_column_letter(tc)
-            dv_time.add(f"{col}{start_row}:{col}{max_row}")
+        for f_idx in (1, 2, 3, 4):
+            col = get_column_letter(single_sheet_day_col(day_idx, f_idx))
+            if employees:
+                dv_time.add(f"{col}{start_row}:{col}{max_row}")
 
-        widths = {1: 14, 2: 22, 3: 18, 4: 12, 5: 10, 6: 10, 7: 10, 8: 10}
-        for c, w in widths.items():
-            ws.column_dimensions[get_column_letter(c)].width = w
-        ws.freeze_panes = "A4"
-        if employees:
-            ws.auto_filter.ref = f"A3:H{max_row}"
+    ws.column_dimensions["A"].width = 14
+    ws.column_dimensions["B"].width = 22
+    ws.column_dimensions["C"].width = 18
+    for day_idx in range(DAY_COUNT):
+        for f_idx, width in enumerate((11, 9, 9, 9, 9)):
+            col = get_column_letter(single_sheet_day_col(day_idx, f_idx))
+            ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = f"A{start_row}"
+    if employees:
+        ws.auto_filter.ref = f"A{SINGLE_SHEET_HEADER_ROW_FIELDS}:{last_letter}{max_row}"
 
     bio = BytesIO()
     wb.save(bio)
