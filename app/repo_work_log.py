@@ -457,6 +457,23 @@ def append_card_punches_missing_from_work_log(
         return rows
 
     existing: set[tuple[str, str]] = set()
+    day_row_shapes: dict[tuple[str, str], dict[str, bool]] = {}
+    for row in rows:
+        key = (
+            norm_afm(row.get("employee_afm") or ""),
+            str(row.get("work_date") or "").strip(),
+        )
+        hf = bool(str(row.get("hour_from") or "").strip())
+        ht = bool(str(row.get("hour_to") or "").strip())
+        state = day_row_shapes.setdefault(
+            key,
+            {"has_entry_only": False, "has_exit_only": False},
+        )
+        if hf and not ht:
+            state["has_entry_only"] = True
+        elif ht and not hf:
+            state["has_exit_only"] = True
+
     for row in rows:
         key = (
             norm_afm(row.get("employee_afm") or ""),
@@ -470,14 +487,21 @@ def append_card_punches_missing_from_work_log(
         check_out = detail.get("check_out") or {}
         row.setdefault("card_db_in", check_in or None)
         row.setdefault("card_db_out", check_out or None)
+        has_from = bool(str(row.get("hour_from") or "").strip())
+        has_to = bool(str(row.get("hour_to") or "").strip())
+        shape = day_row_shapes.get(key) or {}
         if check_in.get("time") and (
-            not str(row.get("hour_from") or "").strip() or _card_entry_is_correction(check_in)
+            (not has_from and not has_to) or _card_entry_is_correction(check_in)
         ):
             row["hour_from"] = check_in.get("time") or ""
             row["hour_from_source"] = "card_event_fallback"
             row["from_card_event_fallback"] = True
         if check_out.get("time") and (
-            not str(row.get("hour_to") or "").strip() or _card_entry_is_correction(check_out)
+            (
+                not has_to
+                and not (has_from and shape.get("has_exit_only"))
+            )
+            or _card_entry_is_correction(check_out)
         ):
             row["hour_to"] = check_out.get("time") or ""
             row["hour_to_source"] = "card_event_fallback"

@@ -596,10 +596,13 @@ def _evaluate_row(
 
 
 def _card_punch_fields(
+    work_date_ergani: str,
     sched: dict[str, Any] | None,
     wl: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Ένδειξη προγενέστερου χτυπήματος κάρτας από ψηφιακό ωράριο."""
+    if not _is_editable_work_date(work_date_ergani):
+        return {}
     punch_row: dict[str, Any] = {
         "hour_from": (wl or {}).get("hour_from"),
         "hour_to": (wl or {}).get("hour_to"),
@@ -626,17 +629,17 @@ def build_card_status_report(
 
     schedule_rows = list_schedule_for_store(employer_afm, branch_aa, work_date)
     work_log_rows = list_work_log_for_store(employer_afm, branch_aa, work_date)
-    work_log_rows = normalize_overnight_work_log_rows(
-        work_log_rows,
-        employer_afm=employer_afm,
-        branch_aa=branch_aa,
-        ergani_dates=[work_date],
-    )
     append_card_punches_missing_from_work_log(
         work_log_rows,
         employer_afm,
         branch_aa,
         [work_date],
+    )
+    work_log_rows = normalize_overnight_work_log_rows(
+        work_log_rows,
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        ergani_dates=[work_date],
     )
     card_events = list_card_events_for_store_date(
         employer_afm, branch_aa, ref_iso
@@ -778,7 +781,7 @@ def build_card_status_report(
                 or (wto_fix and wto_fix.get("eligible"))
             ),
             "wto_daily": wto_fix,
-            **_card_punch_fields(sched, wl),
+            **_card_punch_fields(work_date, sched, wl),
         })
 
     rows_out.sort(

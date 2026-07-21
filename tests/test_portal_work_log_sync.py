@@ -4,7 +4,7 @@ from app.card_report import build_card_status_report
 from app.repo_work_log import append_card_punches_missing_from_work_log
 
 
-def test_dedupe_work_log_prefers_row_with_exit():
+def test_dedupe_work_log_prefers_more_complete_same_slot():
     rows = [
         {
             "employee_afm": "169914313",
@@ -30,6 +30,35 @@ def test_dedupe_work_log_prefers_row_with_exit():
 
     assert len(deduped) == 1
     assert deduped[0]["hour_to"] == "16:05"
+
+
+def test_dedupe_work_log_keeps_distinct_rows_for_same_employee_same_day():
+    rows = [
+        {
+            "employee_afm": "170577079",
+            "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ",
+            "onoma": "ΑΡΕΤΗ",
+            "work_date": "21/07/2026",
+            "hour_from": "",
+            "hour_to": "00:35",
+            "source_aa": "1",
+        },
+        {
+            "employee_afm": "170577079",
+            "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ",
+            "onoma": "ΑΡΕΤΗ",
+            "work_date": "21/07/2026",
+            "hour_from": "09:06",
+            "hour_to": "",
+            "source_aa": "1",
+        },
+    ]
+
+    deduped = _dedupe_work_log_day_items(rows)
+
+    assert len(deduped) == 2
+    assert deduped[0]["hour_to"] == "00:35"
+    assert deduped[1]["hour_from"] == "09:06"
 
 
 def test_merge_overnight_exit_moves_to_previous_day():
@@ -95,6 +124,34 @@ def test_merge_overnight_exit_drops_duplicate_when_previous_day_complete():
     assert merged["10/07/2026"] == []
 
 
+def test_merge_overnight_exit_drops_followup_exit_when_previous_day_already_marked():
+    by_day = {
+        "20/07/2026": [
+            {
+                "employee_afm": "149348079",
+                "work_date": "20/07/2026",
+                "hour_from": "16:40",
+                "hour_to": "00:35",
+                "is_end_date_different": 1,
+            }
+        ],
+        "21/07/2026": [
+            {
+                "employee_afm": "149348079",
+                "work_date": "21/07/2026",
+                "hour_from": "",
+                "hour_to": "00:40",
+                "is_end_date_different": 0,
+            }
+        ],
+    }
+
+    merged = _merge_overnight_exits_across_days(by_day)
+
+    assert merged["20/07/2026"][0]["hour_to"] == "00:35"
+    assert merged["21/07/2026"] == []
+
+
 def test_append_card_punches_missing_from_work_log(monkeypatch):
     rows = [
         {
@@ -146,6 +203,80 @@ def test_append_card_punches_missing_from_work_log(monkeypatch):
     assert fallback["hour_to"] == ""
     assert fallback["from_card_event_fallback"] is True
     assert fallback["source_aa"] == "card_event_fallback"
+
+
+def test_append_card_punches_does_not_attach_checkin_to_exit_only_row(monkeypatch):
+    rows = [
+        {
+            "employee_afm": "170577079",
+            "work_date": "21/07/2026",
+            "hour_from": "",
+            "hour_to": "00:35",
+        }
+    ]
+
+    monkeypatch.setattr(
+        "app.repo_work_log._card_db_details_by_employee_work_date",
+        lambda employer_afm, branch_aa, dates: {
+            ("170577079", "21/07/2026"): {
+                "types": {"0", "1"},
+                "check_in": {"time": "09:06", "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ", "onoma": "ΑΡΕΤΗ"},
+                "check_out": {"time": "00:35", "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ", "onoma": "ΑΡΕΤΗ"},
+            }
+        },
+    )
+
+    out = append_card_punches_missing_from_work_log(
+        rows,
+        "123456789",
+        "1",
+        ["21/07/2026"],
+    )
+
+    assert len(out) == 1
+    assert out[0]["hour_from"] == ""
+    assert out[0]["hour_to"] == "00:35"
+
+
+def test_append_card_punches_does_not_attach_checkout_when_exit_only_row_exists(monkeypatch):
+    rows = [
+        {
+            "employee_afm": "170577079",
+            "work_date": "21/07/2026",
+            "hour_from": "",
+            "hour_to": "00:35",
+        },
+        {
+            "employee_afm": "170577079",
+            "work_date": "21/07/2026",
+            "hour_from": "09:06",
+            "hour_to": "",
+        },
+    ]
+
+    monkeypatch.setattr(
+        "app.repo_work_log._card_db_details_by_employee_work_date",
+        lambda employer_afm, branch_aa, dates: {
+            ("170577079", "21/07/2026"): {
+                "types": {"0", "1"},
+                "check_in": {"time": "09:06", "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ", "onoma": "ΑΡΕΤΗ"},
+                "check_out": {"time": "00:35", "eponymo": "ΚΑΡΑΓΚΙΟΖΙΔΗ", "onoma": "ΑΡΕΤΗ"},
+            }
+        },
+    )
+
+    out = append_card_punches_missing_from_work_log(
+        rows,
+        "123456789",
+        "1",
+        ["21/07/2026"],
+    )
+
+    assert len(out) == 2
+    assert out[0]["hour_from"] == ""
+    assert out[0]["hour_to"] == "00:35"
+    assert out[1]["hour_from"] == "09:06"
+    assert out[1]["hour_to"] == ""
 
 
 def test_card_report_uses_card_event_fallback_for_missing_exit(monkeypatch):

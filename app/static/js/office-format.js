@@ -98,6 +98,30 @@ Object.assign(window.Office, {
     return `${y}-${m}-${day}`;
   },
 
+  parseClockToMinutes(hm) {
+    const norm = this.normalizeHourMinute(hm || "");
+    if (!norm) return null;
+    const [h, m] = norm.split(":").map((x) => parseInt(x, 10));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  },
+
+  /** Για προγενέστερη καταχώρηση: μην επιτρέπει μελλοντική ώρα (ίδια ημέρα → τώρα). */
+  clampRetroTimeToNow(referenceDateIso, timeHm) {
+    const ref = String(referenceDateIso || "").trim().slice(0, 10);
+    const hm = this.normalizeHourMinute(timeHm || "");
+    if (!hm) return "";
+    const now = new Date();
+    const nowHm = this.formatTime24(now, { seconds: false });
+    const today = this.todayIsoLocal();
+    if (ref > today) return nowHm;
+    if (ref < today) return hm;
+    const punchMin = this.parseClockToMinutes(hm);
+    const nowMin = this.parseClockToMinutes(nowHm);
+    if (punchMin === null || nowMin === null) return hm;
+    return punchMin > nowMin ? nowHm : hm;
+  },
+
   isoCalendarDay(iso) {
     if (!iso) return null;
     return String(iso).slice(0, 10);
@@ -291,7 +315,11 @@ Object.assign(window.Office, {
     }
     if (prefill.retro && prefill.retro_time) {
       const retroTime = document.getElementById("wcRetroTime");
-      const norm = this.normalizeHourMinute(prefill.retro_time);
+      const ref =
+        prefill.date ||
+        retroDatePicker?.getIso?.() ||
+        this.todayIsoLocal();
+      const norm = this.clampRetroTimeToNow(ref, prefill.retro_time);
       if (retroTime && norm) retroTime.value = norm;
     }
     if (prefill.retro_highlight) {

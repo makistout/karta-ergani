@@ -49,27 +49,47 @@ MAX_GRID_PAGES = 80
 
 
 def _work_log_item_score(item: dict[str, Any]) -> tuple[int, int]:
-    """Προτίμηση στην πληρέστερη γραμμή όταν το export έχει διπλό ΑΦΜ."""
+    """Προτίμηση στην πληρέστερη γραμμή όταν δύο γραμμές περιγράφουν το ίδιο slot."""
     has_from = 1 if str(item.get("hour_from") or "").strip() else 0
     has_to = 1 if str(item.get("hour_to") or "").strip() else 0
     return (has_from + has_to, has_to)
 
 
+def _same_work_log_slot(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Ίδιο slot όταν μοιράζονται την ίδια είσοδο ή την ίδια έξοδο."""
+    a_from = str(a.get("hour_from") or "").strip()
+    a_to = str(a.get("hour_to") or "").strip()
+    b_from = str(b.get("hour_from") or "").strip()
+    b_to = str(b.get("hour_to") or "").strip()
+    return bool((a_from and a_from == b_from) or (a_to and a_to == b_to))
+
+
 def _dedupe_work_log_day_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Κρατά μία γραμμή ανά ΑΦΜ, προτιμώντας αυτή που έχει και έξοδο."""
-    best_by_afm: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
+    """
+    Αφαιρεί μόνο πραγματικά διπλές γραμμές.
+
+    Αν το export έχει πολλαπλά rows για ίδιο ΑΦΜ την ίδια μέρα, τα κρατάμε όταν
+    αφορούν διαφορετικά slots (π.χ. orphan έξοδος μετά τα μεσάνυχτα + νέα είσοδος).
+    Συμπτύσσουμε μόνο rows που περιγράφουν το ίδιο slot και κρατάμε το πληρέστερο.
+    """
+    kept: list[dict[str, Any]] = []
     for item in items:
         afm = (item.get("employee_afm") or "").strip()
         if not afm:
             continue
-        if afm not in best_by_afm:
-            order.append(afm)
-            best_by_afm[afm] = item
-            continue
-        if _work_log_item_score(item) > _work_log_item_score(best_by_afm[afm]):
-            best_by_afm[afm] = item
-    return [best_by_afm[afm] for afm in order]
+        replaced = False
+        for idx, existing in enumerate(kept):
+            if (existing.get("employee_afm") or "").strip() != afm:
+                continue
+            if not _same_work_log_slot(existing, item):
+                continue
+            if _work_log_item_score(item) > _work_log_item_score(existing):
+                kept[idx] = item
+            replaced = True
+            break
+        if not replaced:
+            kept.append(item)
+    return kept
 
 
 from app.work_log_overnight import merge_overnight_exits_across_days as _merge_overnight_exits_across_days

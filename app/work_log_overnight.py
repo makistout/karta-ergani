@@ -200,6 +200,9 @@ def merge_overnight_exits_across_days(
                     break
                 prev_hf = str(prev_item.get("hour_from") or "").strip()
                 prev_ht = _exit_hour(prev_item)
+                if prev_hf and prev_ht and bool(prev_item.get("is_end_date_different")):
+                    remove_indexes.add(ni)
+                    break
                 if prev_hf and prev_ht and prev_ht == next_ht:
                     remove_indexes.add(ni)
                     break

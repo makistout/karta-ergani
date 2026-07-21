@@ -30,7 +30,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   retroDatePicker = Office.attachGreekDateField({ inputId: "wcRetroDate" });
   if (retroDatePicker) retroDatePicker.setDisabled(true);
-  Office.bindHourMinuteInput("wcRetroTime");
+  const retroTimeEl = document.getElementById("wcRetroTime");
+  if (retroTimeEl) {
+    Office.bindHourMinuteElement(retroTimeEl, () => setRetroTimeValue(retroTimeEl.value));
+  }
   document.getElementById("btnRefreshCards").onclick = () => refreshDayData();
   document.getElementById("btnCheckIn").onclick = () => submitCard("check_in");
   document.getElementById("btnCheckOut").onclick = () => submitCard("check_out");
@@ -46,10 +49,19 @@ document.addEventListener("DOMContentLoaded", () => {
   initPage();
 });
 
+function retroReferenceDateIso() {
+  return (
+    retroDatePicker?.getIso() ||
+    document.getElementById("wcRetroDate")?.dataset?.iso ||
+    Office.parseDateGr(document.getElementById("wcRetroDate")?.value || "") ||
+    todayIsoLocal()
+  );
+}
+
 function setRetroTimeValue(hhmm) {
   const t = document.getElementById("wcRetroTime");
   if (!t) return;
-  const norm = Office.normalizeHourMinute(hhmm);
+  const norm = Office.clampRetroTimeToNow(retroReferenceDateIso(), hhmm);
   t.value = norm || "";
 }
 
@@ -560,11 +572,13 @@ async function submitCard(eventName, options = {}) {
       document.getElementById("wcRetroDate")?.dataset?.iso ||
       Office.parseDateGr(document.getElementById("wcRetroDate")?.value || "") ||
       "";
-    const retroTime = readRetroTimeValue();
+    let retroTime = readRetroTimeValue();
     if (!referenceDate || !retroTime) {
       showWorkCardMsg("Συμπληρώστε ημερομηνία και ώρα προγενέστερης καταχώρησης.", false);
       return;
     }
+    retroTime = Office.clampRetroTimeToNow(referenceDate, retroTime);
+    setRetroTimeValue(retroTime);
     eventAt = `${referenceDate}T${retroTime}:00`;
   } else {
     referenceDate = cardDate();

@@ -8,6 +8,32 @@
 
 ---
 
+## 2026-07-21 — Νυχτερινή πραγματική (αναφορά/ειδοποιήσεις) και clamp ώρας work-card
+
+### Πραγματική απασχόληση / `/ui/home` / ειδοποιήσεις
+
+- **`work_log_overnight.py`**: αφαίρεση orphan εξόδου D+1 όταν η D-1 έχει ήδη πλήρη νυχτερινή βάρδια
+  (`is_end_date_different`), ακόμα κι αν η ώρα εξόδου δεν ταιριάζει ακριβώς (π.χ. `00:35` vs `00:40`).
+- **`portal_work_log_sync.py`**: dedupe ανά ημέρα κρατά **πολλαπλά slots** για ίδιο ΑΦΜ (orphan έξοδος +
+  νέα είσοδος)· συμπτύσσει μόνο πραγματικά διπλότυπα rows.
+- **`repo_work_log.py`**: card-event fallback δεν κολλάει checkout σε entry-only row όταν υπάρχει
+  ξεχωριστή exit-only γραμμή την ίδια μέρα.
+- **`card_report.py`**: σειρά `append_card_punches` → `normalize_overnight` (ώστε να μην ξαναμπαίνουν
+  orphan exits)· hints προγενέστερου χτυπήματος μόνο για **επεξεργάσιμες** ημέρες.
+- Επηρεάζει γενικά όλα τα καταστήματα: αναφορά αρχικής, scheduled post-sync ειδοποιήσεις,
+  `today_alert_notifications`.
+- Tests: `test_portal_work_log_sync.py` (dedupe slots, overnight merge, card fallback).
+
+### Ψηφιακή κάρτα `/ui/work-card`
+
+- **`office-format.js`**: `clampRetroTimeToNow()` — αν η ημερομηνία κτυπήματος είναι σήμερα και η ώρα
+  μελλοντική, εμφανίζεται/στέλνεται η **τρέχουσα ώρα** (όχι π.χ. τέλος ωραρίου `19:00`/`20:00`).
+- **`work-card-list.js`**: clamp στο prefill, blur/change πεδίου ώρας και πριν την υποβολή WRKCardSE.
+
+Μετά από deploy: recycle IIS app pool (`erganios.gr`).
+
+---
+
 ## 2026-07-14 — Excel εβδομαδιαίου ωραρίου σε ένα φύλλο
 
 ### Template & εισαγωγή
