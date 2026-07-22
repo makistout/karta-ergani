@@ -63,22 +63,30 @@
               <p class="field-hint">Αυτόματες εργασίες που εκτελούνται από τον scheduled sync.</p>
             </div>
           </div>
-          <label class="settings-action-row" for="autoClosePrevDayEnabled">
-            <input id="autoClosePrevDayEnabled" type="checkbox">
-            <span>
-              <strong>Κλείσε αυτόματα όλες τις ανοιχτές κάρτες της προηγούμενης ημέρας</strong>
-              <small>Υποβάλλει έξοδο με ώρα εισόδου + διάρκεια ωραρίου. Σε ρεπό ή χωρίς διάρκεια εφαρμόζεται 8ωρο.</small>
-            </span>
-          </label>
-          <div class="settings-action-grid">
-            <label for="autoClosePrevDayTime">
-              Ώρα εκτέλεσης
-              <input id="autoClosePrevDayTime" type="text" class="input-time-24" inputmode="numeric"
-                placeholder="00:30" maxlength="5" autocomplete="off" value="00:30">
+          <div class="settings-action-block">
+            <label class="settings-action-row" for="autoClosePrevDayEnabled">
+              <input id="autoClosePrevDayEnabled" type="checkbox">
+              <span>
+                <strong>Κλείσε αυτόματα όλες τις ανοιχτές κάρτες της προηγούμενης ημέρας</strong>
+                <small>
+                  Υποβάλλει έξοδο με ώρα εισόδου + διάρκεια ωραρίου. Σε ρεπό ή χωρίς διάρκεια εφαρμόζεται 8ωρο.
+                  <em>Κλείνει πάντα την προηγούμενη ημερομηνία</em> (π.χ. στις 22/07 00:00 κλείνει 21/07, όχι 22/07).
+                </small>
+              </span>
             </label>
-            <div class="settings-action-meta">
-              <span>Τελευταία εκτέλεση</span>
-              <strong id="autoClosePrevDayLastRun">—</strong>
+            <div class="settings-action-details">
+              <div class="settings-action-details-row">
+                <label class="settings-action-time" for="autoClosePrevDayTime">
+                  <span class="settings-action-time-label">Ώρα εκτέλεσης</span>
+                  <input id="autoClosePrevDayTime" type="text" class="input-time-24" inputmode="numeric"
+                    placeholder="00:00" maxlength="5" autocomplete="off" value="00:00">
+                </label>
+                <div class="settings-action-last-run" aria-live="polite">
+                  <span>Τελευταία εκτέλεση</span>
+                  <strong id="autoClosePrevDayLastRun">—</strong>
+                </div>
+              </div>
+              <p class="field-hint settings-action-hint">Για κλείσιμο στα μεσάνυχτα χρησιμοποιήστε <strong>00:00</strong> ή <strong>00:30</strong>.</p>
             </div>
           </div>
           <div class="actions settings-section-actions">
@@ -93,5 +101,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260624storepick1"></script>
-  <script src="/static/js/store-notify.js?v=20260709notifypolicy1"></script>
+  <script src="/static/js/store-notify.js?v=20260722lastrun-gr"></script>
 {% endblock %}

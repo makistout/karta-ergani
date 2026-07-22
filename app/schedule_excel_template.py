@@ -20,10 +20,12 @@ from app.schedule_excel_layout import (
     DAY_FIELD_COUNT,
     DAY_FIELD_HEADERS,
     INSTRUCTIONS_SHEET,
+    ROWS_PER_EMPLOYEE,
     SINGLE_SHEET_DATA_START_ROW,
     SINGLE_SHEET_HEADER_ROW_DAY,
     SINGLE_SHEET_HEADER_ROW_FIELDS,
     WEEK_SHEET,
+    employee_block_start_row,
     single_sheet_day_col,
     single_sheet_last_col,
 )
@@ -75,6 +77,7 @@ def build_weekly_schedule_template_bytes(
     header_fill = PatternFill("solid", fgColor="1F4E78")
     day_fill = PatternFill("solid", fgColor="2E75B6")
     warn_fill = PatternFill("solid", fgColor="FFF2CC")
+    split_fill = PatternFill("solid", fgColor="F8FAFC")
     header_font = Font(color="FFFFFF", bold=True)
     day_font = Font(color="FFFFFF", bold=True, size=10)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -90,14 +93,15 @@ def build_weekly_schedule_template_bytes(
         "",
         "Οδηγίες:",
         "1. Όλες οι ημέρες της εβδομάδας είναι στο φύλλο «Εβδομάδα».",
-        "2. Μία γραμμή ανά εργαζόμενο· κάθε ημέρα έχει 5 στήλες.",
-        "3. Ανά ημέρα: Ενέργεια, Από1, Έως1, Από2, Έως2.",
-        "4. Στήλη Ενέργεια: μόνο ΡΕΠΟ ή κενό.",
+        "2. Κάθε εργαζόμενος έχει 2 γραμμές (συνενωμένες ΑΦΜ/Επώνυμο/Όνομα).",
+        "3. Ανά ημέρα: Ενέργεια, Από, Έως.",
+        "4. Πάνω γραμμή = 1ο διάστημα (Από/Έως). Κάτω γραμμή = 2ο διάστημα (σπαστό).",
+        "5. Στήλη Ενέργεια: μόνο ΡΕΠΟ ή κενό.",
         "   - ΡΕΠΟ = ρεπό εκείνη την ημέρα (οι ώρες αγνοούνται).",
         "   - Κενό + ώρες συμπληρωμένες = αλλαγή ωραρίου.",
         "   - Κενό + κενές ώρες = καμία αλλαγή για την ημέρα.",
-        "5. Οι ώρες γράφονται ΩΩ:ΛΛ (π.χ. 09:00, 17:30).",
-        "6. Για σπαστό ωράριο συμπλήρωσε και Από2/Έως2 (2ο διάστημα).",
+        "6. Οι ώρες: γράψε 4 ψηφία χωρίς άνω κάτω τελεία (π.χ. 0900, 1340).",
+        "   Εμφανίζονται αυτόματα ως 09:00, 13:40.",
     ]
     r = 3
     for text in instructions:
@@ -120,8 +124,8 @@ def build_weekly_schedule_template_bytes(
     ws["A1"].font = Font(bold=True, size=12)
     ws.merge_cells(f"A1:{last_letter}1")
     ws["A2"] = (
-        "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες: ΩΩ:ΛΛ  |  "
-        "Σπαστό: συμπλήρωσε Από2/Έως2"
+        "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες: 4 ψηφία (0900→09:00)  |  "
+        "Σπαστό: κάτω γραμμή = 2ο διάστημα (Από/Έως)"
     )
     ws["A2"].font = Font(italic=True)
     ws["A2"].fill = warn_fill
@@ -144,6 +148,7 @@ def build_weekly_schedule_template_bytes(
             f"{get_column_letter(start_col)}{SINGLE_SHEET_HEADER_ROW_DAY}:"
             f"{get_column_letter(end_col)}{SINGLE_SHEET_HEADER_ROW_DAY}"
         )
+    ws.row_dimensions[SINGLE_SHEET_HEADER_ROW_DAY].height = 30
 
     for c_idx, title in enumerate(BASE_HEADERS, start=1):
         cell = ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=c_idx, value=title)
@@ -162,20 +167,45 @@ def build_weekly_schedule_template_bytes(
             cell.border = border
 
     start_row = SINGLE_SHEET_DATA_START_ROW
-    for i, emp in enumerate(employees, start=start_row):
-        ws.cell(row=i, column=1, value=str(emp.get("afm") or ""))
-        ws.cell(row=i, column=2, value=str(emp.get("eponymo") or ""))
-        ws.cell(row=i, column=3, value=str(emp.get("onoma") or ""))
-        for c in range(1, last_col + 1):
-            cell = ws.cell(row=i, column=c)
-            cell.border = border
-            cell.alignment = center
-        for day_idx in range(DAY_COUNT):
-            for f_idx in (1, 2, 3, 4):
-                col = single_sheet_day_col(day_idx, f_idx)
-                ws.cell(row=i, column=col).number_format = "hh:mm"
+    for emp_idx, emp in enumerate(employees):
+        r1 = employee_block_start_row(emp_idx)
+        r2 = r1 + 1
+        ws.cell(row=r1, column=1, value=str(emp.get("afm") or ""))
+        ws.cell(row=r1, column=2, value=str(emp.get("eponymo") or ""))
+        ws.cell(row=r1, column=3, value=str(emp.get("onoma") or ""))
+        for c in range(1, BASE_COL_COUNT + 1):
+            ws.merge_cells(
+                start_row=r1, start_column=c, end_row=r2, end_column=c
+            )
+            for rr in (r1, r2):
+                cell = ws.cell(row=rr, column=c)
+                cell.border = border
+                cell.alignment = center
 
-    max_row = start_row + len(employees) - 1 if employees else start_row
+        for day_idx in range(DAY_COUNT):
+            energia_col = single_sheet_day_col(day_idx, 0)
+            ws.merge_cells(
+                start_row=r1,
+                start_column=energia_col,
+                end_row=r2,
+                end_column=energia_col,
+            )
+            for rr in (r1, r2):
+                for f_idx in range(DAY_FIELD_COUNT):
+                    col = single_sheet_day_col(day_idx, f_idx)
+                    cell = ws.cell(row=rr, column=col)
+                    cell.border = border
+                    cell.alignment = center
+                    if f_idx in (1, 2):
+                        cell.number_format = r"00\:00"
+                    if rr == r2 and f_idx in (1, 2):
+                        cell.fill = split_fill
+
+    max_row = (
+        employee_block_start_row(len(employees) - 1) + ROWS_PER_EMPLOYEE - 1
+        if employees
+        else start_row
+    )
 
     for day_idx in range(DAY_COUNT):
         energia_col = get_column_letter(single_sheet_day_col(day_idx, 0))
@@ -186,22 +216,16 @@ def build_weekly_schedule_template_bytes(
         dv_action.error = "Επιτρέπεται μόνο ΡΕΠΟ ή κενό."
         ws.add_data_validation(dv_action)
         if employees:
-            dv_action.add(f"{energia_col}{start_row}:{energia_col}{max_row}")
-
-        dv_time = DataValidation(type="time", allow_blank=True)
-        dv_time.errorTitle = "Μη έγκυρη ώρα"
-        dv_time.error = "Δώσε ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 09:00)."
-        ws.add_data_validation(dv_time)
-        for f_idx in (1, 2, 3, 4):
-            col = get_column_letter(single_sheet_day_col(day_idx, f_idx))
-            if employees:
-                dv_time.add(f"{col}{start_row}:{col}{max_row}")
+            # Validation στις πάνω γραμμές κάθε ζεύγους (merged Ενέργεια).
+            for emp_idx in range(len(employees)):
+                r1 = employee_block_start_row(emp_idx)
+                dv_action.add(f"{energia_col}{r1}")
 
     ws.column_dimensions["A"].width = 14
     ws.column_dimensions["B"].width = 22
     ws.column_dimensions["C"].width = 18
     for day_idx in range(DAY_COUNT):
-        for f_idx, width in enumerate((11, 9, 9, 9, 9)):
+        for f_idx, width in enumerate((11, 9, 9)):
             col = get_column_letter(single_sheet_day_col(day_idx, f_idx))
             ws.column_dimensions[col].width = width
 

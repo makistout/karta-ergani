@@ -477,7 +477,17 @@ function renderScheduleImportPreview(preview, fileErrors) {
           .join("")}</ul>`
       : "");
 
-  const visibleRows = rows.filter((r) => r.change_kind !== "skip");
+  const visibleRows = [...rows]
+    .filter((r) => r.change_kind !== "skip")
+    .sort((a, b) => {
+      const dateCmp = erganiDateSortKey(a.work_date) - erganiDateSortKey(b.work_date);
+      if (dateCmp !== 0) return dateCmp;
+      const ep = String(a.eponymo || "").localeCompare(String(b.eponymo || ""), "el");
+      if (ep !== 0) return ep;
+      const on = String(a.onoma || "").localeCompare(String(b.onoma || ""), "el");
+      if (on !== 0) return on;
+      return String(a.employee_afm || "").localeCompare(String(b.employee_afm || ""), "el");
+    });
   if (!visibleRows.length) {
     wrap.innerHTML =
       `<p style="color:var(--muted);">${Office.icon("info-circle")} Δεν βρέθηκαν αλλαγές στο αρχείο.</p>`;

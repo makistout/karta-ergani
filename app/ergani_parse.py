@@ -203,6 +203,28 @@ _EMPLOYMENT_RE = re.compile(
     r"^(\S+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$",
     re.I,
 )
+# Σπαστό: «ΕΡΓΑΣΙΑ 11:00-16:00 ΕΡΓΑΣΙΑ 20:30-23:30» (πολλαπλά διαστήματα στο ίδιο κελί).
+_EMPLOYMENT_INTERVAL_RE = re.compile(
+    r"(\S+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})",
+    re.I,
+)
+
+
+def parse_employment_cell(employment: str) -> list[tuple[str, str, str]]:
+    """
+    Parse κελί απασχόλησης portal → λίστα (shift_type, hour_from, hour_to).
+    Κενή λίστα = ρεπό/μη εργασία χωρίς ώρες (ο καλών βάζει shift ξεχωριστά).
+    """
+    text = (employment or "").strip()
+    if not text:
+        return []
+    m = _EMPLOYMENT_RE.match(text)
+    if m:
+        return [(m.group(1).upper(), m.group(2), m.group(3))]
+    matches = list(_EMPLOYMENT_INTERVAL_RE.finditer(text))
+    if matches:
+        return [(m.group(1).upper(), m.group(2), m.group(3)) for m in matches]
+    return []
 
 
 def _normalize_portal_date(value: str, fallback: str) -> str:
@@ -235,15 +257,16 @@ def portal_rows_to_schedule_items(
         if len(cells) < 9:
             continue
         employment = (cells[8] or "").strip()
-        hour_from, hour_to, shift = "", "", employment
-        m = _EMPLOYMENT_RE.match(employment)
-        if m:
-            shift = m.group(1).upper()
-            hour_from, hour_to = m.group(2), m.group(3)
-        elif "ΑΝΑΠΑΥΣΗ" in employment.upper() or "ΡΕΠΟ" in employment.upper():
-            shift = "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
-        elif "ΜΗ ΕΡΓΑΣΙΑ" in employment.upper():
-            shift = "ΜΗ ΕΡΓΑΣΙΑ"
+        intervals = parse_employment_cell(employment)
+        rest_shift = ""
+        if not intervals:
+            upper = employment.upper()
+            if "ΑΝΑΠΑΥΣΗ" in upper or "ΡΕΠΟ" in upper:
+                rest_shift = "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+            elif "ΜΗ ΕΡΓΑΣΙΑ" in upper:
+                rest_shift = "ΜΗ ΕΡΓΑΣΙΑ"
+            else:
+                rest_shift = employment[:64]
 
         break_txt = (cells[7] or "").strip()
         break_in_work = 1 if "Εντός" in break_txt else 0
@@ -257,20 +280,31 @@ def portal_rows_to_schedule_items(
             break_txt,
         ]
         extra = " · ".join(p for p in extra_parts if p)[:500]
-
-        out.append({
+        base = {
             "employee_afm": afm,
             "onoma": onoma,
             "eponymo": eponymo,
             "work_date": wd,
-            "hour_from": hour_from,
-            "hour_to": hour_to,
-            "shift_type": shift[:64],
             "break_minutes": 0,
             "break_in_work": break_in_work,
             "extra": extra,
             "source_aa": str(cells[0]).strip()[:32],
-        })
+        }
+        if intervals:
+            for shift, hour_from, hour_to in intervals:
+                out.append({
+                    **base,
+                    "hour_from": hour_from,
+                    "hour_to": hour_to,
+                    "shift_type": shift[:64],
+                })
+        else:
+            out.append({
+                **base,
+                "hour_from": "",
+                "hour_to": "",
+                "shift_type": rest_shift[:64] if rest_shift else "",
+            })
     return out
 
 

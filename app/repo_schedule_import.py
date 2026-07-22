@@ -139,7 +139,7 @@ def list_import_rows(batch_id: int) -> list[dict[str, Any]]:
                    ergani_protocol
             FROM dbo.karta_schedule_import_row
             WHERE batch_id = ?
-            ORDER BY work_date, eponymo, onoma, employee_afm, row_no
+            ORDER BY TRY_CONVERT(date, work_date, 103), eponymo, onoma, employee_afm, row_no
             """,
             (int(batch_id),),
         )

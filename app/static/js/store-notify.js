@@ -288,13 +288,21 @@ function normalizeActionTime(value) {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+function formatActionLastRunDate(iso) {
+  const raw = String(iso || "").trim();
+  if (!raw) return "—";
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return raw;
+}
+
 function renderActionSettings() {
   const enabled = document.getElementById("autoClosePrevDayEnabled");
   const time = document.getElementById("autoClosePrevDayTime");
   const last = document.getElementById("autoClosePrevDayLastRun");
   if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
   if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
-  if (last) last.textContent = actionSettings.auto_close_prev_day_last_run_date || "—";
+  if (last) last.textContent = formatActionLastRunDate(actionSettings.auto_close_prev_day_last_run_date);
 }
 
 function collectActionSettingsFromDom() {

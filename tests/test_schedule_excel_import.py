@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 from app.schedule_excel_import import (
     _afms_missing_from_sheet,
     _build_import_row,
+    _format_time_cell,
     parse_weekly_schedule_workbook,
     summarize_import_rows,
 )
@@ -92,6 +93,22 @@ class ScheduleExcelImportAbsentTests(unittest.TestCase):
         self.assertEqual(summary["apply"], 1)
 
 
+class ScheduleExcelTimeCellTests(unittest.TestCase):
+    def test_format_hhmm_digits(self):
+        self.assertEqual(_format_time_cell(900), "09:00")
+        self.assertEqual(_format_time_cell(1340), "13:40")
+        self.assertEqual(_format_time_cell("0900"), "09:00")
+        self.assertEqual(_format_time_cell("13:40"), "13:40")
+
+    def test_format_excel_fraction_still_works(self):
+        # 0.375 ημέρας = 09:00
+        self.assertEqual(_format_time_cell(0.375), "09:00")
+
+    def test_format_invalid_minutes(self):
+        self.assertEqual(_format_time_cell(1399), "")
+        self.assertEqual(_format_time_cell(2500), "")
+
+
 class ScheduleExcelSingleSheetTests(unittest.TestCase):
     def test_single_sheet_template_and_parse_roundtrip(self):
         week_monday = date(2026, 7, 6)
@@ -119,13 +136,21 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
         self.assertEqual(len(wb.sheetnames), 2)
 
         ws = wb[WEEK_SHEET]
+        # Πάνω γραμμή εργαζομένου 1 · Από Δευτέρας (col 5).
+        self.assertEqual(ws.cell(row=5, column=5).number_format, r"00\:00")
+        self.assertEqual(ws.cell(row=5, column=4).value, None)  # Ενέργεια κενή by default
+        # 2 γραμμές ανά εργαζόμενο: AFM μόνο στην πάνω (merged).
+        self.assertEqual(str(ws.cell(row=5, column=1).value), "111111111")
+        self.assertIsNone(ws.cell(row=6, column=1).value)
+
+        # Δευτέρα ΡΕΠΟ · Τρίτη 09:00–17:00 · Τετάρτη σπαστό 10–14 + 17–21
         ws.cell(row=5, column=4, value="ΡΕΠΟ")
-        ws.cell(row=5, column=10, value="09:00")
-        ws.cell(row=5, column=11, value="17:00")
-        ws.cell(row=5, column=15, value="10:00")
-        ws.cell(row=5, column=16, value="14:00")
-        ws.cell(row=5, column=17, value="17:00")
-        ws.cell(row=5, column=18, value="21:00")
+        ws.cell(row=5, column=8, value=900)   # Τρίτη Από
+        ws.cell(row=5, column=9, value=1700)  # Τρίτη Έως
+        ws.cell(row=5, column=11, value=1000)  # Τετάρτη Από1
+        ws.cell(row=5, column=12, value=1400)  # Τετάρτη Έως1
+        ws.cell(row=6, column=11, value=1700)  # Τετάρτη Από2 (κάτω γραμμή)
+        ws.cell(row=6, column=12, value=2100)  # Τετάρτη Έως2
         bio = BytesIO()
         wb.save(bio)
         filled = bio.getvalue()

@@ -13,8 +13,11 @@ from app.repo_entities import list_employees_for_employer
 from app.repo_schedule import list_schedule_for_store
 from app.schedule_excel_layout import (
     BASE_HEADERS,
+    DAY_FIELD_COUNT,
     INSTRUCTIONS_SHEET,
     LEGACY_DAY_HEADERS,
+    LEGACY_WIDE_DAY_FIELD_COUNT,
+    ROWS_PER_EMPLOYEE,
     SINGLE_SHEET_DATA_START_ROW,
     SINGLE_SHEET_HEADER_ROW_FIELDS,
     WEEK_SHEET,
@@ -36,6 +39,18 @@ def _hm_short(value: str | None) -> str:
     return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
+def _hm_from_digits(raw: str) -> str:
+    """Μετατροπή 1–4 ψηφίων σε ΩΩ:ΛΛ (π.χ. 900→09:00, 1340→13:40)."""
+    digits = re.sub(r"\D", "", str(raw or ""))
+    if not digits or len(digits) > 4:
+        return ""
+    digits = digits.zfill(4)
+    h, m = int(digits[:2]), int(digits[2:])
+    if h > 23 or m > 59:
+        return ""
+    return f"{h:02d}:{m:02d}"
+
+
 def _format_time_cell(value: Any) -> str:
     if value is None or value == "":
         return ""
@@ -44,11 +59,22 @@ def _format_time_cell(value: Any) -> str:
     if isinstance(value, datetime):
         return f"{value.hour:02d}:{value.minute:02d}"
     if isinstance(value, (int, float)):
-        total = int(round(float(value) * 24 * 60))
-        total %= 24 * 60
-        h, m = divmod(total, 60)
-        return f"{h:02d}:{m:02d}"
-    return _hm_short(str(value))
+        f = float(value)
+        # Κλάσμα ημέρας Excel (π.χ. 0.375 = 09:00) από παλιά templates hh:mm.
+        if 0 <= f < 1:
+            total = int(round(f * 24 * 60))
+            total %= 24 * 60
+            h, m = divmod(total, 60)
+            return f"{h:02d}:{m:02d}"
+        # Ακέραια ψηφία HHMM με format 00\:00 (π.χ. 900, 1340).
+        if f == int(f):
+            return _hm_from_digits(str(int(f)))
+        return ""
+    text = str(value).strip()
+    as_hm = _hm_short(text)
+    if as_hm:
+        return as_hm
+    return _hm_from_digits(text)
 
 
 def _parse_ergani_date(text: str | None) -> str | None:
@@ -358,6 +384,24 @@ def _parse_excel_day_entry(
     return "skip", [], None, row_errors
 
 
+def _is_legacy_wide_single_sheet(ws: Any) -> bool:
+    """Παλιό format: Από1/Έως1/Από2/Έως2 στην ίδια γραμμή."""
+    label = str(
+        ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, single_sheet_day_col(0, 1, fields_per_day=3)).value
+        or ""
+    ).strip().upper().replace(" ", "")
+    # Στο wide format η στήλη 5 είναι «Από1»· στο stacked είναι «Από».
+    # Ελέγχουμε και τη στήλη του Από2 στο wide (col 7 με 5 fields).
+    apo2 = str(
+        ws.cell(
+            SINGLE_SHEET_HEADER_ROW_FIELDS,
+            single_sheet_day_col(0, 3, fields_per_day=LEGACY_WIDE_DAY_FIELD_COUNT),
+        ).value
+        or ""
+    ).strip().upper().replace(" ", "")
+    return label.startswith("ΑΠΟ1") or apo2.startswith("ΑΠΟ2")
+
+
 def _parse_single_week_sheet(
     wb: Any,
     *,
@@ -387,24 +431,46 @@ def _parse_single_week_sheet(
             f"({', '.join(BASE_HEADERS)}) στη γραμμή {SINGLE_SHEET_HEADER_ROW_FIELDS}"
         )
 
+    legacy_wide = _is_legacy_wide_single_sheet(ws)
+    fields_per_day = LEGACY_WIDE_DAY_FIELD_COUNT if legacy_wide else DAY_FIELD_COUNT
     parsed_rows: list[dict[str, Any]] = []
     row_no = 0
+    max_row = ws.max_row or SINGLE_SHEET_DATA_START_ROW
+    r = SINGLE_SHEET_DATA_START_ROW
 
-    for r in range(SINGLE_SHEET_DATA_START_ROW, ws.max_row + 1):
+    while r <= max_row:
         afm_raw = str(ws.cell(r, 1).value or "").strip()
         if not afm_raw:
+            r += 1
             continue
         afm = norm_afm(afm_raw)
         eponymo = str(ws.cell(r, 2).value or "").strip()
         onoma = str(ws.cell(r, 3).value or "").strip()
+        r2 = r + 1 if not legacy_wide else r
 
         for day_idx, work_date in enumerate(work_dates):
-            energia_col = single_sheet_day_col(day_idx, 0)
+            energia_col = single_sheet_day_col(day_idx, 0, fields_per_day=fields_per_day)
             action_raw = str(ws.cell(r, energia_col).value or "")
-            hf1 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 1)).value)
-            ht1 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 2)).value)
-            hf2 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 3)).value)
-            ht2 = _format_time_cell(ws.cell(r, single_sheet_day_col(day_idx, 4)).value)
+            if legacy_wide:
+                hf1 = _format_time_cell(
+                    ws.cell(r, single_sheet_day_col(day_idx, 1, fields_per_day=fields_per_day)).value
+                )
+                ht1 = _format_time_cell(
+                    ws.cell(r, single_sheet_day_col(day_idx, 2, fields_per_day=fields_per_day)).value
+                )
+                hf2 = _format_time_cell(
+                    ws.cell(r, single_sheet_day_col(day_idx, 3, fields_per_day=fields_per_day)).value
+                )
+                ht2 = _format_time_cell(
+                    ws.cell(r, single_sheet_day_col(day_idx, 4, fields_per_day=fields_per_day)).value
+                )
+            else:
+                apo_col = single_sheet_day_col(day_idx, 1, fields_per_day=fields_per_day)
+                eos_col = single_sheet_day_col(day_idx, 2, fields_per_day=fields_per_day)
+                hf1 = _format_time_cell(ws.cell(r, apo_col).value)
+                ht1 = _format_time_cell(ws.cell(r, eos_col).value)
+                hf2 = _format_time_cell(ws.cell(r2, apo_col).value) if r2 <= max_row else ""
+                ht2 = _format_time_cell(ws.cell(r2, eos_col).value) if r2 <= max_row else ""
 
             import_action, intervals, schedule_type, row_errors = _parse_excel_day_entry(
                 action_raw=action_raw,
@@ -431,6 +497,8 @@ def _parse_single_week_sheet(
                     row_errors=row_errors,
                 )
             )
+
+        r += 1 if legacy_wide else ROWS_PER_EMPLOYEE
 
     actual_label, actual_from, actual_to = _week_label_from_dates(work_dates)
     if actual_label:

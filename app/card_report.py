@@ -104,12 +104,41 @@ def _minutes_now_on_date(work_date_ergani: str) -> int:
 
 def _is_rest_day(shift_type: str | None, hour_from: str | None, hour_to: str | None) -> bool:
     st = (shift_type or "").upper()
+    hf, ht = (hour_from or "").strip(), (hour_to or "").strip()
+    # Ώρες εργασίας υπερισχύουν — π.χ. σπαστό που μπήκε λάθος ως blob στο shift_type.
+    if hf or ht:
+        return False
     if any(marker in st for marker in _REST_MARKERS):
         return True
-    hf, ht = (hour_from or "").strip(), (hour_to or "").strip()
-    if not hf and not ht and st:
-        return True
     return False
+
+
+def _expand_schedule_hours_from_shift_type(sched: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Αν το portal έβαλε «ΕΡΓΑΣΙΑ 11:00-16:00 ΕΡΓΑΣΙΑ 20:30-23:30» στο shift_type χωρίς hour_from/to."""
+    if not sched:
+        return sched
+    hf = (sched.get("hour_from") or "").strip()
+    ht = (sched.get("hour_to") or "").strip()
+    intervals = [
+        item
+        for item in (sched.get("intervals") or [])
+        if (item.get("hour_from") or "").strip() or (item.get("hour_to") or "").strip()
+    ]
+    if hf or ht or intervals:
+        return sched
+    from app.ergani_parse import parse_employment_cell
+
+    parsed = parse_employment_cell(str(sched.get("shift_type") or ""))
+    if not parsed:
+        return sched
+    out = dict(sched)
+    out["intervals"] = [
+        {"hour_from": item[1], "hour_to": item[2]} for item in parsed
+    ]
+    out["hour_from"] = parsed[0][1]
+    out["hour_to"] = parsed[-1][2]
+    out["shift_type"] = parsed[0][0][:64]
+    return out
 
 
 def _is_editable_work_date(work_date_ergani: str) -> bool:
@@ -693,7 +722,9 @@ def build_card_status_report(
     }
 
     for afm in all_afms:
-        sched = sched_by_afm.get(afm)
+        sched = _expand_schedule_hours_from_shift_type(sched_by_afm.get(afm))
+        if sched is not None:
+            sched_by_afm[afm] = sched
         wl = wl_by_afm.get(afm)
         ep, on = _pick_name(
             ((sched or {}).get("eponymo"), (sched or {}).get("onoma")),
