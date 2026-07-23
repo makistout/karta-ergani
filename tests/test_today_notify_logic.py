@@ -227,6 +227,23 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertFalse(notify_auto_send_once("late_check_out"))
         self.assertFalse(notify_auto_send_once("missing_exit_8h"))
 
+    def test_early_check_in_before_schedule_start_not_late_check_in(self):
+        """BAUTISTA-like: χτύπημα 07:24, ωράριο 07:30 — όχι καθυστέρηση εισόδου."""
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "07:24",
+            "hour_to": "",
+            "work_intervals": [{"hour_from": "07:24", "hour_to": ""}],
+            "schedule": {
+                "hour_from": "07:30",
+                "hour_to": "15:30",
+                "intervals": [{"hour_from": "07:30", "hour_to": "15:30"}],
+            },
+        }
+        self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(8, 0)))
+        self.assertIsNone(resolve_today_notify_kind(row, now=self._athens(10, 0)))
+
     def test_split_schedule_late_check_in_uses_interval_slot(self):
         row = {
             "work_date": "24/06/2026",

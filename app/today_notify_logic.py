@@ -206,6 +206,7 @@ def _work_intervals(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _work_entry_covers_interval(work: dict[str, Any], interval: dict[str, Any]) -> bool:
+    """True αν η πραγματική είσοδος ανήκει στο διάστημα (και πρόωρη άφιξη πριν το Από)."""
     entry = _parse_clock_minutes(str(work.get("hour_from") or ""))
     if entry is None:
         return False
@@ -214,7 +215,16 @@ def _work_entry_covers_interval(work: dict[str, Any], interval: dict[str, Any]) 
     if end <= start:
         end += 24 * 60
     entry_abs = entry + (24 * 60 if entry < start and end > 24 * 60 else 0)
-    return start <= entry_abs < end
+    if entry_abs >= end:
+        return False
+    # Ολοκληρωμένο προηγούμενο διάστημα δεν καλύπτει το επόμενο (σπαστό).
+    out_min = _parse_clock_minutes(str(work.get("hour_to") or ""))
+    if out_min is not None:
+        out_abs = out_min + (24 * 60 if out_min < start and end > 24 * 60 else 0)
+        if out_abs <= start:
+            return False
+    # Πρόωρη είσοδος (π.χ. 07:24 για ωράριο 07:30–15:30) μετράει κανονικά.
+    return True
 
 
 def _completed_work_before_interval(work: dict[str, Any], interval: dict[str, Any]) -> bool:
@@ -619,6 +629,9 @@ def resolve_today_notify_kind(
                         interval.get("hour_from"),
                         include_slot=len(intervals) > 1,
                     )
+                return None
+            # Υπάρχει ανοιχτή είσοδος που δεν ταίριαξε διάστημα — όχι late_check_in.
+            if entry_min is not None:
                 return None
         due: list[dict[str, Any]] = []
         for interval in intervals:
