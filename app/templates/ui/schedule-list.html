@@ -7,7 +7,8 @@
       <h1 class="page-title"><i class="bi bi-calendar-week" aria-hidden="true"></i> Ψηφιακό ωράριο</h1>
       <p class="page-desc sync-meta-line" id="scheduleSyncMeta"></p>
       <div class="toolbar-dates card">
-        <div class="toolbar-dates-row">
+        <div class="toolbar-dates-row toolbar-dates-row--schedule">
+          <div id="scheduleListDatePicker" class="schedule-list-date-picker"></div>
           {% if office_has_permission('schedule.submit_daily') %}
           <details class="schedule-download-menu">
             <summary class="btn btn-secondary schedule-download-trigger">
@@ -99,5 +100,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260710dayform3"></script>
-  <script src="/static/js/schedule-list.js?v=20260722importdate"></script>
+  <script src="/static/js/schedule-list.js?v=20260723datepick"></script>
 {% endblock %}

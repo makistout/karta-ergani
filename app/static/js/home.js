@@ -673,6 +673,8 @@ function isEditableWorkDate(row) {
 }
 
 function restDayAlwaysShowActions(row) {
+  // Ρεπό αλλά έχει ήδη χτύπημα/πραγματική → μόνο έξοδος, όχι αλλαγή/ρεπό/άδεια.
+  if (rowHasWorkSignal(row)) return false;
   return Boolean(
     row.rest_day_actions_always ||
       (isEditableWorkDate(row) && scheduleIsRestLike(row.schedule))

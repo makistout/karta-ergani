@@ -1,4 +1,5 @@
 let scheduleListDateIso = "";
+let scheduleListDatePicker = null;
 let currentRange = { start: "", end: "" };
 let tableState = { rows: [], page: 1, count: 0, store: null, range: null, workDates: [] };
 let initialAutoSyncDone = false;
@@ -10,6 +11,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("schedule");
   Office.initWorkLogHistoryModal();
   scheduleListDateIso = Office.todayIsoLocal();
+  if (document.getElementById("scheduleListDatePicker")) {
+    scheduleListDatePicker = Office.createDatePicker({
+      mountId: "scheduleListDatePicker",
+      mode: "single",
+      autoApply: true,
+      quickPresets: ["yesterday", "today", "tomorrow", "dayAfterTomorrow"],
+      quickLabels: {
+        tomorrow: "Αύριο",
+        dayAfterTomorrow: "Μεθαύριο",
+      },
+      onApply: ({ start }) => {
+        if (!start) return;
+        scheduleListDateIso = start;
+        void loadSchedule();
+      },
+    });
+    scheduleListDatePicker.setRange(scheduleListDateIso, scheduleListDateIso);
+  }
   const btnSync = document.getElementById("btnSyncSchedule");
   if (btnSync) btnSync.onclick = () => runSync();
   initScheduleImportUi();
@@ -1003,6 +1022,7 @@ async function submitScheduleDayForm() {
       await Office.recordStoreSync("schedule");
     }
     scheduleListDateIso = dateIso;
+    if (scheduleListDatePicker) scheduleListDatePicker.setRange(dateIso, dateIso);
     const fresh = await Office.fetchActiveStore({ refresh: true });
     Office.applyActiveStoreChrome(fresh);
     await loadSchedule(fresh);

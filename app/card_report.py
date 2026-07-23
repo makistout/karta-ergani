@@ -459,7 +459,11 @@ def _evaluate_row(
             note = "Υπάρχει δήλωση εισόδου στην κάρτα, όχι ακόμα έξοδος"
             if note not in rest_notes:
                 rest_notes.append(note)
-        rest_actions_always = _is_editable_work_date(work_date_ergani)
+        # Repo + punch: hide WTODaily/repo/leave actions.
+        has_work = _has_work_signal(card_in, card_out, wl)
+        rest_actions_always = (
+            _is_editable_work_date(work_date_ergani) and not has_work
+        )
         return {
             "status": rest_status,
             "status_label": rest_label,
