@@ -41,9 +41,16 @@ Office.createAutocomplete = function (opts) {
     list.innerHTML = "";
     items.forEach((item, i) => {
       const li = document.createElement("li");
-      li.textContent = labelOf(item);
+      const label = labelOf(item);
+      const idVal = valueOf(item);
+      li.textContent = label;
       li.setAttribute("role", "option");
       li.id = `${opts.listId}-opt-${i}`;
+      const tip =
+        typeof Office.storeIdTooltip === "function"
+          ? Office.storeIdTooltip(idVal, item.description || item.desc || "")
+          : "";
+      if (tip) li.title = tip;
       if (i === hi) {
         li.classList.add("highlighted");
         li.setAttribute("aria-selected", "true");
@@ -80,11 +87,25 @@ Office.createAutocomplete = function (opts) {
     });
   }
 
+  function applyStoreTitle(item) {
+    if (!item) {
+      input.removeAttribute("title");
+      return;
+    }
+    const tip =
+      typeof Office.storeIdTooltip === "function"
+        ? Office.storeIdTooltip(valueOf(item), item.description || item.desc || "")
+        : "";
+    if (tip) input.title = tip;
+    else input.removeAttribute("title");
+  }
+
   function pick(idx) {
     const item = filtered[idx];
     if (!item) return;
     input.value = labelOf(item);
     if (hidden) hidden.value = valueOf(item);
+    applyStoreTitle(item);
     list.classList.remove("show");
     list.innerHTML = "";
     input.setAttribute("aria-expanded", "false");
@@ -183,6 +204,12 @@ Office.createAutocomplete = function (opts) {
       const item = allItems.find((x) => valueOf(x) === String(code));
       input.value = item ? labelOf(item) : desc || code;
       if (hidden) hidden.value = String(code);
+      if (item) applyStoreTitle(item);
+      else if (typeof Office.storeIdTooltip === "function") {
+        const tip = Office.storeIdTooltip(code, desc || "");
+        if (tip) input.title = tip;
+        else input.removeAttribute("title");
+      }
     },
     getValue() {
       return { code: hidden ? hidden.value : "", label: input.value };
@@ -190,6 +217,7 @@ Office.createAutocomplete = function (opts) {
     clearValue() {
       input.value = "";
       if (hidden) hidden.value = "";
+      input.removeAttribute("title");
       render([]);
     },
     openAll(clearInput = false) {
@@ -197,6 +225,7 @@ Office.createAutocomplete = function (opts) {
       if (clearInput) {
         input.value = "";
         if (hidden) hidden.value = "";
+        input.removeAttribute("title");
       }
       render(allItems.slice(0, maxItems));
     },

@@ -132,13 +132,20 @@ def test_office_manager_menu_hides_admin_only_items_even_with_permissions():
         session[SESSION_USER] = "makis"
         session[SESSION_ROLE] = "office_manager"
         session[SESSION_SUPER_ADMIN] = False
-        session[SESSION_PERMISSIONS] = ["sync.view", "notifications.view", "logs.view", "dashboard.view"]
+        session[SESSION_PERMISSIONS] = [
+            "sync.view",
+            "notifications.view",
+            "logs.view",
+            "dashboard.view",
+            "missing_cards.view",
+        ]
 
     html = client.get("/ui/").get_data(as_text=True)
 
     assert "Συγχρονισμός" not in html
     assert "Ειδοποιήσεις" not in html
     assert "Καταγραφές" not in html
+    assert "Ελλειπή Χτυπήματα" not in html
 
 
 def test_role_aliases_do_not_fallback_to_super_admin():

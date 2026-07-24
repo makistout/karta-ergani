@@ -12,8 +12,6 @@ from app.http_helpers import json_or_text, response_body_text
 from app.karta_log import KartaLogger
 from app.repo_card import card_event_exists, persist_wrk_card_submit
 from app.repo_work_log import (
-    append_card_punches_missing_from_work_log,
-    enrich_work_log_rows_with_card_punch,
     enrich_work_log_rows_with_schedule,
     list_work_log_for_store,
 )
@@ -25,6 +23,7 @@ from app.work_card_payload import (
     norm_afm,
     tz_athens,
 )
+from app.work_card_guards import has_entry_for_checkout
 
 OPERATION_AUTO_CLOSE_PREV_DAY = "auto_close_prev_day_cards"
 DEFAULT_REST_DURATION_MINUTES = 8 * 60
@@ -124,15 +123,60 @@ def _row_is_active(row: dict[str, Any]) -> bool:
     return not (v is False or v == 0 or v == "0")
 
 
+def _portal_open_entry(row: dict[str, Any]) -> tuple[str, str]:
+    """Ώρες από portal πραγματική (όχι από δήλωση κάρτας / fallback)."""
+    hour_from = str(
+        row.get("portal_hour_from")
+        if row.get("portal_hour_from") is not None
+        else row.get("hour_from")
+        or ""
+    ).strip()
+    hour_to = str(
+        row.get("portal_hour_to")
+        if row.get("portal_hour_to") is not None
+        else row.get("hour_to")
+        or ""
+    ).strip()
+    return hour_from, hour_to
+
+
+def _has_portal_work_log_entry(row: dict[str, Any], hour_from: str) -> bool:
+    """Αυτόματη έξοδος μόνο με πραγματική είσοδο από karta_work_log."""
+    if not hour_from:
+        return False
+    if row.get("from_card_event_fallback"):
+        return False
+    if str(row.get("source_aa") or "").strip() == "card_event_fallback":
+        return False
+    src = str(row.get("hour_from_source") or "").strip().lower()
+    if src.startswith("card_event"):
+        return False
+    # Γραμμές μόνο από κάρτα (χωρίς portal id).
+    if row.get("id") is None and (
+        row.get("from_card_event_fallback") is True
+        or str(row.get("source_aa") or "").strip() == "card_event_fallback"
+    ):
+        return False
+    return True
+
+
 def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     plan: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in rows:
         afm = str(row.get("employee_afm") or "").strip()
         name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip() or afm
-        hour_from = str(row.get("hour_from") or "").strip()
-        hour_to = str(row.get("hour_to") or "").strip()
-        if not afm or not hour_from or hour_to:
+        hour_from, hour_to = _portal_open_entry(row)
+        if not afm:
+            continue
+        if hour_to:
+            continue
+        if not hour_from or not _has_portal_work_log_entry(row, hour_from):
+            skipped.append({
+                "employee_afm": afm,
+                "employee_name": name,
+                "reason": "χωρίς πραγματική είσοδο",
+            })
             continue
         if not _row_is_active(row):
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "ανενεργός εργαζόμενος"})
@@ -147,10 +191,18 @@ def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dic
             continue
         duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
         exit_abs = entry_min + duration
+        # f_reference_date = μέρα εργασίας (είσοδος) ώστε το Ergani να δέσει στην ίδια
+        # γραμμή με * · μόνο το f_date/event_at πάει στην επόμενη ημερολογιακή μέρα.
         reference_date = work_date_iso
+        event_date_iso = work_date_iso
         if exit_abs >= 24 * 60:
-            reference_date = (datetime.strptime(work_date_iso, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
-        if card_event_exists(afm, reference_date, "1"):
+            event_date_iso = (
+                datetime.strptime(work_date_iso, "%Y-%m-%d").date() + timedelta(days=1)
+            ).isoformat()
+        if card_event_exists(afm, reference_date, "1") or (
+            event_date_iso != reference_date
+            and card_event_exists(afm, event_date_iso, "1")
+        ):
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "υπάρχει ήδη έξοδος κάρτας"})
             continue
         plan.append({
@@ -160,6 +212,7 @@ def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dic
             "employee_first_name": str(row.get("onoma") or "").strip(),
             "work_date_iso": work_date_iso,
             "reference_date": reference_date,
+            "event_date_iso": event_date_iso,
             "retro_time": _format_minutes_as_clock(exit_abs),
             "duration_minutes": duration,
             "duration_source": "schedule" if _schedule_duration_minutes(row) else "rest_8h",
@@ -171,12 +224,13 @@ def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dic
 def _load_previous_day_rows(cfg: dict[str, Any], work_date_iso: str) -> list[dict[str, Any]]:
     ctx = store_api_context(cfg)
     work_date = format_date_for_ergani(work_date_iso)
+    # Μόνο portal πραγματική — χωρίς fallback χτυπημάτων κάρτας που «εφευρίσκουν» είσοδο.
     rows = list_work_log_for_store(ctx["employer_afm"], ctx["branch_aa"], work_date, limit=5000)
-    append_card_punches_missing_from_work_log(rows, ctx["employer_afm"], ctx["branch_aa"], [work_date])
-    enrich_work_log_rows_with_schedule(rows, ctx["employer_afm"], ctx["branch_aa"], [work_date])
-    enrich_work_log_rows_with_card_punch(rows, ctx["employer_afm"], ctx["branch_aa"])
     for row in rows:
+        row["portal_hour_from"] = str(row.get("hour_from") or "").strip()
+        row["portal_hour_to"] = str(row.get("hour_to") or "").strip()
         row["work_date_iso"] = work_date_iso
+    enrich_work_log_rows_with_schedule(rows, ctx["employer_afm"], ctx["branch_aa"], [work_date])
     return rows
 
 
@@ -349,7 +403,17 @@ def run_auto_close_prev_day_for_store(
     failures: list[dict[str, Any]] = []
     for idx, item in enumerate(plan, 1):
         emp_afm = norm_afm(item["employee_afm"])
-        event_at = f"{item['reference_date']}T{item['retro_time']}:00"
+        event_date = str(item.get("event_date_iso") or item["reference_date"]).strip()[:10]
+        event_at = f"{event_date}T{item['retro_time']}:00"
+        if not has_entry_for_checkout(
+            employer_afm=ctx["employer_afm"],
+            branch_aa=ctx["branch_aa"],
+            employee_afm=emp_afm,
+            reference_date_iso=str(item["reference_date"]),
+            event_at=event_at,
+        ):
+            failures.append({**item, "error": "χωρίς πραγματική/κάρτα είσοδο"})
+            continue
         try:
             payload = build_wrk_card_se_payload(
                 employer_afm=ctx["employer_afm"],
@@ -399,6 +463,7 @@ def run_auto_close_prev_day_for_store(
                 "employee_name": item.get("employee_name"),
                 "event": "check_out",
                 "reference_date": item["reference_date"],
+                "event_date": event_date,
                 "event_at": event_at,
                 "batch_index": idx,
                 "batch_total": len(plan),

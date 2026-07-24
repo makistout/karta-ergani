@@ -451,14 +451,8 @@ def _allows_overnight_exit_on_date(row: dict[str, Any], *, today_iso: str) -> bo
 
 
 def expected_exit_reference_date_iso(row: dict[str, Any]) -> str | None:
-    """Ημερομηνία καταχώρησης εξόδου (ISO) — επόμενη μέρα αν η έξοδος περνά μεσάνυχτα."""
-    wd_iso = ergani_date_to_iso(str(row.get("work_date") or ""))
-    if not wd_iso:
-        return None
-    expected = _expected_exit_minutes(row)
-    if expected is not None and expected_exit_spills_next_day(expected):
-        return _shift_calendar_iso(wd_iso, 1)
-    return wd_iso
+    """Ημερομηνία καταχώρησης εξόδου (ISO) = μέρα εργασίας· το * στο Ergani θέλει ref=είσοδο."""
+    return ergani_date_to_iso(str(row.get("work_date") or ""))
 
 
 def _schedule_duration_minutes(sched_start: int, sched_end: int) -> int | None:

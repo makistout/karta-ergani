@@ -309,6 +309,22 @@ def _submit_work_card(
     event_at_str = str(body.get("event_at") or "").strip() or None
     correction_mode = bool(body.get("correction_mode"))
     employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
+
+    if resolved_type == "1":
+        from app.work_card_guards import (
+            checkout_requires_entry_error,
+            has_entry_for_checkout,
+        )
+
+        if not has_entry_for_checkout(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date_iso=ref_date,
+            event_at=event_at_str,
+        ):
+            return jsonify(checkout_requires_entry_error()), 400
+
     if card_event_exists(emp_afm, ref_date, resolved_type) and not correction_mode:
         existing_event = _latest_existing_card_event(
             employer_afm=erg_s,

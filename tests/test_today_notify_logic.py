@@ -136,7 +136,8 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "hour_from": "22:00",
             "schedule": {"hour_from": "10:00", "hour_to": "18:00"},
         }
-        self.assertEqual(expected_exit_reference_date_iso(row), "2026-06-25")
+        # Ref = μέρα εργασίας (όχι D+1) ώστε Ergani να δέσει με *
+        self.assertEqual(expected_exit_reference_date_iso(row), "2026-06-24")
 
     def test_future_schedule_end_does_not_wrap_to_late_check_out(self):
         row = {

@@ -383,6 +383,7 @@ async function initSyncLogStorePicker() {
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
     syncLogState.storeAc?.setItems(
       (stores || []).map((s) => ({
         value: String(s.id),
@@ -417,6 +418,7 @@ async function initWorkCardPunchesStorePicker() {
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
     syncLogState.punchesStoreAc?.setItems(
       (stores || []).map((s) => ({
         value: String(s.id),
@@ -610,7 +612,7 @@ function renderWorkCardPunches(rows) {
 
     const tdStore = document.createElement("td");
     tdStore.className = "work-card-punch-col-store";
-    tdStore.textContent = row.store_id ? `ID ${row.store_id}` : "—";
+    Office.setStoreIdText(tdStore, row.store_id, { storeName: row.store_name });
     tr.appendChild(tdStore);
 
     const tdStatus = document.createElement("td");
@@ -726,6 +728,7 @@ async function initScheduleChangesStorePicker() {
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
     syncLogState.scheduleStoreAc?.setItems(
       (stores || []).map((s) => ({
         value: String(s.id),
@@ -817,7 +820,7 @@ function renderScheduleChanges(rows) {
     tr.appendChild(tdAction);
 
     const tdStore = document.createElement("td");
-    tdStore.textContent = row.store_id ? `ID ${row.store_id}` : "—";
+    Office.setStoreIdText(tdStore, row.store_id, { storeName: row.store_name });
     tr.appendChild(tdStore);
 
     const tdStatus = document.createElement("td");
@@ -974,7 +977,10 @@ function renderNotifySent(rows, total) {
     tr.appendChild(tdTs);
 
     const tdStore = document.createElement("td");
-    tdStore.textContent = row.store_name || (row.store_id ? `#${row.store_id}` : "—");
+    Office.setStoreNameOrIdText(tdStore, {
+      storeId: row.store_id,
+      storeName: row.store_name,
+    });
     tr.appendChild(tdStore);
 
     const tdChannel = document.createElement("td");
@@ -1078,7 +1084,10 @@ function renderNotifyActions(rows) {
     tr.appendChild(tdActor);
 
     const tdStore = document.createElement("td");
-    tdStore.textContent = row.notification_actor?.store_name || (row.store_id ? `#${row.store_id}` : "—");
+    Office.setStoreNameOrIdText(tdStore, {
+      storeId: row.store_id,
+      storeName: row.notification_actor?.store_name || row.store_name,
+    });
     tr.appendChild(tdStore);
 
     const tdStatus = document.createElement("td");
@@ -1149,7 +1158,10 @@ function renderRunsTable(runs, pageCount) {
     tr.appendChild(tdOp);
 
     const tdStore = document.createElement("td");
-    tdStore.textContent = run.store_name || (run.store_id ? `#${run.store_id}` : "—");
+    Office.setStoreNameOrIdText(tdStore, {
+      storeId: run.store_id,
+      storeName: run.store_name,
+    });
     tr.appendChild(tdStore);
 
     const tdStatus = document.createElement("td");

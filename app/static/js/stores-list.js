@@ -20,6 +20,7 @@ async function loadStoresList() {
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
     if (!stores.length) {
       wrap.innerHTML =
         "<p style='color:var(--muted);'>Δεν υπάρχουν καταστήματα. Πατήστε «Νέο κατάστημα».</p>";
@@ -37,7 +38,7 @@ async function loadStoresList() {
     stores.forEach((store) => {
       const tr = document.createElement("tr");
       const tdId = document.createElement("td");
-      tdId.innerHTML = `<code class="store-id-badge">${Office.escapeHtml(String(store.id ?? ""))}</code>`;
+      tdId.innerHTML = Office.storeIdBadgeHtml(store.id, store.name);
       tr.appendChild(tdId);
       const tdName = document.createElement("td");
       tdName.innerHTML =

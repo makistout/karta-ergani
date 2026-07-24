@@ -202,6 +202,7 @@ async function initStorePicker() {
     const res = await fetch("/api/store/list");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     stores = await res.json();
+    Office.rememberStoreNames(stores || []);
   } catch (e) {
     input.disabled = true;
     input.placeholder = "Σφάλμα φόρτωσης";

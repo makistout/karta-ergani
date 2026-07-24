@@ -3,6 +3,73 @@ Object.assign(window.Office, {
   RETRO_AITIOLOGIA_LABEL:
     "001 — ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ",
 
+  /** Cache id → όνομα για tooltips σε εμφανίσεις ID καταστήματος. */
+  _storeNamesById: {},
+
+  rememberStoreNames(stores) {
+    if (!Array.isArray(stores)) return;
+    for (const s of stores) {
+      if (s == null || s.id == null) continue;
+      const name = String(s.name || "").trim();
+      if (name) this._storeNamesById[String(s.id)] = name;
+    }
+  },
+
+  storeNameById(storeId) {
+    if (storeId == null || storeId === "") return "";
+    return this._storeNamesById[String(storeId)] || "";
+  },
+
+  /** Κείμενο title/tooltip: «Όνομα · ID 10». */
+  storeIdTooltip(storeId, storeName) {
+    const id = String(storeId ?? "").trim();
+    const name = String(storeName || this.storeNameById(id) || "").trim();
+    if (!id && !name) return "";
+    if (name && id) return `${name} · ID ${id}`;
+    if (name) return name;
+    return `ID ${id}`;
+  },
+
+  /** Εμφάνιση «ID 10» με title το όνομα. */
+  setStoreIdText(el, storeId, { storeName, prefix = "ID " } = {}) {
+    if (!el) return;
+    const id = storeId != null && storeId !== "" ? String(storeId) : "";
+    if (!id) {
+      el.textContent = "—";
+      el.removeAttribute("title");
+      return;
+    }
+    el.textContent = `${prefix}${id}`;
+    const tip = this.storeIdTooltip(id, storeName);
+    if (tip) el.title = tip;
+    else el.removeAttribute("title");
+  },
+
+  /** Όνομα ή `#id` fallback· title πάντα με όνομα + ID. */
+  setStoreNameOrIdText(el, { storeId, storeName } = {}) {
+    if (!el) return;
+    const id = storeId != null && storeId !== "" ? String(storeId) : "";
+    const name = String(storeName || this.storeNameById(id) || "").trim();
+    if (name) el.textContent = name;
+    else if (id) el.textContent = `#${id}`;
+    else {
+      el.textContent = "—";
+      el.removeAttribute("title");
+      return;
+    }
+    const tip = this.storeIdTooltip(id, name);
+    if (tip) el.title = tip;
+    else el.removeAttribute("title");
+  },
+
+  /** Badge HTML για στήλη ID στη λίστα καταστημάτων. */
+  storeIdBadgeHtml(storeId, storeName) {
+    const id = String(storeId ?? "").trim();
+    const tip = this.storeIdTooltip(id, storeName);
+    const tipAttr = tip ? ` title="${this.escapeHtml(tip)}"` : "";
+    return `<code class="store-id-badge"${tipAttr}>${this.escapeHtml(id)}</code>`;
+  },
+
   async parseJson(res) {
     const text = await res.text();
     if (!text || !text.trim()) {

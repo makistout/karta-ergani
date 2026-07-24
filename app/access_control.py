@@ -14,7 +14,7 @@ SESSION_PERMISSIONS = "office_permissions"
 SESSION_SUPER_ADMIN = "office_super_admin"
 
 ADMIN_NAV_ROLES = {"super_admin", "admin", "backoffice_admin"}
-ADMIN_ONLY_NAVS = {"sync", "settings", "synclog"}
+ADMIN_ONLY_NAVS = {"sync", "settings", "synclog", "missingcards"}
 
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
