@@ -32,7 +32,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (retroDatePicker) retroDatePicker.setDisabled(true);
   const retroTimeEl = document.getElementById("wcRetroTime");
   if (retroTimeEl) {
-    Office.bindHourMinuteElement(retroTimeEl, () => setRetroTimeValue(retroTimeEl.value));
+    Office.bindHourMinuteElement(retroTimeEl, (el) => {
+      // Clamp μόνο σε πλήρες ΩΩ:ΛΛ (blur/ολοκληρωμένο) — αλλιώς χάνεται η πληκτρολόγηση.
+      const raw = el?.value || "";
+      if (Office.normalizeHourMinute(raw)) setRetroTimeValue(raw);
+    });
   }
   document.getElementById("btnRefreshCards").onclick = () => refreshDayData();
   document.getElementById("btnCheckIn").onclick = () => submitCard("check_in");
@@ -58,11 +62,23 @@ function retroReferenceDateIso() {
   );
 }
 
-function setRetroTimeValue(hhmm) {
+function setRetroTimeValue(hhmm, { clamp = true } = {}) {
   const t = document.getElementById("wcRetroTime");
   if (!t) return;
-  const norm = Office.clampRetroTimeToNow(retroReferenceDateIso(), hhmm);
-  t.value = norm || "";
+  const raw = String(hhmm || "").trim();
+  if (!raw) {
+    t.value = "";
+    return;
+  }
+  // Μην σβήνεις ατελή πληκτρολόγηση (π.χ. "1", "16", "16:3") — μόνο πλήρες ΩΩ:ΛΛ.
+  const norm = Office.normalizeHourMinute(raw);
+  if (!norm) {
+    t.value = Office.formatHourMinuteInput(raw);
+    return;
+  }
+  t.value = clamp
+    ? Office.clampRetroTimeToNow(retroReferenceDateIso(), norm) || ""
+    : norm;
 }
 
 function readRetroTimeValue() {
@@ -579,12 +595,21 @@ async function submitCard(eventName, options = {}) {
     }
     retroTime = Office.clampRetroTimeToNow(referenceDate, retroTime);
     setRetroTimeValue(retroTime);
+    // Το backend normalize_overnight_checkout_reference δένει έξοδο <03:00 με *.
     eventAt = `${referenceDate}T${retroTime}:00`;
   } else {
     referenceDate = cardDate();
     if (!referenceDate) {
       showWorkCardMsg("Επίλεξε ημερομηνία αναφοράς (κάτω).", false);
       return;
+    }
+    // Ζωντανή έξοδος: στέλνουμε τώρα ώστε overnight * πριν από τις 03:00.
+    if (eventName === "check_out") {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      eventAt =
+        `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+        `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     }
   }
 
@@ -638,12 +663,13 @@ async function submitCard(eventName, options = {}) {
       showWorkCardMsg(err, false);
       return;
     }
-    if (retro && datePicker && referenceDate !== cardDate()) {
-      datePicker.setRange(referenceDate, referenceDate);
+    if (retro && datePicker && (data.reference_date || referenceDate) !== cardDate()) {
+      const usedRef = data.reference_date || referenceDate;
+      datePicker.setRange(usedRef, usedRef);
     }
     let okMsg = `Επιτυχία — ${data.f_type_label || label}`;
     if (data.correction_mode) okMsg += " · διορθωτικό";
-    if (retro) okMsg += ` · ${referenceDate}`;
+    if (retro) okMsg += ` · ${data.reference_date || referenceDate}`;
     if (data.protocol) okMsg += ` · ${data.protocol}`;
     showWorkCardMsg(okMsg, true);
     await loadDayData();

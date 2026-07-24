@@ -10,6 +10,10 @@
       </h1>
       <p id="todayHitIntro" class="page-desc" style="margin-top:0;">Φόρτωση…</p>
       <div id="todayHitDetails" class="hidden" style="margin:1rem 0;font-size:0.95rem;line-height:1.5;"></div>
+      <p id="todayHitOvernightHint" class="field-hint hidden">
+        Έξοδος πριν τις 03:00: δηλώστε την πραγματική ημερομηνία/ώρα του κτυπήματος·
+        δένεται αυτόματα στη μέρα της εισόδου με *.
+      </p>
       <label class="field-label" for="todayHitPin">Προσωπικός PIN λήπτη</label>
       <input type="text" id="todayHitPin" class="field-input" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="4 ψηφία" disabled>
       <p class="field-hint">Μετά την επιβεβαίωση επιλέγετε ενέργεια (αναβολή, αλλαγή ωραρίου WTODaily, χτύπημα κάρτας ή — όπου ισχύει — άδεια).</p>
@@ -21,5 +25,5 @@
   </main>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/today-hit.js?v=20260624todaypin2"></script>
+  <script src="/static/js/today-hit.js?v=20260724overnight-hint"></script>
 {% endblock %}

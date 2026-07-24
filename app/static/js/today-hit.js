@@ -40,6 +40,14 @@ document.addEventListener("DOMContentLoaded", () => {
               `</strong>`
             : "");
       }
+      const overnightHint = document.getElementById("todayHitOvernightHint");
+      if (overnightHint) {
+        const kind = String(p.notify_kind || "").split("@", 1)[0];
+        const showOvernight = ["late_check_out", "missing_exit_8h", "exit_needs_correction"].includes(
+          kind
+        );
+        overnightHint.classList.toggle("hidden", !showOvernight);
+      }
       if (pinInput) pinInput.disabled = false;
       if (btn) btn.disabled = false;
     } catch (e) {

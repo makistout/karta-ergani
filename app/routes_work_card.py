@@ -314,6 +314,19 @@ def _submit_work_card(
         from app.work_card_guards import (
             checkout_requires_entry_error,
             has_entry_for_checkout,
+            normalize_overnight_checkout_reference,
+        )
+
+        # Ζωντανή έξοδος χωρίς event_at: τώρα (πριν το overnight normalize).
+        if not event_at_str:
+            event_at_str = datetime.now(tz_athens()).isoformat(timespec="seconds")
+
+        ref_date, event_at_str = normalize_overnight_checkout_reference(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date_iso=ref_date,
+            event_at=event_at_str,
         )
 
         if not has_entry_for_checkout(

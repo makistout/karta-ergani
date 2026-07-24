@@ -651,6 +651,17 @@ input, select {
   line-height: 1.4;
 }
 
+.work-card-retro-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0;
+  line-height: 1.35;
+  width: 100%;
+  max-width: none;
+  display: block;
+  box-sizing: border-box;
+}
+
 .work-card-retro .form-row input.input-time-24 {
   width: 100%;
   max-width: none;
