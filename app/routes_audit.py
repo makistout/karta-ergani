@@ -118,11 +118,24 @@ def audit_list():
     if kind not in (None, "today_notifications", "work_card_punches", "auth", "schedule_changes"):
         kind = None
     try:
-        limit = int(request.args.get("limit", "200"))
+        limit = int(request.args.get("limit", "20"))
     except ValueError:
-        limit = 200
-    rows = list_audit_events(store_id=store_id, kind=kind, limit=limit)
+        limit = 20
+    before_raw = request.args.get("before_id")
+    before_id = int(before_raw) if before_raw and str(before_raw).isdigit() else None
+    limit = max(1, min(limit, 200))
+    result = list_audit_events(
+        store_id=store_id,
+        kind=kind,
+        limit=limit,
+        before_id=before_id,
+    )
+    rows = result.get("rows") or []
     return jsonify({
         "count": len(rows),
+        "has_more": bool(result.get("has_more")),
+        "next_before_id": result.get("next_before_id"),
+        "limit": result.get("limit") or limit,
+        "before_id": before_id,
         "audit": _json_rows(rows),
     })

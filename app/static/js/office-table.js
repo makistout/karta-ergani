@@ -46,6 +46,40 @@ Object.assign(window.Office, {
     return nav;
   },
 
+  /** Σελιδοποίηση χωρίς COUNT (keyset): μόνο προηγούμενη/επόμενη. */
+  buildCursorPager({ page, hasMore, itemCount, pageSize = this.TABLE_PAGE_SIZE, onPrev, onNext }) {
+    const nav = document.createElement("nav");
+    nav.className = "table-pager";
+    nav.setAttribute("aria-label", "Σελίδες αποτελεσμάτων");
+
+    const mkBtn = (label, disabled, handler, extraClass) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `table-pager-btn${extraClass ? ` ${extraClass}` : ""}`;
+      b.textContent = label;
+      b.disabled = disabled;
+      if (!disabled) b.onclick = handler;
+      return b;
+    };
+
+    nav.appendChild(mkBtn("‹", page <= 1, onPrev, "prev"));
+    const pages = document.createElement("span");
+    pages.className = "table-pager-pages";
+    pages.textContent = `Σελίδα ${page}`;
+    nav.appendChild(pages);
+    nav.appendChild(mkBtn("›", !hasMore, onNext, "next"));
+
+    const info = document.createElement("span");
+    info.className = "table-pager-info";
+    const from = itemCount ? (page - 1) * pageSize + 1 : 0;
+    const to = itemCount ? from + itemCount - 1 : 0;
+    info.textContent = itemCount
+      ? `${from}–${to}${hasMore ? "+" : ""}`
+      : "0 αποτελέσματα";
+    nav.appendChild(info);
+    return nav;
+  },
+
   enhanceResponsiveTable(table) {
     if (!table) return;
     const rows = Array.from(table.querySelectorAll("tr"));

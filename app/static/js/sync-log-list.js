@@ -1,5 +1,15 @@
 const syncLogState = {
   page: 1,
+  actionsPage: 1,
+  actionsCursors: [null],
+  sentPage: 1,
+  sentCursors: [null],
+  punchesPage: 1,
+  punchesCursors: [null],
+  schedulePage: 1,
+  scheduleCursors: [null],
+  authPage: 1,
+  authCursors: [null],
   selectedRunId: null,
   refreshTimer: null,
   activeTab: "sync",
@@ -19,6 +29,68 @@ const syncLogState = {
   searchTimer: null,
   sentSearchTimer: null,
 };
+
+function pageSize() {
+  return Office.TABLE_PAGE_SIZE || 20;
+}
+
+function pageOffset(page) {
+  return (Math.max(1, page || 1) - 1) * pageSize();
+}
+
+function resetCursorPager(keyPrefix) {
+  syncLogState[`${keyPrefix}Page`] = 1;
+  syncLogState[`${keyPrefix}Cursors`] = [null];
+}
+
+function appendTablePager(wrap, page, total, onPageChange) {
+  if (!wrap) return;
+  const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize()) || 1);
+  if (totalPages > 1 || page > 1) {
+    wrap.appendChild(
+      Office.buildTablePager(page, totalPages, total || 0, onPageChange, pageSize())
+    );
+  }
+}
+
+function appendCursorPager(wrap, keyPrefix, itemCount, hasMore, reloadFn) {
+  if (!wrap) return;
+  const page = syncLogState[`${keyPrefix}Page`] || 1;
+  if (page <= 1 && !hasMore) return;
+  wrap.appendChild(
+    Office.buildCursorPager({
+      page,
+      hasMore: Boolean(hasMore),
+      itemCount: itemCount || 0,
+      pageSize: pageSize(),
+      onPrev: () => {
+        if (page <= 1) return;
+        syncLogState[`${keyPrefix}Page`] = page - 1;
+        reloadFn();
+      },
+      onNext: () => {
+        if (!hasMore) return;
+        syncLogState[`${keyPrefix}Page`] = page + 1;
+        reloadFn();
+      },
+    })
+  );
+}
+
+function rememberNextCursor(keyPrefix, nextBeforeId, hasMore) {
+  const page = syncLogState[`${keyPrefix}Page`] || 1;
+  const cursors = syncLogState[`${keyPrefix}Cursors`] || [null];
+  if (hasMore && nextBeforeId != null) {
+    cursors[page] = nextBeforeId;
+  }
+  syncLogState[`${keyPrefix}Cursors`] = cursors;
+}
+
+function currentBeforeId(keyPrefix) {
+  const page = syncLogState[`${keyPrefix}Page`] || 1;
+  const cursors = syncLogState[`${keyPrefix}Cursors`] || [null];
+  return cursors[page - 1] ?? null;
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("synclog");
@@ -48,34 +120,42 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => setLogTab(btn.dataset.logTab || "sync"));
   });
   document.getElementById("btnRefreshNotifyActions")?.addEventListener("click", () => {
+    resetCursorPager("actions");
     loadNotifyActions();
   });
   document.getElementById("btnRefreshNotifySent")?.addEventListener("click", () => {
+    resetCursorPager("sent");
     loadNotifySent();
   });
   document.getElementById("btnRefreshWorkCardPunches")?.addEventListener("click", () => {
+    resetCursorPager("punches");
     loadWorkCardPunches();
   });
   document.getElementById("btnRefreshScheduleChanges")?.addEventListener("click", () => {
+    resetCursorPager("schedule");
     loadScheduleChanges();
   });
   document.getElementById("btnClearScheduleChangesStore")?.addEventListener("click", () => {
     syncLogState.scheduleStoreId = "";
+    resetCursorPager("schedule");
     syncLogState.scheduleStoreAc?.clearValue();
     document.getElementById("scheduleChangesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
     loadScheduleChanges();
   });
   document.getElementById("btnRefreshAuthLogs")?.addEventListener("click", () => {
+    resetCursorPager("auth");
     loadAuthLogs();
   });
   document.getElementById("btnClearWorkCardPunchesStore")?.addEventListener("click", () => {
     syncLogState.punchesStoreId = "";
+    resetCursorPager("punches");
     syncLogState.punchesStoreAc?.clearValue();
     document.getElementById("workCardPunchesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
     loadWorkCardPunches();
   });
   document.getElementById("notifySentSearchInput")?.addEventListener("input", (e) => {
     syncLogState.sentQuery = String(e.target.value || "").trim();
+    resetCursorPager("sent");
     if (syncLogState.sentSearchTimer) clearTimeout(syncLogState.sentSearchTimer);
     syncLogState.sentSearchTimer = setTimeout(() => loadNotifySent(), 250);
   });
@@ -251,22 +331,25 @@ async function loadAuthLogs() {
   try {
     const qs = new URLSearchParams({
       kind: "auth",
-      limit: "200",
+      limit: String(pageSize()),
     });
+    const beforeId = currentBeforeId("auth");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
-    renderAuthLogs(data.audit || []);
+    rememberNextCursor("auth", data.next_before_id, data.has_more);
+    renderAuthLogs(data.audit || [], Boolean(data.has_more));
     syncLogState.authLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
 }
 
-function renderAuthLogs(rows) {
+function renderAuthLogs(rows, hasMore) {
   const wrap = document.getElementById("authLogsWrap");
   if (!wrap) return;
   if (!rows.length) {
@@ -325,14 +408,14 @@ function renderAuthLogs(rows) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
+  appendCursorPager(wrap, "auth", rows.length, hasMore, loadAuthLogs);
 }
 
 async function loadRuns(silent) {
   const wrap = document.getElementById("syncLogRunsWrap");
-  const offset = (syncLogState.page - 1) * Office.TABLE_PAGE_SIZE;
   const qs = new URLSearchParams({
-    limit: String(Office.TABLE_PAGE_SIZE),
-    offset: String(offset),
+    limit: String(pageSize()),
+    offset: String(pageOffset(syncLogState.page)),
   });
   if (syncLogState.storeId) qs.set("store_id", syncLogState.storeId);
   if (syncLogState.query) qs.set("q", syncLogState.query);
@@ -411,6 +494,7 @@ async function initWorkCardPunchesStorePicker() {
     labelFn: storeAcLabel,
     onSelect: (item) => {
       syncLogState.punchesStoreId = String(item.value || "");
+      resetCursorPager("punches");
       loadWorkCardPunches();
     },
   });
@@ -533,23 +617,26 @@ async function loadWorkCardPunches() {
   try {
     const qs = new URLSearchParams({
       kind: "work_card_punches",
-      limit: "200",
+      limit: String(pageSize()),
     });
     if (syncLogState.punchesStoreId) qs.set("store_id", syncLogState.punchesStoreId);
+    const beforeId = currentBeforeId("punches");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
-    renderWorkCardPunches(data.audit || []);
+    rememberNextCursor("punches", data.next_before_id, data.has_more);
+    renderWorkCardPunches(data.audit || [], Boolean(data.has_more));
     syncLogState.punchesLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
 }
 
-function renderWorkCardPunches(rows) {
+function renderWorkCardPunches(rows, hasMore) {
   const wrap = document.getElementById("workCardPunchesWrap");
   if (!wrap) return;
   if (!rows.length) {
@@ -634,6 +721,7 @@ function renderWorkCardPunches(rows) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
+  appendCursorPager(wrap, "punches", rows.length, hasMore, loadWorkCardPunches);
 }
 
 function actionLabel(action, path) {
@@ -721,6 +809,7 @@ async function initScheduleChangesStorePicker() {
     labelFn: storeAcLabel,
     onSelect: (item) => {
       syncLogState.scheduleStoreId = String(item.value || "");
+      resetCursorPager("schedule");
       loadScheduleChanges();
     },
   });
@@ -753,23 +842,26 @@ async function loadScheduleChanges() {
   try {
     const qs = new URLSearchParams({
       kind: "schedule_changes",
-      limit: "200",
+      limit: String(pageSize()),
     });
     if (syncLogState.scheduleStoreId) qs.set("store_id", syncLogState.scheduleStoreId);
+    const beforeId = currentBeforeId("schedule");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
-    renderScheduleChanges(data.audit || []);
+    rememberNextCursor("schedule", data.next_before_id, data.has_more);
+    renderScheduleChanges(data.audit || [], Boolean(data.has_more));
     syncLogState.scheduleLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
 }
 
-function renderScheduleChanges(rows) {
+function renderScheduleChanges(rows, hasMore) {
   const wrap = document.getElementById("scheduleChangesWrap");
   if (!wrap) return;
   if (!rows.length) {
@@ -840,6 +932,7 @@ function renderScheduleChanges(rows) {
   t.appendChild(tbody);
   wrap.innerHTML = "";
   wrap.appendChild(t);
+  appendCursorPager(wrap, "schedule", rows.length, hasMore, loadScheduleChanges);
 }
 
 function auditSuccessBadge(row) {
@@ -932,23 +1025,26 @@ async function loadNotifySent() {
     `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
   try {
     const qs = new URLSearchParams({
-      limit: "200",
+      limit: String(pageSize()),
     });
     if (syncLogState.sentQuery) qs.set("q", syncLogState.sentQuery);
+    const beforeId = currentBeforeId("sent");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
     const res = await fetch(`/api/sync-log/notifications?${qs}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
-    renderNotifySent(data.notifications || [], data.count || 0);
+    rememberNextCursor("sent", data.next_before_id, data.has_more);
+    renderNotifySent(data.notifications || [], Boolean(data.has_more));
     syncLogState.sentLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
 }
 
-function renderNotifySent(rows, total) {
+function renderNotifySent(rows, hasMore) {
   const wrap = document.getElementById("notifySentWrap");
   if (!wrap) return;
   if (!rows.length) {
@@ -1015,12 +1111,7 @@ function renderNotifySent(rows, total) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
-  if (total > rows.length) {
-    const more = document.createElement("p");
-    more.className = "field-hint";
-    more.textContent = `Εμφανίζονται ${rows.length} από ${total} εγγραφές. Χρησιμοποιήστε αναζήτηση για πιο στενό αποτέλεσμα.`;
-    wrap.appendChild(more);
-  }
+  appendCursorPager(wrap, "sent", rows.length, hasMore, loadNotifySent);
 }
 
 async function loadNotifyActions() {
@@ -1031,22 +1122,25 @@ async function loadNotifyActions() {
   try {
     const qs = new URLSearchParams({
       kind: "today_notifications",
-      limit: "200",
+      limit: String(pageSize()),
     });
+    const beforeId = currentBeforeId("actions");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
-    renderNotifyActions(data.audit || []);
+    rememberNextCursor("actions", data.next_before_id, data.has_more);
+    renderNotifyActions(data.audit || [], Boolean(data.has_more));
     syncLogState.actionsLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
   }
 }
 
-function renderNotifyActions(rows) {
+function renderNotifyActions(rows, hasMore) {
   const wrap = document.getElementById("notifyActionsWrap");
   if (!wrap) return;
   if (!rows.length) {
@@ -1111,6 +1205,7 @@ function renderNotifyActions(rows) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
+  appendCursorPager(wrap, "actions", rows.length, hasMore, loadNotifyActions);
 }
 
 function renderRunsTable(runs, pageCount) {
@@ -1193,16 +1288,10 @@ function renderRunsTable(runs, pageCount) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
-
-  const totalPages = Math.max(1, Math.ceil(pageCount / Office.TABLE_PAGE_SIZE) || 1);
-  if (totalPages > 1 || syncLogState.page > 1) {
-    wrap.appendChild(
-      Office.buildTablePager(syncLogState.page, totalPages, pageCount, (p) => {
-        syncLogState.page = p;
-        loadRuns();
-      })
-    );
-  }
+  appendTablePager(wrap, syncLogState.page, pageCount, (p) => {
+    syncLogState.page = p;
+    loadRuns();
+  });
 }
 
 async function loadRunDetail(runId, scrollIntoView) {

@@ -471,10 +471,15 @@ def count_notification_sends(
     store_id: int | None = None,
     q: str | None = None,
 ) -> int:
+    """Ακριβές COUNT — αργό σε μεγάλο ιστορικό· προτίμησε has_more από list_notification_sends."""
     if not tables_available():
         return 0
-    where = ["l.fields_json LIKE ?"]
-    params: list[Any] = ["%today_notification_send%"]
+    where = [
+        (
+            "JSON_VALUE(l.fields_json, '$.event') = N'today_notification_send'"
+        )
+    ]
+    params: list[Any] = []
     if store_id is not None:
         where.append("r.store_id = ?")
         params.append(int(store_id))
@@ -505,15 +510,24 @@ def list_notification_sends(
     *,
     store_id: int | None = None,
     q: str | None = None,
-    limit: int = 200,
-    offset: int = 0,
-) -> list[dict[str, Any]]:
+    limit: int = 20,
+    before_id: int | None = None,
+    offset: int | None = None,
+) -> dict[str, Any]:
+    """
+    Keyset σελιδοποίηση (id DESC): διαβάζει μόνο όσες γραμμές χρειάζονται για τη σελίδα.
+    Δεν κάνει COUNT σε όλο το ιστορικό.
+    """
     if not tables_available():
-        return []
-    lim = max(1, min(int(limit), 500))
-    off = max(0, int(offset))
-    where = ["l.fields_json LIKE ?"]
-    params: list[Any] = ["%today_notification_send%"]
+        return {"rows": [], "has_more": False, "limit": 20}
+    lim = max(1, min(int(limit or 20), 200))
+    where = [
+        "JSON_VALUE(l.fields_json, '$.event') = N'today_notification_send'",
+    ]
+    params: list[Any] = []
+    if before_id is not None:
+        where.append("l.id < ?")
+        params.append(int(before_id))
     if store_id is not None:
         where.append("r.store_id = ?")
         params.append(int(store_id))
@@ -522,50 +536,82 @@ def list_notification_sends(
         like = f"%{term}%"
         where.append("(l.message LIKE ? OR l.fields_json LIKE ? OR s.name LIKE ?)")
         params.extend([like, like, like])
+
+    # Legacy offset: μόνο αν ζητηθεί ρητά (αργό σε βαθιές σελίδες).
+    use_offset = before_id is None and offset is not None and int(offset) > 0
+    off = max(0, int(offset or 0)) if use_offset else 0
+
     try:
         with cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT l.run_id, l.seq, l.level, l.message, l.fields_json,
-                       CAST(l.created_at AS DATETIME2) AS created_at,
-                       r.store_id, s.name AS store_name
-                FROM dbo.{_LOG_TABLE} l
-                INNER JOIN dbo.{_RUN_TABLE} r ON r.run_id = l.run_id
-                LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
-                WHERE {' AND '.join(where)}
-                ORDER BY l.created_at DESC, l.seq DESC
-                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """,
-                *params,
-                off,
-                lim,
-            )
+            if use_offset:
+                cur.execute(
+                    f"""
+                    SELECT l.id, l.run_id, l.seq, l.level, l.message, l.fields_json,
+                           CAST(l.created_at AS DATETIME2) AS created_at,
+                           r.store_id, s.name AS store_name
+                    FROM dbo.{_LOG_TABLE} l
+                    INNER JOIN dbo.{_RUN_TABLE} r ON r.run_id = l.run_id
+                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY l.id DESC
+                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """,
+                    *params,
+                    off,
+                    lim + 1,
+                )
+            else:
+                params_top = [lim + 1, *params]
+                cur.execute(
+                    f"""
+                    SELECT TOP (?)
+                           l.id, l.run_id, l.seq, l.level, l.message, l.fields_json,
+                           CAST(l.created_at AS DATETIME2) AS created_at,
+                           r.store_id, s.name AS store_name
+                    FROM dbo.{_LOG_TABLE} l
+                    INNER JOIN dbo.{_RUN_TABLE} r ON r.run_id = l.run_id
+                    LEFT JOIN dbo.karta_store_config s ON s.id = r.store_id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY l.id DESC
+                    """,
+                    *params_top,
+                )
             rows = cur.fetchall()
     except pyodbc.Error:
-        return []
+        return {"rows": [], "has_more": False, "limit": lim}
+
+    has_more = len(rows) > lim
+    rows = rows[:lim]
     out: list[dict[str, Any]] = []
     for row in rows:
         fields: dict[str, Any] = {}
-        if row[4]:
+        if row[5]:
             try:
-                parsed = json.loads(row[4])
+                parsed = json.loads(row[5])
                 if isinstance(parsed, dict):
                     fields = parsed
             except json.JSONDecodeError:
                 fields = {}
         item: dict[str, Any] = {
-            "run_id": row[0],
-            "seq": row[1],
-            "level": row[2],
-            "message": row[3],
+            "id": int(row[0]) if row[0] is not None else None,
+            "run_id": row[1],
+            "seq": row[2],
+            "level": row[3],
+            "message": row[4],
             "fields": fields,
-            "store_id": row[6],
-            "store_name": row[7],
+            "store_id": row[7],
+            "store_name": row[8],
         }
-        if row[5] is not None:
-            item["created_at"] = row[5].isoformat() if hasattr(row[5], "isoformat") else str(row[5])
+        if row[6] is not None:
+            item["created_at"] = row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6])
         out.append(item)
-    return out
+    next_before_id = out[-1]["id"] if out and has_more else None
+    return {
+        "rows": out,
+        "has_more": has_more,
+        "limit": lim,
+        "next_before_id": next_before_id,
+    }
 
 
 def list_lines(run_id: str, limit: int = 150) -> list[dict[str, Any]]:

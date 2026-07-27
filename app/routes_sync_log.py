@@ -84,18 +84,23 @@ def sync_log_notifications():
 
     store_id = request.args.get("store_id", type=int)
     q = (request.args.get("q") or "").strip() or None
-    limit = request.args.get("limit", default=200, type=int) or 200
-    offset = request.args.get("offset", default=0, type=int) or 0
-    rows = repo_sync_log.list_notification_sends(
+    limit = request.args.get("limit", default=20, type=int) or 20
+    limit = max(1, min(int(limit), 200))
+    before_id = request.args.get("before_id", type=int)
+    result = repo_sync_log.list_notification_sends(
         store_id=store_id,
         q=q,
         limit=limit,
-        offset=offset,
+        before_id=before_id,
     )
-    total = repo_sync_log.count_notification_sends(store_id=store_id, q=q)
+    rows = result.get("rows") or []
     return jsonify({
         "notifications": rows,
-        "count": total,
+        "count": len(rows),
+        "has_more": bool(result.get("has_more")),
+        "next_before_id": result.get("next_before_id"),
+        "limit": result.get("limit") or limit,
+        "before_id": before_id,
         "store_id": store_id,
         "q": q,
     })

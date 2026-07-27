@@ -53,10 +53,14 @@ class AuditLogTests(unittest.TestCase):
         ctx = FakeContext()
 
         with patch("app.audit_log.cursor", return_value=ctx):
-            rows = list_audit_events(kind="auth", limit=10)
+            result = list_audit_events(kind="auth", limit=10, before_id=100)
 
-        self.assertEqual(rows, [])
-        self.assertIn("action LIKE 'auth.%'", ctx.cur.sql)
+        self.assertEqual(result["rows"], [])
+        self.assertFalse(result["has_more"])
+        self.assertIn("action LIKE N'auth.%'", ctx.cur.sql)
+        self.assertIn("SELECT TOP (?)", ctx.cur.sql)
+        self.assertEqual(ctx.cur.params[0], 11)  # limit+1
+        self.assertEqual(ctx.cur.params[-1], 100)  # before_id
 
 
 if __name__ == "__main__":

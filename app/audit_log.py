@@ -207,71 +207,143 @@ def record_audit_event(
         return
 
 
-def list_audit_events(
+def _audit_kind_filters(
     *,
     store_id: int | None = None,
     kind: str | None = None,
-    limit: int = 200,
-) -> list[dict[str, Any]]:
-    from app.row_util import rows_to_dicts
-
-    lim = max(1, min(int(limit or 200), 1000))
-    params: list[Any] = [lim]
+) -> tuple[str, list[Any]]:
     filters: list[str] = []
+    params: list[Any] = []
     if store_id is not None:
         filters.append("store_id = ?")
         params.append(int(store_id))
     if kind == "today_notifications":
+        # Prefix σε indexed action — όχι LIKE σε request_path (full scan).
         filters.append(
             """
             (
-                request_path LIKE '/api/telegram/today-hit/%'
-                OR request_path LIKE '/api/telegram/today-action/%'
-                OR endpoint IN (
-                    'telegram.telegram_today_hit_preview',
-                    'telegram.telegram_today_hit_confirm',
-                    'telegram.telegram_today_action_context',
-                    'telegram.telegram_today_action_wto_daily',
-                    'telegram.telegram_today_action_snooze',
-                    'telegram.telegram_today_action_card',
-                    'telegram.telegram_today_action_leave'
-                )
+                action LIKE N'telegram.telegram_today_%'
+                OR endpoint LIKE N'telegram.telegram_today_%'
             )
             """
         )
     elif kind == "work_card_punches":
-        filters.append("action = 'work_card_punch_submit'")
+        filters.append("action = N'work_card_punch_submit'")
     elif kind == "auth":
-        filters.append("action LIKE 'auth.%'")
+        filters.append("action LIKE N'auth.%'")
     elif kind == "schedule_changes":
         filters.append(
             """
             (
-                action = 'wto_daily.schedule_change'
-                OR action = 'schedule_import.batch_applied'
-                OR action LIKE 'schedule_import.%'
+                action = N'wto_daily.schedule_change'
+                OR action = N'schedule_import.batch_applied'
+                OR action LIKE N'schedule_import.%'
             )
             """
         )
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
+    return where, params
+
+
+def count_audit_events(
+    *,
+    store_id: int | None = None,
+    kind: str | None = None,
+) -> int:
+    where, params = _audit_kind_filters(store_id=store_id, kind=kind)
     with cursor(commit=False) as cur:
         cur.execute(
             f"""
-            SELECT TOP (?)
-                id, CAST(created_at AS datetime2) AS created_at,
-                actor_type, actor_name, office_user,
-                store_id, employer_afm, branch_aa,
-                action, entity_type, entity_id,
-                success, http_status,
-                request_method, request_path, endpoint,
-                client_ip, client_device, details_json
+            SELECT COUNT(*)
             FROM dbo.karta_audit_log
             {where}
-            ORDER BY created_at DESC, id DESC
             """,
             tuple(params),
         )
-        return rows_to_dicts(cur)
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+
+
+def list_audit_events(
+    *,
+    store_id: int | None = None,
+    kind: str | None = None,
+    limit: int = 20,
+    before_id: int | None = None,
+    offset: int | None = None,
+) -> dict[str, Any]:
+    """
+    Keyset σελιδοποίηση (id DESC): TOP(limit+1) χωρίς COUNT σε όλο τον πίνακα.
+    """
+    from app.row_util import rows_to_dicts
+
+    lim = max(1, min(int(limit or 20), 200))
+    where, params = _audit_kind_filters(store_id=store_id, kind=kind)
+    extra: list[str] = []
+    if before_id is not None:
+        extra.append("id < ?")
+        params.append(int(before_id))
+    if extra:
+        if where:
+            where = where + " AND " + " AND ".join(extra)
+        else:
+            where = "WHERE " + " AND ".join(extra)
+
+    use_offset = before_id is None and offset is not None and int(offset) > 0
+    off = max(0, int(offset or 0)) if use_offset else 0
+
+    with cursor(commit=False) as cur:
+        if use_offset:
+            cur.execute(
+                f"""
+                SELECT
+                    id, CAST(created_at AS datetime2) AS created_at,
+                    actor_type, actor_name, office_user,
+                    store_id, employer_afm, branch_aa,
+                    action, entity_type, entity_id,
+                    success, http_status,
+                    request_method, request_path, endpoint,
+                    client_ip, client_device, details_json
+                FROM dbo.karta_audit_log
+                {where}
+                ORDER BY id DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                tuple([*params, off, lim + 1]),
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT TOP (?)
+                    id, CAST(created_at AS datetime2) AS created_at,
+                    actor_type, actor_name, office_user,
+                    store_id, employer_afm, branch_aa,
+                    action, entity_type, entity_id,
+                    success, http_status,
+                    request_method, request_path, endpoint,
+                    client_ip, client_device, details_json
+                FROM dbo.karta_audit_log
+                {where}
+                ORDER BY id DESC
+                """,
+                tuple([lim + 1, *params]),
+            )
+        rows = rows_to_dicts(cur)
+
+    has_more = len(rows) > lim
+    rows = rows[:lim]
+    next_before_id = None
+    if has_more and rows:
+        try:
+            next_before_id = int(rows[-1].get("id"))
+        except (TypeError, ValueError):
+            next_before_id = None
+    return {
+        "rows": rows,
+        "has_more": has_more,
+        "limit": lim,
+        "next_before_id": next_before_id,
+    }
 
 
 def _request_payload() -> dict[str, Any] | None:
