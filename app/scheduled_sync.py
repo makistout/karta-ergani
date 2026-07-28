@@ -31,10 +31,55 @@ _after_login_sync_lock = threading.Lock()
 _after_login_sync_seen: dict[str, float] = {}
 
 
+def _enqueue_auto_close_prev_day_action(
+    cfg: dict[str, Any],
+    *,
+    work_date_iso: str,
+    parent_run_id: str,
+) -> dict[str, Any]:
+    from app.auto_close_cards import run_auto_close_prev_day_for_store
+
+    sid = int(cfg["id"])
+    result_holder: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            result = run_auto_close_prev_day_for_store(
+                cfg,
+                work_date_iso=work_date_iso,
+                parent_run_id=parent_run_id,
+            )
+            if result.get("success"):
+                repo_store.mark_auto_close_prev_day_run(sid, work_date_iso)
+            result_holder["result"] = result
+        except Exception as ex:
+            result_holder["result"] = {
+                "success": False,
+                "work_date": work_date_iso,
+                "submitted": 0,
+                "failed": 0,
+                "error": str(ex),
+            }
+
+    thread = threading.Thread(
+        target=_run,
+        daemon=False,
+        name=f"auto-close-prev-day-{sid}",
+    )
+    thread.start()
+    return {
+        "thread": thread,
+        "store_id": sid,
+        "work_date": work_date_iso,
+        "holder": result_holder,
+    }
+
+
 def _run_configured_auto_actions(
     cfg: dict[str, Any],
     *,
     parent_run_id: str,
+    enqueue_auto_close: bool = False,
 ) -> dict[str, Any] | None:
     from app.auto_close_cards import (
         run_auto_close_prev_day_for_store,
@@ -104,6 +149,18 @@ def _run_configured_auto_actions(
             "reason": reason,
             "work_date": previous_day or None,
         }
+        return actions
+    if enqueue_auto_close:
+        actions["auto_close_prev_day"] = {
+            "queued": True,
+            "work_date": previous_day,
+            "reason": "θα εκτελεστεί ασύγχρονα ανά κατάστημα",
+        }
+        actions["_auto_close_job"] = _enqueue_auto_close_prev_day_action(
+            cfg,
+            work_date_iso=previous_day,
+            parent_run_id=parent_run_id,
+        )
         return actions
     result = run_auto_close_prev_day_for_store(
         cfg,
@@ -633,7 +690,10 @@ def sync_store_today(
             auto_actions = _run_configured_auto_actions(
                 refreshed_cfg,
                 parent_run_id=run_id,
+                enqueue_auto_close=True,
             )
+            if auto_actions and auto_actions.get("_auto_close_job"):
+                log.info("Έγινε enqueue ασύγχρονου auto-close προηγούμενης ημέρας")
         except Exception as ex:
             auto_actions = {"auto_close_prev_day": {"success": False, "error": str(ex)}}
             log.error(f"Σφάλμα αυτόματων ενεργειών: {ex}")
@@ -652,6 +712,11 @@ def sync_store_today(
         "schedule_last_sync_at": sync_times.get("schedule_last_sync_at"),
         "work_log_last_sync_at": sync_times.get("work_log_last_sync_at"),
     }
+    if auto_actions and auto_actions.get("_auto_close_job"):
+        result["_auto_close_job"] = auto_actions["_auto_close_job"]
+        auto_actions = dict(auto_actions)
+        auto_actions.pop("_auto_close_job", None)
+        result["auto_actions"] = auto_actions
     _finish_store_run(
         run_id,
         ok=ok,
@@ -791,14 +856,33 @@ def run_scheduled_sync(
         )
 
     results: list[dict[str, Any]] = []
+    pending_auto_close: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for cfg in stores:
-        results.append(
-            sync_store_today(
-                cfg,
-                work_date_iso=today,
-                run_configured_auto_actions=run_configured_auto_actions,
-            )
+        row = sync_store_today(
+            cfg,
+            work_date_iso=today,
+            run_configured_auto_actions=run_configured_auto_actions,
         )
+        job = row.pop("_auto_close_job", None)
+        if job:
+            pending_auto_close.append((row, job))
+        results.append(row)
+
+    for row, job in pending_auto_close:
+        try:
+            job["thread"].join()
+        except Exception:
+            pass
+        result = job.get("holder", {}).get("result") or {
+            "success": False,
+            "work_date": job.get("work_date"),
+            "submitted": 0,
+            "failed": 0,
+            "error": "ασύγχρονο auto-close χωρίς αποτέλεσμα",
+        }
+        actions = row.get("auto_actions") if isinstance(row.get("auto_actions"), dict) else {}
+        actions["auto_close_prev_day"] = result
+        row["auto_actions"] = actions
 
     ok_count = sum(1 for r in results if r.get("success"))
     fail_count = len(results) - ok_count

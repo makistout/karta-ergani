@@ -28,6 +28,19 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertIsNone(before)
         self.assertEqual(after, "late_check_in")
 
+    def test_late_check_in_respects_store_grace_30(self):
+        row = {
+            "work_date": "24/06/2026",
+            "employee_active": True,
+            "hour_from": "",
+            "hour_to": "",
+            "schedule": {"hour_from": "07:28", "hour_to": "15:30"},
+        }
+        at_15 = resolve_today_notify_kind(row, now=self._athens(7, 43), grace_minutes=30)
+        at_30 = resolve_today_notify_kind(row, now=self._athens(7, 58), grace_minutes=30)
+        self.assertIsNone(at_15)
+        self.assertEqual(at_30, "late_check_in")
+
     def test_future_schedule_start_does_not_wrap_to_late_check_in(self):
         row = {
             "work_date": "24/06/2026",

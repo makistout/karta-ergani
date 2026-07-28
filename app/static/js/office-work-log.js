@@ -695,12 +695,13 @@ Object.assign(window.Office, {
   },
 
   /** Ετικέτα ειδοποίησης τύπου 2 (σήμερα). */
-  todayNotifyLabel(kind) {
+  todayNotifyLabel(kind, graceMinutes) {
     const [base, slot] = String(kind || "").split("@");
+    const grace = graceMinutes === 30 || graceMinutes === 45 ? graceMinutes : 15;
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
-      late_check_in: "καθυστέρηση εισόδου (>15' από ωράριο)",
-      late_check_out: "έλλειψη εξόδου (>15' από αναμενόμενη λήξη)",
+      late_check_in: `καθυστέρηση εισόδου (>${grace}' από ωράριο)`,
+      late_check_out: `έλλειψη εξόδου (>${grace}' από αναμενόμενη λήξη)`,
       exit_needs_correction: "χρειάζεται διόρθωση χτυπήματος εξόδου",
       missing_exit_8h: "έλλειψη εξόδου (>8 ώρες από είσοδο)",
     };

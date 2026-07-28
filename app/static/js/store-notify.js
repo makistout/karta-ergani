@@ -31,6 +31,7 @@ let actionSettings = {
   auto_close_prev_day_enabled: false,
   auto_close_prev_day_time: "00:30",
   auto_close_prev_day_last_run_date: null,
+  notify_grace_minutes: 15,
 };
 
 function storeAcLabel(item) {
@@ -297,19 +298,28 @@ function formatActionLastRunDate(iso) {
   return raw;
 }
 
+function normalizeNotifyGraceMinutes(value) {
+  const n = parseInt(String(value ?? "15"), 10);
+  if (n === 30 || n === 45) return n;
+  return 15;
+}
+
 function renderActionSettings() {
   const enabled = document.getElementById("autoClosePrevDayEnabled");
   const time = document.getElementById("autoClosePrevDayTime");
   const last = document.getElementById("autoClosePrevDayLastRun");
+  const grace = document.getElementById("notifyGraceMinutes");
   if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
   if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
   if (last) last.textContent = formatActionLastRunDate(actionSettings.auto_close_prev_day_last_run_date);
+  if (grace) grace.value = String(normalizeNotifyGraceMinutes(actionSettings.notify_grace_minutes));
 }
 
 function collectActionSettingsFromDom() {
   return {
     auto_close_prev_day_enabled: Boolean(document.getElementById("autoClosePrevDayEnabled")?.checked),
     auto_close_prev_day_time: normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value),
+    notify_grace_minutes: normalizeNotifyGraceMinutes(document.getElementById("notifyGraceMinutes")?.value),
   };
 }
 
@@ -321,6 +331,11 @@ function initActionSettingsButtons() {
   });
   document.getElementById("autoClosePrevDayTime")?.addEventListener("input", () => {
     actionSettings.auto_close_prev_day_time = normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value);
+  });
+  document.getElementById("notifyGraceMinutes")?.addEventListener("change", () => {
+    actionSettings.notify_grace_minutes = normalizeNotifyGraceMinutes(
+      document.getElementById("notifyGraceMinutes")?.value
+    );
   });
 }
 
@@ -582,6 +597,7 @@ async function loadActionSettings(storeId) {
         auto_close_prev_day_enabled: false,
         auto_close_prev_day_time: "00:30",
         auto_close_prev_day_last_run_date: null,
+        notify_grace_minutes: 15,
       };
       renderActionSettings();
       return;
@@ -590,6 +606,7 @@ async function loadActionSettings(storeId) {
       auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
       auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
+      notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
     };
     renderActionSettings();
   } catch (e) {
@@ -622,6 +639,7 @@ async function saveActionSettings() {
       auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
       auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
+      notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
     };
     renderActionSettings();
     Office.showMsg("stepMsg", "Οι ενέργειες αποθηκεύτηκαν.", true);

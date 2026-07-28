@@ -219,10 +219,12 @@ def enrich_work_log_rows_with_today_notify_snooze(
     ergani_dates: list[str],
 ) -> None:
     """Σημαία today_notify_snoozed μόνο όταν όλοι οι λήπτες είναι σε αναβολή."""
+    from app.repo_store import get_notify_grace_minutes
     from app.today_notify_logic import resolve_today_notify_kind
 
+    grace = get_notify_grace_minutes(store_id)
     for row in rows:
-        kind = resolve_today_notify_kind(row)
+        kind = resolve_today_notify_kind(row, grace_minutes=grace)
         if not kind:
             row["today_notify_snoozed"] = False
             continue
@@ -239,12 +241,14 @@ def enrich_card_report_rows_with_today_notify(
     store_id: int,
 ) -> None:
     """Σημαία today_notify_kind / today_notify_snoozed για γραμμές αναφοράς αρχικής."""
+    from app.repo_store import get_notify_grace_minutes
     from app.today_notify_logic import (
         card_event_blocks_today_notify,
         notify_row_from_sources,
         resolve_today_notify_kind,
     )
 
+    grace = get_notify_grace_minutes(store_id)
     dates = sorted(
         {
             str(r.get("work_date") or "").strip()
@@ -265,7 +269,8 @@ def enrich_card_report_rows_with_today_notify(
             card=card,
             work_intervals=wl.get("intervals") if isinstance(wl.get("intervals"), list) else [],
         )
-        kind = resolve_today_notify_kind(notify_row)
+        notify_row["notify_grace_minutes"] = grace
+        kind = resolve_today_notify_kind(notify_row, grace_minutes=grace)
         if kind and card_event_blocks_today_notify(
             str(row.get("employee_afm") or ""),
             str(row.get("work_date") or ""),
@@ -273,6 +278,7 @@ def enrich_card_report_rows_with_today_notify(
         ):
             kind = None
         row["today_notify_kind"] = kind
+        row["notify_grace_minutes"] = grace
         if not kind:
             row["today_notify_snoozed"] = False
             continue

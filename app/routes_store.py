@@ -95,11 +95,15 @@ def save_store_action_settings(store_id: int):
 
     data = request.get_json(silent=True) or {}
     time_s = normalize_auto_close_time(data.get("auto_close_prev_day_time"))
+    from app.today_notify_logic import normalize_notify_grace_minutes
+
+    grace = normalize_notify_grace_minutes(data.get("notify_grace_minutes"))
     try:
         settings = repo.save_action_settings(
             store_id,
             auto_close_prev_day_enabled=bool(data.get("auto_close_prev_day_enabled")),
             auto_close_prev_day_time=time_s,
+            notify_grace_minutes=grace,
         )
     except RuntimeError as ex:
         return jsonify({"error": str(ex), "db_setup": "sql/alter_add_store_action_settings.sql"}), 503

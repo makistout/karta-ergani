@@ -479,7 +479,12 @@ def send_today_punch_notifications(
     schedule_hour_from = str((sched or {}).get("hour_from") or "").strip() or None
     schedule_hour_to = str((sched or {}).get("hour_to") or "").strip() or None
 
-    resolved_kind = resolve_today_notify_kind(row)
+    from app.repo_store import get_notify_grace_minutes
+
+    grace = get_notify_grace_minutes(store_id)
+    row["notify_grace_minutes"] = grace
+
+    resolved_kind = resolve_today_notify_kind(row, grace_minutes=grace)
     if resolved_kind and card_event_blocks_today_notify(
         employee_afm, work_date, resolved_kind
     ):
@@ -498,7 +503,7 @@ def send_today_punch_notifications(
             "skipped": "no_alert",
         }
     employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = notify_kind_label(resolved_kind)
+    kind_label = notify_kind_label(resolved_kind, grace_minutes=grace)
     slot_interval = schedule_interval_for_notify_kind(row, resolved_kind)
     if slot_interval:
         schedule_hour_from = str(slot_interval.get("hour_from") or "").strip() or schedule_hour_from

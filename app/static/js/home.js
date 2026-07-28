@@ -614,7 +614,7 @@ function buildTodayNotifyButton(r) {
   const kind = (r.today_notify_kind || "").trim();
   if (!kind) return "";
   const snoozed = Boolean(r.today_notify_snoozed);
-  const label = Office.todayNotifyLabel(kind);
+  const label = Office.todayNotifyLabel(kind, r.notify_grace_minutes);
   const cls =
     "work-log-notify-btn work-log-notify-btn--today" +
     (snoozed ? " work-log-notify-btn--snoozed" : "");
@@ -851,7 +851,7 @@ function renderTable(wrap, rows, meta, multiDay) {
       if (!row) return;
       Office.sendTodayPunchNotify(
         row,
-        { kind, label: Office.todayNotifyLabel(kind) },
+        { kind, label: Office.todayNotifyLabel(kind, row.notify_grace_minutes) },
         btn,
         "cardReportNotifyMsg"
       );

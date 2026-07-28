@@ -1,7 +1,9 @@
-"""Αυτόματο κλείσιμο ανοιχτών εξόδων προηγούμενης ημέρας."""
+"""Αυτόματο κλείσιμο ανοιχτών καρτών της τελευταίας ημέρας εργασίας."""
 
 from __future__ import annotations
 
+import random
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -23,10 +25,17 @@ from app.work_card_payload import (
     norm_afm,
     tz_athens,
 )
-from app.work_card_guards import has_entry_for_checkout
+from app.work_card_guards import (
+    OVERNIGHT_EXIT_BEFORE_MINUTES,
+    has_entry_for_checkout,
+)
+from config import Config
 
 OPERATION_AUTO_CLOSE_PREV_DAY = "auto_close_prev_day_cards"
 DEFAULT_REST_DURATION_MINUTES = 8 * 60
+# Ώρες 00:00–11:59 = μετά τα μεσάνυχτα (κλείνει προηγούμενη, με * αν χρειάζεται).
+# Ώρες 12:00–23:59 = πριν τα μεσάνυχτα (κλείνει τρέχουσα, χωρίς *).
+_AUTO_CLOSE_AFTER_MIDNIGHT_HOUR_LT = 12
 
 
 def normalize_auto_close_time(value: str | None) -> str:
@@ -42,23 +51,47 @@ def normalize_auto_close_time(value: str | None) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def auto_close_allows_overnight_star(cfg: dict[str, Any]) -> bool:
+    """True όταν η ώρα εκτέλεσης είναι μετά τα μεσάνυχτα (00:00–11:59)."""
+    run_time = normalize_auto_close_time(str(cfg.get("auto_close_prev_day_time") or "00:30"))
+    return int(run_time.split(":", 1)[0]) < _AUTO_CLOSE_AFTER_MIDNIGHT_HOUR_LT
+
+
+def resolve_auto_close_target(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[str, bool]:
+    """Επιστρέφει (work_date_iso, allow_overnight_star).
+
+    - Ώρα εκτέλεσης πριν τα μεσάνυχτα (12:00–23:59): τρέχουσα ημερολογιακή μέρα, χωρίς *.
+    - Ώρα εκτέλεσης μετά τα μεσάνυχτα (00:00–11:59): προηγούμενη μέρα, με * αν η έξοδος περνάει μεσάνυχτα.
+    """
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    allow_overnight = auto_close_allows_overnight_star(cfg)
+    today = local_now.date()
+    if allow_overnight:
+        return (today - timedelta(days=1)).isoformat(), True
+    return today.isoformat(), False
+
+
 def should_run_auto_close_prev_day(
     cfg: dict[str, Any],
     *,
     now: datetime | None = None,
 ) -> tuple[bool, str, str]:
-    """Επιστρέφει (τρέχει, χθεσινή ISO, λόγος)."""
+    """Επιστρέφει (τρέχει, work_date ISO προς κλείσιμο, λόγος)."""
     if not bool(cfg.get("auto_close_prev_day_enabled")):
         return False, "", "ρύθμιση ανενεργή"
     local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
-    previous_day = (local_now.date() - timedelta(days=1)).isoformat()
-    if str(cfg.get("auto_close_prev_day_last_run_date") or "").strip() == previous_day:
-        return False, previous_day, "έχει ήδη εκτελεστεί για την προηγούμενη ημέρα"
+    work_date, _allow_overnight = resolve_auto_close_target(cfg, now=local_now)
+    if str(cfg.get("auto_close_prev_day_last_run_date") or "").strip() == work_date:
+        return False, work_date, "έχει ήδη εκτελεστεί για αυτή την ημέρα εργασίας"
     run_time = normalize_auto_close_time(str(cfg.get("auto_close_prev_day_time") or "00:30"))
     now_hm = local_now.strftime("%H:%M")
     if now_hm < run_time:
-        return False, previous_day, f"αναμονή μέχρι {run_time}"
-    return True, previous_day, "έτοιμο"
+        return False, work_date, f"αναμονή μέχρι {run_time}"
+    return True, work_date, "έτοιμο"
 
 
 def _parse_clock_minutes(value: str | None) -> int | None:
@@ -82,6 +115,16 @@ def _format_minutes_as_clock(total_minutes: int) -> str:
     wrapped = int(total_minutes) % (24 * 60)
     h, m = divmod(wrapped, 60)
     return f"{h:02d}:{m:02d}"
+
+
+def _auto_close_queue_delay_seconds() -> int:
+    low = max(0, int(Config.KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS or 0))
+    high = max(low, int(Config.KARTA_AUTO_CLOSE_QUEUE_MAX_DELAY_SECONDS or low))
+    if high <= 0:
+        return 0
+    if high == low:
+        return low
+    return random.randint(low, high)
 
 
 def _duration_between(start: int | None, end: int | None) -> int | None:
@@ -140,27 +183,81 @@ def _portal_open_entry(row: dict[str, Any]) -> tuple[str, str]:
     return hour_from, hour_to
 
 
-def _has_portal_work_log_entry(row: dict[str, Any], hour_from: str) -> bool:
-    """Αυτόματη έξοδος μόνο με πραγματική είσοδο από karta_work_log."""
-    if not hour_from:
-        return False
+def _is_card_fallback_row(row: dict[str, Any]) -> bool:
     if row.get("from_card_event_fallback"):
-        return False
+        return True
     if str(row.get("source_aa") or "").strip() == "card_event_fallback":
-        return False
-    src = str(row.get("hour_from_source") or "").strip().lower()
-    if src.startswith("card_event"):
-        return False
-    # Γραμμές μόνο από κάρτα (χωρίς portal id).
+        return True
+    src_from = str(row.get("hour_from_source") or "").strip().lower()
+    src_to = str(row.get("hour_to_source") or "").strip().lower()
+    if src_from.startswith("card_event") or src_to.startswith("card_event"):
+        return True
     if row.get("id") is None and (
         row.get("from_card_event_fallback") is True
         or str(row.get("source_aa") or "").strip() == "card_event_fallback"
     ):
+        return True
+    return False
+
+
+def _has_portal_work_log_entry(row: dict[str, Any], hour_from: str) -> bool:
+    """Αυτόματη έξοδος μόνο με πραγματική είσοδο από karta_work_log."""
+    if not hour_from:
         return False
-    return True
+    return not _is_card_fallback_row(row)
 
 
-def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _has_portal_work_log_exit(row: dict[str, Any], hour_to: str) -> bool:
+    """Αυτόματη είσοδος μόνο με πραγματική έξοδο από karta_work_log."""
+    if not hour_to:
+        return False
+    return not _is_card_fallback_row(row)
+
+
+def _iso_shift(work_date_iso: str, days: int) -> str | None:
+    try:
+        d = datetime.strptime(str(work_date_iso).strip()[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (d + timedelta(days=days)).isoformat()
+
+
+def _plan_item_base(
+    row: dict[str, Any],
+    *,
+    afm: str,
+    name: str,
+    work_date_iso: str,
+    reference_date: str,
+    event_date_iso: str,
+    retro_time: str,
+    duration: int,
+    event: str,
+    hour_from: str,
+    hour_to: str,
+) -> dict[str, Any]:
+    return {
+        "employee_afm": afm,
+        "employee_name": name,
+        "employee_last_name": str(row.get("eponymo") or "").strip(),
+        "employee_first_name": str(row.get("onoma") or "").strip(),
+        "work_date_iso": work_date_iso,
+        "reference_date": reference_date,
+        "event_date_iso": event_date_iso,
+        "retro_time": retro_time,
+        "duration_minutes": duration,
+        "duration_source": "schedule" if _schedule_duration_minutes(row) else "rest_8h",
+        "event": event,
+        "hour_from": hour_from,
+        "hour_to": hour_to,
+    }
+
+
+def _build_previous_day_close_plan(
+    rows: list[dict[str, Any]],
+    *,
+    allow_overnight_star: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     plan: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in rows:
@@ -169,7 +266,80 @@ def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dic
         hour_from, hour_to = _portal_open_entry(row)
         if not afm:
             continue
-        if hour_to:
+        work_date_iso = str(row.get("work_date_iso") or "").strip()
+        if not work_date_iso:
+            skipped.append({"employee_afm": afm, "employee_name": name, "reason": "άγνωστη ημερομηνία"})
+            continue
+        if not _row_is_active(row):
+            skipped.append({"employee_afm": afm, "employee_name": name, "reason": "ανενεργός εργαζόμενος"})
+            continue
+
+        # Έξοδος χωρίς είσοδο → συμπλήρωση εισόδου.
+        if hour_to and not hour_from:
+            if not _has_portal_work_log_exit(row, hour_to):
+                skipped.append({
+                    "employee_afm": afm,
+                    "employee_name": name,
+                    "reason": "χωρίς πραγματική έξοδο",
+                })
+                continue
+            exit_min = _parse_clock_minutes(hour_to)
+            if exit_min is None:
+                skipped.append({"employee_afm": afm, "employee_name": name, "reason": "μη έγκυρη ώρα εξόδου"})
+                continue
+            overnight_orphan = bool(row.get("overnight_exit_orphan"))
+            # Exit-only στις πρώτες ώρες της ίδιας ημερολογιακής μέρας ανήκει στην προηγούμενη
+            # μέρα εργασίας — το κλείνουμε όταν φορτώνουμε ως orphan από την επόμενη μέρα.
+            if (
+                allow_overnight_star
+                and not overnight_orphan
+                and exit_min < OVERNIGHT_EXIT_BEFORE_MINUTES
+            ):
+                continue
+            duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
+            if overnight_orphan:
+                # Έξοδος μετά τα μεσάνυχτα (ημερολογιακά επόμενη) → είσοδος στην work_date.
+                entry_abs = exit_min + 24 * 60 - duration
+            else:
+                entry_abs = exit_min - duration
+            reference_date = work_date_iso
+            event_date_iso = work_date_iso
+            if entry_abs < 0:
+                entry_abs += 24 * 60
+                if allow_overnight_star:
+                    prev = _iso_shift(work_date_iso, -1)
+                    if prev:
+                        reference_date = prev
+                        event_date_iso = prev
+            elif entry_abs >= 24 * 60:
+                entry_abs -= 24 * 60
+                nxt = _iso_shift(work_date_iso, 1)
+                if nxt and allow_overnight_star:
+                    event_date_iso = nxt
+            if card_event_exists(afm, reference_date, "0"):
+                skipped.append({
+                    "employee_afm": afm,
+                    "employee_name": name,
+                    "reason": "υπάρχει ήδη είσοδος κάρτας",
+                })
+                continue
+            plan.append(_plan_item_base(
+                row,
+                afm=afm,
+                name=name,
+                work_date_iso=work_date_iso,
+                reference_date=reference_date,
+                event_date_iso=event_date_iso,
+                retro_time=_format_minutes_as_clock(entry_abs),
+                duration=duration,
+                event="check_in",
+                hour_from="",
+                hour_to=hour_to,
+            ))
+            continue
+
+        # Είσοδος χωρίς έξοδο → συμπλήρωση εξόδου.
+        if hour_from and hour_to:
             continue
         if not hour_from or not _has_portal_work_log_entry(row, hour_from):
             skipped.append({
@@ -178,50 +348,48 @@ def _build_previous_day_close_plan(rows: list[dict[str, Any]]) -> tuple[list[dic
                 "reason": "χωρίς πραγματική είσοδο",
             })
             continue
-        if not _row_is_active(row):
-            skipped.append({"employee_afm": afm, "employee_name": name, "reason": "ανενεργός εργαζόμενος"})
-            continue
-        work_date_iso = str(row.get("work_date_iso") or "").strip()
-        if not work_date_iso:
-            skipped.append({"employee_afm": afm, "employee_name": name, "reason": "άγνωστη ημερομηνία"})
-            continue
         entry_min = _parse_clock_minutes(hour_from)
         if entry_min is None:
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "μη έγκυρη ώρα εισόδου"})
             continue
         duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
         exit_abs = entry_min + duration
-        # f_reference_date = μέρα εργασίας (είσοδος) ώστε το Ergani να δέσει στην ίδια
-        # γραμμή με * · μόνο το f_date/event_at πάει στην επόμενη ημερολογιακή μέρα.
+        # Μετά τα μεσάνυχτα: f_reference_date = μέρα εισόδου, f_date στην επόμενη αν περνάει 24:00 (*).
+        # Πριν τα μεσάνυχτα: ίδια ημερολογιακή μέρα — χωρίς *.
         reference_date = work_date_iso
         event_date_iso = work_date_iso
-        if exit_abs >= 24 * 60:
-            event_date_iso = (
-                datetime.strptime(work_date_iso, "%Y-%m-%d").date() + timedelta(days=1)
-            ).isoformat()
+        if allow_overnight_star and exit_abs >= 24 * 60:
+            nxt = _iso_shift(work_date_iso, 1)
+            if nxt:
+                event_date_iso = nxt
         if card_event_exists(afm, reference_date, "1") or (
             event_date_iso != reference_date
             and card_event_exists(afm, event_date_iso, "1")
         ):
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "υπάρχει ήδη έξοδος κάρτας"})
             continue
-        plan.append({
-            "employee_afm": afm,
-            "employee_name": name,
-            "employee_last_name": str(row.get("eponymo") or "").strip(),
-            "employee_first_name": str(row.get("onoma") or "").strip(),
-            "work_date_iso": work_date_iso,
-            "reference_date": reference_date,
-            "event_date_iso": event_date_iso,
-            "retro_time": _format_minutes_as_clock(exit_abs),
-            "duration_minutes": duration,
-            "duration_source": "schedule" if _schedule_duration_minutes(row) else "rest_8h",
-            "hour_from": hour_from,
-        })
+        plan.append(_plan_item_base(
+            row,
+            afm=afm,
+            name=name,
+            work_date_iso=work_date_iso,
+            reference_date=reference_date,
+            event_date_iso=event_date_iso,
+            retro_time=_format_minutes_as_clock(exit_abs),
+            duration=duration,
+            event="check_out",
+            hour_from=hour_from,
+            hour_to="",
+        ))
     return plan, skipped
 
 
-def _load_previous_day_rows(cfg: dict[str, Any], work_date_iso: str) -> list[dict[str, Any]]:
+def _load_previous_day_rows(
+    cfg: dict[str, Any],
+    work_date_iso: str,
+    *,
+    include_next_day_overnight_exits: bool = False,
+) -> list[dict[str, Any]]:
     ctx = store_api_context(cfg)
     work_date = format_date_for_ergani(work_date_iso)
     # Μόνο portal πραγματική — χωρίς fallback χτυπημάτων κάρτας που «εφευρίσκουν» είσοδο.
@@ -230,7 +398,35 @@ def _load_previous_day_rows(cfg: dict[str, Any], work_date_iso: str) -> list[dic
         row["portal_hour_from"] = str(row.get("hour_from") or "").strip()
         row["portal_hour_to"] = str(row.get("hour_to") or "").strip()
         row["work_date_iso"] = work_date_iso
-    enrich_work_log_rows_with_schedule(rows, ctx["employer_afm"], ctx["branch_aa"], [work_date])
+        row["overnight_exit_orphan"] = False
+    enrich_dates = [work_date]
+
+    if include_next_day_overnight_exits:
+        next_iso = _iso_shift(work_date_iso, 1)
+        if next_iso:
+            next_ergani = format_date_for_ergani(next_iso)
+            next_rows = list_work_log_for_store(
+                ctx["employer_afm"], ctx["branch_aa"], next_ergani, limit=5000
+            )
+            for row in next_rows:
+                hour_from = str(row.get("hour_from") or "").strip()
+                hour_to = str(row.get("hour_to") or "").strip()
+                if hour_from or not hour_to:
+                    continue
+                exit_min = _parse_clock_minutes(hour_to)
+                if exit_min is None or exit_min >= OVERNIGHT_EXIT_BEFORE_MINUTES:
+                    continue
+                row["portal_hour_from"] = ""
+                row["portal_hour_to"] = hour_to
+                row["work_date_iso"] = work_date_iso
+                row["work_date"] = work_date
+                row["overnight_exit_orphan"] = True
+                rows.append(row)
+            enrich_dates.append(next_ergani)
+
+    enrich_work_log_rows_with_schedule(
+        rows, ctx["employer_afm"], ctx["branch_aa"], enrich_dates
+    )
     return rows
 
 
@@ -248,7 +444,7 @@ def format_auto_close_notification_text(
     return "\n".join([
         f"erganiOS — {store_name}",
         f"Το αυτόματο κλείσιμο ανοιχτών καρτών για {work_date} {status}.",
-        f"Υποβολές εξόδου: {submitted}/{plan_count}",
+        f"Υποβολές εισόδου/εξόδου: {submitted}/{plan_count}",
         f"Αποτυχίες: {failed}",
         f"Εκτός/παράλειψη: {skipped}",
     ])
@@ -322,9 +518,9 @@ def _send_auto_close_notification(
                 employee_name="—",
                 employee_afm=None,
                 work_date=work_date,
-                problem="Ολοκληρώθηκε η αυτόματη ενέργεια κλεισίματος ανοιχτών καρτών προηγούμενης ημέρας.",
+                problem="Ολοκληρώθηκε η αυτόματη ενέργεια κλεισίματος ανοιχτών καρτών της τελευταίας ημέρας.",
                 details=[
-                    ("Υποβολές εξόδου", f"{submitted}/{plan_count}"),
+                    ("Υποβολές εισόδου/εξόδου", f"{submitted}/{plan_count}"),
                     ("Αποτυχίες", str(failed)),
                     ("Εκτός/παράλειψη", str(skipped_count)),
                 ],
@@ -364,12 +560,21 @@ def run_auto_close_prev_day_for_store(
             "branch_aa": ctx.get("branch_aa"),
         },
     )
-    rows = _load_previous_day_rows(cfg, work_date_iso)
-    plan, skipped = _build_previous_day_close_plan(rows)
+    allow_overnight_star = auto_close_allows_overnight_star(cfg)
+    rows = _load_previous_day_rows(
+        cfg,
+        work_date_iso,
+        include_next_day_overnight_exits=allow_overnight_star,
+    )
+    plan, skipped = _build_previous_day_close_plan(
+        rows,
+        allow_overnight_star=allow_overnight_star,
+    )
     if not plan:
         log.info(
-            f"Αυτόματο κλείσιμο προηγούμενης ημέρας {work_date_iso}: δεν υπάρχουν ανοιχτές έξοδοι",
+            f"Αυτόματο κλείσιμο καρτών {work_date_iso}: δεν υπάρχουν ανοιχτές είσοδοι/έξοδοι",
             skipped=len(skipped),
+            allow_overnight_star=allow_overnight_star,
         )
         notification = _send_auto_close_notification(
             store_id=sid,
@@ -403,9 +608,24 @@ def run_auto_close_prev_day_for_store(
     failures: list[dict[str, Any]] = []
     for idx, item in enumerate(plan, 1):
         emp_afm = norm_afm(item["employee_afm"])
+        if idx > 1:
+            delay_seconds = _auto_close_queue_delay_seconds()
+            if delay_seconds > 0:
+                log.info(
+                    (
+                        "Αναμονή πριν το επόμενο αυτόματο κλείσιμο "
+                        f"({delay_seconds} δευτ.)"
+                    ),
+                    delay_seconds=delay_seconds,
+                    batch_index=idx,
+                    batch_total=len(plan),
+                    employee_afm=emp_afm,
+                )
+                time.sleep(delay_seconds)
         event_date = str(item.get("event_date_iso") or item["reference_date"]).strip()[:10]
         event_at = f"{event_date}T{item['retro_time']}:00"
-        if not has_entry_for_checkout(
+        event = str(item.get("event") or "check_out").strip() or "check_out"
+        if event == "check_out" and not has_entry_for_checkout(
             employer_afm=ctx["employer_afm"],
             branch_aa=ctx["branch_aa"],
             employee_afm=emp_afm,
@@ -421,11 +641,11 @@ def run_auto_close_prev_day_for_store(
                 employee_afm=emp_afm,
                 employee_last_name=item["employee_last_name"],
                 employee_first_name=item["employee_first_name"],
-                event="check_out",
+                event=event,
                 reference_date=item["reference_date"],
                 event_at=event_at,
                 aitiologia=RETRO_AITIOLOGIA_INTERNET,
-                comments="erganiOS automatic previous-day close",
+                comments="erganiOS automatic last-day close",
             )
         except WorkCardPayloadError as ex:
             failures.append({**item, "error": str(ex)})
@@ -461,7 +681,7 @@ def run_auto_close_prev_day_for_store(
                 "source": "auto_close_prev_day",
                 "employee_afm": emp_afm,
                 "employee_name": item.get("employee_name"),
-                "event": "check_out",
+                "event": event,
                 "reference_date": item["reference_date"],
                 "event_date": event_date,
                 "event_at": event_at,
@@ -476,9 +696,10 @@ def run_auto_close_prev_day_for_store(
         if resp.ok:
             submitted += 1
             log.info(
-                f"Αυτόματο κλείσιμο {idx}/{len(plan)} OK: {item['employee_name']} {item['retro_time']}",
+                f"Αυτόματο κλείσιμο {idx}/{len(plan)} OK ({event}): {item['employee_name']} {item['retro_time']}",
                 employee_afm=emp_afm,
                 reference_date=item["reference_date"],
+                event=event,
             )
         else:
             failures.append({**item, "error": body_text or str(parsed)[:500]})

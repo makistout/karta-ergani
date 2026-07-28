@@ -9,6 +9,7 @@ from app.row_util import row_to_dict, rows_to_dicts
 
 _sync_meta_cols: bool | None = None
 _action_settings_cols: bool | None = None
+_notify_grace_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -43,7 +44,7 @@ def _store_sync_select_extra() -> str:
 def action_settings_columns_available() -> bool:
     """True αν υπάρχουν οι στήλες αυτόματων ενεργειών στο κατάστημα."""
     global _action_settings_cols
-    if _action_settings_cols is not None:
+    if _action_settings_cols is True:
         return _action_settings_cols
     try:
         with cursor(commit=False) as cur:
@@ -55,6 +56,42 @@ def action_settings_columns_available() -> bool:
     except Exception:
         _action_settings_cols = False
     return _action_settings_cols
+
+
+def notify_grace_column_available() -> bool:
+    global _notify_grace_col
+    if _notify_grace_col is True:
+        return _notify_grace_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'notify_grace_minutes')"
+            )
+            row = cur.fetchone()
+            _notify_grace_col = row is not None and row[0] is not None
+    except Exception:
+        _notify_grace_col = False
+    return _notify_grace_col
+
+
+def get_notify_grace_minutes(store_id: int) -> int:
+    from app.today_notify_logic import NOTIFY_GRACE_MINUTES, normalize_notify_grace_minutes
+
+    if not notify_grace_column_available():
+        return NOTIFY_GRACE_MINUTES
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT notify_grace_minutes
+            FROM dbo.karta_store_config
+            WHERE id = ?
+            """,
+            (int(store_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return NOTIFY_GRACE_MINUTES
+        return normalize_notify_grace_minutes(row[0])
 
 
 def _store_action_select_extra() -> str:
@@ -364,15 +401,22 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             "auto_close_prev_day_enabled": False,
             "auto_close_prev_day_time": "00:30",
             "auto_close_prev_day_last_run_date": None,
+            "notify_grace_minutes": 15,
             "db_setup": "sql/alter_add_store_action_settings.sql",
         }
     with cursor(commit=False) as cur:
+        grace_sql = (
+            ", notify_grace_minutes"
+            if notify_grace_column_available()
+            else ", CAST(15 AS int) AS notify_grace_minutes"
+        )
         cur.execute(
-            """
+            f"""
             SELECT
                 CAST(auto_close_prev_day_enabled AS int) AS auto_close_prev_day_enabled,
                 auto_close_prev_day_time,
                 auto_close_prev_day_last_run_date
+                {grace_sql}
             FROM dbo.karta_store_config
             WHERE id = ?
             """,
@@ -382,11 +426,20 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         if not row:
             raise ValueError(f"Δεν βρέθηκε κατάστημα id={store_id}")
         data = row_to_dict(cur, row)
-    return {
+    grace = 15
+    if notify_grace_column_available():
+        from app.today_notify_logic import normalize_notify_grace_minutes
+
+        grace = normalize_notify_grace_minutes(data.get("notify_grace_minutes"))
+    out = {
         "auto_close_prev_day_enabled": bool(data.get("auto_close_prev_day_enabled")),
         "auto_close_prev_day_time": data.get("auto_close_prev_day_time") or "00:30",
         "auto_close_prev_day_last_run_date": data.get("auto_close_prev_day_last_run_date"),
+        "notify_grace_minutes": grace,
     }
+    if not notify_grace_column_available():
+        out["db_setup_notify_grace"] = "sql/alter_add_store_notify_grace_minutes.sql"
+    return out
 
 
 def save_action_settings(
@@ -394,21 +447,39 @@ def save_action_settings(
     *,
     auto_close_prev_day_enabled: bool,
     auto_close_prev_day_time: str,
+    notify_grace_minutes: int | None = None,
 ) -> dict[str, Any]:
     if not action_settings_columns_available():
         raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
+    from app.today_notify_logic import normalize_notify_grace_minutes
+
     time_s = str(auto_close_prev_day_time or "").strip()[:5] or "00:30"
-    with cursor() as cur:
-        cur.execute(
-            """
-            UPDATE dbo.karta_store_config
-            SET auto_close_prev_day_enabled = ?,
-                auto_close_prev_day_time = ?,
-                updated_at = SYSDATETIMEOFFSET()
-            WHERE id = ?
-            """,
-            (1 if auto_close_prev_day_enabled else 0, time_s, int(store_id)),
-        )
+    grace = normalize_notify_grace_minutes(notify_grace_minutes)
+    if notify_grace_column_available():
+        with cursor() as cur:
+            cur.execute(
+                """
+                UPDATE dbo.karta_store_config
+                SET auto_close_prev_day_enabled = ?,
+                    auto_close_prev_day_time = ?,
+                    notify_grace_minutes = ?,
+                    updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (1 if auto_close_prev_day_enabled else 0, time_s, grace, int(store_id)),
+            )
+    else:
+        with cursor() as cur:
+            cur.execute(
+                """
+                UPDATE dbo.karta_store_config
+                SET auto_close_prev_day_enabled = ?,
+                    auto_close_prev_day_time = ?,
+                    updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (1 if auto_close_prev_day_enabled else 0, time_s, int(store_id)),
+            )
     return get_action_settings(store_id)
 
 

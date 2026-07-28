@@ -205,6 +205,49 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         self.assertEqual(actions["future_schedule"], future_result)
         self.assertTrue(actions["auto_close_prev_day"]["skipped"])
 
+    def test_configured_auto_actions_can_enqueue_auto_close_per_store(self):
+        cfg = {
+            "id": 7,
+            "name": "Demo",
+            "auto_close_prev_day_enabled": True,
+        }
+        fake_job = {"thread": object(), "holder": {}, "work_date": "2026-07-01"}
+        with (
+            patch(
+                "app.scheduled_sync.should_run_future_schedule_sync",
+                return_value=(False, "", "", "skip"),
+            ),
+            patch(
+                "app.scheduled_sync.should_run_recent_work_log_sync",
+                return_value=(False, "", "", "skip"),
+            ),
+            patch(
+                "app.scheduled_sync.should_run_weekly_repair_work_log_sync",
+                return_value=(False, "", "", "skip"),
+            ),
+            patch(
+                "app.auto_close_cards.should_run_auto_close_prev_day",
+                return_value=(True, "2026-07-01", "έτοιμο"),
+            ),
+            patch(
+                "app.scheduled_sync._enqueue_auto_close_prev_day_action",
+                return_value=fake_job,
+            ) as enqueue_job,
+        ):
+            actions = scheduled_sync._run_configured_auto_actions(
+                cfg,
+                parent_run_id="parent",
+                enqueue_auto_close=True,
+            )
+
+        enqueue_job.assert_called_once_with(
+            cfg,
+            work_date_iso="2026-07-01",
+            parent_run_id="parent",
+        )
+        self.assertTrue(actions["auto_close_prev_day"]["queued"])
+        self.assertEqual(actions["_auto_close_job"], fake_job)
+
     def test_after_login_sync_enqueues_store_scope_once(self):
         class ImmediateThread:
             def __init__(self, target, **kwargs):

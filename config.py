@@ -107,6 +107,24 @@ class Config:
     KARTA_SCHEDULED_WEEKLY_REPAIR_TIME = (
         os.environ.get("KARTA_SCHEDULED_WEEKLY_REPAIR_TIME") or "05:00"
     ).strip() or "05:00"
+    KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS = max(
+        0,
+        int(
+            (
+                os.environ.get("KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS") or "120"
+            ).strip()
+            or "120"
+        ),
+    )
+    KARTA_AUTO_CLOSE_QUEUE_MAX_DELAY_SECONDS = max(
+        KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS,
+        int(
+            (
+                os.environ.get("KARTA_AUTO_CLOSE_QUEUE_MAX_DELAY_SECONDS") or "180"
+            ).strip()
+            or "180"
+        ),
+    )
     PORTAL_EXCEL_DEBUG_DIR = Path(
         os.environ.get("KARTA_PORTAL_EXCEL_DEBUG_DIR")
         or (_ROOT / "data" / "portal_excel_debug")

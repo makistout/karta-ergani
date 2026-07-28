@@ -67,10 +67,10 @@
             <label class="settings-action-row" for="autoClosePrevDayEnabled">
               <input id="autoClosePrevDayEnabled" type="checkbox">
               <span>
-                <strong>Κλείσε αυτόματα όλες τις ανοιχτές κάρτες της προηγούμενης ημέρας</strong>
+                <strong>Κλείσε αυτόματα τις ανοιχτές κάρτες της τελευταίας ημέρας</strong>
                 <small>
-                  Υποβάλλει έξοδο με ώρα εισόδου + διάρκεια ωραρίου. Σε ρεπό ή χωρίς διάρκεια εφαρμόζεται 8ωρο.
-                  <em>Κλείνει πάντα την προηγούμενη ημερομηνία</em> (π.χ. στις 22/07 00:00 κλείνει 21/07, όχι 22/07).
+                  Υποβάλλει έξοδο για ανοιχτές εισόδους και είσοδο για εξόδους χωρίς είσοδο
+                  (ώρα ± διάρκεια ωραρίου, αλλιώς 8ωρο).
                 </small>
               </span>
             </label>
@@ -86,7 +86,30 @@
                   <strong id="autoClosePrevDayLastRun">—</strong>
                 </div>
               </div>
-              <p class="field-hint settings-action-hint">Για κλείσιμο στα μεσάνυχτα χρησιμοποιήστε <strong>00:00</strong> ή <strong>00:30</strong>.</p>
+              <p class="field-hint settings-action-hint">
+                Ώρα εκτέλεσης πριν τα μεσάνυχτα (π.χ. 23:00): κλείνει την τρέχουσα ημέρα, χωρίς *.
+                Μετά τα μεσάνυχτα (π.χ. 00:00 / 00:30): κλείνει την προηγούμενη ημέρα, με * αν η έξοδος περνάει μεσάνυχτα.
+                Αν υπάρχει έξοδος μετά τα μεσάνυχτα χωρίς είσοδο, η είσοδος μπαίνει στην προηγούμενη μέρα.
+              </p>
+            </div>
+          </div>
+          <div class="settings-action-block">
+            <div class="settings-action-row settings-action-row--field">
+              <span>
+                <strong>Καθυστέρηση ειδοποιήσεων (λεπτά)</strong>
+                <small>
+                  Μετά την έναρξη ωραρίου ή την αναμενόμενη έξοδο, πόσα λεπτά περιμένουμε πριν στείλουμε
+                  ειδοποίηση (καθυστέρηση εισόδου, έλλειψη εξόδου, διόρθωση). Ο scheduled sync ελέγχει περίπου κάθε 15′.
+                </small>
+              </span>
+              <label class="settings-action-time" for="notifyGraceMinutes">
+                <span class="settings-action-time-label">Λεπτά</span>
+                <select id="notifyGraceMinutes" class="input-select settings-action-select">
+                  <option value="15">15 λεπτά</option>
+                  <option value="30">30 λεπτά</option>
+                  <option value="45">45 λεπτά</option>
+                </select>
+              </label>
             </div>
           </div>
           <div class="actions settings-section-actions">
@@ -101,5 +124,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260724storetip1"></script>
+  <script src="/static/js/store-notify.js?v=20260727autocloseday"></script>
 {% endblock %}

@@ -46,9 +46,13 @@ TODAY_ALERT_SESSION_KEY = "today_alert_ctx"
 def _context_from_today_row(row: dict[str, Any]) -> dict[str, Any]:
     name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
     kind = str(row.get("notify_kind") or "").strip()
+    store_id = int(row["store_id"])
+    from app.repo_store import get_notify_grace_minutes
+
+    grace = get_notify_grace_minutes(store_id)
     return {
         "token_id": int(row["id"]),
-        "store_id": int(row["store_id"]),
+        "store_id": store_id,
         "store_name": row.get("store_name"),
         "employee_afm": row.get("employee_afm"),
         "employee_name": name or row.get("employee_afm"),
@@ -58,7 +62,7 @@ def _context_from_today_row(row: dict[str, Any]) -> dict[str, Any]:
         "reference_date_iso": row.get("reference_date_iso")
         or ergani_date_to_iso(str(row.get("work_date_ergani") or "")),
         "notify_kind": kind,
-        "notify_kind_label": notify_kind_label(kind),
+        "notify_kind_label": notify_kind_label(kind, grace_minutes=grace),
         "hour_from": row.get("hour_from"),
         "hour_to": row.get("hour_to"),
         "schedule_hour_from": row.get("schedule_hour_from"),
@@ -119,13 +123,16 @@ def today_hit_preview(token: str) -> tuple[dict[str, Any] | None, str | None]:
     assert row is not None
     kind = str(row.get("notify_kind") or "").strip()
     name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
+    from app.repo_store import get_notify_grace_minutes
+
+    grace = get_notify_grace_minutes(int(row["store_id"]))
     return {
         "store_name": row.get("store_name"),
         "employee_name": name or row.get("employee_afm"),
         "employee_afm": row.get("employee_afm"),
         "work_date": row.get("work_date_ergani"),
         "notify_kind": kind,
-        "notify_kind_label": notify_kind_label(kind),
+        "notify_kind_label": notify_kind_label(kind, grace_minutes=grace),
         "recipient_name": row.get("recipient_name"),
         "notification_kind": "today_alert",
         "wto_daily_eligible": today_wto_daily_eligible(kind),

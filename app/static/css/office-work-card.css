@@ -738,6 +738,30 @@ input, select {
   background: #f8fafc;
 }
 
+.settings-action-row--field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.settings-action-row--field .settings-action-time {
+  margin-top: 0.05rem;
+  align-items: center;
+  align-self: start;
+}
+
+.settings-action-select {
+  min-width: 7.5rem;
+  height: 2rem;
+  box-sizing: border-box;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  background: #fff;
+  vertical-align: middle;
+}
+
 .settings-action-row input[type="checkbox"] {
   width: 1.05rem;
   height: 1.05rem;
@@ -765,6 +789,10 @@ input, select {
   border-radius: 6px;
   background: #f8fafc;
   overflow: hidden;
+}
+
+.settings-action-block + .settings-action-block {
+  margin-top: 0.85rem;
 }
 
 .settings-action-block .settings-action-row {

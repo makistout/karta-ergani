@@ -2,7 +2,7 @@
 
 Κανόνες καμπάνας (resolve_today_notify_kind)
 -------------------------------------------
-Grace: 15 λεπτά (NOTIFY_GRACE_MINUTES) για είσοδο και έξοδο.
+Grace: 15/30/45 λεπτά ανά κατάστημα (notify_grace_minutes), default 15.
 
 1. exit_without_entry — υπάρχει έξοδος (κάρτα/πραγματική) χωρίς είσοδο.
 
@@ -40,6 +40,21 @@ from app.work_card_payload import tz_athens
 
 NOTIFY_GRACE_MINUTES = 15
 NOTIFY_GRACE_CHECKOUT_MINUTES = NOTIFY_GRACE_MINUTES
+ALLOWED_NOTIFY_GRACE_MINUTES = frozenset({15, 30, 45})
+
+
+def normalize_notify_grace_minutes(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return NOTIFY_GRACE_MINUTES
+    return n if n in ALLOWED_NOTIFY_GRACE_MINUTES else NOTIFY_GRACE_MINUTES
+
+
+def _grace_minutes(grace_minutes: int | None) -> int:
+    if grace_minutes is None:
+        return NOTIFY_GRACE_MINUTES
+    return normalize_notify_grace_minutes(grace_minutes)
 
 TODAY_NOTIFY_KINDS = frozenset(
     {
@@ -93,9 +108,19 @@ def notify_kind_for_slot(base_kind: str, start_hm: str | None, *, include_slot: 
     return f"{base_kind}@{start}" if include_slot and start else base_kind
 
 
-def notify_kind_label(notify_kind: str | None) -> str:
+def notify_kind_label(
+    notify_kind: str | None,
+    *,
+    grace_minutes: int | None = None,
+) -> str:
     base = notify_kind_base(notify_kind)
-    label = KIND_LABELS.get(base, base)
+    grace = _grace_minutes(grace_minutes)
+    if base == "late_check_in":
+        label = f"καθυστέρηση εισόδου (>{grace}' από ωράριο)"
+    elif base == "late_check_out":
+        label = f"έλλειψη εξόδου (>{grace}' από είσοδο+διάρκεια ωραρίου)"
+    else:
+        label = KIND_LABELS.get(base, base)
     slot = notify_kind_slot_start(notify_kind)
     return f"{label} ({slot})" if slot else label
 
@@ -582,8 +607,10 @@ def resolve_today_notify_kind(
     row: dict[str, Any],
     *,
     now: datetime | None = None,
+    grace_minutes: int | None = None,
 ) -> str | None:
     """Επιστρέφει notify_kind ή None."""
+    grace = _grace_minutes(grace_minutes if grace_minutes is not None else row.get("notify_grace_minutes"))
     dt = now or datetime.now(tz_athens())
     wd_iso = ergani_date_to_iso(str(row.get("work_date") or ""))
     today_iso = _today_iso(dt)
@@ -617,7 +644,7 @@ def resolve_today_notify_kind(
                     entry_min=entry_min,
                     now_min=now_min,
                 )
-                if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
+                if elapsed is not None and elapsed >= grace:
                     return notify_kind_for_slot(
                         "late_check_out",
                         interval.get("hour_from"),
@@ -630,7 +657,7 @@ def resolve_today_notify_kind(
         due: list[dict[str, Any]] = []
         for interval in intervals:
             elapsed = _elapsed_same_date_minutes(int(interval["start"]), now_min)
-            if elapsed is None or elapsed < NOTIFY_GRACE_MINUTES:
+            if elapsed is None or elapsed < grace:
                 continue
             if any(_work_entry_covers_interval(w, interval) for w in work_intervals):
                 continue
@@ -646,7 +673,7 @@ def resolve_today_notify_kind(
     sched_start = _schedule_start_minutes(row)
     if not hf and sched_start is not None and wd_iso == today_iso:
         elapsed = _elapsed_same_date_minutes(sched_start, now_min)
-        if elapsed is not None and elapsed >= NOTIFY_GRACE_MINUTES:
+        if elapsed is not None and elapsed >= grace:
             return notify_kind_for_slot(
                 "late_check_in",
                 _hm_short(str(row.get("schedule", {}).get("hour_from") if isinstance(row.get("schedule"), dict) else "")),
@@ -667,7 +694,7 @@ def resolve_today_notify_kind(
                     now_min=now_min,
                     on_next_calendar_day=overnight_exit_today,
                 )
-                if elapsed is not None and elapsed >= NOTIFY_GRACE_CHECKOUT_MINUTES:
+                if elapsed is not None and elapsed >= grace:
                     if exit_before_entry:
                         return "exit_needs_correction"
                     return notify_kind_for_slot(
