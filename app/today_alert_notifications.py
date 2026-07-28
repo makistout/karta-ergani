@@ -291,6 +291,10 @@ def send_wto_schedule_notifications(
     prop_from = str(proposal.get("hour_from") or hour_from or "").strip() or None
     prop_to = str(proposal.get("hour_to") or hour_to or "").strip() or None
 
+    from app.repo_store import get_notify_grace_minutes
+
+    grace = get_notify_grace_minutes(store_id)
+
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
     sent = 0
@@ -339,6 +343,7 @@ def send_wto_schedule_notifications(
             has_pin=bool((rec.get("notify_pin_hash") or "").strip()),
             wto_hour_from=prop_from,
             wto_hour_to=prop_to,
+            notify_grace_minutes=grace,
         )
         try:
             send_telegram_message(chat_id, text)
@@ -347,7 +352,7 @@ def send_wto_schedule_notifications(
             errors.append(f"{rec.get('name')}: {ex}")
 
     employee_name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip()
-    kind_label = notify_kind_label(kind)
+    kind_label = notify_kind_label(kind, grace_minutes=grace)
     for rec in email_recipients:
         email = str(rec.get("email") or "").strip()
         if not email:
@@ -683,6 +688,7 @@ def send_today_punch_notifications(
             schedule_hour_to=schedule_hour_to,
             hour_from=hour_from,
             expected_exit=expected_exit_hm,
+            notify_grace_minutes=grace,
         )
         try:
             log_step(

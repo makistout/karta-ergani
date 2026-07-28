@@ -232,6 +232,21 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertIn("Ώρες εργασίας (ψηφ. ωράριο): 08:00 – 14:40", text)
         self.assertIn("Είσοδος: 11:42 · Αναμενόμενη έξοδος: 18:22", text)
 
+    def test_today_alert_uses_store_grace_in_label(self):
+        from app.telegram_notify import format_today_alert_notification
+
+        text = format_today_alert_notification(
+            store_name="VILLA",
+            employee_afm="123456789",
+            eponymo="TEST",
+            onoma="USER",
+            work_date="28/07/2026",
+            notify_kind="late_check_out",
+            notify_grace_minutes=30,
+        )
+        self.assertIn(">30'", text)
+        self.assertNotIn(">15'", text)
+
     def test_grace_constant_is_fifteen_minutes(self):
         self.assertEqual(NOTIFY_GRACE_MINUTES, 15)
 

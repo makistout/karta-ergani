@@ -176,6 +176,7 @@ def format_today_alert_notification(
     schedule_hour_to: str | None = None,
     hour_from: str | None = None,
     expected_exit: str | None = None,
+    notify_grace_minutes: int | None = None,
 ) -> str:
     """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
     from app.today_notify_logic import (
@@ -189,7 +190,9 @@ def format_today_alert_notification(
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
     kind = (notify_kind or "").strip()
     base_kind = notify_kind_base(kind)
-    problem = notify_kind_label(kind) or "πρόβλημα στην πραγματική απασχόληση"
+    problem = notify_kind_label(kind, grace_minutes=notify_grace_minutes) or (
+        "πρόβλημα στην πραγματική απασχόληση"
+    )
     store = (store_name or "").strip()
     prefix = f"erganiOS — {store}\n" if store else "erganiOS\n"
     lines = [
