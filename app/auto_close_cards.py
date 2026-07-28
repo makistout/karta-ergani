@@ -36,6 +36,9 @@ DEFAULT_REST_DURATION_MINUTES = 8 * 60
 # Ώρες 00:00–11:59 = μετά τα μεσάνυχτα (κλείνει προηγούμενη, με * αν χρειάζεται).
 # Ώρες 12:00–23:59 = πριν τα μεσάνυχτα (κλείνει τρέχουσα, χωρίς *).
 _AUTO_CLOSE_AFTER_MIDNIGHT_HOUR_LT = 12
+# Εκτέλεση μόνο μέσα σε αυτό το παράθυρο μετά την ώρα ρύθμισης
+# (όχι «οποτεδήποτε μετά», π.χ. 02:00 στις 20:45).
+_AUTO_CLOSE_RUN_WINDOW_MINUTES = 15
 
 
 def normalize_auto_close_time(value: str | None) -> str:
@@ -75,6 +78,11 @@ def resolve_auto_close_target(
     return today.isoformat(), False
 
 
+def _clock_hm_to_minutes(value: str) -> int:
+    hh, mm = str(value).split(":", 1)
+    return int(hh) * 60 + int(mm)
+
+
 def should_run_auto_close_prev_day(
     cfg: dict[str, Any],
     *,
@@ -91,6 +99,13 @@ def should_run_auto_close_prev_day(
     now_hm = local_now.strftime("%H:%M")
     if now_hm < run_time:
         return False, work_date, f"αναμονή μέχρι {run_time}"
+    elapsed = _clock_hm_to_minutes(now_hm) - _clock_hm_to_minutes(run_time)
+    if elapsed > _AUTO_CLOSE_RUN_WINDOW_MINUTES:
+        return (
+            False,
+            work_date,
+            f"εκτός παραθύρου εκτέλεσης {run_time} (+{_AUTO_CLOSE_RUN_WINDOW_MINUTES}')",
+        )
     return True, work_date, "έτοιμο"
 
 

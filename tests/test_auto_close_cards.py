@@ -59,6 +59,41 @@ def test_auto_close_evening_closes_current_day_without_overnight():
     assert auto_close_cards.auto_close_allows_overnight_star(cfg) is False
 
 
+def test_auto_close_does_not_run_hours_after_configured_time():
+    """02:00 στις 20:45 δεν πρέπει να κλείνει — μόνο μέσα στο παράθυρο μετά την ώρα."""
+    cfg = {
+        "auto_close_prev_day_enabled": True,
+        "auto_close_prev_day_time": "02:00",
+        "auto_close_prev_day_last_run_date": None,
+    }
+
+    ok, work_date, reason = should_run_auto_close_prev_day(
+        cfg,
+        now=datetime(2026, 7, 28, 20, 45, tzinfo=tz_athens()),
+    )
+
+    assert ok is False
+    assert work_date == "2026-07-27"
+    assert "παραθύρου" in reason
+
+
+def test_auto_close_runs_inside_window_after_configured_time():
+    cfg = {
+        "auto_close_prev_day_enabled": True,
+        "auto_close_prev_day_time": "02:00",
+        "auto_close_prev_day_last_run_date": None,
+    }
+
+    ok, work_date, reason = should_run_auto_close_prev_day(
+        cfg,
+        now=datetime(2026, 7, 28, 2, 15, tzinfo=tz_athens()),
+    )
+
+    assert ok is True
+    assert work_date == "2026-07-27"
+    assert reason == "έτοιμο"
+
+
 def test_auto_close_evening_waits_before_run_time():
     cfg = {
         "auto_close_prev_day_enabled": True,

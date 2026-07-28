@@ -44,8 +44,21 @@ def _enqueue_auto_close_prev_day_action(
 
     def _run() -> None:
         try:
+            # Ξαναδιάβασμα ρυθμίσεων: αν απενεργοποιήθηκε μετά το enqueue, μην τρέξεις.
+            live = repo_store.get_action_settings(sid)
+            if not bool(live.get("auto_close_prev_day_enabled")):
+                result_holder["result"] = {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "ρύθμιση ανενεργή πριν την εκτέλεση",
+                    "work_date": work_date_iso,
+                    "submitted": 0,
+                    "failed": 0,
+                }
+                return
+            live_cfg = {**cfg, **live}
             result = run_auto_close_prev_day_for_store(
-                cfg,
+                live_cfg,
                 work_date_iso=work_date_iso,
                 parent_run_id=parent_run_id,
             )
