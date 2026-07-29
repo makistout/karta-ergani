@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.today_notify_logic import (
@@ -342,14 +343,15 @@ class TodayNotifyLogicTests(unittest.TestCase):
 
     def test_slot_kind_label_and_card_action_use_slot(self):
         self.assertIn("17:00", notify_kind_label("late_check_in@17:00"))
-        self.assertEqual(
-            card_action_for_today_kind(
-                "late_check_in@17:00",
-                schedule_hour_from="09:00",
-                schedule_hour_to="21:00",
-            ),
-            {"card_event": "check_in", "retro_time": "17:00"},
-        )
+        with patch("app.punch_time_jitter.punch_time_jitter_offset", return_value=0):
+            self.assertEqual(
+                card_action_for_today_kind(
+                    "late_check_in@17:00",
+                    schedule_hour_from="09:00",
+                    schedule_hour_to="21:00",
+                ),
+                {"card_event": "check_in", "retro_time": "17:00"},
+            )
 
 
 if __name__ == "__main__":

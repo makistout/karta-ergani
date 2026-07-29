@@ -606,6 +606,12 @@ def sync_store_today(
     run_id = str(uuid.uuid4())
     op = (operation or OPERATION).strip() or OPERATION
 
+    # 00:00–02:59: syncάρουμε και χθες για overnight (*) εγγραφές.
+    local_now = datetime.now(tz_athens())
+    _include_previous_day = local_now.hour < 3 and not work_date_iso
+    sync_from = _add_iso_days(today, -1) if _include_previous_day else today
+    sync_days = 2 if _include_previous_day else 1
+
     log = KartaLogger(
         op,
         store_id=sid,
@@ -626,9 +632,9 @@ def sync_store_today(
         log.info("Φάση 1/2: ψηφιακό ωράριο (portal)…")
         schedule = sync_schedule_from_portal(
             ctx,
-            from_iso=today,
+            from_iso=sync_from,
             to_iso=today,
-            max_days=1,
+            max_days=sync_days,
             run_id=run_id,
         )
         _log_portal_phase(log, "Ψηφιακό ωράριο", schedule)
@@ -636,9 +642,9 @@ def sync_store_today(
         log.info("Φάση 2/2: πραγματική απασχόληση (portal)…")
         work_log = sync_work_log_from_portal(
             ctx,
-            from_iso=today,
+            from_iso=sync_from,
             to_iso=today,
-            max_days=1,
+            max_days=sync_days,
             run_id=run_id,
         )
         _log_portal_phase(log, "Πραγματική απασχόληση", work_log)

@@ -25,6 +25,7 @@ from app.work_card_payload import (
     norm_afm,
     tz_athens,
 )
+from app.punch_time_jitter import apply_punch_time_jitter
 from app.work_card_guards import (
     OVERNIGHT_EXIT_BEFORE_MINUTES,
     has_entry_for_checkout,
@@ -317,6 +318,7 @@ def _build_previous_day_close_plan(
                 entry_abs = exit_min + 24 * 60 - duration
             else:
                 entry_abs = exit_min - duration
+            entry_abs = apply_punch_time_jitter(entry_abs)
             reference_date = work_date_iso
             event_date_iso = work_date_iso
             if entry_abs < 0:
@@ -368,7 +370,7 @@ def _build_previous_day_close_plan(
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "μη έγκυρη ώρα εισόδου"})
             continue
         duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
-        exit_abs = entry_min + duration
+        exit_abs = apply_punch_time_jitter(entry_min + duration)
         # Μετά τα μεσάνυχτα: f_reference_date = μέρα εισόδου, f_date στην επόμενη αν περνάει 24:00 (*).
         # Πριν τα μεσάνυχτα: ίδια ημερολογιακή μέρα — χωρίς *.
         reference_date = work_date_iso

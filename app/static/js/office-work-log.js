@@ -105,10 +105,11 @@ Object.assign(window.Office, {
       timeSourceMode = "card_hint";
       durationUsed = null;
     } else if (expectedMin != null) {
+      expectedMin = this.applyPunchTimeJitterMinutes(expectedMin);
       retroTime = this.formatTotalMinutesAsClock(expectedMin);
     } else if (schedEnd != null) {
-      retroTime = this.formatTotalMinutesAsClock(schedEnd);
-      expectedMin = schedEnd;
+      expectedMin = this.applyPunchTimeJitterMinutes(schedEnd);
+      retroTime = this.formatTotalMinutesAsClock(expectedMin);
       timeSourceMode = "schedule_end";
     }
     if (!retroTime) return null;
@@ -135,7 +136,7 @@ Object.assign(window.Office, {
     const totalDuration = this.scheduleTotalDurationMinutesFromRow(row);
     if (exitMin == null || totalDuration == null) return null;
 
-    const expectedMin = exitMin - totalDuration;
+    const expectedMin = this.applyPunchTimeJitterMinutes(exitMin - totalDuration);
     const ref = expectedMin < 0 ? this.addDaysIso(workDateIso, -1) : workDateIso;
     return {
       event: "check_in",
@@ -215,7 +216,7 @@ Object.assign(window.Office, {
           ...base,
           event: "check_in",
           event_label: "Είσοδος",
-          retro_time: schedFrom,
+          retro_time: this.jitterClockHm(schedFrom),
           reference_date: workDateIso,
           event_date: workDateIso,
           time_source: this.describeMissingCardTimeSource("schedule_start"),
@@ -1218,8 +1219,9 @@ Object.assign(window.Office, {
     if (pairIdx < 0) return;
 
     const pair = plan[pairIdx];
-    const pairMin =
-      changed.event === "check_out" ? changedMin - duration : changedMin + duration;
+    const pairMin = this.applyPunchTimeJitterMinutes(
+      changed.event === "check_out" ? changedMin - duration : changedMin + duration
+    );
     pair.retro_time = this.formatTotalMinutesAsClock(pairMin);
     pair.time_source =
       pair.event === "check_in"

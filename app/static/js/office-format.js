@@ -173,6 +173,37 @@ Object.assign(window.Office, {
     return h * 60 + m;
   },
 
+  /** Τυχαία προσθαφαίρεση ±5′ σε ώρες εισόδου/εξόδου για ρεαλιστική καταγραφή. */
+  PUNCH_TIME_JITTER_MINUTES: 5,
+
+  punchTimeJitterOffset() {
+    const max = Number(this.PUNCH_TIME_JITTER_MINUTES) || 5;
+    return Math.floor(Math.random() * (2 * max + 1)) - max;
+  },
+
+  applyPunchTimeJitterMinutes(totalMin) {
+    const n = Number(totalMin);
+    if (!Number.isFinite(n)) return totalMin;
+    return n + this.punchTimeJitterOffset();
+  },
+
+  formatJitteredClockFromMinutes(totalMin) {
+    const jittered = this.applyPunchTimeJitterMinutes(totalMin);
+    if (typeof this.formatTotalMinutesAsClock === "function") {
+      return this.formatTotalMinutesAsClock(jittered);
+    }
+    const wrapped = ((Number(jittered) % (24 * 60)) + 24 * 60) % (24 * 60);
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  },
+
+  jitterClockHm(hm) {
+    const min = this.parseClockToMinutes(hm);
+    if (min == null) return this.normalizeHourMinute(hm || "") || String(hm || "").trim();
+    return this.formatJitteredClockFromMinutes(min);
+  },
+
   /** Για προγενέστερη καταχώρηση: μην επιτρέπει μελλοντική ώρα (ίδια ημέρα → τώρα). */
   clampRetroTimeToNow(referenceDateIso, timeHm) {
     const ref = String(referenceDateIso || "").trim().slice(0, 10);
@@ -314,12 +345,12 @@ Object.assign(window.Office, {
     if (hf && !ht && schedTo) {
       opts.retro = true;
       opts.card_event = "check_out";
-      opts.retro_time = this.normalizeHourMinute(schedTo) || schedTo;
+      opts.retro_time = this.jitterClockHm(schedTo);
       opts.retro_highlight = true;
     } else if (!hf && schedFrom) {
       opts.retro = true;
       opts.card_event = "check_in";
-      opts.retro_time = this.normalizeHourMinute(schedFrom) || schedFrom;
+      opts.retro_time = this.jitterClockHm(schedFrom);
       opts.retro_highlight = true;
     } else if (!hf) {
       opts.retro = true;

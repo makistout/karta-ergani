@@ -1,18 +1,23 @@
-"""Δημιουργία κενού Excel template εβδομαδιαίου ωραρίου (ένα φύλλο)."""
+"""Δημιουργία Excel template εβδομαδιαίου ωραρίου με προγεμισμένο ψηφιακό ωράριο."""
 
 from __future__ import annotations
 
 import re
 from datetime import date, timedelta
 from io import BytesIO
+from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from app.date_util import format_date_for_ergani
 from app.repo_entities import list_employees_for_employer
+from app.repo_schedule import list_schedule_for_range
 from app.repo_store import get_store_config
+from app.schedule_day_form_service import _snapshot_to_form_fields
+from app.schedule_excel_import import _current_snapshot_for_employee
 from app.schedule_excel_layout import (
     BASE_COL_COUNT,
     BASE_HEADERS,
@@ -29,6 +34,7 @@ from app.schedule_excel_layout import (
     single_sheet_day_col,
     single_sheet_last_col,
 )
+from app.work_card_payload import norm_afm
 
 DAYS = [
     ("Δευτέρα", 0),
@@ -58,6 +64,58 @@ def _safe_filename_part(value: str, *, fallback: str = "store") -> str:
     return (text[:48] or fallback)
 
 
+def _hm_to_excel_hhmm_int(hm: str | None) -> int | None:
+    """'09:00' → 900, '13:40' → 1340 (για number_format 00\\:00)."""
+    m = re.match(r"^(\d{1,2}):(\d{2})$", str(hm or "").strip())
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    if h > 23 or mi > 59:
+        return None
+    return h * 100 + mi
+
+
+def _schedule_by_date(
+    schedule_rows: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for row in schedule_rows:
+        wd = str(row.get("work_date") or "").strip()
+        if not wd:
+            continue
+        out.setdefault(wd, []).append(row)
+    return out
+
+
+def _fill_day_cells(
+    ws: Any,
+    *,
+    r1: int,
+    r2: int,
+    day_idx: int,
+    fields: dict[str, str],
+) -> None:
+    energia_col = single_sheet_day_col(day_idx, 0)
+    apo_col = single_sheet_day_col(day_idx, 1)
+    eos_col = single_sheet_day_col(day_idx, 2)
+    energia = str(fields.get("energia") or "").strip().upper()
+    if energia in ("REPO", "ΡΕΠΟ", "ΑΝ", "AN"):
+        ws.cell(row=r1, column=energia_col, value="ΡΕΠΟ")
+        return
+    hf1 = _hm_to_excel_hhmm_int(fields.get("hour_from_1"))
+    ht1 = _hm_to_excel_hhmm_int(fields.get("hour_to_1"))
+    hf2 = _hm_to_excel_hhmm_int(fields.get("hour_from_2"))
+    ht2 = _hm_to_excel_hhmm_int(fields.get("hour_to_2"))
+    if hf1 is not None:
+        ws.cell(row=r1, column=apo_col, value=hf1)
+    if ht1 is not None:
+        ws.cell(row=r1, column=eos_col, value=ht1)
+    if hf2 is not None:
+        ws.cell(row=r2, column=apo_col, value=hf2)
+    if ht2 is not None:
+        ws.cell(row=r2, column=eos_col, value=ht2)
+
+
 def build_weekly_schedule_template_bytes(
     *,
     store_id: int,
@@ -69,6 +127,14 @@ def build_weekly_schedule_template_bytes(
 
     employees = list_employees_for_employer(store["employer_afm"], store["branch_aa"])
     sunday = week_monday + timedelta(days=6)
+    week_dates_iso = [(week_monday + timedelta(days=i)).isoformat() for i in range(7)]
+    week_dates_ergani = [format_date_for_ergani(d) for d in week_dates_iso]
+    schedule_rows = list_schedule_for_range(
+        store["employer_afm"],
+        store["branch_aa"],
+        week_dates_ergani,
+    )
+    schedule_by_day = _schedule_by_date(schedule_rows)
     last_col = single_sheet_last_col()
     last_letter = get_column_letter(last_col)
 
@@ -96,23 +162,24 @@ def build_weekly_schedule_template_bytes(
         "2. Κάθε εργαζόμενος έχει 2 γραμμές (συνενωμένες ΑΦΜ/Επώνυμο/Όνομα).",
         "3. Ανά ημέρα: Ενέργεια, Από, Έως.",
         "4. Πάνω γραμμή = 1ο διάστημα (Από/Έως). Κάτω γραμμή = 2ο διάστημα (σπαστό).",
-        "5. Στήλη Ενέργεια: μόνο ΡΕΠΟ ή κενό.",
+        "5. Οι ώρες/ΡΕΠΟ είναι προγεμισμένα από το ψηφιακό ωράριο Ergani (όπου υπάρχει).",
+        "6. Στήλη Ενέργεια: μόνο ΡΕΠΟ ή κενό.",
         "   - ΡΕΠΟ = ρεπό εκείνη την ημέρα (οι ώρες αγνοούνται).",
-        "   - Κενό + ώρες συμπληρωμένες = αλλαγή ωραρίου.",
+        "   - Κενό + ώρες συμπληρωμένες = αλλαγή / επιβεβαίωση ωραρίου.",
         "   - Κενό + κενές ώρες = καμία αλλαγή για την ημέρα.",
-        "6. Οι ώρες: γράψε 4 ψηφία χωρίς άνω κάτω τελεία (π.χ. 0900, 1340).",
+        "7. Οι ώρες: γράψε 4 ψηφία χωρίς άνω κάτω τελεία (π.χ. 0900, 1340).",
         "   Εμφανίζονται αυτόματα ως 09:00, 13:40.",
     ]
     r = 3
     for text in instructions:
         info[f"A{r}"] = text
         r += 1
-    info["A16"] = "Store ID"
-    info["B16"] = int(store_id)
-    info["A17"] = "Employer AFM"
-    info["B17"] = store["employer_afm"]
-    info["A18"] = "Branch AA"
-    info["B18"] = store["branch_aa"]
+    info["A17"] = "Store ID"
+    info["B17"] = int(store_id)
+    info["A18"] = "Employer AFM"
+    info["B18"] = store["employer_afm"]
+    info["A19"] = "Branch AA"
+    info["B19"] = store["branch_aa"]
     info.column_dimensions["A"].width = 44
     info.column_dimensions["B"].width = 24
 
@@ -124,6 +191,7 @@ def build_weekly_schedule_template_bytes(
     ws["A1"].font = Font(bold=True, size=12)
     ws.merge_cells(f"A1:{last_letter}1")
     ws["A2"] = (
+        "Προγεμισμένο από ψηφιακό ωράριο Ergani  |  "
         "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες: 4 ψηφία (0900→09:00)  |  "
         "Σπαστό: κάτω γραμμή = 2ο διάστημα (Από/Έως)"
     )
@@ -167,10 +235,12 @@ def build_weekly_schedule_template_bytes(
             cell.border = border
 
     start_row = SINGLE_SHEET_DATA_START_ROW
+    filled_slots = 0
     for emp_idx, emp in enumerate(employees):
         r1 = employee_block_start_row(emp_idx)
         r2 = r1 + 1
-        ws.cell(row=r1, column=1, value=str(emp.get("afm") or ""))
+        afm = norm_afm(str(emp.get("afm") or ""))
+        ws.cell(row=r1, column=1, value=afm or str(emp.get("afm") or ""))
         ws.cell(row=r1, column=2, value=str(emp.get("eponymo") or ""))
         ws.cell(row=r1, column=3, value=str(emp.get("onoma") or ""))
         for c in range(1, BASE_COL_COUNT + 1):
@@ -201,6 +271,22 @@ def build_weekly_schedule_template_bytes(
                     if rr == r2 and f_idx in (1, 2):
                         cell.fill = split_fill
 
+            work_date = week_dates_ergani[day_idx]
+            snapshot = _current_snapshot_for_employee(
+                schedule_by_day.get(work_date, []),
+                afm,
+            )
+            fields = _snapshot_to_form_fields(snapshot)
+            if (
+                fields.get("energia")
+                or fields.get("hour_from_1")
+                or fields.get("hour_to_1")
+                or fields.get("hour_from_2")
+                or fields.get("hour_to_2")
+            ):
+                filled_slots += 1
+            _fill_day_cells(ws, r1=r1, r2=r2, day_idx=day_idx, fields=fields)
+
     max_row = (
         employee_block_start_row(len(employees) - 1) + ROWS_PER_EMPLOYEE - 1
         if employees
@@ -216,7 +302,6 @@ def build_weekly_schedule_template_bytes(
         dv_action.error = "Επιτρέπεται μόνο ΡΕΠΟ ή κενό."
         ws.add_data_validation(dv_action)
         if employees:
-            # Validation στις πάνω γραμμές κάθε ζεύγους (merged Ενέργεια).
             for emp_idx in range(len(employees)):
                 r1 = employee_block_start_row(emp_idx)
                 dv_action.add(f"{energia_col}{r1}")
@@ -244,5 +329,6 @@ def build_weekly_schedule_template_bytes(
         "week_from": week_monday.strftime("%d/%m/%Y"),
         "week_to": sunday.strftime("%d/%m/%Y"),
         "employee_count": str(len(employees)),
+        "filled_day_slots": str(filled_slots),
     }
     return bio.getvalue(), filename, meta

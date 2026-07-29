@@ -2,9 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 import app.auto_close_cards as auto_close_cards
 from app.auto_close_cards import should_run_auto_close_prev_day
 from app.work_card_payload import tz_athens
+
+
+@pytest.fixture(autouse=True)
+def _disable_punch_time_jitter(monkeypatch):
+    """Σταθερές ώρες στα unit tests — χωρίς ±5′ jitter."""
+    monkeypatch.setattr(
+        auto_close_cards,
+        "apply_punch_time_jitter",
+        lambda total_minutes, *, rng=None: int(total_minutes),
+    )
 
 
 def test_auto_close_prev_day_waits_until_configured_time():

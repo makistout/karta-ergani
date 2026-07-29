@@ -718,10 +718,12 @@ def card_action_for_today_kind(
     schedule_hour_to: str | None = None,
     hour_from: str | None = None,
 ) -> dict[str, str]:
+    from app.punch_time_jitter import jitter_clock_hm
+
     k = notify_kind_base(kind)
     if k in ("exit_without_entry", "late_check_in"):
         rt = notify_kind_slot_start(kind) or (schedule_hour_from or "").strip()
-        return {"card_event": "check_in", "retro_time": rt}
+        return {"card_event": "check_in", "retro_time": jitter_clock_hm(rt) if rt else ""}
     if k in ("missing_exit_8h", "late_check_out", "exit_needs_correction"):
         rt = ""
         if k in ("late_check_out", "exit_needs_correction"):
@@ -730,7 +732,10 @@ def card_action_for_today_kind(
                 schedule_hour_from=schedule_hour_from,
                 schedule_hour_to=schedule_hour_to,
             ) or (schedule_hour_to or "").strip()
-        return {"card_event": "check_out", "retro_time": rt}
+        return {
+            "card_event": "check_out",
+            "retro_time": jitter_clock_hm(rt) if rt else "",
+        }
     return {"card_event": "check_in", "retro_time": ""}
 
 

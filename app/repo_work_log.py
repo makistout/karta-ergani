@@ -125,10 +125,12 @@ def _attach_card_punch_hint(
         return
     sched_from = (pick.get("hour_from") or "").strip()
     sched_to = (pick.get("hour_to") or "").strip()
+    from app.punch_time_jitter import jitter_clock_hm
+
     if not hf and sched_from and "0" not in submitted:
         row["needs_card_punch"] = True
         row["card_event"] = "check_in"
-        row["retro_time"] = sched_from
+        row["retro_time"] = jitter_clock_hm(sched_from)
         return
     if not ht and hf and "1" not in submitted:
         from app.today_notify_logic import expected_exit_from_schedule_and_entry
@@ -140,7 +142,7 @@ def _attach_card_punch_hint(
         ) or sched_to
         row["needs_card_punch"] = True
         row["card_event"] = "check_out"
-        row["retro_time"] = retro
+        row["retro_time"] = jitter_clock_hm(retro) if retro else ""
         return
 
 
