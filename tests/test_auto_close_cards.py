@@ -397,6 +397,70 @@ def test_build_close_plan_uses_eight_hours_for_missing_entry(monkeypatch):
     assert plan[0]["duration_source"] == "rest_8h"
 
 
+def test_build_close_plan_uses_next_day_open_entry_as_exit(monkeypatch):
+    """Αν υπάρχει ανοιχτή είσοδος στην επόμενη μέρα < 03:00, η έξοδος = εκείνη η ώρα με *."""
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *args: False)
+    rows = [
+        {
+            "id": 20,
+            "employee_afm": "202331454",
+            "eponymo": "LUVA",
+            "onoma": "CHRISTIAN JAY",
+            "work_date_iso": "2026-07-28",
+            "hour_from": "15:56",
+            "hour_to": "",
+            "portal_hour_from": "15:56",
+            "portal_hour_to": "",
+            "employee_active": True,
+            "schedule_slots": [{"hour_from": "16:00", "hour_to": "00:00"}],
+        }
+    ]
+    next_day_open_entries = {"202331454": 59}  # 00:59
+
+    plan, skipped = auto_close_cards._build_previous_day_close_plan(
+        rows,
+        allow_overnight_star=True,
+        next_day_open_entries=next_day_open_entries,
+    )
+
+    assert skipped == []
+    assert len(plan) == 1
+    assert plan[0]["event"] == "check_out"
+    assert plan[0]["retro_time"] == "00:59"
+    assert plan[0]["reference_date"] == "2026-07-28"
+    assert plan[0]["event_date_iso"] == "2026-07-29"
+
+
+def test_build_close_plan_normal_exit_when_no_next_day_entry(monkeypatch):
+    """Χωρίς ανοιχτή είσοδο στην επόμενη, η κανονική λογική (entry + duration)."""
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *args: False)
+    rows = [
+        {
+            "id": 21,
+            "employee_afm": "202331454",
+            "eponymo": "LUVA",
+            "onoma": "CHRISTIAN JAY",
+            "work_date_iso": "2026-07-28",
+            "hour_from": "15:56",
+            "hour_to": "",
+            "portal_hour_from": "15:56",
+            "portal_hour_to": "",
+            "employee_active": True,
+            "schedule_slots": [{"hour_from": "16:00", "hour_to": "00:00"}],
+        }
+    ]
+
+    plan, skipped = auto_close_cards._build_previous_day_close_plan(
+        rows,
+        allow_overnight_star=True,
+        next_day_open_entries={},
+    )
+
+    assert plan[0]["retro_time"] == "23:56"
+    assert plan[0]["reference_date"] == "2026-07-28"
+    assert plan[0]["event_date_iso"] == "2026-07-28"
+
+
 def test_auto_close_queue_delay_seconds_uses_config_range(monkeypatch):
     monkeypatch.setattr(
         auto_close_cards.Config,

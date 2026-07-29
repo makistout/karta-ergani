@@ -273,6 +273,7 @@ def _build_previous_day_close_plan(
     rows: list[dict[str, Any]],
     *,
     allow_overnight_star: bool = True,
+    next_day_open_entries: dict[str, int] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     plan: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -369,16 +370,28 @@ def _build_previous_day_close_plan(
         if entry_min is None:
             skipped.append({"employee_afm": afm, "employee_name": name, "reason": "μη έγκυρη ώρα εισόδου"})
             continue
-        duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
-        exit_abs = apply_punch_time_jitter(entry_min + duration)
-        # Μετά τα μεσάνυχτα: f_reference_date = μέρα εισόδου, f_date στην επόμενη αν περνάει 24:00 (*).
-        # Πριν τα μεσάνυχτα: ίδια ημερολογιακή μέρα — χωρίς *.
-        reference_date = work_date_iso
-        event_date_iso = work_date_iso
-        if allow_overnight_star and exit_abs >= 24 * 60:
+
+        # Αν υπάρχει ανοιχτή είσοδος στην επόμενη μέρα < 03:00 για τον ίδιο
+        # εργαζόμενο, σημαίνει ότι χτύπησε «είσοδο» αντί «έξοδο» μετά τα
+        # μεσάνυχτα.  Χρησιμοποιούμε εκείνη την ώρα ως έξοδο με *.
+        _nxt_entry = (next_day_open_entries or {}).get(afm)
+        if _nxt_entry is not None and allow_overnight_star:
+            exit_abs = _nxt_entry  # ώρα στην επόμενη ημέρα (π.χ. 59 = 00:59)
+            reference_date = work_date_iso
             nxt = _iso_shift(work_date_iso, 1)
-            if nxt:
-                event_date_iso = nxt
+            event_date_iso = nxt if nxt else work_date_iso
+            duration = (exit_abs + 24 * 60 - entry_min) % (24 * 60) or DEFAULT_REST_DURATION_MINUTES
+        else:
+            duration = _schedule_duration_minutes(row) or DEFAULT_REST_DURATION_MINUTES
+            exit_abs = apply_punch_time_jitter(entry_min + duration)
+            # Μετά τα μεσάνυχτα: f_reference_date = μέρα εισόδου, f_date στην επόμενη αν περνάει 24:00 (*).
+            # Πριν τα μεσάνυχτα: ίδια ημερολογιακή μέρα — χωρίς *.
+            reference_date = work_date_iso
+            event_date_iso = work_date_iso
+            if allow_overnight_star and exit_abs >= 24 * 60:
+                nxt = _iso_shift(work_date_iso, 1)
+                if nxt:
+                    event_date_iso = nxt
         if card_event_exists(afm, reference_date, "1") or (
             event_date_iso != reference_date
             and card_event_exists(afm, event_date_iso, "1")
@@ -418,6 +431,11 @@ def _load_previous_day_rows(
         row["overnight_exit_orphan"] = False
     enrich_dates = [work_date]
 
+    # Εισόδους χωρίς έξοδο στην επόμενη μέρα (< 03:00): αν ο εργαζόμενος
+    # χτύπησε «είσοδο» αντί «έξοδο» μετά τα μεσάνυχτα, η αυτόματη έξοδος
+    # γίνεται εκείνη την ώρα με *.
+    _next_day_open_entries: dict[str, int] = {}
+
     if include_next_day_overnight_exits:
         next_iso = _iso_shift(work_date_iso, 1)
         if next_iso:
@@ -428,23 +446,29 @@ def _load_previous_day_rows(
             for row in next_rows:
                 hour_from = str(row.get("hour_from") or "").strip()
                 hour_to = str(row.get("hour_to") or "").strip()
-                if hour_from or not hour_to:
+                nxt_afm = str(row.get("employee_afm") or "").strip()
+                # Exit-only orphan → append στα rows (υπάρχουσα λογική).
+                if not hour_from and hour_to:
+                    exit_min = _parse_clock_minutes(hour_to)
+                    if exit_min is not None and exit_min < OVERNIGHT_EXIT_BEFORE_MINUTES:
+                        row["portal_hour_from"] = ""
+                        row["portal_hour_to"] = hour_to
+                        row["work_date_iso"] = work_date_iso
+                        row["work_date"] = work_date
+                        row["overnight_exit_orphan"] = True
+                        rows.append(row)
                     continue
-                exit_min = _parse_clock_minutes(hour_to)
-                if exit_min is None or exit_min >= OVERNIGHT_EXIT_BEFORE_MINUTES:
-                    continue
-                row["portal_hour_from"] = ""
-                row["portal_hour_to"] = hour_to
-                row["work_date_iso"] = work_date_iso
-                row["work_date"] = work_date
-                row["overnight_exit_orphan"] = True
-                rows.append(row)
+                # Entry-only < 03:00 → αποθήκευση για χρήση ως exit
+                if hour_from and not hour_to and nxt_afm:
+                    entry_min = _parse_clock_minutes(hour_from)
+                    if entry_min is not None and entry_min < OVERNIGHT_EXIT_BEFORE_MINUTES:
+                        _next_day_open_entries[nxt_afm] = entry_min
             enrich_dates.append(next_ergani)
 
     enrich_work_log_rows_with_schedule(
         rows, ctx["employer_afm"], ctx["branch_aa"], enrich_dates
     )
-    return rows
+    return rows, _next_day_open_entries
 
 
 def format_auto_close_notification_text(
@@ -578,7 +602,7 @@ def run_auto_close_prev_day_for_store(
         },
     )
     allow_overnight_star = auto_close_allows_overnight_star(cfg)
-    rows = _load_previous_day_rows(
+    rows, next_day_open_entries = _load_previous_day_rows(
         cfg,
         work_date_iso,
         include_next_day_overnight_exits=allow_overnight_star,
@@ -586,6 +610,7 @@ def run_auto_close_prev_day_for_store(
     plan, skipped = _build_previous_day_close_plan(
         rows,
         allow_overnight_star=allow_overnight_star,
+        next_day_open_entries=next_day_open_entries,
     )
     if not plan:
         log.info(
