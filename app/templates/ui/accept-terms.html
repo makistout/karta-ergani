@@ -1,0 +1,86 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Αποδοχή όρων' %}
+{% set shell = "public" %}
+{% set body_class = 'login-page' %}
+{% block extra_head %}
+<style>
+  .login-shell.login-shell--wide { width: 80vw; max-width: min(80vw, 1100px); }
+  .login-card .terms-body {
+    max-height: min(50vh, 420px);
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 18px;
+    background: #f8fafc;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #334155;
+  }
+  .login-card label.terms-accept-check {
+    display: flex !important;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin-top: 1rem;
+    cursor: pointer;
+    font-weight: 500;
+    text-transform: none !important;
+    letter-spacing: normal;
+    line-height: 1.45;
+    color: #334155;
+    padding: 0.75rem 0.85rem;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+  }
+  .login-card label.terms-accept-check.is-invalid {
+    border-color: #dc2626 !important;
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+  }
+  .login-card label.terms-accept-check input[type="checkbox"] {
+    width: auto !important;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    margin: 0.2rem 0 0;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .login-card label.terms-accept-check .terms-accept-check-label {
+    flex: 1;
+    min-width: 0;
+    white-space: normal;
+    word-break: break-word;
+    font-size: 0.92rem;
+    font-weight: 500;
+    text-transform: none !important;
+  }
+</style>
+{% endblock %}
+{% block public_content %}
+  <div class="login-shell login-shell--wide">
+    <div class="login-card card">
+      <div class="login-brand">
+        <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
+        <p class="login-subtitle">Ψηφιακή Κάρτα Εργασίας</p>
+      </div>
+      <h1 class="login-title"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> Αποδοχή όρων</h1>
+      <p class="field-hint">Πριν συνεχίσετε, διαβάστε και αποδεχτείτε τους όρους χρήσης. Η αποδοχή καταγράφεται με ημερομηνία/ώρα και διεύθυνση IP.</p>
+      <div id="termsTitle" class="login-subtitle" style="font-weight:700;margin:0.75rem 0;"></div>
+      <div id="termsBody" class="terms-body"></div>
+      <p class="field-hint" id="termsVersionHint" style="margin-top:0.5rem;"></p>
+      <label class="terms-accept-check" for="termsAcceptCheck" id="termsAcceptBox">
+        <input id="termsAcceptCheck" type="checkbox">
+        <span id="termsCheckboxLabel" class="terms-accept-check-label">Διάβασα και αποδέχομαι τους όρους χρήσης.</span>
+      </label>
+      <div class="actions" style="margin-top:1rem;">
+        <button type="button" class="btn" id="btnAcceptTerms">
+          <i class="bi bi-check2-circle" aria-hidden="true"></i><span>Αποδοχή και συνέχεια</span>
+        </button>
+      </div>
+      <div id="acceptTermsMsg" class="msg"></div>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/accept-terms.js?v=20260803termsv4"></script>
+{% endblock %}

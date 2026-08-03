@@ -9,6 +9,11 @@ document.addEventListener("DOMContentLoaded", () => {
     path.startsWith("/apokliseis-psifiakis-kartas") ||
     path.startsWith("/psifiako-orario-ergani") ||
     path.startsWith("/ui/landing");
+  const publicAuthFlow =
+    path.startsWith("/ui/login") ||
+    path.startsWith("/ui/forgot-password") ||
+    path.startsWith("/ui/reset-password") ||
+    path.startsWith("/ui/verify-email");
   const recipientFlow =
     publicLanding ||
     path.startsWith("/ui/telegram-hit") ||
@@ -17,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     path.startsWith("/ui/today-action");
 
   window.Office.installFetchAuthGuard();
-  if (!recipientFlow) {
+  if (!recipientFlow && !publicAuthFlow) {
     window.Office.initChrome();
     window.Office.initPageBackButton();
     window.Office.initResponsiveTables();

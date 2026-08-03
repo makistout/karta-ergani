@@ -298,6 +298,7 @@ def test_user_save_requires_store_scope_for_non_super_admin():
             json={
                 "username": "office-user",
                 "password": "pw",
+                "email": "office@example.gr",
                 "role": "office",
                 "store_ids": [],
             },
@@ -348,6 +349,7 @@ def test_user_create_sends_email_verification():
     send_email.assert_called_once()
     assert send_email.call_args.kwargs["email"] == "new@example.gr"
     assert send_email.call_args.kwargs["token"] == "tok"
+    assert send_email.call_args.kwargs["temporary_password"] == "pw"
 
 
 def test_user_email_verify_endpoint_consumes_token():
@@ -384,10 +386,108 @@ def test_user_resend_verification_email_endpoint():
     with (
         patch("app.repo_users.tables_available", return_value=True),
         patch("app.repo_users.get_user", return_value=user),
+        patch("app.user_email_verification.new_temporary_password", return_value="FreshPass99"),
+        patch("app.repo_users.reset_password") as reset_pw,
         patch("app.routes_users._send_user_verification_email", return_value=None) as send_email,
     ):
         response = client.post("/api/users/9/resend-verification-email")
 
     assert response.status_code == 200
     assert response.json["success"] is True
-    send_email.assert_called_once_with(9, user)
+    assert "προσωρινό κωδικό" in response.json["message"]
+    reset_pw.assert_called_once_with(9, "FreshPass99", must_change_password=True)
+    send_email.assert_called_once_with(9, user, temporary_password="FreshPass99")
+
+
+def test_user_activity_endpoint():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+    user = {
+        "id": 9,
+        "username": "new-user",
+        "email": "new@example.gr",
+        "full_name": "New User",
+        "role": "office",
+        "is_active": True,
+        "terms_accepted_at": None,
+        "terms_accepted_ip": None,
+        "terms_version": None,
+    }
+    activity = {
+        "rows": [
+            {
+                "id": 1,
+                "created_at": "2026-08-03T10:00:00",
+                "action": "auth.login_success",
+                "client_ip": "1.2.3.4",
+                "success": 1,
+                "details_json": '{"username":"new-user"}',
+            }
+        ],
+        "has_more": False,
+        "limit": 50,
+        "next_before_id": None,
+    }
+
+    with (
+        patch("app.repo_users.tables_available", return_value=True),
+        patch("app.repo_users.get_user", return_value=user),
+        patch("app.routes_users.list_user_activity", return_value=activity) as list_activity,
+    ):
+        response = client.get("/api/users/9/activity?limit=50")
+
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    assert response.json["rows"][0]["action"] == "auth.login_success"
+    assert response.json["rows"][0]["details"]["username"] == "new-user"
+    list_activity.assert_called_once_with("new-user", limit=50, before_id=None)
+
+
+def test_user_delete_endpoint():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+    user = {
+        "id": 9,
+        "username": "new-user",
+        "email": "new@example.gr",
+        "full_name": "New User",
+        "role": "office",
+        "is_active": True,
+    }
+
+    with (
+        patch("app.repo_users.tables_available", return_value=True),
+        patch("app.repo_users.get_user", return_value=user),
+        patch("app.routes_users.current_user_id", return_value=1),
+        patch("app.repo_users.is_super_admin_user", return_value=False),
+        patch("app.repo_users.delete_user", return_value=True) as delete_user,
+        patch("app.routes_users.record_audit_event") as audit,
+    ):
+        response = client.delete("/api/users/9")
+
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    delete_user.assert_called_once_with(9)
+    audit.assert_called_once()
+
+
+def test_user_delete_blocks_self():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(users_bp)
+    client = app.test_client()
+    user = {"id": 9, "username": "me", "role": "office"}
+
+    with (
+        patch("app.repo_users.tables_available", return_value=True),
+        patch("app.repo_users.get_user", return_value=user),
+        patch("app.routes_users.current_user_id", return_value=9),
+    ):
+        response = client.delete("/api/users/9")
+
+    assert response.status_code == 400
+    assert "δικό σας" in response.json["error"]

@@ -427,6 +427,9 @@ def _evaluate_row(
     flex_arrival_minutes: int | None = None,
     late_tolerance_min: int = 15,
 ) -> dict[str, Any]:
+    # Κενή εγγραφή ωραρίου (ίδιο «—» στο UI) = χωρίς ωράριο, όχι «Αναμένεται είσοδος».
+    if _schedule_shows_blank(sched):
+        sched = None
     tol = _flex_tolerance_minutes(
         flex_arrival_minutes,
         default=late_tolerance_min,

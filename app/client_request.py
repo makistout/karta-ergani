@@ -13,8 +13,6 @@ def _clean_ip(value: str | None) -> str | None:
     raw = str(value or "").strip().strip("\"'")
     if not raw:
         return None
-    if "," in raw:
-        raw = raw.split(",")[0].strip()
     if raw.startswith("[") and "]" in raw:
         raw = raw[1:raw.index("]")]
     elif ":" in raw and raw.count(":") == 1 and "." in raw:
@@ -24,6 +22,18 @@ def _clean_ip(value: str | None) -> str | None:
     except ValueError:
         return None
     return raw[:45]
+
+
+def _ips_from_header(value: str | None) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    out: list[str] = []
+    for part in raw.split(","):
+        ip = _clean_ip(part)
+        if ip:
+            out.append(ip)
+    return out
 
 
 def _forwarded_header_ip(value: str | None) -> str | None:
@@ -44,27 +54,87 @@ def _is_loopback_ip(value: str | None) -> bool:
         return False
 
 
+def _is_private_or_loopback(value: str | None) -> bool:
+    try:
+        addr = ipaddress.ip_address(str(value))
+    except ValueError:
+        return True
+    return bool(addr.is_loopback or addr.is_private or addr.is_link_local)
+
+
+def _pick_best_ip(candidates: list[tuple[str, str]]) -> tuple[str | None, str | None]:
+    """Προτιμά δημόσια IP· αλλιώς ιδιωτική· αλλιώς loopback."""
+    public: tuple[str, str] | None = None
+    private: tuple[str, str] | None = None
+    loopback: tuple[str, str] | None = None
+    for ip, source in candidates:
+        if _is_loopback_ip(ip):
+            if loopback is None:
+                loopback = (ip, source)
+            continue
+        if _is_private_or_loopback(ip):
+            if private is None:
+                private = (ip, source)
+            continue
+        if public is None:
+            public = (ip, source)
+    if public:
+        return public
+    if private:
+        return private
+    if loopback:
+        return loopback
+    return None, None
+
+
 def _client_ip_info(req: Request) -> tuple[str | None, str | None]:
+    """Επιστρέφει (ip, πηγή header). Αγνοεί 127.0.0.1 όταν υπάρχει καλύτερη IP."""
     header_candidates = (
-        ("X-Forwarded-For", req.headers.get("X-Forwarded-For")),
-        ("X-Real-IP", req.headers.get("X-Real-IP")),
-        ("X-Original-For", req.headers.get("X-Original-For")),
-        ("X-ARR-ClientIP", req.headers.get("X-ARR-ClientIP")),
-        ("True-Client-IP", req.headers.get("True-Client-IP")),
         ("CF-Connecting-IP", req.headers.get("CF-Connecting-IP")),
+        ("True-Client-IP", req.headers.get("True-Client-IP")),
+        ("X-ARR-ClientIP", req.headers.get("X-ARR-ClientIP")),
+        ("X-Real-IP", req.headers.get("X-Real-IP")),
+        ("X-Client-IP", req.headers.get("X-Client-IP")),
+        ("X-Original-For", req.headers.get("X-Original-For")),
+        ("X-Forwarded-For", req.headers.get("X-Forwarded-For")),
     )
+    scored: list[tuple[str, str]] = []
     for source, raw in header_candidates:
-        ip = _clean_ip(raw)
-        if ip:
-            return ip, source
+        if source == "X-Forwarded-For":
+            for ip in _ips_from_header(raw):
+                scored.append((ip, source))
+        else:
+            ip = _clean_ip(raw)
+            if ip:
+                scored.append((ip, source))
+
     forwarded_ip = _forwarded_header_ip(req.headers.get("Forwarded"))
     if forwarded_ip:
-        return forwarded_ip, "Forwarded"
+        scored.append((forwarded_ip, "Forwarded"))
+
+    # WSGI/IIS environ fallbacks (μετά από rewrite κανόνες).
+    for env_key, source in (
+        ("HTTP_X_FORWARDED_FOR", "environ:X-Forwarded-For"),
+        ("HTTP_X_REAL_IP", "environ:X-Real-IP"),
+        ("HTTP_X_ARR_CLIENTIP", "environ:X-ARR-ClientIP"),
+        ("HTTP_CLIENT_IP", "environ:CLIENT_IP"),
+    ):
+        raw = req.environ.get(env_key)
+        if not raw:
+            continue
+        if "FORWARDED_FOR" in env_key:
+            for ip in _ips_from_header(str(raw)):
+                scored.append((ip, source))
+        else:
+            ip = _clean_ip(str(raw))
+            if ip:
+                scored.append((ip, source))
 
     remote = _clean_ip(req.remote_addr)
     if remote:
-        return remote, "remote_addr"
-    return None, None
+        scored.append((remote, "remote_addr"))
+
+    return _pick_best_ip(scored)
 
 
 def capture_client_context(

@@ -4,7 +4,13 @@ function loginNextUrl() {
   if (!next.startsWith("/") || next.startsWith("//")) {
     return "/ui/";
   }
-  if (next.startsWith("/ui/login")) {
+  // Μην γυρνάμε σε σελίδες auth utility μετά από επιτυχή login.
+  const authUtility =
+    next.startsWith("/ui/login") ||
+    next.startsWith("/ui/forgot-password") ||
+    next.startsWith("/ui/reset-password") ||
+    next.startsWith("/ui/verify-email");
+  if (authUtility) {
     return "/ui/";
   }
   return next;
@@ -38,6 +44,10 @@ async function tryLogin() {
       showLoginMsg(data.error || "Αποτυχία σύνδεσης", false);
       return;
     }
+    if (data.onboarding_redirect) {
+      window.location.href = data.onboarding_redirect;
+      return;
+    }
     window.location.href = loginNextUrl();
   } catch (e) {
     showLoginMsg(String(e), false);
@@ -51,6 +61,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const res = await fetch("/api/auth/status", { credentials: "same-origin" });
     const data = await res.json();
     if (data.authenticated) {
+      if (data.onboarding_redirect) {
+        window.location.href = data.onboarding_redirect;
+        return;
+      }
       window.location.href = loginNextUrl();
       return;
     }

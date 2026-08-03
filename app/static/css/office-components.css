@@ -523,6 +523,7 @@ body.users-page .main {
 .user-row-email-line {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   min-width: 0;
 }
@@ -537,6 +538,13 @@ body.users-page .main {
   white-space: nowrap;
 }
 
+.user-row-actions {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
 .user-row-main small {
   color: var(--muted);
   font-size: 0.75rem;
@@ -546,6 +554,7 @@ body.users-page .main {
   justify-items: end;
 }
 
+.user-row-icon-btn,
 .user-row-resend-email {
   align-items: center;
   background: #fff;
@@ -562,11 +571,18 @@ body.users-page .main {
   width: 1.55rem;
 }
 
+.user-row-icon-btn:hover,
 .user-row-resend-email:hover {
   border-color: var(--brand-light);
   color: var(--brand);
 }
 
+.user-row-icon-btn--danger:hover {
+  border-color: #c45c5c;
+  color: #b42318;
+}
+
+.user-row-icon-btn:disabled,
 .user-row-resend-email:disabled {
   cursor: wait;
   opacity: 0.6;
@@ -575,6 +591,80 @@ body.users-page .main {
 .user-row-meta code {
   font-size: 0.76rem;
   max-width: 8rem;
+}
+
+.users-activity-panel {
+  max-width: min(920px, 96vw);
+}
+
+.users-activity-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.users-activity-rows {
+  display: grid;
+  gap: 0.45rem;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.user-activity-row {
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 9.5rem minmax(0, 1fr) minmax(7rem, 10rem);
+  padding: 0.55rem 0.7rem;
+}
+
+.user-activity-when {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.user-activity-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.user-activity-main small,
+.user-activity-ip small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-activity-ip {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+  min-width: 0;
+  text-align: right;
+}
+
+.user-activity-ip code {
+  font-size: 0.78rem;
+}
+
+@media (max-width: 720px) {
+  .user-activity-row {
+    grid-template-columns: 1fr;
+  }
+
+  .user-activity-ip {
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 .users-fields {

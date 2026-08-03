@@ -14,6 +14,13 @@ from app.public_urls import ui_public_url
 TOKEN_BYTES = 32
 TOKEN_TTL_HOURS = 48
 NEW_MEMBER_EMAIL_BCC = "info@erganios.gr"
+_TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def new_temporary_password(length: int = 12) -> str:
+    """Αναγνώσιμος προσωρινός κωδικός για welcome/resend email."""
+    n = max(8, min(int(length or 12), 32))
+    return "".join(secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(n))
 
 
 def new_verification_token() -> tuple[str, str]:
@@ -47,20 +54,74 @@ _ROBOTO_HEAD = (
 )
 
 
-def build_verification_email(*, username: str, full_name: str | None, url: str) -> tuple[str, str]:
+def build_verification_email(
+    *,
+    username: str,
+    full_name: str | None,
+    url: str,
+    temporary_password: str | None = None,
+) -> tuple[str, str]:
     display = _greeting_name(full_name, username)
     subject_name = html.escape(display)
+    safe_user = html.escape(username)
     safe_url = html.escape(url, quote=True)
+    temp_pwd = (temporary_password or "").strip()
+    safe_pwd = html.escape(temp_pwd) if temp_pwd else ""
+
+    cred_lines = [f"Username: {username}"]
+    if temp_pwd:
+        cred_lines.append(f"Προσωρινός κωδικός: {temp_pwd}")
+    step2 = (
+        f"2) Συνδεθείτε με προσωρινό κωδικό: {temp_pwd}"
+        if temp_pwd
+        else "2) Συνδεθείτε με τον προσωρινό κωδικό που σας έδωσε ο διαχειριστής."
+    )
     text = "\n".join([
-        "Επιβεβαίωση email erganiOS",
+        "Καλωσήρθατε στο erganiOS",
         "",
         f"Γεια σας {display},",
-        "Πατήστε τον παρακάτω σύνδεσμο για να επιβεβαιώσετε το email σας.",
+        "Δημιουργήθηκε λογαριασμός στο erganiOS.",
+        *cred_lines,
+        "",
+        "1) Πατήστε τον παρακάτω σύνδεσμο για να επιβεβαιώσετε το email σας.",
+        step2,
+        "3) Στην πρώτη σύνδεση θα σας ζητηθεί αλλαγή κωδικού και αποδοχή όρων χρήσης.",
         "",
         url,
         "",
         f"Ο σύνδεσμος λήγει σε {TOKEN_TTL_HOURS} ώρες.",
     ])
+
+    if temp_pwd:
+        cred_html = (
+            f'<p style="margin:14px 0;padding:14px 16px;background:#f0f9ff;border:2px solid #1f5b7a;'
+            f'border-radius:10px;color:#0f172a;font-size:15px;line-height:1.7;font-family:{_ROBOTO_FONT_STACK};">'
+            f'Username: <strong>{safe_user}</strong><br>'
+            f'Προσωρινός κωδικός: '
+            f'<strong style="font-size:18px;letter-spacing:.04em;font-family:Consolas,Monaco,monospace;">'
+            f'{safe_pwd}</strong>'
+            f"</p>"
+        )
+        step2_html = (
+            f'Συνδεθείτε με προσωρινό κωδικό: '
+            f'<strong style="font-family:Consolas,Monaco,monospace;">{safe_pwd}</strong>'
+        )
+        intro_html = (
+            f'<p style="margin:0;color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">'
+            f'Γεια σας <strong>{subject_name}</strong>,</p>'
+            f'<p style="color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">'
+            f'Δημιουργήθηκε λογαριασμός στο erganiOS. Τα στοιχεία σύνδεσης:</p>'
+        )
+    else:
+        cred_html = (
+            f'<p style="color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">'
+            f'Δημιουργήθηκε λογαριασμός στο erganiOS με username <strong>{safe_user}</strong>.</p>'
+        )
+        step2_html = "Συνδεθείτε με τον προσωρινό κωδικό που σας έδωσε ο διαχειριστής."
+        intro_html = (
+            f'<p style="margin:0;color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">'
+            f'Γεια σας <strong>{subject_name}</strong>,</p>'
+        )
     html_body = f"""<!doctype html>
 <html lang="el">
   <head>
@@ -75,13 +136,18 @@ def build_verification_email(*, username: str, full_name: str | None, url: str) 
             <tr>
               <td style="padding:26px 28px;background:#1f5b7a;font-family:{_ROBOTO_FONT_STACK};">
                 <div style="color:#dbeafe;font-size:12px;font-weight:800;letter-spacing:.04em;">erganiOS</div>
-                <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.2;font-family:{_ROBOTO_FONT_STACK};font-weight:800;">Επιβεβαίωση email</h1>
+                <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.2;font-family:{_ROBOTO_FONT_STACK};font-weight:800;">Καλωσήρθατε</h1>
               </td>
             </tr>
             <tr>
               <td style="padding:28px;font-family:{_ROBOTO_FONT_STACK};">
-                <p style="margin:0;color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">Γεια σας <strong>{subject_name}</strong>,</p>
-                <p style="color:#334155;font-size:16px;line-height:1.55;font-family:{_ROBOTO_FONT_STACK};">Πατήστε το κουμπί για να επιβεβαιώσετε το email σας στο erganiOS.</p>
+                {intro_html}
+                {cred_html}
+                <ol style="color:#334155;font-size:15px;line-height:1.55;padding-left:1.2rem;font-family:{_ROBOTO_FONT_STACK};">
+                  <li>Επιβεβαιώστε το email σας με το κουμπί παρακάτω.</li>
+                  <li>{step2_html}</li>
+                  <li>Στην πρώτη σύνδεση θα σας ζητηθεί <strong>αλλαγή κωδικού</strong> και <strong>αποδοχή όρων χρήσης</strong>.</li>
+                </ol>
                 <div style="margin:26px 0 10px;">
                   <a href="{safe_url}" style="display:inline-block;background:#1f5b7a;color:#ffffff;text-decoration:none;padding:13px 18px;border-radius:10px;font-weight:800;font-size:14px;font-family:{_ROBOTO_FONT_STACK};">Επιβεβαίωση email</a>
                 </div>
@@ -97,16 +163,24 @@ def build_verification_email(*, username: str, full_name: str | None, url: str) 
     return text, html_body
 
 
-def send_verification_email(*, email: str, username: str, full_name: str | None, token: str) -> dict[str, Any]:
+def send_verification_email(
+    *,
+    email: str,
+    username: str,
+    full_name: str | None,
+    token: str,
+    temporary_password: str | None = None,
+) -> dict[str, Any]:
     url = verification_url(token)
     text, html_body = build_verification_email(
         username=username,
         full_name=full_name,
         url=url,
+        temporary_password=temporary_password,
     )
     return send_email_message(
         email,
-        "Επιβεβαίωση email erganiOS",
+        "Καλωσήρθατε στο erganiOS — επιβεβαίωση email",
         text,
         html_body=html_body,
         bcc=NEW_MEMBER_EMAIL_BCC,

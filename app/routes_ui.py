@@ -61,6 +61,26 @@ def ui_verify_email():
     return render_template("ui/verify-email.html")
 
 
+@ui_bp.get("/forgot-password")
+def ui_forgot_password():
+    return render_template("ui/forgot-password.html")
+
+
+@ui_bp.get("/reset-password")
+def ui_reset_password():
+    return render_template("ui/reset-password.html")
+
+
+@ui_bp.get("/change-password")
+def ui_change_password():
+    return render_template("ui/change-password.html")
+
+
+@ui_bp.get("/accept-terms")
+def ui_accept_terms():
+    return render_template("ui/accept-terms.html")
+
+
 @ui_bp.get("/stores")
 def ui_stores_list():
     return render_template("ui/stores-list.html")

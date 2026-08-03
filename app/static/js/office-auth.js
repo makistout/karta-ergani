@@ -15,6 +15,11 @@ Object.assign(window.Office, {
         path.startsWith("/psifiako-orario-ergani") ||
         path.startsWith("/ui/landing") ||
         path.startsWith("/ui/login") ||
+        path.startsWith("/ui/forgot-password") ||
+        path.startsWith("/ui/reset-password") ||
+        path.startsWith("/ui/verify-email") ||
+        path.startsWith("/ui/change-password") ||
+        path.startsWith("/ui/accept-terms") ||
         path.startsWith("/ui/telegram-hit") ||
         path.startsWith("/ui/telegram-punch") ||
         path.startsWith("/ui/retro-hit") ||

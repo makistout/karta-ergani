@@ -38,6 +38,11 @@
 - Η φόρμα χρήστη υποστηρίζει username, email, όνομα, role, ενεργό/ανενεργό και reset password.
 - Στη δημιουργία χρήστη με email παράγεται link επιβεβαίωσης και αποστέλλεται email επαλήθευσης. Το token αποθηκεύεται μόνο ως SHA-256 hash στη βάση και λήγει σε 48 ώρες.
 - Το public link ανοίγει `/ui/verify-email?t=...` και καλεί το `/api/users/verify-email`. Με επιτυχή επιβεβαίωση συμπληρώνεται `email_verified_at` και καθαρίζεται το token.
+- **Νέος χρήστης:** απαιτείται έγκυρο email. Στην πρώτη σύνδεση υποχρεωτική αλλαγή κωδικού (`/ui/change-password`) και αποδοχή όρων (`/ui/accept-terms`). Η αποδοχή καταγράφει `terms_accepted_at`, `terms_accepted_ip`, `terms_version` (κείμενο σε `app/user_terms.py`).
+- Welcome / resend email περιλαμβάνει **προσωρινό κωδικό**· το resend δημιουργεί νέο και τον αποθηκεύει με `must_change_password`.
+- Forgot password: `/ui/forgot-password` + `/ui/reset-password` (`sql/alter_add_user_password_reset.sql`).
+- Στη λίστα χρηστών: εικονίδια επαναποστολής email, **καταγραφών ενεργειών** (`GET /api/users/<id>/activity`) και **διαγραφής** (`DELETE /api/users/<id>`, δικαίωμα `users.delete`· όχι self / τελευταίος super_admin).
+- Migration onboarding: `sql/alter_add_user_onboarding.sql` / `scripts/run_migration_user_onboarding.py` (υπάρχοντες χρήστες γίνονται grandfather).
 - Για υπάρχουσες βάσεις πρέπει να τρέξει το idempotent migration `scripts/run_migration_user_email_verification.py` ή το SQL `sql/alter_add_user_email_verification.sql`.
 - Τα καταστήματα δεν φορτώνονται ως μαζική checkbox λίστα. Ο χειριστής γράφει όνομα ή ΑΦΜ στο autocomplete, πατά Enter ή `Προσθήκη`, και το κατάστημα προστίθεται κάτω στη λίστα πρόσβασης του χρήστη.
 - Η λίστα επιλεγμένων καταστημάτων δείχνει όνομα, ΑΦΜ, αριθμό εργαζομένων και κουμπί αφαίρεσης ανά γραμμή.
@@ -58,9 +63,8 @@
 - Καταστήματα: `stores.view`, `stores.select`, `stores.manage`, `stores.credentials.manage`, `stores.api_env.manage`, `stores.view_sensitive`
 - Ειδοποιήσεις: `notifications.view`, `notifications.recipients.manage`, `notifications.rules.manage`, `notifications.snooze`, `notifications.send_test`
 - Καταγραφές: `logs.view`, `logs.view_sync`, `logs.view_notifications`, `logs.view_work_cards`, `logs.view_errors`, `logs.export`
-- Χρήστες / δικαιώματα: `users.view`, `users.create`, `users.edit`, `users.disable`, `users.reset_password`, `users.manage_permissions`, `users.manage_store_access`
+- Χρήστες / δικαιώματα: `users.view`, `users.create`, `users.edit`, `users.disable`, `users.delete`, `users.reset_password`, `users.manage_permissions`, `users.manage_store_access`
 - Ρυθμίσεις: `settings.view`, `settings.edit`, `settings.secrets.manage`, `settings.scheduler.manage`
-
 Οι σελίδες `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές`, μαζί με τα αντίστοιχα global API permissions, είναι admin-only: `admin`, `backoffice_admin` και `super_admin`.
 
 Στο sidebar/menu οι επιλογές `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές` κόβονται με βάση τον ρόλο, όχι μόνο με βάση granular permissions. Αυτό σημαίνει ότι `office`, `office_manager`, `viewer`, `store_viewer` και `notifications_manager` δεν τις βλέπουν ακόμη κι αν έχουν απομείνει explicit permissions όπως `sync.view`, `notifications.view` ή `logs.view` στο session/DB.

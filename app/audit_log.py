@@ -346,6 +346,70 @@ def list_audit_events(
     }
 
 
+def list_user_activity(
+    username: str,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+) -> dict[str, Any]:
+    """Καταγραφές για συγκεκριμένο office user (auth + ενέργειες με office_user)."""
+    from app.row_util import rows_to_dicts
+
+    user = str(username or "").strip()
+    if not user:
+        return {"rows": [], "has_more": False, "limit": 0, "next_before_id": None}
+
+    lim = max(1, min(int(limit or 50), 200))
+    filters = [
+        """
+        (
+            office_user = ?
+            OR actor_name = ?
+            OR (entity_type = N'office_user' AND entity_id = ?)
+        )
+        """
+    ]
+    params: list[Any] = [user, user, user]
+    if before_id is not None:
+        filters.append("id < ?")
+        params.append(int(before_id))
+    where = "WHERE " + " AND ".join(filters)
+
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP (?)
+                id, CAST(created_at AS datetime2) AS created_at,
+                actor_type, actor_name, office_user,
+                store_id, employer_afm, branch_aa,
+                action, entity_type, entity_id,
+                success, http_status,
+                request_method, request_path, endpoint,
+                client_ip, client_device, details_json
+            FROM dbo.karta_audit_log
+            {where}
+            ORDER BY id DESC
+            """,
+            tuple([lim + 1, *params]),
+        )
+        rows = rows_to_dicts(cur)
+
+    has_more = len(rows) > lim
+    rows = rows[:lim]
+    next_before_id = None
+    if has_more and rows:
+        try:
+            next_before_id = int(rows[-1].get("id"))
+        except (TypeError, ValueError):
+            next_before_id = None
+    return {
+        "rows": rows,
+        "has_more": has_more,
+        "limit": lim,
+        "next_before_id": next_before_id,
+    }
+
+
 def _request_payload() -> dict[str, Any] | None:
     if not has_request_context():
         return None

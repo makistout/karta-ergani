@@ -54,9 +54,23 @@ class EmailNotifyTests(unittest.TestCase):
             url="https://erganios.gr/ui/verify-email?t=abc",
         )
         assert "Γιώργος Τσαγκαράκης" in text
-        assert "giorgos" not in text
+        assert "Γεια σας Γιώργος Τσαγκαράκης" in text
+        assert "Username: giorgos" in text
+        assert "αλλαγή κωδικού" in text
         assert "Roboto" in html_body
         assert "Γιώργος Τσαγκαράκης" in html_body
+
+    def test_verification_email_includes_temporary_password(self):
+        text, html_body = build_verification_email(
+            username="giorgos",
+            full_name="Γιώργος Τσαγκαράκης",
+            url="https://erganios.gr/ui/verify-email?t=abc",
+            temporary_password="TempPass123!",
+        )
+        assert "Προσωρινός κωδικός: TempPass123!" in text
+        assert "TempPass123!" in html_body
+        assert "Συνδεθείτε με προσωρινό κωδικό: TempPass123!" in text
+        assert "Συνδεθείτε με προσωρινό κωδικό:" in html_body
 
     def test_verification_email_without_full_name_uses_neutral_greeting(self):
         text, _html = build_verification_email(
@@ -65,7 +79,8 @@ class EmailNotifyTests(unittest.TestCase):
             url="https://erganios.gr/ui/verify-email?t=abc",
         )
         assert "Γεια σας χρήστη," in text
-        assert "giorgos" not in text
+        assert "Username: giorgos" in text
+        assert "Γεια σας giorgos" not in text
 
 
 if __name__ == "__main__":

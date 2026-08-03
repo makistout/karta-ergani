@@ -730,8 +730,18 @@ function buildActionCell(r) {
   }
   const restDayAlways = restDayAlwaysShowActions(r);
   const beforeShift = canDeclareRestBeforeShift(r);
+  const wtoKind = String(r.wto_daily?.kind || "");
+  // Χωρίς ωράριο (κενή/ανύπαρκτη εγγραφή): κουμπί WTODaily χωρίς απαίτηση «πριν την έναρξη».
+  const noScheduleChange =
+    Boolean(r.wto_daily_eligible) &&
+    (r.status === "no_schedule" || wtoKind === "no_schedule") &&
+    isEditableWorkDate(r) &&
+    !rowHasWorkSignal(r);
   const scheduleChangeEligible =
-    restDayAlways || (r.wto_daily_eligible && beforeShift) || canChangeScheduleBeforeShift(r);
+    restDayAlways ||
+    noScheduleChange ||
+    (r.wto_daily_eligible && beforeShift) ||
+    canChangeScheduleBeforeShift(r);
   if (scheduleChangeEligible) {
     html +=
       `<div><button type="button" class="btn btn-secondary btn-wto-daily" data-wto-daily-afm="${Office.escapeHtml(r.employee_afm || "")}" data-wto-daily-date="${Office.escapeHtml(r.work_date || "")}">` +

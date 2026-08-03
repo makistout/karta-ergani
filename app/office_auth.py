@@ -22,6 +22,8 @@ from config import Config
 
 SESSION_LOGGED_IN = "office_logged_in"
 SESSION_USER = "office_user"
+SESSION_MUST_CHANGE_PASSWORD = "office_must_change_password"
+SESSION_TERMS_ACCEPTED = "office_terms_accepted"
 
 _PUBLIC_EXACT = frozenset({
     "/",
@@ -33,6 +35,8 @@ _PUBLIC_EXACT = frozenset({
     "/ui/landing",
     "/ui/login",
     "/ui/verify-email",
+    "/ui/forgot-password",
+    "/ui/reset-password",
     "/ui/telegram-hit",
     "/ui/telegram-punch",
     "/ui/retro-hit",
@@ -42,12 +46,26 @@ _PUBLIC_EXACT = frozenset({
     "/api/auth/login",
     "/api/auth/status",
     "/api/auth/logout",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
     "/api/contact",
     "/api/users/verify-email",
     "/favicon.ico",
 }) | seo_public_paths()
 
 _PUBLIC_PREFIXES = ("/static/",)
+
+# Σελίδες/API onboarding — επιτρέπονται όταν ο χρήστης είναι συνδεδεμένος
+# αλλά δεν έχει ολοκληρώσει αλλαγή κωδικού / αποδοχή όρων.
+_ONBOARDING_PATHS = frozenset({
+    "/ui/change-password",
+    "/ui/accept-terms",
+    "/api/auth/change-password",
+    "/api/auth/accept-terms",
+    "/api/auth/terms",
+    "/api/auth/status",
+    "/api/auth/logout",
+})
 
 
 def office_login_enabled() -> bool:
@@ -60,6 +78,30 @@ def office_login_credentials() -> tuple[str, str]:
 
 def is_office_authenticated() -> bool:
     return bool(session.get(SESSION_LOGGED_IN))
+
+
+def _set_onboarding_session(db_user: dict) -> None:
+    session[SESSION_MUST_CHANGE_PASSWORD] = bool(db_user.get("must_change_password"))
+    session[SESSION_TERMS_ACCEPTED] = bool(db_user.get("terms_accepted", True))
+
+
+def clear_must_change_password_session() -> None:
+    session[SESSION_MUST_CHANGE_PASSWORD] = False
+
+
+def mark_terms_accepted_session() -> None:
+    session[SESSION_TERMS_ACCEPTED] = True
+
+
+def onboarding_redirect_path() -> str | None:
+    """Επιστρέφει path υποχρεωτικού βήματος onboarding ή None."""
+    if not is_office_authenticated():
+        return None
+    if bool(session.get(SESSION_MUST_CHANGE_PASSWORD)):
+        return "/ui/change-password"
+    if session.get(SESSION_TERMS_ACCEPTED) is False:
+        return "/ui/accept-terms"
+    return None
 
 
 def login_office_user(username: str, password: str) -> bool:
@@ -76,6 +118,7 @@ def login_office_user(username: str, password: str) -> bool:
         session[SESSION_ROLE] = normalize_role(db_user.get("role"))
         session[SESSION_PERMISSIONS] = list(db_user.get("permissions") or [])
         session[SESSION_SUPER_ADMIN] = bool(db_user.get("is_super_admin"))
+        _set_onboarding_session(db_user)
         session.permanent = True
         try:
             from app.scheduled_sync import enqueue_sync_allowed_stores_after_login
@@ -114,6 +157,8 @@ def login_office_user(username: str, password: str) -> bool:
     session[SESSION_USER_ID] = None
     session[SESSION_PERMISSIONS] = sorted(permissions_for_role(role))
     session[SESSION_SUPER_ADMIN] = role == "super_admin"
+    session[SESSION_MUST_CHANGE_PASSWORD] = False
+    session[SESSION_TERMS_ACCEPTED] = True
     session.permanent = True
     return True
 
@@ -125,6 +170,8 @@ def logout_office_user() -> None:
     session.pop(SESSION_ROLE, None)
     session.pop(SESSION_PERMISSIONS, None)
     session.pop(SESSION_SUPER_ADMIN, None)
+    session.pop(SESSION_MUST_CHANGE_PASSWORD, None)
+    session.pop(SESSION_TERMS_ACCEPTED, None)
 
 
 def _path_is_public(path: str, method: str) -> bool:
@@ -174,6 +221,40 @@ def register_login_guard(app: Flask) -> None:
             return None
         token_ok = _office_api_token_ok()
         if is_office_authenticated() or token_ok:
+            # Onboarding gate μόνο για session users (όχι office API token).
+            if is_office_authenticated() and not token_ok:
+                onboard_path = onboarding_redirect_path()
+                if onboard_path and path not in _ONBOARDING_PATHS:
+                    # Αλλαγή κωδικού προηγείται· μην αφήνουμε accept-terms πριν.
+                    if bool(session.get(SESSION_MUST_CHANGE_PASSWORD)):
+                        allowed = {
+                            "/ui/change-password",
+                            "/api/auth/change-password",
+                            "/api/auth/status",
+                            "/api/auth/logout",
+                        }
+                        if path not in allowed:
+                            if path.startswith("/api/"):
+                                return jsonify({
+                                    "error": "Απαιτείται αλλαγή κωδικού",
+                                    "redirect": "/ui/change-password",
+                                    "must_change_password": True,
+                                }), 403
+                            return redirect("/ui/change-password")
+                    elif path not in {
+                        "/ui/accept-terms",
+                        "/api/auth/accept-terms",
+                        "/api/auth/terms",
+                        "/api/auth/status",
+                        "/api/auth/logout",
+                    }:
+                        if path.startswith("/api/"):
+                            return jsonify({
+                                "error": "Απαιτείται αποδοχή όρων χρήσης",
+                                "redirect": "/ui/accept-terms",
+                                "terms_accepted": False,
+                            }), 403
+                        return redirect("/ui/accept-terms")
             permission = permission_for_path(path, request.method)
             role = "admin" if token_ok else str(session.get(SESSION_ROLE) or "")
             if permission and not has_permission(permission, role=role):

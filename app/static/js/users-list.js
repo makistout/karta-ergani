@@ -120,6 +120,7 @@ const PERMISSION_ACTIONS = {
   create: "Δημιουργεί νέα εγγραφή.",
   edit: "Επεξεργάζεται υπάρχουσα εγγραφή.",
   disable: "Απενεργοποιεί χρήστη ή εγγραφή.",
+  delete: "Διαγράφει οριστικά χρήστη και συσχετίσεις.",
   reset_password: "Αλλάζει password χρήστη.",
   manage_permissions: "Αλλάζει granular δικαιώματα χρήστη.",
   manage_store_access: "Αλλάζει πρόσβαση χρήστη σε καταστήματα.",
@@ -147,13 +148,24 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnClearPerms")?.addEventListener("click", () => setCheckedPermissions([]));
   document.getElementById("btnAddStore")?.addEventListener("click", addStoreFromSearch);
   document.getElementById("userStoreSearch")?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    addStoreFromSearch();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addStoreFromSearch();
+    }
   });
   document.getElementById("permissionCompareSearch")?.addEventListener("input", (event) => {
-    usersState.permissionQuery = event.target.value || "";
+    usersState.permissionQuery = String(event.target.value || "");
     renderPermissionComparison();
+  });
+  document.getElementById("userActivityClose")?.addEventListener("click", closeUserActivityModal);
+  document.getElementById("userActivityModal")?.querySelectorAll("[data-user-activity-close]").forEach((el) => {
+    el.addEventListener("click", closeUserActivityModal);
+  });
+  document.getElementById("userActivityLoadMore")?.addEventListener("click", () => loadUserActivityMore());
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const modal = document.getElementById("userActivityModal");
+    if (modal && !modal.classList.contains("hidden")) closeUserActivityModal();
   });
   loadUsers();
 });
@@ -209,22 +221,48 @@ function renderUsersList() {
     const active = u.is_active ? "Ενεργός" : "Ανενεργός";
     const activeCls = u.is_active ? "ok" : "err";
     const selected = usersState.selected && Number(usersState.selected.id) === Number(u.id);
+    const label = Office.escapeHtml(u.username || "");
+    const actions =
+      `<span class="user-row-actions">` +
+      (
+        (u.email || "").trim()
+          ? (
+            `<button type="button" class="user-row-icon-btn" data-resend-user-id="${u.id}" ` +
+            `title="Επαναποστολή email επιβεβαίωσης" ` +
+            `aria-label="Επαναποστολή email επιβεβαίωσης για ${label}">` +
+            `<i class="bi bi-envelope" aria-hidden="true"></i>` +
+            `</button>`
+          )
+          : ""
+      ) +
+      `<button type="button" class="user-row-icon-btn" data-activity-user-id="${u.id}" ` +
+      `title="Καταγραφές ενεργειών" ` +
+      `aria-label="Καταγραφές ενεργειών για ${label}">` +
+      `<i class="bi bi-journal-text" aria-hidden="true"></i>` +
+      `</button>` +
+      `<button type="button" class="user-row-icon-btn user-row-icon-btn--danger" data-delete-user-id="${u.id}" ` +
+      `title="Διαγραφή χρήστη" ` +
+      `aria-label="Διαγραφή χρήστη ${label}">` +
+      `<i class="bi bi-trash" aria-hidden="true"></i>` +
+      `</button>` +
+      `</span>`;
     const emailLine = (u.email || "").trim()
       ? (
         `<span class="user-row-email-line">` +
         `<small>${Office.escapeHtml(u.email)}</small>` +
-        `<button type="button" class="user-row-resend-email" data-resend-user-id="${u.id}" ` +
-        `title="Επαναποστολή email επιβεβαίωσης" ` +
-        `aria-label="Επαναποστολή email επιβεβαίωσης για ${Office.escapeHtml(u.username || "")}">` +
-        `<i class="bi bi-envelope" aria-hidden="true"></i>` +
-        `</button>` +
+        `${actions}` +
         `</span>`
       )
-      : `<small>${Office.escapeHtml(u.full_name || "")}</small>`;
+      : (
+        `<span class="user-row-email-line">` +
+        `<small>${Office.escapeHtml(u.full_name || "")}</small>` +
+        `${actions}` +
+        `</span>`
+      );
     return (
       `<div class="user-row${selected ? " is-selected" : ""}" data-user-id="${u.id}" role="button" tabindex="0">` +
       `<span class="user-row-main">` +
-      `<strong>${Office.escapeHtml(u.username || "")}</strong>` +
+      `<strong>${label}</strong>` +
       `${emailLine}` +
       `</span>` +
       `<span class="user-row-meta">` +
@@ -248,6 +286,20 @@ function renderUsersList() {
       event.preventDefault();
       event.stopPropagation();
       resendVerificationEmail(Number(btn.dataset.resendUserId), btn);
+    });
+  });
+  wrap.querySelectorAll("[data-activity-user-id]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openUserActivityModal(Number(btn.dataset.activityUserId));
+    });
+  });
+  wrap.querySelectorAll("[data-delete-user-id]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteUser(Number(btn.dataset.deleteUserId), btn);
     });
   });
 }
@@ -589,6 +641,11 @@ async function saveUser() {
     Office.showMsg("usersMsg", "Συμπληρώστε password για νέο χρήστη.", false);
     return;
   }
+  if (!id && (!payload.email || !payload.email.includes("@"))) {
+    Office.showMsg("usersMsg", "Συμπληρώστε έγκυρο email για επιβεβαίωση λογαριασμού.", false);
+    document.getElementById("userEmail")?.focus();
+    return;
+  }
   if (payload.role !== "super_admin" && !payload.store_ids.length) {
     Office.showMsg("usersMsg", "Επιλέξτε τουλάχιστον ένα κατάστημα για τον χρήστη.", false);
     document.getElementById("userStoreSearch")?.focus();
@@ -655,5 +712,167 @@ async function resetPassword() {
     Office.showMsg("usersMsg", "Το password άλλαξε.", true);
   } catch (e) {
     Office.showMsg("usersMsg", String(e), false);
+  }
+}
+
+function formatActivityWhen(value) {
+  if (!value) return "—";
+  const text = String(value);
+  return text.replace("T", " ").replace(/\.\d+/, "").slice(0, 19);
+}
+
+function userActivityLabel(row) {
+  const action = String(row.action || "");
+  const details = row.details || {};
+  const reason = String(details.reason || "");
+  if (action === "auth.login_success") return "Σύνδεση";
+  if (action === "auth.logout") return "Αποσύνδεση";
+  if (action === "auth.login_failed") {
+    if (reason === "missing_credentials") return "Αποτυχημένη σύνδεση · λείπουν στοιχεία";
+    if (reason === "invalid_credentials") return "Αποτυχημένη σύνδεση · λάθος στοιχεία";
+    return "Αποτυχημένη σύνδεση";
+  }
+  if (action === "auth.terms_accepted") return "Αποδοχή όρων";
+  if (action === "auth.password_changed") return "Αλλαγή κωδικού";
+  if (action === "auth.password_reset_requested") return "Αίτημα επαναφοράς κωδικού";
+  if (action === "auth.password_reset_completed") return "Ολοκλήρωση επαναφοράς κωδικού";
+  if (action === "auth.password_reset_failed") return "Αποτυχία επαναφοράς κωδικού";
+  if (action === "users.deleted") return "Διαγραφή χρήστη";
+  return action || "Ενέργεια";
+}
+
+function userActivityExtra(row) {
+  const details = row.details || {};
+  const bits = [];
+  if (details.terms_version) bits.push(`Έκδοση όρων: ${details.terms_version}`);
+  if (details.reason) bits.push(`Λόγος: ${details.reason}`);
+  if (row.http_status) bits.push(`HTTP ${row.http_status}`);
+  if (row.request_path && !String(row.action || "").startsWith("auth.")) {
+    bits.push(row.request_path);
+  }
+  return bits.join(" · ");
+}
+
+let userActivityState = {
+  userId: null,
+  nextBeforeId: null,
+  hasMore: false,
+  loading: false,
+};
+
+function closeUserActivityModal() {
+  const modal = document.getElementById("userActivityModal");
+  modal?.classList.add("hidden");
+  userActivityState = { userId: null, nextBeforeId: null, hasMore: false, loading: false };
+}
+
+async function openUserActivityModal(userId) {
+  const modal = document.getElementById("userActivityModal");
+  const wrap = document.getElementById("userActivityRows");
+  const sub = document.getElementById("userActivitySub");
+  const moreBtn = document.getElementById("userActivityLoadMore");
+  if (!modal || !wrap) return;
+  userActivityState = { userId, nextBeforeId: null, hasMore: false, loading: false };
+  wrap.innerHTML = `<p style="color:var(--muted);">Φόρτωση…</p>`;
+  if (sub) sub.textContent = "";
+  if (moreBtn) moreBtn.classList.add("hidden");
+  modal.classList.remove("hidden");
+  await loadUserActivity(true);
+}
+
+async function loadUserActivityMore() {
+  await loadUserActivity(false);
+}
+
+async function loadUserActivity(reset) {
+  const userId = userActivityState.userId;
+  const wrap = document.getElementById("userActivityRows");
+  const sub = document.getElementById("userActivitySub");
+  const moreBtn = document.getElementById("userActivityLoadMore");
+  if (!userId || !wrap || userActivityState.loading) return;
+  userActivityState.loading = true;
+  if (moreBtn) moreBtn.disabled = true;
+  try {
+    const qs = new URLSearchParams({ limit: "50" });
+    if (!reset && userActivityState.nextBeforeId != null) {
+      qs.set("before_id", String(userActivityState.nextBeforeId));
+    }
+    const res = await fetch(`/api/users/${userId}/activity?${qs}`);
+    const data = await Office.parseJson(res);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    const user = data.user || {};
+    if (sub) {
+      const termsBits = [];
+      if (user.terms_accepted_at) {
+        termsBits.push(`Όροι: ${formatActivityWhen(user.terms_accepted_at)}`);
+        if (user.terms_accepted_ip) termsBits.push(`IP ${user.terms_accepted_ip}`);
+        if (user.terms_version) termsBits.push(user.terms_version);
+      } else {
+        termsBits.push("Όροι: δεν έχουν αποδεχτεί");
+      }
+      sub.textContent = `${user.username || ""}${user.email ? ` · ${user.email}` : ""} · ${termsBits.join(" · ")}`;
+    }
+    const rows = data.rows || [];
+    const html = rows.map((row) => {
+      const ok = row.success === true || row.success === 1;
+      const fail = row.success === false || row.success === 0;
+      const statusCls = ok ? "ok" : (fail ? "err" : "");
+      const extra = userActivityExtra(row);
+      return (
+        `<div class="user-activity-row">` +
+        `<div class="user-activity-when">${Office.escapeHtml(formatActivityWhen(row.created_at))}</div>` +
+        `<div class="user-activity-main">` +
+        `<strong class="${statusCls}">${Office.escapeHtml(userActivityLabel(row))}</strong>` +
+        (extra ? `<small>${Office.escapeHtml(extra)}</small>` : "") +
+        `</div>` +
+        `<div class="user-activity-ip">` +
+        `<code>${Office.escapeHtml(row.client_ip || "—")}</code>` +
+        (row.client_device ? `<small title="${Office.escapeHtml(row.client_device)}">${Office.escapeHtml(String(row.client_device).slice(0, 48))}</small>` : "") +
+        `</div>` +
+        `</div>`
+      );
+    }).join("");
+    if (reset) {
+      wrap.innerHTML = html || `<p style="color:var(--muted);">Δεν υπάρχουν καταγεγραμμένες ενέργειες.</p>`;
+    } else if (html) {
+      wrap.insertAdjacentHTML("beforeend", html);
+    }
+    userActivityState.hasMore = Boolean(data.has_more);
+    userActivityState.nextBeforeId = data.next_before_id ?? null;
+    if (moreBtn) {
+      moreBtn.classList.toggle("hidden", !userActivityState.hasMore);
+      moreBtn.disabled = false;
+    }
+  } catch (e) {
+    if (reset) wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    else Office.showMsg("usersMsg", String(e), false);
+    if (moreBtn) moreBtn.disabled = false;
+  } finally {
+    userActivityState.loading = false;
+  }
+}
+
+async function deleteUser(userId, btn) {
+  const user = (usersState.users || []).find((u) => Number(u.id) === Number(userId));
+  const name = user?.username || `#${userId}`;
+  if (!window.confirm(
+    `Οριστική διαγραφή του χρήστη «${name}»;\n\nΘα διαγραφούν ρόλος, δικαιώματα και πρόσβαση σε καταστήματα. Οι καταγραφές audit παραμένουν.`
+  )) {
+    return;
+  }
+  if (btn) btn.disabled = true;
+  Office.showMsg("usersMsg", "Διαγραφή…", true);
+  try {
+    const res = await fetch(`/api/users/${userId}`, { method: "DELETE" });
+    const data = await Office.parseJson(res);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    if (usersState.selected && Number(usersState.selected.id) === Number(userId)) {
+      usersState.selected = null;
+    }
+    Office.showMsg("usersMsg", `Ο χρήστης «${name}» διαγράφηκε.`, true);
+    await loadUsers();
+  } catch (e) {
+    Office.showMsg("usersMsg", String(e), false);
+    if (btn) btn.disabled = false;
   }
 }
