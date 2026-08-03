@@ -351,8 +351,13 @@ def list_user_activity(
     *,
     limit: int = 50,
     before_id: int | None = None,
+    since: Any | None = None,
 ) -> dict[str, Any]:
-    """Καταγραφές για συγκεκριμένο office user (auth + ενέργειες με office_user)."""
+    """Καταγραφές για συγκεκριμένο office user (auth + ενέργειες με office_user).
+
+    Το ``since`` (συνήθως ``karta_user.created_at``) αποκλείει ιστορικό προηγούμενου
+    λογαριασμού με το ίδιο username μετά από διαγραφή/αναδημιουργία.
+    """
     from app.row_util import rows_to_dicts
 
     user = str(username or "").strip()
@@ -370,6 +375,9 @@ def list_user_activity(
         """
     ]
     params: list[Any] = [user, user, user]
+    if since is not None:
+        filters.append("CAST(created_at AS datetime2) >= CAST(? AS datetime2)")
+        params.append(since)
     if before_id is not None:
         filters.append("id < ?")
         params.append(int(before_id))
@@ -408,6 +416,30 @@ def list_user_activity(
         "limit": lim,
         "next_before_id": next_before_id,
     }
+
+
+def delete_user_activity(username: str) -> int:
+    """Σβήνει όλες τις audit εγγραφές που ανήκουν σε office username."""
+    user = str(username or "").strip()
+    if not user:
+        return 0
+    try:
+        with cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM dbo.karta_audit_log
+                WHERE office_user = ?
+                   OR actor_name = ?
+                   OR (entity_type = N'office_user' AND entity_id = ?)
+                """,
+                (user, user, user),
+            )
+            try:
+                return int(cur.rowcount or 0)
+            except (TypeError, ValueError):
+                return 0
+    except Exception:
+        return 0
 
 
 def _request_payload() -> dict[str, Any] | None:

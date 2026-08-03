@@ -84,8 +84,8 @@
 - **Δεν υπάρχει καθόλου στο φύλλο της ημέρας** → `absent` (ΡΕΠΟ / χωρίς εργασία).
 
 Κατέβασμα Excel template από `/ui/schedule` (τρέχουσα ή επόμενη εβδομάδα) μέσω
-`GET /api/schedule/import/template?week=current|next`. Προγεμισμένο με το ψηφιακό
-ωράριο Ergani από `karta_schedule` (ώρες / ΡΕΠΟ ανά εργαζόμενο· κενό μόνο όπου δεν υπάρχει εγγραφή).
+`GET /api/schedule/import/template?week=current|next`. Κενό template (εργαζόμενοι +
+ημερομηνίες· χωρίς προγεμισμένες ώρες/ΡΕΠΟ από `karta_schedule`).
 
 Μετά την επιβεβαίωση εισαγωγής τρέχει portal sync για το εύρος ημερομηνιών του αρχείου.
 Οι αλλαγές καταγράφονται στο audit (`excel_import` + καρτέλα «Αλλαγές ωραρίου»).

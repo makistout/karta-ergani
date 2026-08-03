@@ -10,6 +10,7 @@ from app.row_util import row_to_dict, rows_to_dicts
 _sync_meta_cols: bool | None = None
 _action_settings_cols: bool | None = None
 _notify_grace_col: bool | None = None
+_fixed_exit_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -74,6 +75,22 @@ def notify_grace_column_available() -> bool:
     return _notify_grace_col
 
 
+def fixed_exit_column_available() -> bool:
+    global _fixed_exit_col
+    if _fixed_exit_col is True:
+        return _fixed_exit_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'auto_close_fixed_exit_time')"
+            )
+            row = cur.fetchone()
+            _fixed_exit_col = row is not None and row[0] is not None
+    except Exception:
+        _fixed_exit_col = False
+    return _fixed_exit_col
+
+
 def get_notify_grace_minutes(store_id: int) -> int:
     from app.today_notify_logic import NOTIFY_GRACE_MINUTES, normalize_notify_grace_minutes
 
@@ -96,15 +113,22 @@ def get_notify_grace_minutes(store_id: int) -> int:
 
 def _store_action_select_extra() -> str:
     if action_settings_columns_available():
-        return """
+        fixed = (
+            ", auto_close_fixed_exit_time"
+            if fixed_exit_column_available()
+            else ", CAST(NULL AS nvarchar(5)) AS auto_close_fixed_exit_time"
+        )
+        return f"""
                CAST(auto_close_prev_day_enabled AS int) AS auto_close_prev_day_enabled,
                auto_close_prev_day_time,
                auto_close_prev_day_last_run_date
+               {fixed}
         """
     return """
                CAST(0 AS int) AS auto_close_prev_day_enabled,
                CAST(N'00:30' AS nvarchar(5)) AS auto_close_prev_day_time,
-               CAST(NULL AS nvarchar(10)) AS auto_close_prev_day_last_run_date
+               CAST(NULL AS nvarchar(10)) AS auto_close_prev_day_last_run_date,
+               CAST(NULL AS nvarchar(5)) AS auto_close_fixed_exit_time
     """
 
 
@@ -401,6 +425,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             "auto_close_prev_day_enabled": False,
             "auto_close_prev_day_time": "00:30",
             "auto_close_prev_day_last_run_date": None,
+            "auto_close_fixed_exit_time": None,
             "notify_grace_minutes": 15,
             "db_setup": "sql/alter_add_store_action_settings.sql",
         }
@@ -410,12 +435,18 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             if notify_grace_column_available()
             else ", CAST(15 AS int) AS notify_grace_minutes"
         )
+        fixed_sql = (
+            ", auto_close_fixed_exit_time"
+            if fixed_exit_column_available()
+            else ", CAST(NULL AS nvarchar(5)) AS auto_close_fixed_exit_time"
+        )
         cur.execute(
             f"""
             SELECT
                 CAST(auto_close_prev_day_enabled AS int) AS auto_close_prev_day_enabled,
                 auto_close_prev_day_time,
                 auto_close_prev_day_last_run_date
+                {fixed_sql}
                 {grace_sql}
             FROM dbo.karta_store_config
             WHERE id = ?
@@ -431,14 +462,21 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         from app.today_notify_logic import normalize_notify_grace_minutes
 
         grace = normalize_notify_grace_minutes(data.get("notify_grace_minutes"))
+    from app.auto_close_cards import normalize_optional_auto_close_time
+
     out = {
         "auto_close_prev_day_enabled": bool(data.get("auto_close_prev_day_enabled")),
         "auto_close_prev_day_time": data.get("auto_close_prev_day_time") or "00:30",
         "auto_close_prev_day_last_run_date": data.get("auto_close_prev_day_last_run_date"),
+        "auto_close_fixed_exit_time": normalize_optional_auto_close_time(
+            data.get("auto_close_fixed_exit_time")
+        ),
         "notify_grace_minutes": grace,
     }
     if not notify_grace_column_available():
         out["db_setup_notify_grace"] = "sql/alter_add_store_notify_grace_minutes.sql"
+    if not fixed_exit_column_available():
+        out["db_setup_fixed_exit"] = "sql/alter_add_auto_close_fixed_exit_time.sql"
     return out
 
 
@@ -447,39 +485,39 @@ def save_action_settings(
     *,
     auto_close_prev_day_enabled: bool,
     auto_close_prev_day_time: str,
+    auto_close_fixed_exit_time: str | None = None,
     notify_grace_minutes: int | None = None,
 ) -> dict[str, Any]:
     if not action_settings_columns_available():
         raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
+    from app.auto_close_cards import normalize_optional_auto_close_time
     from app.today_notify_logic import normalize_notify_grace_minutes
 
     time_s = str(auto_close_prev_day_time or "").strip()[:5] or "00:30"
+    fixed_s = normalize_optional_auto_close_time(auto_close_fixed_exit_time)
     grace = normalize_notify_grace_minutes(notify_grace_minutes)
+    sets = [
+        "auto_close_prev_day_enabled = ?",
+        "auto_close_prev_day_time = ?",
+        "updated_at = SYSDATETIMEOFFSET()",
+    ]
+    params: list[Any] = [1 if auto_close_prev_day_enabled else 0, time_s]
+    if fixed_exit_column_available():
+        sets.insert(2, "auto_close_fixed_exit_time = ?")
+        params.append(fixed_s)
     if notify_grace_column_available():
-        with cursor() as cur:
-            cur.execute(
-                """
-                UPDATE dbo.karta_store_config
-                SET auto_close_prev_day_enabled = ?,
-                    auto_close_prev_day_time = ?,
-                    notify_grace_minutes = ?,
-                    updated_at = SYSDATETIMEOFFSET()
-                WHERE id = ?
-                """,
-                (1 if auto_close_prev_day_enabled else 0, time_s, grace, int(store_id)),
-            )
-    else:
-        with cursor() as cur:
-            cur.execute(
-                """
-                UPDATE dbo.karta_store_config
-                SET auto_close_prev_day_enabled = ?,
-                    auto_close_prev_day_time = ?,
-                    updated_at = SYSDATETIMEOFFSET()
-                WHERE id = ?
-                """,
-                (1 if auto_close_prev_day_enabled else 0, time_s, int(store_id)),
-            )
+        sets.insert(-1, "notify_grace_minutes = ?")
+        params.append(grace)
+    params.append(int(store_id))
+    with cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE dbo.karta_store_config
+            SET {", ".join(sets)}
+            WHERE id = ?
+            """,
+            tuple(params),
+        )
     return get_action_settings(store_id)
 
 

@@ -856,7 +856,7 @@ async function deleteUser(userId, btn) {
   const user = (usersState.users || []).find((u) => Number(u.id) === Number(userId));
   const name = user?.username || `#${userId}`;
   if (!window.confirm(
-    `Οριστική διαγραφή του χρήστη «${name}»;\n\nΘα διαγραφούν ρόλος, δικαιώματα και πρόσβαση σε καταστήματα. Οι καταγραφές audit παραμένουν.`
+    `Οριστική διαγραφή του χρήστη «${name}»;\n\nΘα διαγραφούν ρόλος, δικαιώματα, πρόσβαση σε καταστήματα και όλες οι καταγεγραμμένες ενέργειές του.`
   )) {
     return;
   }

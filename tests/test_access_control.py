@@ -411,6 +411,7 @@ def test_user_activity_endpoint():
         "full_name": "New User",
         "role": "office",
         "is_active": True,
+        "created_at": "2026-08-03T12:00:00",
         "terms_accepted_at": None,
         "terms_accepted_ip": None,
         "terms_version": None,
@@ -442,7 +443,12 @@ def test_user_activity_endpoint():
     assert response.json["success"] is True
     assert response.json["rows"][0]["action"] == "auth.login_success"
     assert response.json["rows"][0]["details"]["username"] == "new-user"
-    list_activity.assert_called_once_with("new-user", limit=50, before_id=None)
+    list_activity.assert_called_once_with(
+        "new-user",
+        limit=50,
+        before_id=None,
+        since="2026-08-03T12:00:00",
+    )
 
 
 def test_user_delete_endpoint():
@@ -465,13 +471,16 @@ def test_user_delete_endpoint():
         patch("app.routes_users.current_user_id", return_value=1),
         patch("app.repo_users.is_super_admin_user", return_value=False),
         patch("app.repo_users.delete_user", return_value=True) as delete_user,
+        patch("app.routes_users.delete_user_activity", return_value=12) as purge_audit,
         patch("app.routes_users.record_audit_event") as audit,
     ):
         response = client.delete("/api/users/9")
 
     assert response.status_code == 200
     assert response.json["success"] is True
+    assert response.json["deleted_audit_events"] == 12
     delete_user.assert_called_once_with(9)
+    purge_audit.assert_called_once_with("new-user")
     audit.assert_called_once()
 
 

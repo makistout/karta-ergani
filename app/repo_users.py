@@ -535,6 +535,7 @@ def get_user(user_id: int) -> dict[str, Any] | None:
         cur.execute(
             f"""
             SELECT u.id, u.username, u.email, u.full_name, u.is_active, u.is_super_admin,
+                   CAST(u.created_at AS datetime2) AS created_at,
                    COALESCE(ur.role_code, CASE WHEN u.is_super_admin = 1 THEN N'super_admin' ELSE N'viewer' END) AS role
                    {extra}
             FROM dbo.karta_user u

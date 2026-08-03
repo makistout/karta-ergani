@@ -125,8 +125,6 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
 
         with patch("app.schedule_excel_template.get_store_config", return_value=store), patch(
             "app.schedule_excel_template.list_employees_for_employer", return_value=employees
-        ), patch(
-            "app.schedule_excel_template.list_schedule_for_range", return_value=[]
         ):
             xlsx, _filename, _meta = build_weekly_schedule_template_bytes(
                 store_id=1,
@@ -189,7 +187,7 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
         skips = [r for r in rows if r["import_action"] == "skip"]
         self.assertGreater(len(skips), 0)
 
-    def test_template_prefilled_from_digital_schedule(self):
+    def test_template_is_blank_hours(self):
         from app.schedule_excel_layout import employee_block_start_row, single_sheet_day_col
 
         week_monday = date(2026, 7, 6)
@@ -202,61 +200,26 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
         employees = [
             {"afm": "111111111", "eponymo": "TEST", "onoma": "ONE"},
         ]
-        schedule_rows = [
-            {
-                "employee_afm": "111111111",
-                "work_date": "06/07/2026",
-                "hour_from": None,
-                "hour_to": None,
-                "shift_type": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ",
-            },
-            {
-                "employee_afm": "111111111",
-                "work_date": "07/07/2026",
-                "hour_from": "09:00",
-                "hour_to": "17:00",
-                "shift_type": "ΕΡΓΑΣΙΑ",
-            },
-            {
-                "employee_afm": "111111111",
-                "work_date": "08/07/2026",
-                "hour_from": "10:00",
-                "hour_to": "14:00",
-                "shift_type": "ΕΡΓΑΣΙΑ",
-            },
-            {
-                "employee_afm": "111111111",
-                "work_date": "08/07/2026",
-                "hour_from": "17:00",
-                "hour_to": "21:00",
-                "shift_type": "ΕΡΓΑΣΙΑ",
-            },
-        ]
 
         with patch("app.schedule_excel_template.get_store_config", return_value=store), patch(
             "app.schedule_excel_template.list_employees_for_employer", return_value=employees
-        ), patch(
-            "app.schedule_excel_template.list_schedule_for_range", return_value=schedule_rows
         ):
             xlsx, _filename, meta = build_weekly_schedule_template_bytes(
                 store_id=1,
                 week_monday=week_monday,
             )
 
-        self.assertEqual(meta.get("filled_day_slots"), "3")
+        self.assertEqual(meta.get("filled_day_slots"), "0")
         ws = load_workbook(filename=BytesIO(xlsx))[WEEK_SHEET]
         r1 = employee_block_start_row(0)
         r2 = r1 + 1
-        # Δευτέρα = ΡΕΠΟ
-        self.assertEqual(ws.cell(row=r1, column=single_sheet_day_col(0, 0)).value, "ΡΕΠΟ")
-        # Τρίτη = 09:00–17:00
-        self.assertEqual(ws.cell(row=r1, column=single_sheet_day_col(1, 1)).value, 900)
-        self.assertEqual(ws.cell(row=r1, column=single_sheet_day_col(1, 2)).value, 1700)
-        # Τετάρτη σπαστό
-        self.assertEqual(ws.cell(row=r1, column=single_sheet_day_col(2, 1)).value, 1000)
-        self.assertEqual(ws.cell(row=r1, column=single_sheet_day_col(2, 2)).value, 1400)
-        self.assertEqual(ws.cell(row=r2, column=single_sheet_day_col(2, 1)).value, 1700)
-        self.assertEqual(ws.cell(row=r2, column=single_sheet_day_col(2, 2)).value, 2100)
+        self.assertEqual(ws.cell(row=r1, column=1).value, "111111111")
+        for day_idx in range(7):
+            self.assertIsNone(ws.cell(row=r1, column=single_sheet_day_col(day_idx, 0)).value)
+            self.assertIsNone(ws.cell(row=r1, column=single_sheet_day_col(day_idx, 1)).value)
+            self.assertIsNone(ws.cell(row=r1, column=single_sheet_day_col(day_idx, 2)).value)
+            self.assertIsNone(ws.cell(row=r2, column=single_sheet_day_col(day_idx, 1)).value)
+            self.assertIsNone(ws.cell(row=r2, column=single_sheet_day_col(day_idx, 2)).value)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@
 - **Νέος χρήστης:** απαιτείται έγκυρο email. Στην πρώτη σύνδεση υποχρεωτική αλλαγή κωδικού (`/ui/change-password`) και αποδοχή όρων (`/ui/accept-terms`). Η αποδοχή καταγράφει `terms_accepted_at`, `terms_accepted_ip`, `terms_version` (κείμενο σε `app/user_terms.py`).
 - Welcome / resend email περιλαμβάνει **προσωρινό κωδικό**· το resend δημιουργεί νέο και τον αποθηκεύει με `must_change_password`.
 - Forgot password: `/ui/forgot-password` + `/ui/reset-password` (`sql/alter_add_user_password_reset.sql`).
-- Στη λίστα χρηστών: εικονίδια επαναποστολής email, **καταγραφών ενεργειών** (`GET /api/users/<id>/activity`) και **διαγραφής** (`DELETE /api/users/<id>`, δικαίωμα `users.delete`· όχι self / τελευταίος super_admin).
+- Στη λίστα χρηστών: εικονίδια επαναποστολής email, **καταγραφών ενεργειών** (`GET /api/users/<id>/activity`, από `created_at`) και **διαγραφής** (`DELETE /api/users/<id>`, δικαίωμα `users.delete`· όχι self / τελευταίος super_admin· σβήνει και audit του χρήστη).
 - Migration onboarding: `sql/alter_add_user_onboarding.sql` / `scripts/run_migration_user_onboarding.py` (υπάρχοντες χρήστες γίνονται grandfather).
 - Για υπάρχουσες βάσεις πρέπει να τρέξει το idempotent migration `scripts/run_migration_user_email_verification.py` ή το SQL `sql/alter_add_user_email_verification.sql`.
 - Τα καταστήματα δεν φορτώνονται ως μαζική checkbox λίστα. Ο χειριστής γράφει όνομα ή ΑΦΜ στο autocomplete, πατά Enter ή `Προσθήκη`, και το κατάστημα προστίθεται κάτω στη λίστα πρόσβασης του χρήστη.

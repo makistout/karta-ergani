@@ -43,7 +43,7 @@ _AUTO_CLOSE_RUN_WINDOW_MINUTES = 15
 
 
 def normalize_auto_close_time(value: str | None) -> str:
-    raw = str(value or "").strip()
+    raw = str(value or "").strip().replace(".", ":")
     try:
         hh, mm = raw.split(":", 1)
         h = int(hh)
@@ -53,6 +53,111 @@ def normalize_auto_close_time(value: str | None) -> str:
     if h < 0 or h > 23 or m < 0 or m > 59:
         return "00:30"
     return f"{h:02d}:{m:02d}"
+
+
+def normalize_optional_auto_close_time(value: str | None) -> str | None:
+    """Προαιρετική ώρα κλεισίματος. Κενό → None (βάσει ωραρίου). Δέχεται 23:00 ή 23.00."""
+    raw = str(value or "").strip().replace(".", ":")
+    if not raw:
+        return None
+    try:
+        hh, mm = raw.split(":", 1)
+        h = int(hh)
+        m = int(mm)
+    except (TypeError, ValueError):
+        return None
+    if h < 0 or h > 23 or m < 0 or m > 59:
+        return None
+    return f"{h:02d}:{m:02d}"
+
+
+_FIXED_EXIT_WINDOW_MINUTES = 30
+
+
+def _random_offsets_in_window(
+    count: int,
+    *,
+    window: int = _FIXED_EXIT_WINDOW_MINUTES,
+    rng: random.Random | None = None,
+) -> list[int]:
+    """Τυχαία λεπτά offset μέσα στο [0, window) — μοναδικά όταν count ≤ window."""
+    if count <= 0:
+        return []
+    r = rng or random.Random()
+    if count <= window:
+        return sorted(r.sample(range(window), count))
+    return sorted(r.randrange(window) for _ in range(count))
+
+
+def _natural_exit_abs_minutes(item: dict[str, Any]) -> int | None:
+    """Απόλυτα λεπτά φυσικής εξόδου από είσοδο + διάρκεια (μπορεί ≥ 24h)."""
+    entry = _parse_clock_minutes(str(item.get("hour_from") or ""))
+    try:
+        duration = int(item.get("duration_minutes"))
+    except (TypeError, ValueError):
+        duration = None
+    if entry is not None and duration is not None and duration > 0:
+        return entry + duration
+    exit_min = _parse_clock_minutes(str(item.get("retro_time") or ""))
+    if exit_min is None:
+        return None
+    work = str(item.get("work_date_iso") or item.get("reference_date") or "").strip()
+    event = str(item.get("event_date_iso") or work).strip()
+    if work and event and event != work:
+        return exit_min + 24 * 60
+    # Αν η έξοδος ρολογιού είναι πριν την είσοδο την ίδια μέρα, μετράει ως overnight.
+    if entry is not None and exit_min < entry:
+        return exit_min + 24 * 60
+    return exit_min
+
+
+def _apply_fixed_exit_window(
+    plan: list[dict[str, Any]],
+    *,
+    fixed_hm: str,
+    allow_overnight_star: bool,
+    rng: random.Random | None = None,
+) -> None:
+    """Για check_out: αν η φυσική έξοδος είναι πριν την ώρα κλεισίματος, μένει.
+    Αλλιώς μπαίνει τυχαία στο [fixed_hm, +30′).
+    """
+    base = _clock_hm_to_minutes(fixed_hm)
+    candidates: list[dict[str, Any]] = []
+    for item in plan:
+        if item.get("event") != "check_out":
+            continue
+        natural = _natural_exit_abs_minutes(item)
+        if natural is not None and natural < base:
+            # Κλείνει ήδη πριν την αναγραφόμενη ώρα → κράτα ωράριο.
+            continue
+        candidates.append(item)
+    if not candidates:
+        return
+    offsets = _random_offsets_in_window(len(candidates), rng=rng)
+    for item, off in zip(candidates, offsets):
+        exit_abs = base + int(off)
+        work_date_iso = str(item.get("work_date_iso") or item.get("reference_date") or "")
+        reference_date = work_date_iso
+        event_date_iso = work_date_iso
+        if exit_abs >= 24 * 60:
+            if allow_overnight_star:
+                exit_abs -= 24 * 60
+                nxt = _iso_shift(work_date_iso, 1)
+                if nxt:
+                    event_date_iso = nxt
+            else:
+                exit_abs = min(exit_abs, 24 * 60 - 1)
+        entry_min = _parse_clock_minutes(str(item.get("hour_from") or ""))
+        duration = (
+            (exit_abs + (24 * 60 if event_date_iso != reference_date else 0) - entry_min) % (24 * 60)
+            if entry_min is not None
+            else int(item.get("duration_minutes") or 0)
+        )
+        item["retro_time"] = _format_minutes_as_clock(exit_abs)
+        item["reference_date"] = reference_date
+        item["event_date_iso"] = event_date_iso
+        item["duration_minutes"] = duration
+        item["duration_source"] = "fixed_window"
 
 
 def auto_close_allows_overnight_star(cfg: dict[str, Any]) -> bool:
@@ -274,9 +379,12 @@ def _build_previous_day_close_plan(
     *,
     allow_overnight_star: bool = True,
     next_day_open_entries: dict[str, int] | None = None,
+    fixed_exit_hm: str | None = None,
+    rng: random.Random | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     plan: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    fixed_hm = normalize_optional_auto_close_time(fixed_exit_hm)
     for row in rows:
         afm = str(row.get("employee_afm") or "").strip()
         name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip() or afm
@@ -374,7 +482,8 @@ def _build_previous_day_close_plan(
         # Αν υπάρχει ανοιχτή είσοδος στην επόμενη μέρα < 03:00 για τον ίδιο
         # εργαζόμενο, σημαίνει ότι χτύπησε «είσοδο» αντί «έξοδο» μετά τα
         # μεσάνυχτα.  Χρησιμοποιούμε εκείνη την ώρα ως έξοδο με *.
-        _nxt_entry = (next_day_open_entries or {}).get(afm)
+        # (Παραλείπεται όταν υπάρχει σταθερή ώρα κλεισίματος.)
+        _nxt_entry = None if fixed_hm else (next_day_open_entries or {}).get(afm)
         if _nxt_entry is not None and allow_overnight_star:
             exit_abs = _nxt_entry  # ώρα στην επόμενη ημέρα (π.χ. 59 = 00:59)
             reference_date = work_date_iso
@@ -411,6 +520,13 @@ def _build_previous_day_close_plan(
             hour_from=hour_from,
             hour_to="",
         ))
+    if fixed_hm:
+        _apply_fixed_exit_window(
+            plan,
+            fixed_hm=fixed_hm,
+            allow_overnight_star=allow_overnight_star,
+            rng=rng,
+        )
     return plan, skipped
 
 
@@ -611,6 +727,7 @@ def run_auto_close_prev_day_for_store(
         rows,
         allow_overnight_star=allow_overnight_star,
         next_day_open_entries=next_day_open_entries,
+        fixed_exit_hm=cfg.get("auto_close_fixed_exit_time"),
     )
     if not plan:
         log.info(

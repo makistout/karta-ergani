@@ -91,10 +91,11 @@ def get_store_action_settings(store_id: int):
 def save_store_action_settings(store_id: int):
     if not can_access_store(store_id):
         return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
-    from app.auto_close_cards import normalize_auto_close_time
+    from app.auto_close_cards import normalize_auto_close_time, normalize_optional_auto_close_time
 
     data = request.get_json(silent=True) or {}
     time_s = normalize_auto_close_time(data.get("auto_close_prev_day_time"))
+    fixed_s = normalize_optional_auto_close_time(data.get("auto_close_fixed_exit_time"))
     from app.today_notify_logic import normalize_notify_grace_minutes
 
     grace = normalize_notify_grace_minutes(data.get("notify_grace_minutes"))
@@ -103,6 +104,7 @@ def save_store_action_settings(store_id: int):
             store_id,
             auto_close_prev_day_enabled=bool(data.get("auto_close_prev_day_enabled")),
             auto_close_prev_day_time=time_s,
+            auto_close_fixed_exit_time=fixed_s,
             notify_grace_minutes=grace,
         )
     except RuntimeError as ex:

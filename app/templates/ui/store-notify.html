@@ -81,6 +81,11 @@
                   <input id="autoClosePrevDayTime" type="text" class="input-time-24" inputmode="numeric"
                     placeholder="00:00" maxlength="5" autocomplete="off" value="00:00">
                 </label>
+                <label class="settings-action-time" for="autoCloseFixedExitTime">
+                  <span class="settings-action-time-label">Ώρα κλεισίματος</span>
+                  <input id="autoCloseFixedExitTime" type="text" class="input-time-24" inputmode="numeric"
+                    placeholder="κενό" maxlength="5" autocomplete="off" value="">
+                </label>
                 <div class="settings-action-last-run" aria-live="polite">
                   <span>Τελευταία εκτέλεση</span>
                   <strong id="autoClosePrevDayLastRun">—</strong>
@@ -91,6 +96,11 @@
                 Ώρα πριν τα μεσάνυχτα (π.χ. 23:00): κλείνει την τρέχουσα ημέρα, χωρίς *.
                 Μετά τα μεσάνυχτα (π.χ. 00:00 / 00:30 / 02:00): κλείνει την προηγούμενη ημέρα, με * αν η έξοδος περνάει μεσάνυχτα.
                 Αν υπάρχει έξοδος μετά τα μεσάνυχτα χωρίς είσοδο, η είσοδος μπαίνει στην προηγούμενη μέρα.
+              </p>
+              <p class="field-hint settings-action-hint">
+                <strong>Ώρα κλεισίματος</strong> (προαιρετικό): κενό = έξοδος βάσει διάρκειας ωραρίου (ή 8ωρο).
+                Συμπληρωμένο (π.χ. 23:00) = όσες κάρτες θα έκλειναν στις 23:00 ή μετά κλείνουν τυχαία
+                μέσα στο επόμενο μισάωρο· όσες κλείνουν νωρίτερα βάσει ωραρίου μένουν στην ώρα τους.
               </p>
             </div>
           </div>
@@ -125,5 +135,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260727autocloseday"></script>
+  <script src="/static/js/store-notify.js?v=20260803fixedexit"></script>
 {% endblock %}

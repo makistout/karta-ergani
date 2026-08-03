@@ -475,3 +475,117 @@ def test_auto_close_queue_delay_seconds_uses_config_range(monkeypatch):
     monkeypatch.setattr(auto_close_cards.random, "randint", lambda low, high: 133)
 
     assert auto_close_cards._auto_close_queue_delay_seconds() == 133
+
+def test_normalize_optional_auto_close_time():
+    assert auto_close_cards.normalize_optional_auto_close_time("") is None
+    assert auto_close_cards.normalize_optional_auto_close_time(None) is None
+    assert auto_close_cards.normalize_optional_auto_close_time("23.00") == "23:00"
+    assert auto_close_cards.normalize_optional_auto_close_time("23:00") == "23:00"
+    assert auto_close_cards.normalize_optional_auto_close_time("25:00") is None
+
+
+def test_fixed_exit_window_assigns_random_times_in_half_hour(monkeypatch):
+    """Βάρδιες που θα έκλειναν μετά τις 23:00 → τυχαία στο μισάωρο."""
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *args: False)
+    import random
+
+    rows = []
+    for i, afm in enumerate(["111111111", "222222222", "333333333", "444444444", "555555555"]):
+        rows.append({
+            "employee_afm": afm,
+            "eponymo": f"E{i}",
+            "onoma": "T",
+            "work_date_iso": "2026-08-03",
+            "portal_hour_from": "16:00",
+            "portal_hour_to": "",
+            "hour_from": "16:00",
+            "hour_to": "",
+            "employee_active": True,
+            "schedule": {"hour_from": "16:00", "hour_to": "00:00"},
+        })
+
+    rng = random.Random(42)
+    plan, skipped = auto_close_cards._build_previous_day_close_plan(
+        rows,
+        allow_overnight_star=False,
+        fixed_exit_hm="23:00",
+        rng=rng,
+    )
+    assert skipped == []
+    assert len(plan) == 5
+    times = sorted(p["retro_time"] for p in plan)
+    assert len(set(times)) == 5
+    for t in times:
+        hh, mm = map(int, t.split(":"))
+        total = hh * 60 + mm
+        assert 23 * 60 <= total < 23 * 60 + 30
+    assert all(p["duration_source"] == "fixed_window" for p in plan)
+
+
+def test_fixed_exit_keeps_earlier_schedule_exits(monkeypatch):
+    """Αν η έξοδος βάσει ωραρίου είναι πριν την ώρα κλεισίματος, μένει η ώρα ωραρίου."""
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *args: False)
+    rows = [
+        {
+            "employee_afm": "111111111",
+            "eponymo": "EARLY",
+            "onoma": "T",
+            "work_date_iso": "2026-08-03",
+            "portal_hour_from": "09:00",
+            "portal_hour_to": "",
+            "hour_from": "09:00",
+            "hour_to": "",
+            "employee_active": True,
+            "schedule": {"hour_from": "09:00", "hour_to": "17:00"},
+        },
+        {
+            "employee_afm": "222222222",
+            "eponymo": "LATE",
+            "onoma": "T",
+            "work_date_iso": "2026-08-03",
+            "portal_hour_from": "16:00",
+            "portal_hour_to": "",
+            "hour_from": "16:00",
+            "hour_to": "",
+            "employee_active": True,
+            "schedule": {"hour_from": "16:00", "hour_to": "00:00"},
+        },
+    ]
+    import random
+
+    plan, skipped = auto_close_cards._build_previous_day_close_plan(
+        rows,
+        allow_overnight_star=False,
+        fixed_exit_hm="23:00",
+        rng=random.Random(1),
+    )
+    assert skipped == []
+    by_afm = {p["employee_afm"]: p for p in plan}
+    assert by_afm["111111111"]["retro_time"] == "17:00"
+    assert by_afm["111111111"]["duration_source"] == "schedule"
+    late = by_afm["222222222"]["retro_time"]
+    hh, mm = map(int, late.split(":"))
+    assert 23 * 60 <= hh * 60 + mm < 23 * 60 + 30
+    assert by_afm["222222222"]["duration_source"] == "fixed_window"
+
+
+def test_empty_fixed_exit_keeps_schedule_based_times(monkeypatch):
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *args: False)
+    rows = [{
+        "employee_afm": "111111111",
+        "eponymo": "E",
+        "onoma": "T",
+        "work_date_iso": "2026-08-03",
+        "portal_hour_from": "09:00",
+        "portal_hour_to": "",
+        "hour_from": "09:00",
+        "hour_to": "",
+        "employee_active": True,
+        "schedule": {"hour_from": "09:00", "hour_to": "17:00"},
+    }]
+    plan, _ = auto_close_cards._build_previous_day_close_plan(
+        rows, allow_overnight_star=False, fixed_exit_hm=""
+    )
+    assert len(plan) == 1
+    assert plan[0]["retro_time"] == "17:00"
+    assert plan[0]["duration_source"] == "schedule"

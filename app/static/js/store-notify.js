@@ -30,6 +30,7 @@ let storeAc = null;
 let actionSettings = {
   auto_close_prev_day_enabled: false,
   auto_close_prev_day_time: "00:30",
+  auto_close_fixed_exit_time: null,
   auto_close_prev_day_last_run_date: null,
   notify_grace_minutes: 15,
 };
@@ -279,13 +280,26 @@ function updateNotifyUiState() {
 }
 
 function normalizeActionTime(value) {
-  const raw = String(value || "").trim();
+  const raw = String(value || "").trim().replace(".", ":");
   const m = raw.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return "00:30";
   const h = parseInt(m[1], 10);
   const min = parseInt(m[2], 10);
   if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
     return "00:30";
+  }
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function normalizeOptionalActionTime(value) {
+  const raw = String(value || "").trim().replace(".", ":");
+  if (!raw) return null;
+  const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return null;
   }
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
@@ -307,10 +321,12 @@ function normalizeNotifyGraceMinutes(value) {
 function renderActionSettings() {
   const enabled = document.getElementById("autoClosePrevDayEnabled");
   const time = document.getElementById("autoClosePrevDayTime");
+  const fixed = document.getElementById("autoCloseFixedExitTime");
   const last = document.getElementById("autoClosePrevDayLastRun");
   const grace = document.getElementById("notifyGraceMinutes");
   if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
   if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
+  if (fixed) fixed.value = actionSettings.auto_close_fixed_exit_time || "";
   if (last) last.textContent = formatActionLastRunDate(actionSettings.auto_close_prev_day_last_run_date);
   if (grace) grace.value = String(normalizeNotifyGraceMinutes(actionSettings.notify_grace_minutes));
 }
@@ -319,6 +335,7 @@ function collectActionSettingsFromDom() {
   return {
     auto_close_prev_day_enabled: Boolean(document.getElementById("autoClosePrevDayEnabled")?.checked),
     auto_close_prev_day_time: normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value),
+    auto_close_fixed_exit_time: normalizeOptionalActionTime(document.getElementById("autoCloseFixedExitTime")?.value),
     notify_grace_minutes: normalizeNotifyGraceMinutes(document.getElementById("notifyGraceMinutes")?.value),
   };
 }
@@ -326,11 +343,17 @@ function collectActionSettingsFromDom() {
 function initActionSettingsButtons() {
   document.getElementById("btnSaveActionSettings").onclick = () => saveActionSettings();
   Office.bindHourMinuteInput("autoClosePrevDayTime");
+  Office.bindHourMinuteInput("autoCloseFixedExitTime");
   document.getElementById("autoClosePrevDayEnabled")?.addEventListener("change", () => {
     actionSettings.auto_close_prev_day_enabled = Boolean(document.getElementById("autoClosePrevDayEnabled")?.checked);
   });
   document.getElementById("autoClosePrevDayTime")?.addEventListener("input", () => {
     actionSettings.auto_close_prev_day_time = normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value);
+  });
+  document.getElementById("autoCloseFixedExitTime")?.addEventListener("input", () => {
+    actionSettings.auto_close_fixed_exit_time = normalizeOptionalActionTime(
+      document.getElementById("autoCloseFixedExitTime")?.value
+    );
   });
   document.getElementById("notifyGraceMinutes")?.addEventListener("change", () => {
     actionSettings.notify_grace_minutes = normalizeNotifyGraceMinutes(
@@ -596,6 +619,7 @@ async function loadActionSettings(storeId) {
       actionSettings = {
         auto_close_prev_day_enabled: false,
         auto_close_prev_day_time: "00:30",
+        auto_close_fixed_exit_time: null,
         auto_close_prev_day_last_run_date: null,
         notify_grace_minutes: 15,
       };
@@ -605,6 +629,7 @@ async function loadActionSettings(storeId) {
     actionSettings = {
       auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
       auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
+      auto_close_fixed_exit_time: normalizeOptionalActionTime(data.settings?.auto_close_fixed_exit_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
     };
@@ -638,6 +663,7 @@ async function saveActionSettings() {
     actionSettings = {
       auto_close_prev_day_enabled: asNotifyFlag(data.settings?.auto_close_prev_day_enabled, false),
       auto_close_prev_day_time: normalizeActionTime(data.settings?.auto_close_prev_day_time),
+      auto_close_fixed_exit_time: normalizeOptionalActionTime(data.settings?.auto_close_fixed_exit_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
     };

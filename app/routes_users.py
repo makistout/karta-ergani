@@ -10,7 +10,7 @@ from flask import Blueprint, jsonify, request
 from app.access_control import ROLE_PERMISSIONS, all_permission_codes, current_user_id
 from app import repo_store
 from app import repo_users
-from app.audit_log import list_user_activity, record_audit_event
+from app.audit_log import delete_user_activity, list_user_activity, record_audit_event
 from app.email_notify import EmailNotConfigured
 from app.store_credentials_util import mask_store_secrets
 from app.user_email_verification import send_verification_email
@@ -174,6 +174,7 @@ def user_activity(user_id: int):
         str(user.get("username") or ""),
         limit=limit,
         before_id=before_id,
+        since=user.get("created_at"),
     )
     return jsonify({
         "success": True,
@@ -213,6 +214,7 @@ def delete_user(user_id: int):
     username = str(user.get("username") or "")
     if not repo_users.delete_user(user_id):
         return jsonify({"error": "Αποτυχία διαγραφής χρήστη"}), 400
+    deleted_events = delete_user_activity(username) if username else 0
     record_audit_event(
         action="users.deleted",
         success=True,
@@ -224,9 +226,15 @@ def delete_user(user_id: int):
             "username": username,
             "email": user.get("email"),
             "role": user.get("role"),
+            "deleted_audit_events": deleted_events,
         },
     )
-    return jsonify({"success": True, "id": int(user_id), "username": username})
+    return jsonify({
+        "success": True,
+        "id": int(user_id),
+        "username": username,
+        "deleted_audit_events": deleted_events,
+    })
 
 
 @users_bp.post("")
