@@ -230,22 +230,36 @@ def _work_intervals(row: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"hour_from": hf, "hour_to": ht}] if hf or ht else []
 
 
+def _clock_on_interval_timeline(clock_min: int, start: int, end_raw: int, end_abs: int) -> int:
+    """Απόλυτα λεπτά ρολογιού πάνω στο διάστημα ωραρίου (overnight-aware).
+
+    Σε overnight (π.χ. 18:00–01:00):
+    - πρόωρη άφιξη πριν το Από την ίδια βραδιά (17:54) μένει χωρίς +24h
+    - χτύπημα μετά τα μεσάνυχτα (00:30) παίρνει +24h
+    """
+    if end_abs <= 24 * 60 or clock_min >= start:
+        return clock_min
+    # clock < start σε overnight: μετά τα μεσάνυχτα αν είναι ≤ τέλος ρολογιού, αλλιώς πρόωρη.
+    if clock_min <= end_raw:
+        return clock_min + 24 * 60
+    return clock_min
+
+
 def _work_entry_covers_interval(work: dict[str, Any], interval: dict[str, Any]) -> bool:
     """True αν η πραγματική είσοδος ανήκει στο διάστημα (και πρόωρη άφιξη πριν το Από)."""
     entry = _parse_clock_minutes(str(work.get("hour_from") or ""))
     if entry is None:
         return False
     start = int(interval["start"])
-    end = int(interval["end"])
-    if end <= start:
-        end += 24 * 60
-    entry_abs = entry + (24 * 60 if entry < start and end > 24 * 60 else 0)
-    if entry_abs >= end:
+    end_raw = int(interval["end"])
+    end_abs = end_raw + (24 * 60 if end_raw <= start else 0)
+    entry_abs = _clock_on_interval_timeline(entry, start, end_raw, end_abs)
+    if entry_abs >= end_abs:
         return False
     # Ολοκληρωμένο προηγούμενο διάστημα δεν καλύπτει το επόμενο (σπαστό).
     out_min = _parse_clock_minutes(str(work.get("hour_to") or ""))
     if out_min is not None:
-        out_abs = out_min + (24 * 60 if out_min < start and end > 24 * 60 else 0)
+        out_abs = _clock_on_interval_timeline(out_min, start, end_raw, end_abs)
         if out_abs <= start:
             return False
     # Πρόωρη είσοδος (π.χ. 07:24 για ωράριο 07:30–15:30) μετράει κανονικά.

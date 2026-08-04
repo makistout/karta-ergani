@@ -341,6 +341,48 @@ class TodayNotifyLogicTests(unittest.TestCase):
             "late_check_out@09:00",
         )
 
+    def test_early_check_in_before_overnight_schedule_not_late_check_in(self):
+        """Early arrival on overnight shift must not become late_check_in."""
+        from app.today_notify_logic import _schedule_intervals, _work_entry_covers_interval
+
+        now = datetime(2026, 8, 2, 23, 16, tzinfo=ZoneInfo("Europe/Athens"))
+        row = {
+            "work_date": "02/08/2026",
+            "employee_active": True,
+            "hour_from": "17:54",
+            "hour_to": "23:03",
+            "work_intervals": [{"hour_from": "17:54", "hour_to": "23:03"}],
+            "schedule": {
+                "hour_from": "18:00",
+                "hour_to": "01:00",
+                "intervals": [{"hour_from": "18:00", "hour_to": "01:00"}],
+            },
+        }
+        interval = _schedule_intervals(row)[0]
+        self.assertTrue(
+            _work_entry_covers_interval({"hour_from": "17:54", "hour_to": "23:03"}, interval)
+        )
+        self.assertTrue(
+            _work_entry_covers_interval({"hour_from": "00:20", "hour_to": "00:50"}, interval)
+        )
+        self.assertIsNone(resolve_today_notify_kind(row, now=now, grace_minutes=30))
+        row_open = dict(row)
+        row_open["hour_to"] = ""
+        row_open["work_intervals"] = [{"hour_from": "17:54", "hour_to": ""}]
+        self.assertIsNone(resolve_today_notify_kind(row_open, now=now, grace_minutes=30))
+        row_empty = dict(row)
+        row_empty["hour_from"] = ""
+        row_empty["hour_to"] = ""
+        row_empty["work_intervals"] = []
+        self.assertEqual(
+            resolve_today_notify_kind(
+                row_empty,
+                now=datetime(2026, 8, 2, 18, 35, tzinfo=ZoneInfo("Europe/Athens")),
+                grace_minutes=30,
+            ),
+            "late_check_in",
+        )
+
     def test_slot_kind_label_and_card_action_use_slot(self):
         self.assertIn("17:00", notify_kind_label("late_check_in@17:00"))
         with patch("app.punch_time_jitter.punch_time_jitter_offset", return_value=0):
