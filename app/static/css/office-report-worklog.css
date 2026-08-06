@@ -416,6 +416,22 @@ table.data.schedule-day-form-table .col-current {
   cursor: not-allowed;
 }
 
+.schedule-day-form-row--locked {
+  opacity: 0.72;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+
+.schedule-day-form-row--locked .schedule-day-form-energia:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.schedule-day-form-locked-hint {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .schedule-day-form-hours-label {
   display: block;
   font-size: 0.58rem;

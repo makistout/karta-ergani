@@ -4,6 +4,7 @@ from datetime import datetime
 from app.work_card_payload import (
     RETRO_AITIOLOGIA_INTERNET,
     build_wrk_card_se_payload,
+    ergani_forbids_aitiologia,
     resolve_wrk_card_aitiologia,
     tz_athens,
     wrk_card_needs_aitiologia,
@@ -148,6 +149,16 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         self.assertTrue(_ergani_missing_aitiologia({
             "message": "Πρέπει να συμπληρώσετε τον λόγο καθυστέρησης"
         }))
+
+    def test_ergani_forbids_aitiologia_detects_auto_close_style_error(self):
+        msg = (
+            "Ergani (400): Για το Παράρτημα: 0\n"
+            "Για την κίνηση αποχώρησης με ΑΦΜ '122643591' στις 05/08/2026 βρέθηκαν τα παρακάτω λάθη: \n"
+            "Η δηλωμένη ώρα κίνησης είναι μεγαλύτερη και αποκλίνει σημαντικά της τωρινής ώρας (01:57).\n"
+            "Δεν πρέπει να δηλώνεται λόγος καθυστέρησης, όταν η ώρα κίνησης είναι εντός του επιτρεπόμενου χρονικού ορίου.\n"
+        )
+        self.assertTrue(ergani_forbids_aitiologia({"error": msg}))
+        self.assertFalse(ergani_forbids_aitiologia({"error": "άλλη αποτυχία"}))
 
 
 if __name__ == "__main__":

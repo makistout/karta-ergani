@@ -589,3 +589,107 @@ def test_empty_fixed_exit_keeps_schedule_based_times(monkeypatch):
     assert len(plan) == 1
     assert plan[0]["retro_time"] == "17:00"
     assert plan[0]["duration_source"] == "schedule"
+
+
+def test_auto_close_retries_without_aitiologia_when_ergani_forbids(monkeypatch):
+    class FakeResp:
+        def __init__(self, ok, status_code, payload):
+            self.ok = ok
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def authenticate(self, *args, **kwargs):
+            return FakeResp(True, 200, {"accessToken": "tok"})
+
+        def document_submit(self, code, payload, bearer):
+            self.calls.append(payload)
+            details = (
+                (payload.get("Cards") or {})
+                .get("Card", [{}])[0]
+                .get("Details", {})
+                .get("CardDetails", [{}])
+            )
+            detail = details[0] if isinstance(details, list) and details else {}
+            # First call with 001 → forbid; retry with null → OK
+            if detail.get("f_aitiologia") == "001":
+                return FakeResp(
+                    False,
+                    400,
+                    {
+                        "error": (
+                            "Δεν πρέπει να δηλώνεται λόγος καθυστέρησης, όταν η ώρα "
+                            "κίνησης είναι εντός του επιτρεπόμενου χρονικού ορίου."
+                        )
+                    },
+                )
+            return FakeResp(True, 200, [{"protocol": "P1"}])
+
+    client = FakeClient()
+    monkeypatch.setattr(auto_close_cards, "client_for_store", lambda cfg: client)
+    monkeypatch.setattr(
+        auto_close_cards,
+        "api_login_credentials",
+        lambda cfg: ("u", "p", "01"),
+    )
+    monkeypatch.setattr(auto_close_cards, "store_api_context", lambda cfg: {
+        "employer_afm": "999999999",
+        "branch_aa": "0",
+    })
+    monkeypatch.setattr(
+        auto_close_cards,
+        "_load_previous_day_rows",
+        lambda *a, **k: (
+            [{
+                "employee_afm": "122643591",
+                "eponymo": "TEST",
+                "onoma": "USER",
+                "work_date_iso": "2026-08-05",
+                "portal_hour_from": "18:00",
+                "portal_hour_to": "",
+                "hour_from": "18:00",
+                "hour_to": "",
+                "employee_active": True,
+                "schedule": {"hour_from": "18:00", "hour_to": "01:00"},
+            }],
+            {},
+        ),
+    )
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(auto_close_cards, "has_entry_for_checkout", lambda **k: True)
+    monkeypatch.setattr(auto_close_cards, "persist_wrk_card_submit", lambda *a, **k: None)
+    monkeypatch.setattr(auto_close_cards, "record_audit_event", lambda **k: None)
+    monkeypatch.setattr(
+        auto_close_cards,
+        "_send_auto_close_notification",
+        lambda **k: {"sent": False},
+    )
+    monkeypatch.setattr(auto_close_cards, "_auto_close_queue_delay_seconds", lambda: 0)
+    monkeypatch.setattr(
+        auto_close_cards,
+        "apply_punch_time_jitter",
+        lambda *a, **k: a[0] if a else k.get("hm"),
+    )
+
+    result = auto_close_cards.run_auto_close_prev_day_for_store(
+        {
+            "id": 11,
+            "name": "TEST",
+            "auto_close_prev_day_time": "02:00",
+            "auto_close_fixed_exit_time": None,
+        },
+        work_date_iso="2026-08-05",
+    )
+    assert result["submitted"] == 1
+    assert result["failed"] == 0
+    assert len(client.calls) == 2
+    first = client.calls[0]["Cards"]["Card"][0]["Details"]["CardDetails"][0]
+    second = client.calls[1]["Cards"]["Card"][0]["Details"]["CardDetails"][0]
+    assert first.get("f_aitiologia") == "001"
+    assert second.get("f_aitiologia") is None

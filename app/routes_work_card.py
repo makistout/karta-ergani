@@ -175,14 +175,9 @@ def _ergani_missing_aitiologia(parsed: Any) -> bool:
 
 
 def _ergani_forbids_aitiologia(parsed: Any) -> bool:
-    """Ergani απαγορεύει να δηλωθεί λόγος καθυστέρησης (οπότε πρέπει να το παραλείψουμε)."""
-    try:
-        text = json.dumps(parsed, ensure_ascii=False)
-    except TypeError:
-        text = str(parsed or "")
-    low = text.lower()
-    # Αγγίζει τις περιπτώσεις όπου το Ergani επιστρέφει μήνυμα ότι ΔΕΝ πρέπει να υπάρχει λόγος.
-    return "δεν πρέπει να δηλώνεται λόγος καθυστέρησης" in low
+    from app.work_card_payload import ergani_forbids_aitiologia
+
+    return ergani_forbids_aitiologia(parsed)
 
 
 def _ergani_duplicate_registration(parsed: Any) -> bool:

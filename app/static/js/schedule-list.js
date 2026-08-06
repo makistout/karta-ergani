@@ -653,7 +653,9 @@ function initScheduleDayFormUi() {
       mountId: "scheduleDayFormDatePicker",
       mode: "single",
       layout: "inline",
-      quickPresets: ["yesterday", "today", "tomorrow", "dayAfterTomorrow"],
+      // Παρελθόν (χθες και πριν) δεν επιτρέπεται στη συμπλήρωση ημέρας.
+      quickPresets: ["today", "tomorrow", "dayAfterTomorrow"],
+      minDate: "today",
       autoApply: true,
       onApply: ({ start }) => {
         if (start) void loadScheduleDayFormData(start);
@@ -705,6 +707,13 @@ function beginScheduleDayForm() {
   resetScheduleDayFormContent();
   panel.classList.remove("hidden");
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const today = Office.todayIsoLocal();
+  if (scheduleDayFormDatePicker?.applyPreset) {
+    scheduleDayFormDatePicker.applyPreset("today");
+  } else if (today) {
+    void loadScheduleDayFormData(today);
+  }
 }
 
 function closeScheduleDayForm() {
@@ -717,10 +726,72 @@ function showScheduleDayFormMsg(text, ok) {
   Office.showMsg("scheduleDayFormMsg", text, ok);
 }
 
+function scheduleDayFormMinutesFromHm(hm) {
+  const m = String(hm || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  return h * 60 + min;
+}
+
+function scheduleDayFormRowLockInfo(row, dateIso) {
+  /**
+   * - Παρελθόν: όλα κλειδωμένα
+   * - Μέλλον: όλα ανοιχτά
+   * - Σήμερα: ανοιχτά ρεπό / χωρίς ωράριο· κλειδωμένα αν ώρα έναρξης ≤ τώρα ή έχει κάρτα
+   */
+  const today = Office.todayIsoLocal();
+  if (!dateIso || !today) return { locked: false, reason: "" };
+  if (dateIso < today) {
+    return { locked: true, reason: "Παρελθούσα ημερομηνία" };
+  }
+  if (dateIso > today) {
+    return { locked: false, reason: "" };
+  }
+
+  if (row?.has_card_punch) {
+    return { locked: true, reason: "Έχει χτυπήσει κάρτα" };
+  }
+
+  const energia = String(row?.energia || "").trim().toUpperCase();
+  const isRepo = energia === "REPO" || energia === "ΡΕΠΟ" || energia === "ΑΝ";
+  const hf1 = Office.normalizeHourMinute(row?.hour_from_1 || "");
+  const ht1 = Office.normalizeHourMinute(row?.hour_to_1 || "");
+  const hf2 = Office.normalizeHourMinute(row?.hour_from_2 || "");
+  const ht2 = Office.normalizeHourMinute(row?.hour_to_2 || "");
+  const hasHours = Boolean(hf1 || ht1 || hf2 || ht2);
+
+  // Ρεπό ή χωρίς ωράριο → επεξεργάσιμα.
+  if (isRepo || !hasHours) {
+    return { locked: false, reason: "" };
+  }
+
+  const starts = [hf1, hf2]
+    .map(scheduleDayFormMinutesFromHm)
+    .filter((n) => n != null);
+  if (!starts.length) return { locked: false, reason: "" };
+  const startMin = Math.min(...starts);
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (nowMin >= startMin) {
+    return { locked: true, reason: "Έχει ξεκινήσει η βάρδια" };
+  }
+  return { locked: false, reason: "" };
+}
+
+function scheduleDayFormRowLocked(row, dateIso) {
+  return scheduleDayFormRowLockInfo(row, dateIso).locked;
+}
+
 function collectScheduleDayFormRows() {
   const wrap = document.getElementById("scheduleDayFormWrap");
   if (!wrap) return [];
-  return [...wrap.querySelectorAll("tr[data-afm]")].map((tr) => {
+  return [...wrap.querySelectorAll("tr[data-afm]")]
+    .filter((tr) => tr.dataset.locked !== "1")
+    .map((tr) => {
     const energia = tr.querySelector(".schedule-day-form-energia")?.value || "";
     const hf1 = tr.querySelector('[data-field="hour_from_1"]')?.value || "";
     const ht1 = tr.querySelector('[data-field="hour_to_1"]')?.value || "";
@@ -740,11 +811,12 @@ function collectScheduleDayFormRows() {
 }
 
 function syncDayFormRowHours(tr) {
+  const locked = tr?.dataset?.locked === "1";
   const energia = (tr.querySelector(".schedule-day-form-energia")?.value || "").toUpperCase();
   const isRepo = energia === "REPO";
   tr.querySelectorAll(".schedule-day-form-hours input").forEach((input) => {
-    input.disabled = isRepo;
-    if (isRepo) input.value = "";
+    input.disabled = locked || isRepo;
+    if (isRepo && !locked) input.value = "";
   });
 }
 
@@ -773,10 +845,19 @@ function renderScheduleDayFormTable(payload) {
   t.appendChild(hr);
 
   rows.forEach((row) => {
+    const lockInfo = scheduleDayFormRowLockInfo(row, scheduleDayFormState.dateIso);
+    const locked = lockInfo.locked;
     const tr = document.createElement("tr");
     tr.dataset.afm = row.employee_afm || "";
     tr.dataset.eponymo = row.eponymo || "";
     tr.dataset.onoma = row.onoma || "";
+    if (locked) {
+      tr.dataset.locked = "1";
+      tr.classList.add("schedule-day-form-row--locked");
+      tr.title = lockInfo.reason
+        ? `${lockInfo.reason} — δεν επιτρέπεται αλλαγή.`
+        : "Δεν επιτρέπεται αλλαγή.";
+    }
 
     const tdName = document.createElement("td");
     tdName.className = "col-name";
@@ -790,6 +871,12 @@ function renderScheduleDayFormTable(payload) {
     const tdCurrent = document.createElement("td");
     tdCurrent.className = "col-current";
     tdCurrent.textContent = row.current_label || "—";
+    if (locked && lockInfo.reason) {
+      const tip = document.createElement("div");
+      tip.className = "schedule-day-form-locked-hint";
+      tip.textContent = lockInfo.reason;
+      tdCurrent.appendChild(tip);
+    }
     tr.appendChild(tdCurrent);
 
     const tdEnergia = document.createElement("td");
@@ -799,7 +886,8 @@ function renderScheduleDayFormTable(payload) {
       `<option value="">— χωρίς αλλαγή —</option>` +
       `<option value="WORK">Εργασία</option>` +
       `<option value="REPO">Ρεπό / Ανάπαυση</option>`;
-    sel.value = row.energia || "";
+    sel.value = locked ? "" : (row.energia || "");
+    sel.disabled = locked;
     sel.addEventListener("change", () => {
       syncDayFormRowHours(tr);
       scheduleDayFormState.preview = null;
@@ -827,6 +915,7 @@ function renderScheduleDayFormTable(payload) {
       if (hf) {
         hf.value = Office.normalizeHourMinute(row[hfKey] || "");
         Office.bindHourMinuteElement(hf);
+        hf.disabled = locked;
         hf.addEventListener("input", () => {
           if (!sel.value && (hf.value || ht?.value)) sel.value = "WORK";
           syncDayFormRowHours(tr);
@@ -835,6 +924,7 @@ function renderScheduleDayFormTable(payload) {
       if (ht) {
         ht.value = Office.normalizeHourMinute(row[htKey] || "");
         Office.bindHourMinuteElement(ht);
+        ht.disabled = locked;
         ht.addEventListener("input", () => {
           if (!sel.value && (hf?.value || ht.value)) sel.value = "WORK";
           syncDayFormRowHours(tr);
@@ -945,6 +1035,17 @@ async function loadScheduleDayFormData(dateIso) {
     }
     scheduleDayFormState.rows = data.rows || [];
     renderScheduleDayFormTable(data);
+    if (metaEl) {
+      const lockedCount = (data.rows || []).filter((r) =>
+        scheduleDayFormRowLocked(r, iso)
+      ).length;
+      const editable = (data.rows || []).length - lockedCount;
+      const base = `Ημερομηνία: ${dateGr} — συμπληρώστε ενέργεια και ωράριο ανά εργαζόμενο.`;
+      metaEl.textContent =
+        lockedCount > 0
+          ? `${base} Επεξεργάσιμες ${editable} · κλειδωμένες ${lockedCount}.`
+          : base;
+    }
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
     showScheduleDayFormMsg(String(e), false);

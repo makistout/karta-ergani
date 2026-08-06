@@ -455,7 +455,12 @@
       }
       syncRangeFields();
       highlightQuick(id);
-      if (!skipNotify) notify(id);
+      if (!skipNotify) {
+        // ρητό κλικ χρήστη: πάντα notify, ακόμα κι αν η ημερομηνία είναι ήδη η ίδια
+        // (αλλιώς το Σήμερα μετά από init δεν ξαναφορτώνει).
+        lastNotified = { start: "", end: "" };
+        notify(id);
+      }
     }
 
     function highlightQuick(activeId) {

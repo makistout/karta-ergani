@@ -22,6 +22,7 @@ from app.work_card_payload import (
     SUBMISSION_CODE_WRK_CARD,
     WorkCardPayloadError,
     build_wrk_card_se_payload,
+    ergani_forbids_aitiologia,
     norm_afm,
     tz_athens,
 )
@@ -811,6 +812,35 @@ def run_auto_close_prev_day_for_store(
             continue
         resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
         parsed = json_or_text(resp)
+        aitiologia_retry = False
+        # Αν η Ergani απαγορεύει λόγο καθυστέρησης (ώρα εντός ορίου), ξαναστέλνουμε χωρίς αιτιολογία.
+        if not resp.ok and ergani_forbids_aitiologia(parsed):
+            try:
+                payload = build_wrk_card_se_payload(
+                    employer_afm=ctx["employer_afm"],
+                    branch_aa=ctx["branch_aa"],
+                    employee_afm=emp_afm,
+                    employee_last_name=item["employee_last_name"],
+                    employee_first_name=item["employee_first_name"],
+                    event=event,
+                    reference_date=item["reference_date"],
+                    event_at=event_at,
+                    aitiologia=None,
+                    include_null_aitiologia=True,
+                    comments="erganiOS automatic last-day close",
+                )
+            except WorkCardPayloadError as ex:
+                failures.append({**item, "error": str(ex)})
+                continue
+            resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
+            parsed = json_or_text(resp)
+            aitiologia_retry = True
+            log.info(
+                "Auto-close retry χωρίς αιτιολογία μετά απαγόρευση Ergani",
+                employee_afm=emp_afm,
+                batch_index=idx,
+                retry_ok=bool(resp.ok),
+            )
         body_text = response_body_text(resp)
         try:
             persist_wrk_card_submit(
@@ -848,6 +878,7 @@ def run_auto_close_prev_day_for_store(
                 "batch_total": len(plan),
                 "duration_minutes": item["duration_minutes"],
                 "duration_source": item["duration_source"],
+                "aitiologia_retry": aitiologia_retry,
                 "ergani_response": parsed if not resp.ok else None,
             },
             client_device="erganiOS scheduled auto close",
@@ -859,6 +890,7 @@ def run_auto_close_prev_day_for_store(
                 employee_afm=emp_afm,
                 reference_date=item["reference_date"],
                 event=event,
+                aitiologia_retry=aitiologia_retry,
             )
         else:
             failures.append({**item, "error": body_text or str(parsed)[:500]})

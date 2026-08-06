@@ -84,11 +84,33 @@ def _parse_form_row(row: dict[str, Any]) -> tuple[str, list[dict[str, str]], str
 
 
 def build_day_form(ctx: dict[str, Any], *, date_iso: str) -> dict[str, Any]:
+    from app.repo_card import list_card_events_for_store_date
+    from app.repo_work_log import list_work_log_for_store
+
     work_date = format_date_for_ergani(date_iso)
+    iso = str(date_iso or "").strip()[:10]
     employer_afm = str(ctx["employer_afm"])
     branch_aa = str(ctx.get("branch_aa") or "0")
     employees = list_employees_for_employer(employer_afm, branch_aa)
     current_schedule = list_schedule_for_store(employer_afm, branch_aa, work_date)
+
+    punched_afms: set[str] = set()
+    try:
+        for wl in list_work_log_for_store(employer_afm, branch_aa, work_date):
+            afm = norm_afm(str(wl.get("employee_afm") or ""))
+            if not afm:
+                continue
+            if str(wl.get("hour_from") or "").strip() or str(wl.get("hour_to") or "").strip():
+                punched_afms.add(afm)
+    except Exception:
+        current_app.logger.exception("day-form work_log lookup failed")
+    try:
+        for ev in list_card_events_for_store_date(employer_afm, branch_aa, iso):
+            afm = norm_afm(str(ev.get("f_afm") or ""))
+            if afm:
+                punched_afms.add(afm)
+    except Exception:
+        current_app.logger.exception("day-form card_event lookup failed")
 
     rows: list[dict[str, Any]] = []
     for emp in employees:
@@ -102,6 +124,7 @@ def build_day_form(ctx: dict[str, Any], *, date_iso: str) -> dict[str, Any]:
             "eponymo": str(emp.get("eponymo") or "").strip(),
             "onoma": str(emp.get("onoma") or "").strip(),
             "current_label": format_snapshot_label(snapshot),
+            "has_card_punch": afm in punched_afms,
             **fields,
         })
 
@@ -112,7 +135,7 @@ def build_day_form(ctx: dict[str, Any], *, date_iso: str) -> dict[str, Any]:
     ))
     return {
         "work_date": work_date,
-        "date_iso": date_iso[:10],
+        "date_iso": iso,
         "rows": rows,
     }
 

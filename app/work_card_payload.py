@@ -19,6 +19,17 @@ AITIOLOGIA_CODES: dict[str, str] = {
 RETRO_AITIOLOGIA_INTERNET = "001"
 
 
+def ergani_forbids_aitiologia(parsed: Any) -> bool:
+    """True αν η Ergani απαγορεύει δήλωση λόγου καθυστέρησης → retry χωρίς f_aitiologia."""
+    import json
+
+    try:
+        text = json.dumps(parsed, ensure_ascii=False)
+    except TypeError:
+        text = str(parsed or "")
+    return "δεν πρέπει να δηλώνεται λόγος καθυστέρησης" in text.lower()
+
+
 class WorkCardPayloadError(ValueError):
     pass
 
