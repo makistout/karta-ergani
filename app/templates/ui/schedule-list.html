@@ -41,8 +41,13 @@
 
       <div id="scheduleDayFormPanel" class="card schedule-day-form-panel hidden">
         <div class="schedule-day-form-head">
-          <h2 id="scheduleDayFormTitle" class="schedule-day-form-title"><i class="bi bi-pencil-square" aria-hidden="true"></i> Συμπλήρωση ωραρίου ημέρας</h2>
-          <p id="scheduleDayFormMeta" class="schedule-day-form-meta">Επιλέξτε ημερομηνία.</p>
+          <div class="schedule-day-form-head-text">
+            <h2 id="scheduleDayFormTitle" class="schedule-day-form-title"><i class="bi bi-pencil-square" aria-hidden="true"></i> Συμπλήρωση ωραρίου ημέρας</h2>
+            <p id="scheduleDayFormMeta" class="schedule-day-form-meta">Επιλέξτε ημερομηνία.</p>
+          </div>
+          <button type="button" class="schedule-day-form-close" id="btnScheduleDayFormClose" title="Κλείσιμο" aria-label="Κλείσιμο συμπλήρωσης ημέρας">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
         </div>
         <div id="scheduleDayFormDateSection" class="schedule-day-form-date-section">
           <div id="scheduleDayFormDatePicker"></div>
@@ -100,5 +105,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260806dayform3"></script>
-  <script src="/static/js/schedule-list.js?v=20260806dayform4"></script>
+  <script src="/static/js/schedule-list.js?v=20260806dayform5"></script>
 {% endblock %}

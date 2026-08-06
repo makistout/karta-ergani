@@ -666,6 +666,9 @@ function initScheduleDayFormUi() {
   const btnCancel = document.getElementById("btnScheduleDayFormCancel");
   if (btnCancel) btnCancel.addEventListener("click", () => closeScheduleDayForm());
 
+  const btnClose = document.getElementById("btnScheduleDayFormClose");
+  if (btnClose) btnClose.addEventListener("click", () => closeScheduleDayForm());
+
   const btnOpen = document.getElementById("btnScheduleDayForm");
   if (btnOpen) btnOpen.addEventListener("click", () => beginScheduleDayForm());
 
