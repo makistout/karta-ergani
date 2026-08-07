@@ -1,7 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("stores");
-  document.getElementById("btnNewStore")?.addEventListener("click", (e) => {
+  document.getElementById("btnNewStore")?.addEventListener("click", () => {
     Office.clearDraft();
+    Office.setDraft({ wizard_is_new: true });
   });
   loadStoresList();
 });
@@ -210,6 +211,7 @@ async function editStore(id) {
       kallikratis_desc: store.kallikratis_desc,
       accessToken: "",
       branches: null,
+      wizard_is_new: false,
     });
     window.location.href = `/ui/stores/credentials?edit=1&id=${id}`;
   } catch (e) {

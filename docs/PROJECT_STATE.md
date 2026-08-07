@@ -18,6 +18,8 @@
 - `/psifiaki-karta-ergasias/`: 301 redirect προς `/`.
 - `/ui/`: αρχική αναφορά κατάστασης κάρτας (μετά από login).
 - `/ui/stores`: καταστήματα και επιλογή ενεργού καταστήματος.
+  Νέο κατάστημα (wizard): μετά την τελική αποθήκευση γίνεται αυτόματα **επιλογή**
+  του ως ενεργού, **period sync** τελευταίων 30 ημερών και μετάβαση στην **αρχική**.
 - `/ui/stores/credentials`: Ergani API/portal credentials.
 - `/ui/stores/notify`: λήπτες Telegram/Email.
 - `/ui/employees`: εργαζόμενοι και εβδομαδιαίο πρόγραμμα.

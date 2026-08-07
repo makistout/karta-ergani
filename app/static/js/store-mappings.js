@@ -91,6 +91,7 @@ async function onSave() {
     return;
   }
   const draft = Office.getDraft();
+  const wasNew = Boolean(draft.wizard_is_new);
   const sepe = acSepe.getValue();
   const oaed = acOaed.getValue();
   const kad = acKad.getValue();
@@ -131,7 +132,29 @@ async function onSave() {
     });
     const data = await res.json();
     if (res.ok && data.success) {
+      const storeId = data.id;
       Office.clearDraft();
+      if (wasNew && storeId) {
+        Office.showMsg(
+          "stepMsg",
+          "Αποθηκεύτηκε. Επιλογή καταστήματος και συγχρονισμός τελευταίου μήνα…",
+          true
+        );
+        try {
+          await activateNewStoreWithMonthSync(storeId);
+          Office.showMsg("stepMsg", "Ολοκληρώθηκε. Μετάβαση στην αρχική…", true);
+        } catch (syncErr) {
+          Office.showMsg(
+            "stepMsg",
+            `Αποθηκεύτηκε ως ενεργό, αλλά ο συγχρονισμός απέτυχε: ${syncErr}`,
+            false
+          );
+        }
+        setTimeout(() => {
+          window.location.href = "/ui/home";
+        }, 900);
+        return;
+      }
       Office.showMsg("stepMsg", "Αποθηκεύτηκε. Μετάβαση στη λίστα…", true);
       setTimeout(() => {
         window.location.href = "/ui/stores";
@@ -144,4 +167,67 @@ async function onSave() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function isoDaysAgo(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - Number(days || 0));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function activateNewStoreWithMonthSync(storeId) {
+  Office.invalidateActiveStoreCache();
+  Office.showLoading("stepMsg", "Επιλογή νέου καταστήματος…", 0, 2);
+
+  const selectRes = await fetch("/api/store/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: storeId }),
+  });
+  const selectData = await Office.parseJson(selectRes);
+  if (!selectRes.ok || !selectData.success) {
+    throw new Error(selectData.error || selectData._parseError || "Αποτυχία επιλογής καταστήματος");
+  }
+
+  if (selectData.job_id) {
+    const selectStatus = `/api/store/select/status/${encodeURIComponent(selectData.job_id)}`;
+    const polledSelect = await Office.pollSyncJob(selectStatus, "stepMsg");
+    if (!polledSelect.success) {
+      throw new Error(polledSelect.error || "Αποτυχία συγχρονισμού μετά την επιλογή");
+    }
+  }
+
+  await Office.loadActiveStore({ refresh: true });
+
+  const to = Office.todayIsoLocal();
+  const from = isoDaysAgo(29);
+  Office.showLoading(
+    "stepMsg",
+    `Συγχρονισμός τελευταίου μήνα (${from} → ${to})…`,
+    1,
+    2
+  );
+
+  const periodRes = await fetch("/api/period-sync/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, async: true }),
+  });
+  const periodStart = await Office.parseJson(periodRes);
+  if (!periodRes.ok || !periodStart.job_id) {
+    throw new Error(
+      periodStart.error || periodStart._parseError || "Αποτυχία εκκίνησης συγχρονισμού περιόδου"
+    );
+  }
+
+  const periodStatus = `/api/period-sync/run/status/${encodeURIComponent(periodStart.job_id)}`;
+  const polledPeriod = await Office.pollSyncJob(periodStatus, "stepMsg");
+  if (!polledPeriod.success) {
+    throw new Error(polledPeriod.error || "Αποτυχία συγχρονισμού τελευταίου μήνα");
+  }
+
+  await Office.loadActiveStore({ refresh: true });
 }
