@@ -151,7 +151,7 @@ async function onSave() {
           );
         }
         setTimeout(() => {
-          window.location.href = "/ui/home";
+          window.location.href = "/ui/";
         }, 900);
         return;
       }

@@ -151,6 +151,11 @@ async function selectStore(id) {
         Office.endSyncPanel("storesListWrap", "listMsg");
         const legacy = buildStoreSelectMessage({ success: true, store: data.store, sync: data.sync });
         await Office.loadActiveStore({ refresh: true });
+        if (legacy.ok) {
+          Office.showMsg("listMsg", `${legacy.text} Μετάβαση στην αρχική…`, true);
+          window.location.href = "/ui/";
+          return;
+        }
         loadStoresList();
         Office.showMsg("listMsg", legacy.text, legacy.ok);
         return;
@@ -173,7 +178,9 @@ async function selectStore(id) {
     });
     if (result.ok) {
       await Office.loadActiveStore({ refresh: true });
-      loadStoresList();
+      Office.showMsg("listMsg", `${result.text} Μετάβαση στην αρχική…`, true);
+      window.location.href = "/ui/";
+      return;
     }
     Office.showMsg("listMsg", polled.error && !polled.success ? polled.error : result.text, result.ok);
   } catch (e) {
