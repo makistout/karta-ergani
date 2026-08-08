@@ -117,6 +117,16 @@ def ui_employees_list():
     return render_template("ui/employees-list.html")
 
 
+@ui_bp.get("/employees/contracts")
+def ui_employees_contracts():
+    return render_template("ui/employees-contracts.html")
+
+
+@ui_bp.get("/employees/detail")
+def ui_employee_detail():
+    return render_template("ui/employee-detail.html")
+
+
 @ui_bp.get("/employees/weekly-schedule")
 def ui_employee_weekly_schedule():
     return render_template("ui/employee-weekly-schedule.html")

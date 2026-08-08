@@ -12,6 +12,17 @@
 
 Κενή πραγματική απασχόληση από portal δεν είναι απαραίτητα σφάλμα. Η εφαρμογή το αντιμετωπίζει ως επιτυχημένο sync με `count=0` όταν δεν υπάρχουν πραγματικές καταγραφές.
 
+## Employment Contract Snapshots
+
+Τα στοιχεία σύμβασης από Μητρώα Ergani αποθηκεύονται σε **`karta_employment_contract`** ως append-only ιστορικό ανά `(employer_afm, branch_aa, employee_afm)`.
+
+- Κάθε γραμμή φέρει υποχρεωτικά ΑΦΜ εργοδότη + παράρτημα + ΑΦΜ εργαζομένου.
+- Νέα έκδοση μόνο όταν αλλάζει το `content_hash` (tracked πεδία) ή η ημ. ενημέρωσης Ergani.
+- Πηγή: portal `Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx` (όχι EX_BASE_05).
+- **Scope sync:** ενεργοί στο κατάστημα ∩ ΑΦΜ στο τοπικό `karta_schedule` (όχι ολόκληρο το Μητρώο παραρτήματος).
+- UI: `/ui/employees/detail` (ανά εργαζόμενο) και `/ui/employees/contracts` (λίστα)· προβολή με `employees.view`, sync με `employees.sync`.
+- Το `flex_arrival_minutes` συγχρονίζεται και στο `karta_employee`.
+
 ## Notification Links
 
 Τα Telegram/Email recipient links πρέπει να είναι public absolute URLs. Τα redirects μετά από PIN πρέπει να είναι relative paths ώστε να μένουν στο ίδιο host.

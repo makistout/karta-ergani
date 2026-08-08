@@ -58,9 +58,12 @@ function renderTable(rows, count, store) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "__weekly__", "__history__"].forEach((h) => {
+  ["__detail__", "ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "__weekly__", "__history__"].forEach((h) => {
     const th = document.createElement("th");
-    if (h === "__weekly__") {
+    if (h === "__detail__") {
+      th.className = "work-log-action-cell";
+      th.setAttribute("aria-label", "Στοιχεία σύμβασης");
+    } else if (h === "__weekly__") {
       th.className = "work-log-action-cell";
       th.setAttribute("aria-label", "Εβδομαδιαίο ωράριο");
     } else if (h === "__history__") {
@@ -74,14 +77,29 @@ function renderTable(rows, count, store) {
   t.appendChild(hr);
   rows.forEach((emp) => {
     const tr = document.createElement("tr");
+    const empAfm = (emp.afm || "").trim();
+    const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
+    const active = emp.active !== false && emp.active !== 0;
+    const tdDetail = document.createElement("td");
+    tdDetail.className = "work-log-action-cell";
+    if (empAfm) {
+      const detailLink = document.createElement("a");
+      detailLink.href =
+        `/ui/employees/detail?afm=${encodeURIComponent(empAfm)}` +
+        `&eponymo=${encodeURIComponent(emp.eponymo || "")}` +
+        `&onoma=${encodeURIComponent(emp.onoma || "")}`;
+      detailLink.className = "employee-detail-link";
+      detailLink.title = "Στοιχεία σύμβασης Ergani";
+      detailLink.setAttribute("aria-label", `Στοιχεία σύμβασης — ${empName}`);
+      detailLink.innerHTML = Office.icon("table");
+      tdDetail.appendChild(detailLink);
+    }
+    tr.appendChild(tdDetail);
     const tdAfm = document.createElement("td");
     tdAfm.textContent = emp.afm || "";
     tr.appendChild(tdAfm);
     const tdEp = document.createElement("td");
     tdEp.innerHTML = `<span class="employee-name-actions"><strong>${Office.escapeHtml(emp.eponymo || "")}</strong></span>`;
-    const empAfm = (emp.afm || "").trim();
-    const empName = `${emp.eponymo || ""} ${emp.onoma || ""}`.trim();
-    const active = emp.active !== false && emp.active !== 0;
     tr.appendChild(tdEp);
     const tdOn = document.createElement("td");
     tdOn.textContent = emp.onoma || "";

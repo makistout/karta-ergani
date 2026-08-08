@@ -173,6 +173,34 @@ def sort_schedule_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(rows, key=_schedule_sort_key)
 
 
+def list_schedule_employee_afms(
+    employer_afm: str,
+    branch_aa: str,
+) -> list[str]:
+    """Διακριτά ΑΦΜ εργαζομένων που εμφανίζονται στο ψηφιακό ωράριο του καταστήματος."""
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT employee_afm
+            FROM dbo.karta_schedule
+            WHERE employer_afm = ?
+              AND branch_aa = ?
+              AND employee_afm IS NOT NULL
+              AND LTRIM(RTRIM(employee_afm)) <> ''
+            ORDER BY employee_afm
+            """,
+            (afm, aa),
+        )
+        out: list[str] = []
+        for row in cur.fetchall():
+            e = norm_afm(row[0] or "")
+            if e:
+                out.append(e)
+        return out
+
+
 def list_schedule_for_store(
     employer_afm: str,
     branch_aa: str,

@@ -8,9 +8,20 @@
 
 - `app/portal_schedule_sync.py`: ψηφιακό ωράριο.
 - `app/portal_work_log_sync.py`: πραγματική απασχόληση.
+- `app/portal_employment_contract_sync.py`: στοιχεία σύμβασης από Μητρώα
+  (`Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx`).
 - `app/portal_excel.py`: Excel export parsing.
 - `app/portal_excel_archive.py`: αρχειοθέτηση Excel exports **τρέχουσας ημέρας** για debug.
 - `app/portal_auth.py`, `app/portal_form_util.py`: login/forms helpers.
+
+## Στοιχεία Σύμβασης (Μητρώα)
+
+- Persist σε `karta_employment_contract` (append-only snapshots).
+- Scope: ενεργοί εργαζόμενοι ∩ ΑΦΜ στο `karta_schedule` του καταστήματος.
+- Ημερήσιο scheduled: `scheduled_employment_contract_sync` (default `04:00`,
+  `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
+- Migration: `sql/alter_add_karta_employment_contract.sql` /
+  `python scripts/ensure_karta_employment_contract_table.py`.
 
 ## Pattern
 

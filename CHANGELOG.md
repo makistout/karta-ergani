@@ -8,6 +8,49 @@
 
 ---
 
+## 2026-08-08 — Λεπτομέρειες εργαζομένου (σύμβαση)
+
+- Στο `/ui/employees`: εικονίδιο πίνακα αριστερά στη γραμμή → νέα σελίδα
+  `/ui/employees/detail?afm=…` με πίνακα Πεδίο/Τιμή (`karta_employment_contract`).
+- Προηγούμενες εκδόσεις στο τέλος της σελίδας· κλικ για αναλυτικό πίνακα.
+
+---
+
+## 2026-08-08 — Σύμβαση: μόνο εργαζόμενοι ψηφιακού ωραρίου
+
+- Ο sync στοιχείων σύμβασης δεν διατρέχει πια όλο το Μητρώο παραρτήματος.
+- Scope: ενεργοί εργαζόμενοι ∩ ΑΦΜ στο **`karta_schedule`** του καταστήματος ·
+  λίστα Μητρώου μία φορά, καρτέλες μόνο για το overlap.
+- Οι υπόλοιποι στο Μητρώο αγνοούνται.
+
+---
+
+## 2026-08-08 — Στοιχεία σύμβασης προσωπικού (Μητρώα Ergani)
+
+### Βάση
+- Νέος πίνακας **`karta_employment_contract`** (append-only snapshots) με υποχρεωτικά
+  **`employer_afm`**, **`branch_aa`**, **`employee_afm`** σε κάθε γραμμή + πεδία σύμβασης
+  (ειδικότητα, ΣΤΕΠ 92, ώρες, αποδοχές, διάλειμμα, ευέλικτη προσέλευση, ημ. ενημέρωσης Ergani, κ.λπ.).
+- Ιστορικό: νέα γραμμή όταν αλλάζει hash πεδίων ή ημ. ενημέρωσης· `is_current=1` μόνο στην τελευταία.
+- Migration: `sql/alter_add_karta_employment_contract.sql` ·
+  `python scripts/ensure_karta_employment_contract_table.py`.
+
+### Portal sync
+- Path: **`Mitroa/ErgazomenosSearch.aspx`** → **`Mitroa/Ergazomenos.aspx?ergodotiId=&afm=`**
+  (Τρέχουσα Κατάσταση + παράρτημα → Επιλογή → tabs εργασιακής σχέσης / ψηφιακής οργάνωσης χρόνου).
+- Modules: `app/portal_employment_contract_sync.py`, `app/employment_contract_parse.py`,
+  `app/repo_employment_contract.py`.
+- Ευέλικτη προσέλευση ενημερώνει και το `karta_employee.flex_arrival_minutes`.
+
+### API / UI / scheduled
+- `GET/POST /api/employees/contract/list|history|sync` (+ status job).
+- UI: `/ui/employees` → εικονίδιο → `/ui/employees/detail` (πίνακας ανά εργαζόμενο)·
+  `/ui/employees/contracts` (λίστα καταστήματος, sync admin).
+- Ημερήσιο scheduled: `scheduled_employment_contract_sync` (default **04:00**,
+  `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
+
+---
+
 ## 2026-08-07 — Επιλογή καταστήματος → αρχική
 
 - Από `/ui/stores`, μετά από επιτυχή επιλογή καταστήματος γίνεται μετάβαση στην **αρχική** (`/ui/`).

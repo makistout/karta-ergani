@@ -24,6 +24,7 @@ OPERATION = "scheduled_today_sync"
 OPERATION_FUTURE_SCHEDULE_SYNC = "scheduled_future_schedule_sync"
 OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
 OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
+OPERATION_EMPLOYMENT_CONTRACT_SYNC = "scheduled_employment_contract_sync"
 FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
 _RUNNING_GRACE_MINUTES = 15
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
@@ -152,6 +153,15 @@ def _run_configured_auto_actions(
             "reason": weekly_reason,
             "from_iso": weekly_from or None,
             "to_iso": weekly_to or None,
+        }
+
+    contract_should_run, contract_reason = should_run_employment_contract_sync(cfg)
+    if contract_should_run:
+        actions["employment_contract"] = run_employment_contract_sync_for_store(cfg)
+    else:
+        actions["employment_contract"] = {
+            "skipped": True,
+            "reason": contract_reason,
         }
 
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
@@ -323,6 +333,74 @@ def should_run_weekly_repair_work_log_sync(
     ):
         return False, from_iso, to_iso, "έχει ήδη εκτελεστεί αυτή την Κυριακή"
     return True, from_iso, to_iso, "έτοιμο"
+
+
+def should_run_employment_contract_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_ENABLED:
+        return False, "απενεργοποιημένο από ρύθμιση"
+    base_date = local_now.date().isoformat()
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME,
+        default="04:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, "λείπουν πίνακες sync log για ημερήσιο guard"
+    if _operation_run_exists(
+        OPERATION_EMPLOYMENT_CONTRACT_SYNC,
+        int(cfg["id"]),
+        base_date,
+    ):
+        return False, "έχει ήδη εκτελεστεί σήμερα"
+    return True, "έτοιμο"
+
+
+def run_employment_contract_sync_for_store(cfg: dict[str, Any]) -> dict[str, Any]:
+    from app.portal_employment_contract_sync import sync_employment_contracts_from_portal
+
+    ctx = store_api_context(cfg)
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    run_id = str(uuid.uuid4())
+    log = KartaLogger(
+        OPERATION_EMPLOYMENT_CONTRACT_SYNC,
+        store_id=sid,
+        store_name=name,
+        run_id=run_id,
+        extra={
+            "employer_afm": ctx.get("employer_afm"),
+            "branch_aa": ctx.get("branch_aa"),
+        },
+    )
+    log.info("Έναρξη ημερήσιου συγχρονισμού στοιχείων σύμβασης")
+    try:
+        result = sync_employment_contracts_from_portal(ctx, run_id=run_id)
+        ok = bool(result.get("success"))
+        detail = result.get("detail") or "Συγχρονισμός στοιχείων σύμβασης"
+        log.info(detail, success=ok, count=result.get("count"))
+        repo_sync_log.finish_run(
+            run_id,
+            status="done" if ok else "error",
+            message=detail,
+            result={"success": ok, "employment_contract": result},
+        )
+        return {"success": ok, "employment_contract": result}
+    except Exception as ex:
+        err = str(ex)
+        log.error(f"Σφάλμα συγχρονισμού σύμβασης: {err}")
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=err,
+            result={"success": False, "error": err},
+        )
+        return {"success": False, "error": err}
 
 
 def run_work_log_range_sync_for_store(

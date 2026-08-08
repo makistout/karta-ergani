@@ -161,16 +161,20 @@ def upsert_employee_by_afm(
     afm: str,
     eponymo: str | None,
     onoma: str | None,
+    *,
+    flex_arrival_minutes: int | None = None,
 ) -> int | None:
     """Δημιουργία/ενημέρωση εργαζόμενου από ΑΦΜ (π.χ. μετά από portal ωράριο)."""
     ep = (eponymo or "").strip()[:200] or None
     on = (onoma or "").strip()[:200] or None
     if not norm_afm(afm):
         return None
-    if not ep and not on:
+    if not ep and not on and flex_arrival_minutes is None:
         return None
     with cursor() as cur:
-        return upsert_employee(cur, afm, ep, on)
+        return upsert_employee(
+            cur, afm, ep, on, flex_arrival_minutes=flex_arrival_minutes
+        )
 
 
 def flex_arrival_map_for_employer(

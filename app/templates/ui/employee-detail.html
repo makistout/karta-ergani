@@ -1,0 +1,31 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Λεπτομέρειες εργαζομένου' %}
+{% set shell = "office" %}
+{% set active_nav = 'employees' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-table" aria-hidden="true"></i> Στοιχεία σύμβασης</h1>
+      <p id="employeeDetailDesc" class="page-desc">Στοιχεία σύμβασης από Ergani Μητρώα ανά εργαζόμενο.</p>
+
+      <div class="actions" style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <a class="btn btn-secondary" href="/ui/employees">
+          <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+        </a>
+      </div>
+
+      <section class="card employee-detail-card">
+        <h2 id="employeeDetailTitle" class="employee-detail-section-title">Φόρτωση…</h2>
+        <p id="employeeDetailMeta" class="page-desc" style="margin-top:0;"></p>
+        <div id="employeeContractWrap">
+          <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+        </div>
+      </section>
+
+      <section id="employeeContractHistorySection" class="card employee-detail-card hidden">
+        <h2 class="employee-detail-section-title">Προηγούμενες εκδόσεις</h2>
+        <div id="employeeContractHistoryWrap"></div>
+      </section>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/employee-detail.js?v=20260808detailpage1"></script>
+{% endblock %}

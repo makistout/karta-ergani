@@ -107,6 +107,13 @@ class Config:
     KARTA_SCHEDULED_WEEKLY_REPAIR_TIME = (
         os.environ.get("KARTA_SCHEDULED_WEEKLY_REPAIR_TIME") or "05:00"
     ).strip() or "05:00"
+    KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME = (
+        os.environ.get("KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME") or "04:00"
+    ).strip() or "04:00"
     KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS = max(
         0,
         int(

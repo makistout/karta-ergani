@@ -1,0 +1,40 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Στοιχεία σύμβασης' %}
+{% set shell = "office" %}
+{% set active_nav = 'employees' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> Στοιχεία σύμβασης</h1>
+      <p class="page-desc">Σύμβαση ενεργών εργαζομένων του ψηφιακού ωραρίου (Ergani Μητρώα · ιστορικό ανά αλλαγή).</p>
+      <div class="actions" style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <a class="btn btn-secondary" href="/ui/employees">
+          <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+        </a>
+        {% if office_is_admin_role() %}
+        <button type="button" class="btn" id="btnSyncContracts" disabled>
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός από Ergani</span>
+        </button>
+        {% endif %}
+      </div>
+      <div class="card list-card">
+        <div id="contractsWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+      <div id="contractMsg" class="msg"></div>
+
+      <div id="contractHistoryModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="contractHistoryTitle">
+        <div class="office-modal-backdrop" data-contract-history-close></div>
+        <div class="office-modal-panel office-modal-panel--history">
+          <h2 id="contractHistoryTitle" class="office-modal-title">Ιστορικό σύμβασης</h2>
+          <p id="contractHistoryEmployee" class="office-modal-sub"></p>
+          <div id="contractHistoryWrap" class="work-log-history-wrap">
+            <p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>
+          </div>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" data-contract-history-close>Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/employees-contracts.js?v=20260808v1"></script>
+{% endblock %}
