@@ -908,3 +908,47 @@ table.data tbody tr.work-log-row--deficient td strong {
   font-weight: 600;
   margin-right: 0.25rem;
 }
+.apologistic-toolbar { margin-bottom: 1rem; }
+.apologistic-day-tabs { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:.45rem; margin-top:.85rem; }
+.apologistic-day-tab { border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:inherit; padding:.48rem .35rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.35rem; min-width:0; }
+.apologistic-day-tab span { color:var(--muted); font-size:.72rem; overflow:hidden; text-overflow:ellipsis; }
+.apologistic-day-tab strong { font-size:.78rem; white-space:nowrap; }
+.apologistic-day-tab small { min-width:1.2rem; padding:.08rem .25rem; border-radius:1rem; background:var(--surface-2); color:var(--muted); font-size:.65rem; }
+.apologistic-day-tab:hover { border-color:var(--accent); }
+.apologistic-day-tab.is-active { background:color-mix(in srgb,var(--accent) 10%,var(--surface)); border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent); }
+.apologistic-summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
+.apologistic-kpi { padding:1rem 1.15rem; display:flex; flex-direction:column; gap:.25rem; }
+.apologistic-kpi span { color:var(--muted); font-size:.82rem; }
+.apologistic-kpi strong { font-size:1.5rem; }
+.apologistic-kpi--change { border-left:4px solid #d99500; }
+.apologistic-kpi--review { border-left:4px solid var(--err); }
+.apologistic-kpi--ok { border-left:4px solid #2d8a52; }
+.apologistic-kpi--filter { width:100%; font:inherit; text-align:left; color:inherit; cursor:pointer; appearance:none; transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease; }
+.apologistic-kpi--filter:hover { transform:translateY(-1px); box-shadow:0 5px 14px rgba(28,39,52,.1); }
+.apologistic-kpi--filter.is-active { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 28%,transparent); }
+.apologistic-kpi--change.is-active { border-color:#d99500; }
+.apologistic-kpi--review.is-active { border-color:var(--err); }
+.apologistic-kpi--ok.is-active { border-color:#2d8a52; }
+.apologistic-table td { vertical-align:top; }
+.apologistic-table { width:100%; table-layout:fixed; font-size:.75rem; }
+.apologistic-table th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; line-height:1; }
+.apologistic-table th:first-child { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
+.apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(12) { width:10%; }
+.apologistic-table th:nth-child(13) { width:7%; }
+.apologistic-table td { padding:.42rem .25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.apologistic-table td:first-child { white-space:normal; line-height:1.1; font-size:.68rem; overflow-wrap:anywhere; }
+.apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(12) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:.72rem; font-variant-numeric:tabular-nums; }
+.apologistic-table td:nth-child(n+5):nth-child(-n+11) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.apologistic-table td:last-child { text-align:center; overflow:visible; }
+.apologistic-table .status-badge { font-size:.68rem; padding:.18rem .32rem; white-space:nowrap; }
+.apologistic-table td small { display:none; }
+.apologistic-table .time-diff--plus { color:#9a5e00; }
+.apologistic-table .time-diff--minus { color:#315f9c; }
+.apologistic-table .apologistic-alert { color:var(--err); font-weight:700; }
+.apologistic-row--change td { background:color-mix(in srgb,#f4b400 7%,transparent); }
+.apologistic-row--review td { background:color-mix(in srgb,var(--err) 6%,transparent); }
+.apologistic-status--ok { color:#176b3a; background:#dff4e7; }
+.apologistic-status--change { color:#805b00; background:#fff0bd; }
+.apologistic-status--review { color:#8c2730; background:#fbe2e5; }
+@media (max-width: 1000px) { .apologistic-summary { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width: 800px) { .apologistic-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } .apologistic-day-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } }

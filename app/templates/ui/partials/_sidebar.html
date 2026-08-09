@@ -11,7 +11,7 @@
   <nav id="officeSidebarNav">
     {% for item in office_nav_items %}
       {% if office_nav_item_allowed(item) %}
-        <a href="{{ item.href }}" data-nav="{{ item.nav }}" class="{{ 'active' if active_nav == item.nav else '' }}">{{ item.label }}</a>
+        <a href="{{ item.href }}" data-nav="{{ item.nav }}" class="{{ 'active' if active_nav == item.nav else '' }}">{% if item.icon %}<i class="bi bi-{{ item.icon }}" aria-hidden="true"></i>{% endif %}<span>{{ item.label }}</span></a>
       {% endif %}
     {% endfor %}
   </nav>

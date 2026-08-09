@@ -162,6 +162,11 @@ def ui_monthly_status():
     return render_template("ui/monthly-status-list.html")
 
 
+@ui_bp.get("/apologistic")
+def ui_apologistic():
+    return render_template("ui/apologistic.html")
+
+
 @ui_bp.get("/work-card")
 def ui_work_card():
     return render_template("ui/work-card-list.html")

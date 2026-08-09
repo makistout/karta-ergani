@@ -1,0 +1,107 @@
+from datetime import date
+
+from app.apologistic import build_weekly_report, previous_week
+
+
+def sched(afm="012345678", day="03/08/2026", start="09:00", end="17:00", shift="ΕΡΓΑΣΙΑ",
+          break_minutes=None, break_in_work=None):
+    return {"employee_afm": afm, "work_date": day, "hour_from": start,
+            "hour_to": end, "shift_type": shift, "eponymo": "ΔΟΚΙΜΗ", "onoma": "Α",
+            "break_minutes": break_minutes, "break_in_work": break_in_work}
+
+
+def punch(start="09:10", end="17:10", afm="012345678", day="03/08/2026"):
+    return {"employee_afm": afm, "work_date": day, "hour_from": start,
+            "hour_to": end, "eponymo": "ΔΟΚΙΜΗ", "onoma": "Α"}
+
+
+def contract(afm="012345678", flex=15, days="5", break_minutes=None, break_in_work=None):
+    return {"employee_afm": afm, "characterization": "ΠΛΗΡΗΣ ΑΠΑΣΧΟΛΗΣΗ",
+            "weekly_work_days": days, "flex_arrival_minutes": flex,
+            "break_minutes": break_minutes, "break_in_work": break_in_work}
+
+
+def test_previous_complete_week():
+    assert previous_week(date(2026, 8, 9)) == (date(2026, 7, 27), date(2026, 8, 2))
+
+
+def test_flexible_arrival_needs_no_change():
+    result = build_weekly_report([sched()], [punch()], [contract()])
+    assert result["days"][0]["status"] == "ok"
+    assert result["days"][0]["employee_afm"] == "012345678"
+    assert result["counts"]["ok"] == 1
+
+
+def test_punch_without_schedule_is_review_not_automatic_work():
+    result = build_weekly_report([], [punch()], [contract()])
+    row = result["days"][0]
+    assert row["status"] == "review"
+    assert row["proposed"] == "09:10–17:10"
+
+
+def test_schedule_without_punch_is_review():
+    result = build_weekly_report([sched()], [], [contract()])
+    assert result["days"][0]["status"] == "review"
+
+
+def test_best_punch_is_closest_to_declared_schedule():
+    result = build_weekly_report(
+        [sched()], [punch("05:00", "06:00"), punch("09:02", "17:03")], [contract()]
+    )
+    assert result["days"][0]["actual"] == "09:02–17:03"
+
+
+def test_late_shift_proposes_same_declared_duration():
+    result = build_weekly_report([sched()], [punch("10:00", "18:30")], [contract()])
+    row = result["days"][0]
+    assert row["status"] == "change"
+    assert row["proposed"] == "10:00–18:00"
+    assert row["extra_minutes"] == 30
+    assert row["start_difference_minutes"] == 60
+    assert row["end_difference_minutes"] == 90
+    assert row["gross_difference_minutes"] == 30
+
+
+def test_rest_with_punch_requires_review():
+    result = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [punch()], [contract()]
+    )
+    assert result["days"][0]["status"] == "review"
+
+
+def test_outside_break_only_reduces_difference_on_work_day_with_punch():
+    result = build_weekly_report(
+        [sched()], [punch("09:00", "18:00")],
+        [contract(flex=0, break_minutes=30, break_in_work=0)],
+    )
+    row = result["days"][0]
+    assert row["gross_difference_minutes"] == 60
+    assert row["outside_break_minutes"] == 30
+    assert row["net_difference_minutes"] == 30
+
+
+def test_break_not_subtracted_on_rest_without_punch():
+    result = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [],
+        [contract(break_minutes=30, break_in_work=0)],
+    )
+    row = result["days"][0]
+    assert row["outside_break_minutes"] == 0
+    assert row["net_difference_minutes"] is None
+
+
+def test_night_minutes_are_visible():
+    result = build_weekly_report(
+        [sched(start="22:00", end="06:00")], [punch("22:00", "06:00")], [contract()]
+    )
+    assert result["days"][0]["night_minutes"] == 480
+
+
+def test_sixth_actual_day_is_flagged_for_five_day_contract():
+    schedules, punches = [], []
+    for index in range(6):
+        day = f"{3 + index:02d}/08/2026"
+        schedules.append(sched(day=day))
+        punches.append(punch(day=day))
+    result = build_weekly_report(schedules, punches, [contract(days="5")])
+    assert sum(row["sixth_day_candidate"] for row in result["days"]) == 1

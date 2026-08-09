@@ -26,6 +26,7 @@ from app.routes_audit import audit_bp
 from app.routes_contact import contact_bp
 from app.access_control import register_access_context
 from app.routes_users import users_bp
+from app.routes_apologistic import apologistic_bp
 
 
 def create_app() -> Flask:
@@ -60,6 +61,7 @@ def create_app() -> Flask:
     app.register_blueprint(schedule_day_form_bp)
     app.register_blueprint(work_log_bp)
     app.register_blueprint(monthly_status_bp)
+    app.register_blueprint(apologistic_bp)
     app.register_blueprint(telegram_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)

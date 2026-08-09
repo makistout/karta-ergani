@@ -1,0 +1,25 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Απολογιστικό' %}
+{% set shell = "office" %}
+{% set active_nav = 'apologistic' %}
+{% block content %}
+  <h1 class="page-title"><i class="bi bi-clipboard-data" aria-hidden="true"></i> Απολογιστικό εβδομάδας</h1>
+  <p class="page-desc">Σύγκριση δηλωμένου ωραρίου, πραγματικής απασχόλησης και σύμβασης για την προηγούμενη ολοκληρωμένη εβδομάδα.</p>
+  <div class="toolbar-dates card apologistic-toolbar">
+    <div class="toolbar-dates-row">
+      <button type="button" class="btn btn-secondary" id="weekPrev"><i class="bi bi-chevron-left"></i></button>
+      <strong id="weekLabel">Φόρτωση…</strong>
+      <button type="button" class="btn btn-secondary" id="weekNext"><i class="bi bi-chevron-right"></i></button>
+      <button type="button" class="btn" id="weekDefault">Προηγούμενη εβδομάδα</button>
+    </div>
+    <div id="apologisticDayTabs" class="apologistic-day-tabs" aria-label="Ημέρες εβδομάδας"></div>
+  </div>
+  <div id="apologisticSummary" class="apologistic-summary"></div>
+  <div class="card list-card">
+    <div id="apologisticWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+  </div>
+  <div class="msg msg-warn" id="apologisticNotice"></div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/apologistic.js?v=20260809a7"></script>
+{% endblock %}
