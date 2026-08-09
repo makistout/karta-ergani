@@ -50,6 +50,9 @@ function compactScheduleLabel(value) {
   if (upper.includes("ΑΡΓΙΑ")) return "ΑΡΓΙΑ";
   return raw;
 }
+function compactDayState(value) {
+  return ({"Εργασία":"Εργ.", "Ρεπό":"Ρεπό", "Μη εργασία":"Μη εργ.", "Τηλεργασία":"Τηλεργ.", "Άδεια":"Άδεια", "Αργία":"Αργία"})[value] || "Χωρίς";
+}
 
 async function loadReport() {
   const wrap = document.getElementById("apologisticWrap");
@@ -132,30 +135,35 @@ function renderRows(rows, store) {
     const contractTip = `${row.day_state} · ${row.contract_kind}${row.weekly_days ? ` · ${row.weekly_days}ήμερο` : ""}`;
     const declaredTip = `Δηλωμένο: ${row.declared} · Ευέλικτη προσέλευση: ${row.flex_minutes || 0} λεπτά`;
     const punchTip = `${row.actual} · ${row.punch_completeness} · ${row.data_source}` +
-      (row.punch_count > 1 ? ` · ${row.punch_count} εγγραφές, επιλέχθηκε η βέλτιστη` : "");
+      (row.punch_count > 1 ? ` · ${row.punch_count} εγγραφές, αντιστοιχίστηκαν ανά δηλωμένο τμήμα` : "") +
+      (row.orphan_punch_count ? ` · ${row.orphan_punch_count} ορφανές εγγραφές` : "");
     const breakTip = row.break_minutes
       ? `Δηλωμένο διάλειμμα: ${mins(row.break_minutes)} · Εκτός ωραρίου που αφαιρέθηκε: ${mins(row.outside_break_minutes)}`
       : "Δεν υπάρχει δηλωμένο διάλειμμα";
     const netDetails = [
       `Καθαρή διαφορά: ${signedMins(row.net_difference_minutes)}`,
-      row.overtime_candidate_minutes ? `Προς χαρακτηρισμό: ${mins(row.overtime_candidate_minutes)}` : "",
+      row.overwork_minutes ? `Υπερεργασία: ${mins(row.overwork_minutes)}` : "",
+      row.overtime_minutes ? `Υπερωρία: ${mins(row.overtime_minutes)}${row.overtime_from && row.overtime_to ? ` (${row.overtime_from}–${row.overtime_to})` : ""}` : "",
+      row.undeclared_extra_minutes ? `Πρόσθετος χρόνος χωρίς δήλωση υπερωρίας: ${mins(row.undeclared_extra_minutes)}` : "",
+      row.unlawful_overtime_minutes ? `Πέρα από το ημερήσιο όριο 4 ωρών: ${mins(row.unlawful_overtime_minutes)}` : "",
       row.night_minutes ? `Νυχτερινά: ${mins(row.night_minutes)}` : "",
-      row.sixth_day_candidate ? "Πιθανή 6η ημέρα" : "",
+      row.classification_warning || "",
     ].filter(Boolean).join(" · ");
     const resultTip = [row.reason, `Βεβαιότητα: ${row.confidence}`,
+      row.proposal_basis ? `Βάση πρότασης: ${row.proposal_basis}` : "",
       row.requires_confirmation ? "Χρειάζεται επιβεβαίωση" : ""].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
       `<td title="${attr(`ΑΦΜ: ${row.employee_afm}`)}"><strong>${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</strong></td>` +
-      `<td title="${attr(contractTip)}">${attr(row.day_state === "Εργασία" ? "Εργ." : row.day_state === "Ρεπό/απουσία" ? "Ρεπό" : "Χωρίς")}</td>` +
+      `<td title="${attr(contractTip)}">${attr(compactDayState(row.day_state))}</td>` +
       `<td title="${attr(declaredTip)}">${attr(compactScheduleLabel(row.declared))}</td>` +
-      `<td title="${attr(punchTip)}">${attr(row.actual)}</td>` +
+      `<td title="${attr(punchTip)}">${attr(row.actual)}${row.overnight ? "*" : ""}</td>` +
       `<td title="Δηλωμένη διάρκεια">${mins(row.declared_minutes)}</td><td title="Πραγματική διάρκεια">${mins(row.actual_minutes)}</td>` +
       `<td title="Διαφορά πραγματικής από δηλωμένη έναρξη" class="${diffClass(row.start_difference_minutes)}">${signedMins(row.start_difference_minutes)}</td>` +
       `<td title="Διαφορά πραγματικής από δηλωμένη λήξη" class="${diffClass(row.end_difference_minutes)}">${signedMins(row.end_difference_minutes)}</td>` +
       `<td title="Πραγματική μείον δηλωμένη διάρκεια" class="${diffClass(row.gross_difference_minutes)}">${signedMins(row.gross_difference_minutes)}</td>` +
       `<td title="${attr(breakTip)}">${row.outside_break_minutes ? mins(row.outside_break_minutes) : "—"}</td>` +
       `<td title="${attr(netDetails)}" class="${diffClass(row.net_difference_minutes)}"><strong>${signedMins(row.net_difference_minutes)}</strong></td>` +
-      `<td title="${attr(`Προτεινόμενο απολογιστικό: ${row.proposed}`)}"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></td>` +
+      `<td title="${attr(`Προτεινόμενο απολογιστικό: ${row.proposed} · ${row.proposal_basis || ""}`)}"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></td>` +
       `<td title="${attr(resultTip)}"><span class="status-badge apologistic-status--${row.status}">${statusLabel(row.status)}</span></td></tr>`;
   }
   wrap.innerHTML = html + `</tbody></table>`;
