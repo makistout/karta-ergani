@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2";
+    internal const string Version = "0.3.3";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -127,7 +127,7 @@ internal sealed class SetupForm : Form
             _username.Text = Dpapi.UnprotectString(cfg.ErganiUsername);
             _password.Text = Dpapi.UnprotectString(cfg.ErganiPassword);
             _usertype.Text = cfg.ErganiUsertype;
-            _status.Text = "Βρέθηκε υπάρχουσα ρύθμιση.";
+            _status.Text = $"Φορτώθηκε η αποθηκευμένη ρύθμιση από {Program.ConfigPath}.";
         }
         catch (Exception ex) { _status.Text = "Σφάλμα ανάγνωσης ρύθμισης: " + ex.Message; }
     }
@@ -141,7 +141,8 @@ internal sealed class SetupForm : Form
             var connection = await ListenerAgent.VerifyAsync(cfg, CancellationToken.None);
             _environment.Text = $"{connection.EnvironmentLabel} ({connection.Environment})";
             cfg.Save();
-            _status.Text = $"Επιτυχής έλεγχος και ασφαλής αποθήκευση. Δημόσια IP: {ListenerAgent.CurrentPublicIp ?? "—"}. Μπορείτε να εγκαταστήσετε την υπηρεσία.";
+            if (!File.Exists(Program.ConfigPath)) throw new IOException("Το αρχείο ρύθμισης δεν δημιουργήθηκε.");
+            _status.Text = $"Επιτυχής έλεγχος και ασφαλής αποθήκευση στο {Program.ConfigPath}. Δημόσια IP: {ListenerAgent.CurrentPublicIp ?? "—"}. Μπορείτε να εγκαταστήσετε την υπηρεσία.";
         }
         catch (Exception ex) { _status.Text = "Αποτυχία: " + ex.Message; }
         finally { SetBusy(false); }
