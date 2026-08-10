@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.ServiceProcess;
@@ -13,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.1";
+    internal const string Version = "0.3.2";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -71,10 +72,12 @@ internal sealed class SetupForm : Form
     public SetupForm()
     {
         Text = $"erganiOS Listener {Program.Version}";
-        Width = 620; Height = 520; StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 2, RowCount = 10, AutoSize = true };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(620, 500); MinimumSize = new Size(460, 390);
+        StartPosition = FormStartPosition.CenterScreen; AutoScroll = true;
+        FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, Padding = new Padding(18), ColumnCount = 2, RowCount = 10, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddRow(table, 0, "erganiOS URL", _server);
         AddRow(table, 1, "Device ID", _device);
@@ -83,7 +86,7 @@ internal sealed class SetupForm : Form
         AddRow(table, 4, "ΕΡΓΑΝΗ password", _password);
         AddRow(table, 5, "Usertype", _usertype);
         AddRow(table, 6, "Περιβάλλον Ergani API", _environment);
-        var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+        var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill };
         buttons.Controls.AddRange([_save, _install, _uninstall]);
         table.Controls.Add(buttons, 0, 7); table.SetColumnSpan(buttons, 2);
         _status.MaximumSize = new Size(550, 0);
@@ -91,11 +94,19 @@ internal sealed class SetupForm : Form
         var note = new Label { AutoSize = true, MaximumSize = new Size(550, 0), Text = "Τα credentials αποθηκεύονται κρυπτογραφημένα με Windows DPAPI.\r\nΗ υπηρεσία ξεκινά αυτόματα με τα Windows." };
         table.Controls.Add(note, 0, 9); table.SetColumnSpan(note, 2);
         Controls.Add(table);
+        Shown += (_, _) => FitToWorkingArea();
         _save.Click += async (_, _) => await SaveAsync();
         _install.Click += (_, _) => InstallService();
         _uninstall.Click += (_, _) => UninstallService();
         LoadExisting();
         UpdateServiceState();
+    }
+
+    private void FitToWorkingArea()
+    {
+        var work = Screen.FromControl(this).WorkingArea;
+        Size = new Size(Math.Min(Width, Math.Max(MinimumSize.Width, work.Width - 24)), Math.Min(Height, Math.Max(MinimumSize.Height, work.Height - 24)));
+        Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2), work.Top + Math.Max(0, (work.Height - Height) / 2));
     }
 
     private static void AddRow(TableLayoutPanel table, int row, string label, TextBox input)
@@ -285,8 +296,17 @@ internal static class ListenerAgent
 
     private static async Task RefreshPublicIpOnce(ListenerConfig cfg, CancellationToken ct)
     {
+        string? publicIp = null;
+        try
+        {
+            using var lookup = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var candidate = (await lookup.GetStringAsync("https://api.ipify.org", ct)).Trim();
+            if (IPAddress.TryParse(candidate, out var parsed) && !IPAddress.IsLoopback(parsed)) publicIp = parsed.ToString();
+        }
+        catch { }
         using var server = ServerClient(cfg, 15);
-        using var response = await server.PostAsync(cfg.ServerUrl + "/api/card-listener/v1/network/refresh", null, ct);
+        using var content = new StringContent(JsonSerializer.Serialize(new { public_ip = publicIp }), Encoding.UTF8, "application/json");
+        using var response = await server.PostAsync(cfg.ServerUrl + "/api/card-listener/v1/network/refresh", content, ct);
         response.EnsureSuccessStatusCode();
         var ip = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))?["public_ip"]?.GetValue<string>();
         if (!string.IsNullOrWhiteSpace(ip)) Volatile.Write(ref _publicIp, ip);

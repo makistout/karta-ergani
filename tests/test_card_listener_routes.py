@@ -65,8 +65,38 @@ def test_listener_refreshes_public_ip_independently():
     ):
         response = _app().test_client().post(
             "/api/card-listener/v1/network/refresh",
-            headers={"X-ARR-ClientIP": "198.51.100.91"},
+            headers={"X-ARR-ClientIP": "8.8.4.4"},
         )
     assert response.status_code == 200
-    assert response.json["public_ip"] == "198.51.100.91"
-    update.assert_called_once_with(9, "198.51.100.91")
+    assert response.json["public_ip"] == "8.8.4.4"
+    update.assert_called_once_with(9, "8.8.4.4")
+
+
+def test_listener_accepts_authenticated_public_ip_report():
+    device = {"id": 9, "store_id": 27, "device_id": "18cbf129-0939-4e98-85b5-b2215153eceb", "last_seen_ip": None}
+    with (
+        patch("app.routes_card_listener.repo.authenticate_device", return_value=device),
+        patch("app.routes_card_listener.repo.update_device_public_ip") as update,
+    ):
+        response = _app().test_client().post(
+            "/api/card-listener/v1/network/refresh",
+            json={"public_ip": "8.8.8.8"},
+        )
+    assert response.status_code == 200
+    assert response.json["public_ip"] == "8.8.8.8"
+    update.assert_called_once_with(9, "8.8.8.8")
+
+
+def test_listener_never_stores_loopback_as_public_ip():
+    device = {"id": 9, "store_id": 27, "device_id": "18cbf129-0939-4e98-85b5-b2215153eceb", "last_seen_ip": None}
+    with (
+        patch("app.routes_card_listener.repo.authenticate_device", return_value=device),
+        patch("app.routes_card_listener.repo.update_device_public_ip") as update,
+    ):
+        response = _app().test_client().post(
+            "/api/card-listener/v1/network/refresh",
+            json={"public_ip": "127.0.0.1"},
+        )
+    assert response.status_code == 200
+    assert response.json["public_ip"] is None
+    update.assert_called_once_with(9, None)

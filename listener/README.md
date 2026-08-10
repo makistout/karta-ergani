@@ -1,6 +1,6 @@
 # erganiOS Card Listener
 
-Lightweight Windows listener v0.3.1 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
+Lightweight Windows listener v0.3.2 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
 
 ## Build
 
@@ -19,4 +19,4 @@ dotnet publish .\listener\Erganios.Listener\Erganios.Listener.csproj -c Release
 The executable copies itself to `C:\Program Files\erganiOS Listener`, registers the
 `erganiOSListener` Windows Service with automatic start/recovery, and applies restricted
 ACLs to `C:\ProgramData\erganiOS Listener`. Secrets are encrypted using DPAPI LocalMachine.
-The public IP is refreshed independently at startup and every five minutes, then kept in memory/server device state; punch submission performs no IP lookup.
+The public IP is resolved independently through `api.ipify.org` at startup and every five minutes, validated by the backend, then kept in memory/server device state; punch submission performs no IP lookup. Loopback/private addresses are never stored as public IPs.

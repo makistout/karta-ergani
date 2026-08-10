@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import time
 
 from flask import Blueprint, g, jsonify, request
@@ -49,8 +50,21 @@ def refresh_network_identity():
     device, error = _authenticate()
     if error:
         return error
-    from app.client_request import observed_peer_ip
-    public_ip = observed_peer_ip(request)
+    body = request.get_json(silent=True) or {}
+    reported_ip = str(body.get("public_ip") or "").strip()
+    try:
+        parsed_ip = ipaddress.ip_address(reported_ip)
+        public_ip = str(parsed_ip) if parsed_ip.is_global else None
+    except ValueError:
+        public_ip = None
+    if not public_ip:
+        from app.client_request import observed_peer_ip
+        observed_ip = observed_peer_ip(request)
+        try:
+            parsed_ip = ipaddress.ip_address(observed_ip or "")
+            public_ip = str(parsed_ip) if parsed_ip.is_global else None
+        except ValueError:
+            public_ip = None
     repo.update_device_public_ip(int(device["id"]), public_ip)
     return jsonify({"success": True, "public_ip": public_ip})
 
