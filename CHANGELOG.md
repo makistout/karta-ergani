@@ -19,6 +19,8 @@
 - Καταγραφή `submission_channel`, `submission_ip` και `executor_instance`. Η IP server
   λαμβάνεται μόνο από config και η IP listener ανανεώνεται ανεξάρτητα κάθε 5 λεπτά.
 - Νέο UI ρυθμίσεων ανά κατάστημα για mode, timeout, pairing, status και revoke.
+- Συμπαγής responsive διάταξη των listener ρυθμίσεων και κατανοητό μήνυμα όταν το
+  backend δεν μπορεί να φορτώσει καταστήματα λόγω αποτυχίας σύνδεσης με τη βάση.
 - Windows listener v0.3.1: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η υπάρχουσα ροή χτυπημάτων παραμένει ενεργή. Ο dispatcher προς listener jobs δεν έχει

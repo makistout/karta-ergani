@@ -839,6 +839,56 @@ input, select {
   font-size: 0.95rem;
 }
 
+/* Listener settings stay compact on wide screens instead of pushing controls
+   to the far edge of the card. */
+.listener-settings-block {
+  padding: 0.75rem;
+}
+
+.listener-settings-block .listener-settings-row {
+  grid-template-columns: minmax(17rem, 32rem) minmax(15rem, 23rem);
+  justify-content: start;
+  column-gap: 1.5rem;
+  padding: 0.5rem 0;
+}
+
+.listener-settings-block .listener-settings-row + .listener-settings-row {
+  border-top: 1px solid #e8edf2;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+}
+
+.listener-settings-block .settings-action-time {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(7rem, 1fr);
+  width: 100%;
+}
+
+.listener-settings-block .settings-action-select {
+  width: 100%;
+}
+
+.listener-settings-block #listenerOfflineSeconds {
+  width: 6rem;
+}
+
+.listener-device-status {
+  margin: 0.6rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid #e8edf2;
+}
+
+@media (max-width: 760px) {
+  .listener-settings-block .listener-settings-row {
+    grid-template-columns: 1fr;
+    row-gap: 0.55rem;
+  }
+
+  .listener-settings-block .settings-action-time {
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+  }
+}
+
 .settings-action-last-run {
   display: inline-flex;
   align-items: center;

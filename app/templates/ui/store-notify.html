@@ -136,8 +136,8 @@
               <p class="field-hint">Αφορά αποκλειστικά τα χτυπήματα WRKCardSE του επιλεγμένου καταστήματος. Η τρέχουσα ροή δεν αλλάζει μέχρι να επιλεγεί listener.</p>
             </div>
           </div>
-          <div class="settings-action-block">
-            <div class="settings-action-row settings-action-row--field">
+          <div class="settings-action-block listener-settings-block">
+            <div class="settings-action-row settings-action-row--field listener-settings-row">
               <span><strong>Τρόπος υποβολής χτυπημάτων</strong></span>
               <label class="settings-action-time" for="cardSubmissionMode">
                 <span class="settings-action-time-label">Διαδρομή</span>
@@ -147,14 +147,14 @@
                 </select>
               </label>
             </div>
-            <div class="settings-action-row settings-action-row--field">
+            <div class="settings-action-row settings-action-row--field listener-settings-row">
               <span><strong>Listener offline μετά από</strong><small>Αν δεν υπάρχει επικοινωνία, τα χτυπήματα θα χρησιμοποιούν το υπάρχον erganiOS path όταν ενεργοποιηθεί ο dispatcher.</small></span>
               <label class="settings-action-time" for="listenerOfflineSeconds">
                 <span class="settings-action-time-label">Δευτερόλεπτα</span>
                 <input id="listenerOfflineSeconds" type="number" min="15" max="600" step="1" value="60">
               </label>
             </div>
-            <p class="field-hint" id="listenerDeviceStatus">Δεν έχει φορτωθεί κατάσταση listener.</p>
+            <p class="field-hint listener-device-status" id="listenerDeviceStatus">Δεν έχει φορτωθεί κατάσταση listener.</p>
           </div>
           <div class="actions settings-section-actions">
             <button type="button" class="btn btn-secondary btn-sm" id="btnSaveListenerSettings" disabled><i class="bi bi-save"></i><span>Αποθήκευση listener</span></button>
@@ -169,5 +169,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260810cardlistener3"></script>
+  <script src="/static/js/store-notify.js?v=20260810cardlistener4"></script>
 {% endblock %}

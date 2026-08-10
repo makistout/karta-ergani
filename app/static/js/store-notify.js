@@ -210,7 +210,10 @@ async function initStorePicker() {
   } catch (e) {
     input.disabled = true;
     input.placeholder = "Σφάλμα φόρτωσης";
-    Office.showMsg("stepMsg", String(e), false);
+    const message = /HTTP 500/i.test(String(e))
+      ? "Ο server δεν μπόρεσε να φορτώσει τα καταστήματα (HTTP 500). Ελέγξτε τη σύνδεση με τη βάση δεδομένων."
+      : `Αποτυχία φόρτωσης καταστημάτων: ${e}`;
+    Office.showMsg("stepMsg", message, false);
     if (card) card.classList.add("hidden");
     return;
   }
