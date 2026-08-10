@@ -105,7 +105,10 @@ async function submitRetro(eventName, options = {}) {
   }
   setFormEnabled(false);
   const label = eventName === "check_in" ? "Είσοδος" : "Έξοδος";
-  Office.showLoading("rhMsg", `Υποβολή προγενέστερης ${label} (WRKCardSE)…`);
+  const progress = Office.startWorkCardSubmissionProgress(
+    (text) => Office.showLoading("rhMsg", text),
+    { label: `προγενέστερης ${label.toLowerCase()}` }
+  );
   try {
     const res = await fetch("/api/telegram/retro-hit/submit", {
       method: "POST",
@@ -122,6 +125,7 @@ async function submitRetro(eventName, options = {}) {
     });
     const data = await Office.parseJson(res);
     if (res.status === 409 && data.correction_available && !correctionMode) {
+      progress.stop();
       const go = window.confirm(
         `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
         "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
@@ -136,7 +140,8 @@ async function submitRetro(eventName, options = {}) {
     }
     if (!res.ok || !data.success) {
       showRetroMsg(
-        data.error || data.errors?.join(" · ") || "Αποτυχία υποβολής",
+        (data.error || data.errors?.join(" · ") || "Αποτυχία υποβολής") +
+          Office.workCardExecutionSuffix(data, progress.elapsedSeconds()),
         false
       );
       setFormEnabled(true);
@@ -148,9 +153,12 @@ async function submitRetro(eventName, options = {}) {
     if (data.sync_triggered) {
       ok += " · Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο.";
     }
+    ok += Office.workCardExecutionSuffix(data, progress.elapsedSeconds());
     showRetroMsg(ok, true);
   } catch (e) {
     showRetroMsg(String(e), false);
     setFormEnabled(true);
+  } finally {
+    progress.stop();
   }
 }

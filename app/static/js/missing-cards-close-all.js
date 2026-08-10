@@ -94,14 +94,22 @@ async function runCloseAllPunches() {
       source: "close_all",
       batch_index: i + 1,
       batch_total: plan.length,
+      onProgress: (statusText) => {
+        if (progress) progress.textContent = `${i + 1}/${plan.length} · ${label} · ${statusText}`;
+      },
     });
     if (res.ok) {
       ok += 1;
       if (progress) {
-        progress.textContent = `Ολοκληρώθηκε ${i + 1}/${plan.length}: ${label}`;
+        progress.textContent =
+          `Ολοκληρώθηκε ${i + 1}/${plan.length}: ${label}` +
+          Office.workCardExecutionSuffix(res.data, res.elapsedSeconds);
       }
     } else {
-      failures.push(`${label} — ${res.error || "σφάλμα"}`);
+      failures.push(
+        `${label} — ${res.error || "σφάλμα"}` +
+          Office.workCardExecutionSuffix(res.data, res.elapsedSeconds)
+      );
       if (progress) {
         progress.textContent = `Αποτυχία ${i + 1}/${plan.length}: ${label}`;
       }

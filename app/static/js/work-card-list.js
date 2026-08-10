@@ -616,7 +616,10 @@ async function submitCard(eventName, options = {}) {
   setSubmitButtonsDisabled(true);
   const label = eventName === "check_in" ? "Είσοδος" : "Έξοδος";
   const prefix = retro ? "Προγενέστερη " : "";
-  Office.showLoading("wcMsg", `Υποβολή ${prefix}${label} (WRKCardSE)… Παρακαλώ περιμένετε.`);
+  const progress = Office.startWorkCardSubmissionProgress(
+    (text) => Office.showLoading("wcMsg", text),
+    { label: `${prefix.toLowerCase()}${label.toLowerCase()}` }
+  );
   document.getElementById("wcMsg")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   try {
     const body = {
@@ -641,6 +644,7 @@ async function submitCard(eventName, options = {}) {
       return;
     }
     if (res.status === 409 && data.correction_available && !correctionMode) {
+      progress.stop();
       const go = window.confirm(
         `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
         "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
@@ -660,7 +664,7 @@ async function submitCard(eventName, options = {}) {
         data.data?.Message ||
         data.data?.error ||
         "Αποτυχία υποβολής";
-      showWorkCardMsg(err, false);
+      showWorkCardMsg(err + Office.workCardExecutionSuffix(data, progress.elapsedSeconds()), false);
       return;
     }
     if (retro && datePicker && (data.reference_date || referenceDate) !== cardDate()) {
@@ -671,12 +675,14 @@ async function submitCard(eventName, options = {}) {
     if (data.correction_mode) okMsg += " · διορθωτικό";
     if (retro) okMsg += ` · ${data.reference_date || referenceDate}`;
     if (data.protocol) okMsg += ` · ${data.protocol}`;
+    okMsg += Office.workCardExecutionSuffix(data, progress.elapsedSeconds());
     showWorkCardMsg(okMsg, true);
     await loadDayData();
     document.getElementById("workCardWrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     showWorkCardMsg(String(e), false);
   } finally {
+    progress.stop();
     setSubmitButtonsDisabled(false);
     setFormEnabled(true);
   }

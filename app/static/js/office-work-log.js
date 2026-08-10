@@ -1,4 +1,50 @@
 Object.assign(window.Office, {
+  startWorkCardSubmissionProgress(render, options = {}) {
+    const startedAt = Date.now();
+    const label = String(options.label || "χτυπήματος κάρτας");
+    let stopped = false;
+    const paint = () => {
+      if (stopped) return;
+      const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      let text;
+      if (seconds < 2) {
+        text = `Το αίτημα ${label} καταχωρήθηκε και μπήκε σε διαδικασία εκτέλεσης…`;
+      } else if (seconds < 50) {
+        text = `Σε εξέλιξη · ${seconds}″ — αναμονή ολοκλήρωσης από listener / ΕΡΓΑΝΗ…`;
+      } else if (seconds < 60) {
+        text = `Σε εξέλιξη · ${seconds}″ — πλησιάζει ο έλεγχος ασφαλούς fallback στα 60″…`;
+      } else {
+        text = `Σε εξέλιξη · ${seconds}″ — ολοκλήρωση listener ή ασφαλούς fallback μέσω erganiOS…`;
+      }
+      render(text, seconds);
+    };
+    paint();
+    const timer = window.setInterval(paint, 1000);
+    return {
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        window.clearInterval(timer);
+      },
+      elapsedSeconds() {
+        return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      },
+    };
+  },
+
+  workCardExecutionSuffix(data, elapsedSeconds = null) {
+    const elapsed = Number.isFinite(elapsedSeconds) ? ` · ${elapsedSeconds}″` : "";
+    if (data?.submission_channel === "listener") return ` · μέσω listener${elapsed}`;
+    if (data?.listener_fallback_reason === "listener_timeout") {
+      return ` · fallback μέσω erganiOS μετά από αναμονή listener${elapsed}`;
+    }
+    if (data?.listener_fallback_reason === "listener_offline") {
+      return ` · listener offline, μέσω erganiOS${elapsed}`;
+    }
+    if (data?.submission_channel === "erganios") return ` · μέσω erganiOS${elapsed}`;
+    return elapsed;
+  },
+
   initWorkLogHistoryModal(modalId = "workLogHistoryModal") {
     const modal = document.getElementById(modalId);
     if (!modal || modal.dataset.historyBound) return;
@@ -408,6 +454,11 @@ Object.assign(window.Office, {
     if (punch.employee_name) body.employee_name = punch.employee_name;
     if (meta.batch_index != null) body.batch_index = meta.batch_index;
     if (meta.batch_total != null) body.batch_total = meta.batch_total;
+    const progress = typeof meta.onProgress === "function"
+      ? this.startWorkCardSubmissionProgress(meta.onProgress, {
+          label: punch?.event_label || "χτυπήματος κάρτας",
+        })
+      : null;
     try {
       const res = await fetch("/api/work-card/submit", {
         method: "POST",
@@ -438,9 +489,11 @@ Object.assign(window.Office, {
           data,
         };
       }
-      return { ok: true, data };
+      return { ok: true, data, elapsedSeconds: progress?.elapsedSeconds() ?? null };
     } catch (ex) {
       return { ok: false, error: String(ex) };
+    } finally {
+      progress?.stop();
     }
   },
 

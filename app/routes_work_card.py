@@ -408,6 +408,8 @@ def _submit_work_card(
 
     # Listener routing is deliberately limited to WRKCardSE. Stores that have not
     # explicitly selected it continue through the original direct path below.
+    listener_routing_selected = False
+    listener_fallback_reason: str | None = None
     if store_id is not None:
         try:
             listener_cfg = get_listener_settings(int(store_id))
@@ -416,6 +418,9 @@ def _submit_work_card(
             listener_cfg = {"card_submission_mode": "erganios"}
         active_device = listener_cfg.get("device") or {}
         listener_online = bool(active_device.get("is_online"))
+        listener_routing_selected = listener_cfg.get("card_submission_mode") == "listener"
+        if listener_routing_selected and not listener_online:
+            listener_fallback_reason = "listener_offline"
         if listener_cfg.get("card_submission_mode") == "listener" and listener_online:
             canonical = json.dumps(
                 {"store_id": int(store_id), "payload": payload},
@@ -538,6 +543,7 @@ def _submit_work_card(
                         "listener_job_uuid": queued["job_uuid"],
                         "listener_status": (current or {}).get("status"),
                     }), 202
+                listener_fallback_reason = "listener_timeout"
 
     client = ErganiClient(api_base_url)
     resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
@@ -663,6 +669,8 @@ def _submit_work_card(
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),
             "submission_channel": "erganios",
+            "listener_routing_selected": listener_routing_selected,
+            "listener_fallback_reason": listener_fallback_reason,
             "submission_ip": submission_ip,
             "executor_instance": executor_instance,
             "ergani_response": parsed if not resp.ok else None,
@@ -701,6 +709,9 @@ def _submit_work_card(
         "persisted": persisted,
         "correction_mode": correction_mode,
         "work_log_sync_triggered": False,
+        "submission_channel": "erganios",
+        "listener_routing_selected": listener_routing_selected,
+        "listener_fallback_reason": listener_fallback_reason,
         "error": err_msg,
         "data": parsed,
     }), resp.status_code if not resp.ok else 200
