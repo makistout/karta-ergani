@@ -308,7 +308,12 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
     return "Μη προσδιορισμένη", days
 
 
-def _break_context(contract: dict[str, Any] | None, work_slots: list[dict[str, Any]]) -> tuple[int, int | None, int]:
+def _break_context(
+    contract: dict[str, Any] | None,
+    work_slots: list[dict[str, Any]],
+    *,
+    has_actual_work: bool = False,
+) -> tuple[int, int | None, int]:
     raw = (contract or {}).get("break_minutes")
     if raw is None and work_slots:
         raw = work_slots[0].get("break_minutes")
@@ -317,7 +322,7 @@ def _break_context(contract: dict[str, Any] | None, work_slots: list[dict[str, A
     if in_work is None and work_slots:
         in_work = work_slots[0].get("break_in_work")
     # Blank is not silently treated as outside: it needs confirmation.
-    outside = minutes if work_slots and in_work == 0 else 0
+    outside = minutes if (work_slots or has_actual_work) and in_work == 0 else 0
     return minutes, in_work, outside
 
 
@@ -422,7 +427,9 @@ def build_weekly_report(
         punch_recorded = _format_recorded_punches(day_punches)
         actual_label = _format_matched_label(matched)
         flex = int((contract or {}).get("flex_arrival_minutes") or (work_slots[0].get("flex_arrival_minutes") if work_slots else 0) or 0)
-        break_minutes, break_in_work, outside_break = _break_context(contract, work_slots)
+        break_minutes, break_in_work, outside_break = _break_context(
+            contract, work_slots, has_actual_work=bool(actual_minutes and actual_minutes > 0)
+        )
         effective_actual = max(0, (actual_minutes or 0) - outside_break) if actual_minutes is not None else None
         gross_difference = actual_minutes - declared_minutes if actual_minutes is not None else None
         net_difference = effective_actual - declared_minutes if effective_actual is not None else None
@@ -443,7 +450,19 @@ def build_weekly_report(
         status, reason, proposed, proposal_basis = "ok", "Δεν απαιτείται μεταβολή", declared_label, "Δηλωμένο ωράριο"
         state = _day_state(slots)
         if matched and (not slots or _is_non_work(slots)) and day_punches:
-            status, reason, proposed = "review", "Χτύπημα χωρίς ωράριο ή σε ημέρα μη εργασίας", actual_label
+            normal_limit = 480 if weekly_days == 5 else 400 if weekly_days == 6 else None
+            if (contract_kind == "Πλήρης" and normal_limit is not None
+                    and (effective_actual or 0) > normal_limit and ps is not None and pe is not None):
+                normal_work = min(effective_actual or 0, normal_limit)
+                proposed = f"{_hm(ps)}–{_hm(ps + normal_work + outside_break)}"
+                proposal_basis = f"Όριο κανονικής εργασίας πλήρους {weekly_days}ημέρου ({_hm(normal_limit)})"
+                status = "change"
+                reason = (
+                    f"Εργασία σε ημέρα μη εργασίας: προτείνεται μόνο η κανονική {normal_limit // 60}:"
+                    f"{normal_limit % 60:02d} διάρκεια· η υπερεργασία δεν δηλώνεται και η υπερωρία υποβάλλεται χωριστά"
+                )
+            else:
+                status, reason, proposed = "review", "Χτύπημα χωρίς ωράριο ή σε ημέρα μη εργασίας", actual_label
         elif work_slots and fully_missing:
             status, reason, proposed = "review", "Δεν υπάρχει χτύπημα· τεκμαίρεται το δηλωμένο ωράριο", declared_label
         elif work_slots and matched:

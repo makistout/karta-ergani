@@ -72,6 +72,33 @@ def test_rest_with_punch_requires_review():
     assert result["days"][0]["status"] == "review"
 
 
+def test_full_five_day_work_on_rest_proposes_eight_hours_and_separate_overtime():
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
+        [punch("07:57", "16:58")],
+        [contract(flex=0, days="5")],
+    )["days"][0]
+    assert row["status"] == "change"
+    assert row["proposed"] == "07:57–15:57"
+    assert row["actual_minutes"] == 541
+    assert row["overwork_minutes"] == 60
+    assert row["overtime_minutes"] == 1
+    assert row["overtime_segments"] == [
+        {"date": "03/08/2026", "from": "16:57", "to": "16:58", "minutes": 1}
+    ]
+
+
+def test_full_six_day_work_on_rest_proposes_six_hours_forty_minutes():
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
+        [punch("08:00", "16:01")],
+        [contract(flex=0, days="6")],
+    )["days"][0]
+    assert row["proposed"] == "08:00–14:40"
+    assert row["overwork_minutes"] == 80
+    assert row["overtime_minutes"] == 1
+
+
 def test_outside_break_only_reduces_difference_on_work_day_with_punch():
     result = build_weekly_report(
         [sched()], [punch("09:00", "18:00")],
