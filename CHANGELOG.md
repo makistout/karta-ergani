@@ -29,6 +29,8 @@
 - Η κατάσταση listener εμφανίζεται πλέον σε responsive πίνακα συσκευών. Η τελευταία
   επικοινωνία μορφοποιείται στην τοπική ώρα ως `ηη/μμ/εεεε ωω:λλ`, ενώ το API παρέχει
   συλλογή `devices` για μελλοντική υποστήριξη πολλαπλών listeners.
+- Η φόρμα δημιουργίας pairing είναι αρχικά κρυφή και ανοίγει/κλείνει από το κουμπί
+  **Προσθήκη listener**, διατηρώντας καθαρή την κύρια οθόνη ρυθμίσεων.
 - Windows listener v0.3.2: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η setup φόρμα είναι resizable/scrollable και προσαρμόζεται στο διαθέσιμο working area για

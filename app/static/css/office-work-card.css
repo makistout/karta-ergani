@@ -940,6 +940,10 @@ input, select {
   background: #f8fafc;
 }
 
+.listener-add-actions {
+  margin-top: 0.85rem;
+}
+
 .listener-pairing-panel label strong,
 .listener-pairing-panel label span {
   display: block;

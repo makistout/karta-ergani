@@ -171,7 +171,12 @@
               <p class="field-hint listener-device-empty" id="listenerDeviceEmpty">Δεν έχει φορτωθεί κατάσταση listener.</p>
             </div>
           </div>
-          <div class="listener-pairing-panel">
+          <div class="actions settings-section-actions listener-add-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnTogglePairListener" aria-expanded="false" aria-controls="listenerPairingPanel" disabled>
+              <i class="bi bi-plus-circle"></i><span id="listenerPairingToggleText">Προσθήκη listener</span>
+            </button>
+          </div>
+          <div class="listener-pairing-panel hidden" id="listenerPairingPanel">
             <label for="listenerDeviceName">
               <strong>Όνομα υπολογιστή / listener</strong>
               <span class="field-hint">Ένα αναγνωρίσιμο όνομα, π.χ. ΤΑΜΕΙΟ-PC-01.</span>
@@ -205,5 +210,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260810cardlistener6"></script>
+  <script src="/static/js/store-notify.js?v=20260810cardlistener7"></script>
 {% endblock %}

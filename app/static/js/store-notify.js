@@ -243,6 +243,7 @@ async function initStorePicker() {
 }
 
 async function selectStore(storeId, pushUrl) {
+  setListenerPairingPanel(false);
   currentStoreId = storeId;
   if (pushUrl) {
     const url = new URL(location.href);
@@ -280,6 +281,7 @@ function updateNotifyUiState() {
   const actionBtn = document.getElementById("btnSaveActionSettings");
   const listenerBtn = document.getElementById("btnSaveListenerSettings");
   const pairBtn = document.getElementById("btnPairListener");
+  const togglePairBtn = document.getElementById("btnTogglePairListener");
   const revokeBtn = document.getElementById("btnRevokeListener");
   const deviceName = document.getElementById("listenerDeviceName");
   if (saveBtn) saveBtn.disabled = !hasId;
@@ -288,6 +290,7 @@ function updateNotifyUiState() {
   if (actionBtn) actionBtn.disabled = !hasId;
   if (listenerBtn) listenerBtn.disabled = !hasId;
   if (pairBtn) pairBtn.disabled = !hasId;
+  if (togglePairBtn) togglePairBtn.disabled = !hasId;
   if (deviceName) deviceName.disabled = !hasId;
   if (revokeBtn) revokeBtn.disabled = !hasId || !cardListenerSettings.device;
 }
@@ -388,6 +391,28 @@ function hideListenerPairingResult() {
   if (token) token.value = "";
 }
 
+function setListenerPairingPanel(open) {
+  const panel = document.getElementById("listenerPairingPanel");
+  const button = document.getElementById("btnTogglePairListener");
+  const text = document.getElementById("listenerPairingToggleText");
+  if (!panel || !button) return;
+  panel.classList.toggle("hidden", !open);
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+  if (text) text.textContent = open ? "Κλείσιμο προσθήκης" : "Προσθήκη listener";
+  if (open) {
+    document.getElementById("listenerDeviceName")?.focus();
+  } else {
+    const name = document.getElementById("listenerDeviceName");
+    if (name) name.value = "";
+    hideListenerPairingResult();
+  }
+}
+
+function toggleListenerPairingPanel() {
+  const panel = document.getElementById("listenerPairingPanel");
+  setListenerPairingPanel(Boolean(panel?.classList.contains("hidden")));
+}
+
 async function copyListenerPairingValue(inputId) {
   const value = document.getElementById(inputId)?.value || "";
   if (!value) return;
@@ -410,6 +435,7 @@ async function revokeCardListener() {
 }
 
 function initCardListenerButtons() {
+  document.getElementById("btnTogglePairListener").onclick = toggleListenerPairingPanel;
   document.getElementById("btnSaveListenerSettings").onclick = saveCardListenerSettings;
   document.getElementById("btnPairListener").onclick = pairCardListener;
   document.getElementById("btnRevokeListener").onclick = revokeCardListener;
