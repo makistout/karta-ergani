@@ -13,7 +13,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishTrimmed>false</PublishTrimmed>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>0.3.3</Version>
+    <Version>0.3.4</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>

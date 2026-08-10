@@ -8,7 +8,7 @@
 
 ---
 
-## 2026-08-10 — Τοπικός listener ψηφιακής κάρτας v0.3.3
+## 2026-08-10 — Τοπικός listener ψηφιακής κάρτας v0.3.4
 
 - Additive ρυθμίσεις `card_submission_mode` / `listener_offline_seconds` ανά κατάστημα,
   με default `erganios` για όλα τα υπάρχοντα καταστήματα.
@@ -37,13 +37,16 @@
 - Η **Ανάκληση** μεταφέρθηκε στις ενέργειες κάθε listener και λειτουργεί για Online και
   Offline ενεργές συσκευές. Ανακαλεί μόνο το επιλεγμένο Device ID/token, κρατά τη γραμμή
   ως ιστορικό και επαναφέρει με ασφάλεια τη διαδρομή σε `erganios`.
-- Windows listener v0.3.3: WinForms setup, DPAPI, Windows Service automatic start/recovery,
+- Windows listener v0.3.4: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η setup φόρμα είναι resizable/scrollable και προσαρμόζεται στο διαθέσιμο working area για
   μικρές αναλύσεις και υψηλό DPI. Η δημόσια IP αναγνωρίζεται περιοδικά από τον listener,
   επικυρώνεται στο backend και δεν επιτρέπεται να αποθηκευτεί loopback IP όπως `127.0.0.1`.
 - Το setup εκτελείται elevated ώστε, μετά την εφαρμογή των περιορισμένων ACL, να συνεχίζει
   να φορτώνει και να ενημερώνει το ίδιο κρυπτογραφημένο config της Windows Service.
+- Η δημόσια IP λαμβάνεται από `https://api.ipify.org/?format=json` και έχει προτεραιότητα
+  έναντι της απάντησης backend, ώστε loopback τιμή όπως `127.0.0.1` να μην μπορεί να
+  αντικαταστήσει τη σωστή δημόσια IP.
 - Η υπάρχουσα ροή χτυπημάτων παραμένει ενεργή. Ο dispatcher προς listener jobs δεν έχει
   ακόμη συνδεθεί.
 - Αναλυτική τεκμηρίωση: `docs/CARD_LISTENER.md`.

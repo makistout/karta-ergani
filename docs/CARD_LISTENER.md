@@ -7,7 +7,7 @@
 άλλη υπηρεσία ΕΡΓΑΝΗ.
 
 Έχουν υλοποιηθεί schema, ρυθμίσεις, pairing, device isolation, listener API και Windows
-listener v0.3.3. Ο dispatcher που μετατρέπει το υφιστάμενο αίτημα χτυπήματος σε listener
+listener v0.3.4. Ο dispatcher που μετατρέπει το υφιστάμενο αίτημα χτυπήματος σε listener
 job δεν έχει ακόμη συνδεθεί. Μέχρι τότε όλα τα χτυπήματα συνεχίζουν από το υπάρχον
 erganiOS path.
 
@@ -90,20 +90,21 @@ ERGANI_EGRESS_IP=203.0.113.10
 
 Η server IP διαβάζεται μόνο από config. Δεν γίνεται IP lookup στη διαδικασία χτυπήματος.
 
-Ο listener αναγνωρίζει τη δημόσια IP μέσω `api.ipify.org` και την ενημερώνει κατά την εκκίνηση και κάθε 5 λεπτά μέσω
+Ο listener αναγνωρίζει τη δημόσια IP μέσω `https://api.ipify.org/?format=json` και την ενημερώνει κατά την εκκίνηση και κάθε 5 λεπτά μέσω
 `POST /api/card-listener/v1/network/refresh`. Η τελευταία IP κρατιέται στη μνήμη και
-στο device row. Το backend απορρίπτει loopback/private τιμές, όπως `127.0.0.1`. Η υποβολή χτυπήματος δεν κάνει IP lookup.
+στο device row. Η τιμή του ipify έχει προτεραιότητα έναντι της απάντησης του backend και
+απορρίπτονται loopback/private τιμές, όπως `127.0.0.1`. Η υποβολή χτυπήματος δεν κάνει IP lookup.
 
 ## Περιβάλλον ΕΡΓΑΝΗ
 
 Το authenticated health response επιστρέφει `ergani_env`, ελληνική ετικέτα και API base
-URL του καταστήματος. Ο listener v0.3.3 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
+URL του καταστήματος. Ο listener v0.3.4 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
 από το `Usertype` κατά τον έλεγχο pairing.
 
 Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job. Η παραγωγή jobs από το
 `ergani_env` θα ολοκληρωθεί μαζί με τον dispatcher.
 
-## Windows listener v0.3.3
+## Windows listener v0.3.4
 
 - Project: `listener/Erganios.Listener/`.
 - Self-contained compressed single-file Win-x64 executable.
@@ -142,5 +143,5 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 
 - Backend regression suite: 216 tests πέρασαν, εξαιρώντας το γνωστό ανεξάρτητο test που
   ανοίγει πραγματική DB σύνδεση αντί για πλήρες mock.
-- Listener v0.3.3: επιτυχές restore/publish.
+- Listener v0.3.4: επιτυχές restore/publish.
 - Tests για store isolation, network refresh και trial environment health response.

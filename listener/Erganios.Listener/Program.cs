@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.3";
+    internal const string Version = "0.3.4";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -301,16 +301,30 @@ internal static class ListenerAgent
         try
         {
             using var lookup = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var candidate = (await lookup.GetStringAsync("https://api.ipify.org", ct)).Trim();
-            if (IPAddress.TryParse(candidate, out var parsed) && !IPAddress.IsLoopback(parsed)) publicIp = parsed.ToString();
+            var json = JsonNode.Parse(await lookup.GetStringAsync("https://api.ipify.org/?format=json", ct));
+            publicIp = NormalizePublicIp(json?["ip"]?.GetValue<string>());
         }
         catch { }
         using var server = ServerClient(cfg, 15);
         using var content = new StringContent(JsonSerializer.Serialize(new { public_ip = publicIp }), Encoding.UTF8, "application/json");
         using var response = await server.PostAsync(cfg.ServerUrl + "/api/card-listener/v1/network/refresh", content, ct);
         response.EnsureSuccessStatusCode();
-        var ip = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))?["public_ip"]?.GetValue<string>();
-        if (!string.IsNullOrWhiteSpace(ip)) Volatile.Write(ref _publicIp, ip);
+        var serverIp = NormalizePublicIp(JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))?["public_ip"]?.GetValue<string>());
+        Volatile.Write(ref _publicIp, publicIp ?? serverIp);
+    }
+
+    private static string? NormalizePublicIp(string? candidate)
+    {
+        if (!IPAddress.TryParse((candidate ?? "").Trim(), out var ip)) return null;
+        if (IPAddress.IsLoopback(ip) || ip.Equals(IPAddress.Any) || ip.Equals(IPAddress.IPv6Any) || ip.IsIPv6LinkLocal) return null;
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var b = ip.GetAddressBytes();
+            if (b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254) ||
+                (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168) ||
+                (b[0] == 100 && b[1] >= 64 && b[1] <= 127)) return null;
+        }
+        return ip.ToString();
     }
 
     private static HttpClient ServerClient(ListenerConfig cfg, int timeout)
