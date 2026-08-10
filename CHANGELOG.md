@@ -34,6 +34,9 @@
 - Προστέθηκε ασφαλής διαγραφή ανά Offline listener από τον πίνακα. Η κατάσταση
   επαληθεύεται και στο backend, το pairing ακυρώνεται οριστικά και το κατάστημα
   επιστρέφει αυτόματα στη διαδρομή `erganios`. Online listener δεν διαγράφεται.
+- Η **Ανάκληση** μεταφέρθηκε στις ενέργειες κάθε listener και λειτουργεί για Online και
+  Offline ενεργές συσκευές. Ανακαλεί μόνο το επιλεγμένο Device ID/token, κρατά τη γραμμή
+  ως ιστορικό και επαναφέρει με ασφάλεια τη διαδρομή σε `erganios`.
 - Windows listener v0.3.3: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η setup φόρμα είναι resizable/scrollable και προσαρμόζεται στο διαθέσιμο working area για

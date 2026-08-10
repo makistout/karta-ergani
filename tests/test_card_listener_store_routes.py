@@ -36,3 +36,14 @@ def test_online_listener_device_cannot_be_deleted():
         response = _app().test_client().delete(f"/api/store/27/card-listener/devices/{DEVICE_ID}")
     assert response.status_code == 409
     assert "online" in response.json["error"].lower()
+
+
+def test_specific_listener_can_be_revoked_while_online():
+    with (
+        patch("app.routes_store.can_access_store", return_value=True),
+        patch("app.repo_card_listener.revoke_device", return_value=True) as revoke,
+    ):
+        response = _app().test_client().post(f"/api/store/27/card-listener/devices/{DEVICE_ID}/revoke")
+    assert response.status_code == 200
+    assert response.json == {"success": True, "revoked": True}
+    revoke.assert_called_once_with(27, DEVICE_ID)

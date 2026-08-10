@@ -42,7 +42,7 @@ def get_listener_settings(store_id: int) -> dict[str, Any]:
         if listener_tables_available():
             cur.execute(
                 """
-                SELECT TOP (1) device_id, device_name, agent_version, enabled,
+                SELECT device_id, device_name, agent_version, enabled,
                        CONVERT(nvarchar(40), paired_at, 127) AS paired_at,
                        CONVERT(nvarchar(40), last_seen_at, 127) AS last_seen_at,
                        last_seen_ip,
@@ -51,16 +51,22 @@ def get_listener_settings(store_id: int) -> dict[str, Any]:
                                   AND last_seen_at >= DATEADD(second, -?, SYSDATETIMEOFFSET())
                             THEN 1 ELSE 0 END AS is_online
                 FROM dbo.karta_card_listener_device
-                WHERE store_id = ? AND enabled = 1 AND revoked_at IS NULL
-                ORDER BY paired_at DESC
+                WHERE store_id = ?
+                ORDER BY CASE WHEN enabled = 1 AND revoked_at IS NULL THEN 0 ELSE 1 END,
+                         paired_at DESC
                 """,
                 (int(data.get("listener_offline_seconds") or 60), int(store_id)),
             )
-            device = cur.fetchone()
-            data["device"] = row_to_dict(cur, device) if device else None
+            rows = cur.fetchall()
+            devices = [row_to_dict(cur, item) for item in rows]
+            data["devices"] = devices
+            data["device"] = next(
+                (item for item in devices if item.get("enabled") and not item.get("revoked_at")),
+                None,
+            )
         else:
             data["device"] = None
-    data["devices"] = [data["device"]] if data.get("device") else []
+            data["devices"] = []
     data["card_submission_mode"] = str(data.get("card_submission_mode") or "erganios")
     data["listener_offline_seconds"] = int(data.get("listener_offline_seconds") or 60)
     return data
@@ -108,17 +114,34 @@ def pair_device(store_id: int, device_name: str | None = None) -> dict[str, str]
     return {"device_id": device_id, "device_token": token}
 
 
-def revoke_device(store_id: int) -> bool:
+def revoke_device(store_id: int, device_id: str | None = None) -> bool:
+    parsed_id = None
+    if device_id is not None:
+        try:
+            parsed_id = str(uuid.UUID(str(device_id)))
+        except (ValueError, TypeError) as exc:
+            raise ValueError("invalid device_id") from exc
     with cursor() as cur:
         cur.execute(
             """
             UPDATE dbo.karta_card_listener_device
             SET enabled = 0, revoked_at = SYSDATETIMEOFFSET()
             WHERE store_id = ? AND enabled = 1 AND revoked_at IS NULL
+              AND (? IS NULL OR device_id = ?)
             """,
-            (int(store_id),),
+            (int(store_id), parsed_id, parsed_id),
         )
-        return bool(cur.rowcount)
+        revoked = bool(cur.rowcount)
+        if revoked:
+            cur.execute(
+                """
+                UPDATE dbo.karta_store_config
+                SET card_submission_mode = N'erganios', updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (int(store_id),),
+            )
+        return revoked
 
 
 def delete_offline_device(store_id: int, device_id: str, offline_seconds: int) -> bool:
@@ -133,7 +156,7 @@ def delete_offline_device(store_id: int, device_id: str, offline_seconds: int) -
             """
             DELETE FROM dbo.karta_card_listener_device
             WHERE store_id = ? AND device_id = ?
-              AND (last_seen_at IS NULL
+              AND (enabled = 0 OR revoked_at IS NOT NULL OR last_seen_at IS NULL
                    OR last_seen_at < DATEADD(second, -?, SYSDATETIMEOFFSET()))
             """,
             (int(store_id), parsed_id, seconds),

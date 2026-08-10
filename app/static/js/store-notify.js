@@ -282,7 +282,6 @@ function updateNotifyUiState() {
   const listenerBtn = document.getElementById("btnSaveListenerSettings");
   const pairBtn = document.getElementById("btnPairListener");
   const togglePairBtn = document.getElementById("btnTogglePairListener");
-  const revokeBtn = document.getElementById("btnRevokeListener");
   const deviceName = document.getElementById("listenerDeviceName");
   if (saveBtn) saveBtn.disabled = !hasId;
   if (testBtn) testBtn.disabled = !hasId;
@@ -292,7 +291,6 @@ function updateNotifyUiState() {
   if (pairBtn) pairBtn.disabled = !hasId;
   if (togglePairBtn) togglePairBtn.disabled = !hasId;
   if (deviceName) deviceName.disabled = !hasId;
-  if (revokeBtn) revokeBtn.disabled = !hasId || !cardListenerSettings.device;
 }
 
 function renderCardListenerSettings() {
@@ -328,26 +326,51 @@ function renderListenerDevices(devices) {
   empty.textContent = rows.length ? "" : "Δεν υπάρχει συνδεδεμένος listener για αυτό το κατάστημα.";
   rows.forEach((device) => {
     const row = document.createElement("tr");
-    appendListenerCell(row, device.is_online ? "Online" : "Offline", device.is_online ? "listener-status-online" : "listener-status-offline");
+    const revoked = !device.enabled || Boolean(device.revoked_at);
+    const statusText = revoked ? "Ανακλήθηκε" : (device.is_online ? "Online" : "Offline");
+    const statusClass = revoked ? "listener-status-revoked" : (device.is_online ? "listener-status-online" : "listener-status-offline");
+    appendListenerCell(row, statusText, statusClass);
     appendListenerCell(row, device.device_name || "—");
     appendListenerCell(row, device.device_id || "—", "listener-device-id");
     appendListenerCell(row, device.last_seen_ip || "—");
     appendListenerCell(row, device.agent_version || "—");
     appendListenerCell(row, formatListenerDateTime(device.last_seen_at));
     const actionCell = document.createElement("td");
-    if (!device.is_online) {
+    actionCell.className = "listener-device-actions";
+    if (!revoked) {
+      const revokeButton = document.createElement("button");
+      revokeButton.type = "button";
+      revokeButton.className = "btn btn-secondary btn-sm";
+      revokeButton.innerHTML = '<i class="bi bi-x-circle" aria-hidden="true"></i><span>Ανάκληση</span>';
+      revokeButton.onclick = () => revokeListenerDevice(device);
+      actionCell.appendChild(revokeButton);
+    }
+    if (revoked || !device.is_online) {
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger btn-sm listener-delete-device";
       deleteButton.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i><span>Διαγραφή</span>';
       deleteButton.onclick = () => deleteOfflineListenerDevice(device);
       actionCell.appendChild(deleteButton);
-    } else {
+    }
+    if (!actionCell.childElementCount) {
       actionCell.textContent = "—";
     }
     row.appendChild(actionCell);
     body.appendChild(row);
   });
+}
+
+async function revokeListenerDevice(device) {
+  const label = device.device_name || device.device_id || "listener";
+  if (!confirm(`Να ανακληθεί ο listener «${label}»; Το Device ID και το token του θα σταματήσουν αμέσως να λειτουργούν.`)) return;
+  const res = await fetch(`/api/store/${currentStoreId}/card-listener/devices/${encodeURIComponent(device.device_id)}/revoke`, {
+    method: "POST", credentials: "same-origin",
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία ανάκλησης listener", false);
+  await loadCardListenerSettings(currentStoreId);
+  Office.showMsg("stepMsg", "Ο listener ανακλήθηκε και η διαδρομή επανήλθε σε erganiOS.", true);
 }
 
 async function deleteOfflineListenerDevice(device) {
@@ -450,19 +473,10 @@ async function copyListenerPairingValue(inputId) {
   }
 }
 
-async function revokeCardListener() {
-  if (!confirm("Να ανακληθεί ο listener αυτού του καταστήματος;")) return;
-  const res = await fetch(`/api/store/${currentStoreId}/card-listener/revoke`, { method: "POST", credentials: "same-origin" });
-  const data = await Office.parseJson(res);
-  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία ανάκλησης", false);
-  await loadCardListenerSettings(currentStoreId);
-}
-
 function initCardListenerButtons() {
   document.getElementById("btnTogglePairListener").onclick = toggleListenerPairingPanel;
   document.getElementById("btnSaveListenerSettings").onclick = saveCardListenerSettings;
   document.getElementById("btnPairListener").onclick = pairCardListener;
-  document.getElementById("btnRevokeListener").onclick = revokeCardListener;
   document.querySelectorAll("[data-listener-copy]").forEach((button) => {
     button.onclick = () => copyListenerPairingValue(button.dataset.listenerCopy);
   });

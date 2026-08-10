@@ -919,6 +919,7 @@ input, select {
 
 .listener-status-online { color: #16834b; }
 .listener-status-offline { color: #b45309; }
+.listener-status-revoked { color: #64748b; font-weight: 700; }
 
 .listener-device-id {
   max-width: 13rem;
@@ -929,6 +930,12 @@ input, select {
 
 .listener-delete-device {
   white-space: nowrap;
+}
+
+.listener-device-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
 }
 
 .listener-pairing-panel {
