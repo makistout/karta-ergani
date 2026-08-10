@@ -927,6 +927,10 @@ input, select {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.listener-delete-device {
+  white-space: nowrap;
+}
+
 .listener-pairing-panel {
   display: grid;
   grid-template-columns: minmax(17rem, 32rem) minmax(15rem, 23rem) auto;

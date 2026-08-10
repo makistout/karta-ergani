@@ -166,6 +166,27 @@ def revoke_card_listener(store_id: int):
     return jsonify({"success": True, "revoked": repo_card_listener.revoke_device(store_id)})
 
 
+@store_bp.delete("/<int:store_id>/card-listener/devices/<uuid:device_id>")
+def delete_card_listener_device(store_id: int, device_id):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app import repo_card_listener
+    try:
+        settings = repo_card_listener.get_listener_settings(store_id)
+        deleted = repo_card_listener.delete_offline_device(
+            store_id,
+            str(device_id),
+            int(settings.get("listener_offline_seconds") or 60),
+        )
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 400
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 503
+    if not deleted:
+        return jsonify({"error": "Ο listener είναι online ή δεν υπάρχει πλέον."}), 409
+    return jsonify({"success": True, "deleted": True})
+
+
 def _resolve_wizard_secrets(data: dict, existing: dict | None) -> dict[str, str]:
     store_id = data.get("id")
     ex = existing or (repo.get_store_config(int(store_id)) if store_id else None)

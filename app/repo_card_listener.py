@@ -121,6 +121,36 @@ def revoke_device(store_id: int) -> bool:
         return bool(cur.rowcount)
 
 
+def delete_offline_device(store_id: int, device_id: str, offline_seconds: int) -> bool:
+    """Permanently remove only a device that is currently offline."""
+    try:
+        parsed_id = str(uuid.UUID(str(device_id)))
+    except (ValueError, TypeError) as exc:
+        raise ValueError("invalid device_id") from exc
+    seconds = max(15, min(int(offline_seconds), 600))
+    with cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM dbo.karta_card_listener_device
+            WHERE store_id = ? AND device_id = ?
+              AND (last_seen_at IS NULL
+                   OR last_seen_at < DATEADD(second, -?, SYSDATETIMEOFFSET()))
+            """,
+            (int(store_id), parsed_id, seconds),
+        )
+        deleted = bool(cur.rowcount)
+        if deleted:
+            cur.execute(
+                """
+                UPDATE dbo.karta_store_config
+                SET card_submission_mode = N'erganios', updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (int(store_id),),
+            )
+        return deleted
+
+
 def authenticate_device(device_id: str, token: str, *, version: str | None = None) -> dict[str, Any] | None:
     try:
         parsed_id = str(uuid.UUID(str(device_id)))

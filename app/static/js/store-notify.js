@@ -334,8 +334,32 @@ function renderListenerDevices(devices) {
     appendListenerCell(row, device.last_seen_ip || "—");
     appendListenerCell(row, device.agent_version || "—");
     appendListenerCell(row, formatListenerDateTime(device.last_seen_at));
+    const actionCell = document.createElement("td");
+    if (!device.is_online) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "btn btn-danger btn-sm listener-delete-device";
+      deleteButton.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i><span>Διαγραφή</span>';
+      deleteButton.onclick = () => deleteOfflineListenerDevice(device);
+      actionCell.appendChild(deleteButton);
+    } else {
+      actionCell.textContent = "—";
+    }
+    row.appendChild(actionCell);
     body.appendChild(row);
   });
+}
+
+async function deleteOfflineListenerDevice(device) {
+  const label = device.device_name || device.device_id || "listener";
+  if (!confirm(`Να διαγραφεί ο offline listener «${label}»; Το Device ID και το token του θα ακυρωθούν οριστικά.`)) return;
+  const res = await fetch(`/api/store/${currentStoreId}/card-listener/devices/${encodeURIComponent(device.device_id)}`, {
+    method: "DELETE", credentials: "same-origin",
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία διαγραφής listener", false);
+  await loadCardListenerSettings(currentStoreId);
+  Office.showMsg("stepMsg", "Ο offline listener διαγράφηκε και η διαδρομή επανήλθε σε erganiOS.", true);
 }
 
 async function loadCardListenerSettings(storeId) {
