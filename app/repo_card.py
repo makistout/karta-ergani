@@ -206,7 +206,7 @@ def persist_wrk_card_submit(
     submission_channel: str | None = None,
     submission_ip: str | None = None,
     executor_instance: str | None = None,
-) -> None:
+) -> int | None:
     req_str = json.dumps(request_dict, ensure_ascii=False)
     emp_afm = extract_employer_afm_from_request(request_dict)
     parsed_id, parsed_proto, parsed_date = parse_ergani_submit_response(response_body)
@@ -236,7 +236,7 @@ def persist_wrk_card_submit(
             executor_instance=executor_instance,
         )
         if not success:
-            return
+            return decl_id
         for card, lines in iter_card_blocks(request_dict):
             erg_afm = norm_afm(card.get("f_afm_ergodoti") or card.get("F_afm_ergodoti"))
             employer_id = upsert_employer(cur, erg_afm)
@@ -265,6 +265,7 @@ def persist_wrk_card_submit(
                 if emp_id:
                     upsert_employment(cur, employer_id, emp_id, part_id)
                 insert_card_event(cur, decl_id, emp_id, card, d)
+        return decl_id
 
 
 def card_event_exists(employee_afm: str, reference_date: str, f_type: str) -> bool:

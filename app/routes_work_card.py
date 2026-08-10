@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import secrets
 from datetime import datetime
 from typing import Any
@@ -26,6 +27,13 @@ from app.repo_card import (
     persist_wrk_card_submit,
 )
 from app.repo_entities import find_employee_for_employer
+from app.repo_card_listener import (
+    attach_job_declaration,
+    cancel_queued_job_for_fallback,
+    enqueue_job,
+    get_listener_settings,
+    wait_for_job,
+)
 from app.repo_store import get_store_by_afm
 from app.work_card_payload import (
     SUBMISSION_CODE_WRK_CARD,
@@ -397,6 +405,139 @@ def _submit_work_card(
         payload = build_payload(aitiologia_raw)
     except WorkCardPayloadError as e:
         return jsonify({"error": str(e)}), 400
+
+    # Listener routing is deliberately limited to WRKCardSE. Stores that have not
+    # explicitly selected it continue through the original direct path below.
+    if store_id is not None:
+        try:
+            listener_cfg = get_listener_settings(int(store_id))
+        except Exception:
+            current_app.logger.exception("Unable to read card-listener routing; using erganiOS path")
+            listener_cfg = {"card_submission_mode": "erganios"}
+        active_device = listener_cfg.get("device") or {}
+        listener_online = bool(active_device.get("is_online"))
+        if listener_cfg.get("card_submission_mode") == "listener" and listener_online:
+            canonical = json.dumps(
+                {"store_id": int(store_id), "payload": payload},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            idempotency_key = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            timeout_seconds = int(listener_cfg.get("listener_offline_seconds") or 60)
+            try:
+                queued = enqueue_job(
+                    store_id=int(store_id),
+                    idempotency_key=idempotency_key,
+                    employee_afm=emp_afm,
+                    f_type=resolved_type,
+                    reference_date=ref_date,
+                    event_at=event_at_str,
+                    payload=payload,
+                    ergani_api_base_url=str(api_base_url or Config.ERGANI_API_BASE_URL),
+                    fallback_seconds=timeout_seconds,
+                )
+                listener_job = wait_for_job(queued["job_uuid"], int(store_id), timeout_seconds)
+            except Exception:
+                current_app.logger.exception("Card-listener dispatch failed before submission; using erganiOS path")
+                listener_job = None
+                queued = None
+
+            if listener_job and listener_job.get("status") in {"succeeded", "failed", "needs_review"}:
+                job_status = str(listener_job.get("status"))
+                listener_ok = job_status == "succeeded"
+                listener_http_status = int(listener_job.get("upstream_http_status") or (200 if listener_ok else 502))
+                listener_data = listener_job.get("result_data")
+                listener_protocol = listener_job.get("protocol")
+                listener_submit_date = listener_job.get("submit_date_text")
+                listener_ergani_id = listener_job.get("ergani_submission_id")
+                persist_error = None
+                persisted = False
+                try:
+                    declaration_id = persist_wrk_card_submit(
+                        SUBMISSION_CODE_WRK_CARD,
+                        listener_http_status,
+                        listener_ok,
+                        payload,
+                        json.dumps(listener_data, ensure_ascii=False) if listener_data is not None else None,
+                        listener_protocol,
+                        listener_submit_date,
+                        listener_ergani_id,
+                        replace_existing=correction_mode,
+                        client_ip=client_ip,
+                        client_device=client_device,
+                        submission_channel="listener",
+                        submission_ip=listener_job.get("submission_ip"),
+                        executor_instance=listener_job.get("executor_instance"),
+                    )
+                    attach_job_declaration(queued["job_uuid"], int(store_id), declaration_id)
+                    persisted = bool(listener_ok)
+                except Exception as ex:
+                    persist_error = str(ex)
+                    current_app.logger.exception("Unable to persist listener WRKCardSE result")
+
+                record_audit_event(
+                    action="work_card_punch_submit",
+                    success=bool(listener_ok and persisted),
+                    http_status=listener_http_status,
+                    store_id=store_id,
+                    employer_afm=erg_s,
+                    branch_aa=aa_s,
+                    entity_type="employee",
+                    entity_id=emp_afm,
+                    details={
+                        "source": str(body.get("source") or "office_ui")[:32],
+                        "f_type": resolved_type,
+                        "reference_date": ref_date,
+                        "event_at": event_at_str,
+                        "protocol": listener_protocol,
+                        "ergani_submission_id": listener_ergani_id,
+                        "submission_channel": "listener",
+                        "submission_ip": listener_job.get("submission_ip"),
+                        "executor_instance": listener_job.get("executor_instance"),
+                        "listener_job_uuid": queued["job_uuid"],
+                        "listener_status": job_status,
+                        "persist_error": persist_error,
+                    },
+                    client_ip=client_ip,
+                    client_device=client_device,
+                )
+                if listener_ok and not persisted:
+                    return jsonify({
+                        "success": False, "status": 500, "submission_code": SUBMISSION_CODE_WRK_CARD,
+                        "protocol": listener_protocol, "submit_date": listener_submit_date,
+                        "ergani_submission_id": listener_ergani_id, "persisted": False,
+                        "error": "Ergani success through listener, but local persistence failed",
+                        "data": listener_data,
+                    }), 500
+                return jsonify({
+                    "success": listener_ok,
+                    "status": listener_http_status,
+                    "submission_code": SUBMISSION_CODE_WRK_CARD,
+                    "protocol": listener_protocol,
+                    "submit_date": listener_submit_date,
+                    "ergani_submission_id": listener_ergani_id,
+                    "f_type": resolved_type,
+                    "f_type_label": _f_type_label(resolved_type),
+                    "persisted": persisted,
+                    "correction_mode": correction_mode,
+                    "work_log_sync_triggered": False,
+                    "error": listener_job.get("error_summary"),
+                    "data": listener_data,
+                    "submission_channel": "listener",
+                }), 200 if listener_ok else listener_http_status
+
+            if queued:
+                # Direct fallback is safe only if the listener has not leased the job.
+                if not cancel_queued_job_for_fallback(queued["job_uuid"], int(store_id)):
+                    current = wait_for_job(queued["job_uuid"], int(store_id), 2)
+                    return jsonify({
+                        "success": False,
+                        "status": 202,
+                        "error": "Το χτύπημα έχει παραληφθεί από τον listener και αναμένεται η απάντηση του ΕΡΓΑΝΗ.",
+                        "listener_job_uuid": queued["job_uuid"],
+                        "listener_status": (current or {}).get("status"),
+                    }), 202
 
     client = ErganiClient(api_base_url)
     resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -215,6 +217,114 @@ def update_device_public_ip(device_row_id: int, public_ip: str | None) -> None:
             WHERE id = ? AND enabled = 1 AND revoked_at IS NULL
             """,
             ((public_ip or "")[:45] or None, int(device_row_id)),
+        )
+
+
+def enqueue_job(
+    *,
+    store_id: int,
+    idempotency_key: str,
+    employee_afm: str,
+    f_type: str,
+    reference_date: str,
+    event_at: str,
+    payload: dict[str, Any],
+    ergani_api_base_url: str,
+    fallback_seconds: int,
+) -> dict[str, Any]:
+    """Create a listener job, or return the matching job after an HTTP retry."""
+    job_uuid = str(uuid.uuid4())
+    with cursor() as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) job_uuid, status
+            FROM dbo.karta_card_listener_job
+            WHERE idempotency_key = ?
+            """,
+            (idempotency_key,),
+        )
+        existing = cur.fetchone()
+        if existing:
+            return {"job_uuid": str(existing[0]), "status": str(existing[1]), "created": False}
+        cur.execute(
+            """
+            INSERT dbo.karta_card_listener_job
+                (job_uuid, store_id, status, idempotency_key, employee_afm, f_type,
+                 reference_date, event_at, payload_json, ergani_api_base_url,
+                 fallback_deadline)
+            VALUES (?, ?, N'queued', ?, ?, ?, ?, ?, ?, ?,
+                    DATEADD(second, ?, SYSDATETIMEOFFSET()))
+            """,
+            (
+                job_uuid, int(store_id), idempotency_key, employee_afm[:16], f_type[:2],
+                reference_date, event_at, json.dumps(payload, ensure_ascii=False),
+                ergani_api_base_url[:500], max(15, min(int(fallback_seconds), 600)),
+            ),
+        )
+    return {"job_uuid": job_uuid, "status": "queued", "created": True}
+
+
+def get_job(job_uuid: str, store_id: int) -> dict[str, Any] | None:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) job_uuid, status, device_id, upstream_http_status, protocol,
+                   ergani_submission_id, submit_date_text, result_json, error_code,
+                   error_summary, submission_ip, executor_instance, declaration_id
+            FROM dbo.karta_card_listener_job
+            WHERE job_uuid = ? AND store_id = ?
+            """,
+            (str(job_uuid), int(store_id)),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        data = row_to_dict(cur, row)
+    raw = data.pop("result_json", None)
+    try:
+        data["result_data"] = json.loads(raw) if raw else None
+    except (TypeError, ValueError):
+        data["result_data"] = raw
+    return data
+
+
+def wait_for_job(job_uuid: str, store_id: int, timeout_seconds: int) -> dict[str, Any] | None:
+    deadline = time.monotonic() + max(1, int(timeout_seconds))
+    while True:
+        job = get_job(job_uuid, store_id)
+        if not job or str(job.get("status")) in {"succeeded", "failed", "needs_review"}:
+            return job
+        if time.monotonic() >= deadline:
+            return job
+        time.sleep(0.25)
+
+
+def cancel_queued_job_for_fallback(job_uuid: str, store_id: int) -> bool:
+    """Claim fallback only while no listener has leased the job."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_card_listener_job
+            SET status = N'cancelled_for_fallback', fallback_started_at = SYSDATETIMEOFFSET(),
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE job_uuid = ? AND store_id = ? AND status = N'queued'
+            """,
+            (str(job_uuid), int(store_id)),
+        )
+        return bool(cur.rowcount)
+
+
+def attach_job_declaration(job_uuid: str, store_id: int, declaration_id: int | None) -> None:
+    if not declaration_id:
+        return
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_card_listener_job
+            SET declaration_id = ?, updated_at = SYSDATETIMEOFFSET()
+            WHERE job_uuid = ? AND store_id = ? AND declaration_id IS NULL
+            """,
+            (int(declaration_id), str(job_uuid), int(store_id)),
         )
 
 

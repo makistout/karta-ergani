@@ -10,6 +10,13 @@
 
 ## 2026-08-10 — Τοπικός listener ψηφιακής κάρτας v0.3.4
 
+- Συνδέθηκε ο dispatcher στην πραγματική ροή `WRKCardSE`, αποκλειστικά ανά κατάστημα με mode
+  `listener`. Το job μεταφέρει το Ergani API environment του καταστήματος στον τοπικό listener.
+- Προστέθηκε idempotent enqueue, αναμονή αποτελέσματος και ασφαλές fallback στην υπάρχουσα ροή
+  μόνο όταν το job παραμένει `queued`. Job που έχει ήδη παραληφθεί δεν υποβάλλεται δεύτερη φορά.
+- Τα αποτελέσματα listener συσχετίζονται με την τοπική declaration και καταγράφουν channel,
+  δημόσια IP και executor device. Η παλιά ροή και όλες οι άλλες υπηρεσίες παραμένουν αμετάβλητες.
+
 - Additive ρυθμίσεις `card_submission_mode` / `listener_offline_seconds` ανά κατάστημα,
   με default `erganios` για όλα τα υπάρχοντα καταστήματα.
 - Νέοι πίνακες `karta_card_listener_device`, `karta_card_listener_job` και
@@ -47,8 +54,8 @@
 - Η δημόσια IP λαμβάνεται από `https://api.ipify.org/?format=json` και έχει προτεραιότητα
   έναντι της απάντησης backend, ώστε loopback τιμή όπως `127.0.0.1` να μην μπορεί να
   αντικαταστήσει τη σωστή δημόσια IP.
-- Η υπάρχουσα ροή χτυπημάτων παραμένει ενεργή. Ο dispatcher προς listener jobs δεν έχει
-  ακόμη συνδεθεί.
+- Ο dispatcher προς listener jobs είναι ενεργός αποκλειστικά για `WRKCardSE` στα καταστήματα που
+  έχουν επιλέξει mode `listener`, με ασφαλές fallback στην υπάρχουσα ροή.
 - Αναλυτική τεκμηρίωση: `docs/CARD_LISTENER.md`.
 
 ---

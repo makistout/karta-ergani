@@ -7,9 +7,10 @@
 άλλη υπηρεσία ΕΡΓΑΝΗ.
 
 Έχουν υλοποιηθεί schema, ρυθμίσεις, pairing, device isolation, listener API και Windows
-listener v0.3.4. Ο dispatcher που μετατρέπει το υφιστάμενο αίτημα χτυπήματος σε listener
-job δεν έχει ακόμη συνδεθεί. Μέχρι τότε όλα τα χτυπήματα συνεχίζουν από το υπάρχον
-erganiOS path.
+listener v0.3.4. Ο dispatcher είναι συνδεδεμένος αποκλειστικά στη ροή `WRKCardSE`:
+όταν το κατάστημα είναι σε mode `listener` και η συσκευή είναι online, δημιουργείται job και η
+υποβολή γίνεται από τον listener. Όλες οι άλλες υπηρεσίες και τα καταστήματα σε mode `erganios`
+συνεχίζουν από το υπάρχον erganiOS path.
 
 ## Ρυθμίσεις καταστήματος
 
@@ -101,8 +102,19 @@ ERGANI_EGRESS_IP=203.0.113.10
 URL του καταστήματος. Ο listener v0.3.4 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
 από το `Usertype` κατά τον έλεγχο pairing.
 
-Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job. Η παραγωγή jobs από το
-`ergani_env` θα ολοκληρωθεί μαζί με τον dispatcher.
+Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job, το οποίο παράγεται από το
+περιβάλλον ΕΡΓΑΝΗ του συγκεκριμένου καταστήματος.
+
+## Dispatcher και fallback
+
+- Δημιουργείται idempotent job μόνο για `WRKCardSE` και μόνο όταν ο επιλεγμένος listener είναι online.
+- Το HTTP request περιμένει μέχρι το `listener_offline_seconds` για το αποτέλεσμα του listener.
+- Αν το job παραμένει `queued`, ακυρώνεται atomically και εκτελείται η υπάρχουσα απευθείας ροή erganiOS.
+- Αν ο listener έχει ήδη κάνει lease/submission, δεν ξεκινά δεύτερη απευθείας υποβολή, ώστε να μην
+  προκύψει διπλό χτύπημα. Αποτυχία αβέβαιης έκβασης σημειώνεται `needs_review`.
+- Το αποτέλεσμα του listener αποθηκεύεται στην `karta_declaration` με `submission_channel=listener`,
+  τη δημόσια IP του listener και το device που το εκτέλεσε. Η απευθείας ροή συνεχίζει να αποθηκεύει
+  την configured IP και το instance id του εκάστοτε erganiOS server.
 
 ## Windows listener v0.3.4
 
