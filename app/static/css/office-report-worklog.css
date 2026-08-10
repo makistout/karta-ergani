@@ -930,27 +930,43 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-kpi--review.is-active { border-color:var(--err); }
 .apologistic-kpi--ok.is-active { border-color:#2d8a52; }
 .apologistic-table td { vertical-align:top; }
-.apologistic-table { width:100%; table-layout:fixed; font-size:.75rem; }
+.apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
 .apologistic-table th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; line-height:1; }
 .apologistic-table th:first-child { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
-.apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(12) { width:10%; }
-.apologistic-table th:nth-child(13) { width:7%; }
+.apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(13) { width:9%; }
+.apologistic-table th:nth-child(10) { width:4%; }
+.apologistic-table th:nth-child(14) { width:4%; }
 .apologistic-table td { padding:.42rem .25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.apologistic-table td:first-child { white-space:normal; line-height:1.1; font-size:.68rem; overflow-wrap:anywhere; }
-.apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(12) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:.72rem; font-variant-numeric:tabular-nums; }
+.apologistic-table td:first-child { white-space:normal; line-height:1.1; font-size:10px; overflow-wrap:anywhere; }
+.apologistic-employee-btn { border:0; padding:0; background:transparent; color:inherit; font:inherit; font-weight:700; text-align:left; cursor:pointer; line-height:1.1; }
+.apologistic-employee-btn:focus { outline:0; box-shadow:none; }
+.apologistic-employee-btn:hover, .apologistic-employee-btn:focus-visible { color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
+.apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(12), .apologistic-table td:nth-child(13) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10.5px; font-variant-numeric:tabular-nums; }
 .apologistic-table td.apologistic-punch-cell { white-space:normal; line-height:1.25; vertical-align:top; text-align:center; }
 .apologistic-table th:nth-child(4) { text-align:center; }
-.apologistic-table td:nth-child(n+5):nth-child(-n+11) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.apologistic-table td:nth-child(n+5):nth-child(-n+12) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .apologistic-table td:last-child { text-align:center; overflow:visible; }
-.apologistic-result-cell { white-space:nowrap; }
+.apologistic-result-cell { white-space:nowrap; padding-left:.1rem!important; padding-right:.1rem!important; }
 .apologistic-result-cell .status-badge { vertical-align:middle; }
 .apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .2rem; margin-left:.15rem; vertical-align:middle; line-height:1; }
+.apologistic-info-btn:focus { outline:0; box-shadow:none; }
 .apologistic-info-btn:hover, .apologistic-info-btn[aria-expanded="true"] { color:var(--accent); }
 .apologistic-info-modal-panel { width:min(100%,32rem); max-height:min(88vh,560px); }
 .apologistic-info-modal-body { overflow:auto; flex:1 1 auto; min-height:0; margin-bottom:.75rem; }
 .apologistic-info-list { margin:0; padding-left:1.1rem; font-size:.78rem; line-height:1.45; color:var(--text); }
 .apologistic-info-list li + li { margin-top:.45rem; }
-.apologistic-table .status-badge { font-size:.68rem; padding:.18rem .32rem; white-space:nowrap; }
+.apologistic-employee-modal-panel { width:min(94vw,1180px); height:min(88vh,820px); padding:.75rem; display:flex; flex-direction:column; }
+.apologistic-employee-modal-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.55rem; }
+.apologistic-employee-modal-head .office-modal-title { margin:0; }
+.apologistic-employee-modal-body { min-height:0; flex:1 1 auto; overflow:auto; padding:.15rem; }
+.apologistic-employee-modal-body h3 { margin:.2rem 0 .65rem; font-size:1rem; }
+.apologistic-employee-modal-body .employee-contract-fields-table { width:100%; }
+.apologistic-employee-history { margin-top:1rem; border-top:1px solid var(--border); padding-top:.75rem; }
+.apologistic-employee-history > summary { font-weight:700; cursor:pointer; }
+.apologistic-employee-history details { margin-top:.65rem; padding:.55rem; border:1px solid var(--border); border-radius:.5rem; }
+.apologistic-employee-history details summary { cursor:pointer; }
+.apologistic-employee-loading { color:var(--muted); }
+.apologistic-table .status-badge { min-width:1.35rem; font-size:10px; padding:.14rem .2rem; white-space:nowrap; text-align:center; }
 .apologistic-table td small { display:none; }
 .apologistic-table .time-diff--plus { color:#9a5e00; }
 .apologistic-table .time-diff--minus { color:#315f9c; }

@@ -44,14 +44,14 @@ def test_schedule_without_punch_is_review():
     assert result["days"][0]["status"] == "review"
 
 
-def test_best_punch_is_closest_to_declared_schedule():
+def test_non_split_uses_longest_complete_interval():
     result = build_weekly_report(
-        [sched()], [punch("05:00", "06:00"), punch("09:02", "17:03")], [contract()]
+        [sched()], [punch("09:15", "13:00"), punch("09:02", "17:03")], [contract()]
     )
     row = result["days"][0]
     assert row["actual"] == "09:02–17:03"
-    assert row["orphan_punch_count"] == 1
-    assert row["status"] == "review"
+    assert row["actual_minutes"] == 481
+    assert row["orphan_punch_count"] == 0
 
 
 def test_late_shift_proposes_same_declared_duration():
@@ -120,15 +120,67 @@ def test_missing_exit_is_completed_from_declared_boundary():
     assert any("Λείπει έξοδος" in line for line in row["status_explanation"])
 
 
-def test_orphan_punch_is_explained():
+def test_multiple_complete_non_split_punches_use_full_envelope():
     result = build_weekly_report(
         [sched()], [punch("09:02", "17:03"), punch("19:23", "20:30")], [contract()]
     )
     row = result["days"][0]
     assert row["punch_recorded"] == "09:02–17:03\n19:23–20:30"
+    assert row["actual"] == "09:02–20:30"
+    assert row["orphan_punch_count"] == 0
+    assert any("πρώτη είσοδο έως την τελευταία έξοδο" in line for line in row["status_explanation"])
+
+
+def test_second_open_without_close_becomes_final_close_for_full_envelope():
+    row = build_weekly_report(
+        [sched()], [punch("09:00", "17:00"), punch("17:05", None)], [contract(flex=0)]
+    )["days"][0]
+    assert row["actual"] == "09:00–17:05"
+    assert row["actual_minutes"] == 485
+    assert row["corrected_extra_punches"] == [{"from": "17:05", "to": "17:05", "corrected": "17:05–17:05"}]
+    assert any("Λανθασμένο πρόσθετο χτύπημα" in line for line in row["status_explanation"])
+
+
+def test_erato_six_day_example_produces_overtime_proposal():
+    row = build_weekly_report(
+        [sched(start="12:00", end="18:40")],
+        [punch("12:01", "18:41"), punch("19:23", "20:30")],
+        [contract(flex=120, days="6", break_minutes=30, break_in_work=1)],
+    )["days"][0]
+    assert row["actual"] == "12:01–20:30"
+    assert row["actual_minutes"] == 509
+    assert row["overwork_minutes"] == 80
+    assert row["overtime_minutes"] == 29
+    assert row["overtime_segments"] == [
+        {"date": "03/08/2026", "from": "20:01", "to": "20:30", "minutes": 29}
+    ]
+
+
+def test_rest_missing_exit_closes_at_entry_time():
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [punch("12:30", None)], [contract()]
+    )["days"][0]
+    assert row["actual"] == "12:30–12:30"
+    assert row["actual_minutes"] == 0
     assert row["status"] == "review"
-    assert row["orphan_punch_count"] == 1
-    assert any("μη αντιστοιχισμέν" in line for line in row["status_explanation"])
+
+
+def test_rest_missing_entry_opens_at_exit_time():
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [punch(None, "12:30")], [contract()]
+    )["days"][0]
+    assert row["actual"] == "12:30–12:30"
+    assert row["actual_minutes"] == 0
+
+
+def test_overtime_is_assigned_to_calendar_day_when_it_occurs():
+    row = build_weekly_report(
+        [sched(start="16:00", end="00:00")], [punch("16:00", "03:00")], [contract(flex=0)]
+    )["days"][0]
+    assert row["overtime_minutes"] == 120
+    assert row["overtime_segments"] == [
+        {"date": "04/08/2026", "from": "01:00", "to": "03:00", "minutes": 120}
+    ]
 
 
 def test_split_schedule_matches_each_punch_independently():

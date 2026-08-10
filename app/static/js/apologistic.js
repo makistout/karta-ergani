@@ -1,20 +1,30 @@
 let weekStart = previousMonday();
 let reportState = { rows: [], store: null, filter: "all", selectedDate: "", dates: [] };
 let openExplanationId = null;
+let openEmployeeAfm = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("apologistic");
   document.getElementById("weekPrev").onclick = () => moveWeek(-7);
   document.getElementById("weekNext").onclick = () => moveWeek(7);
   initExplanationModal();
+  initEmployeeModal();
   document.addEventListener("click", (event) => {
+    const employeeButton = event.target.closest(".apologistic-employee-btn");
+    if (employeeButton) {
+      event.stopPropagation();
+      openEmployeeDetail(employeeButton.dataset.employeeAfm || "");
+      return;
+    }
     const button = event.target.closest(".apologistic-info-btn");
     if (!button) return;
     event.stopPropagation();
     openExplanation(button.dataset.explanationId || "");
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeExplanation();
+    if (event.key !== "Escape") return;
+    if (openEmployeeAfm) closeEmployeeDetail();
+    else closeExplanation();
   });
   try {
     const active = await Office.fetchActiveStore();
@@ -30,6 +40,89 @@ function initExplanationModal() {
   modal.querySelectorAll("[data-apologistic-info-close]").forEach((el) => {
     el.addEventListener("click", closeExplanation);
   });
+}
+
+function initEmployeeModal() {
+  const modal = document.getElementById("apologisticEmployeeModal");
+  if (!modal || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-apologistic-employee-close]").forEach((el) => {
+    el.addEventListener("click", closeEmployeeDetail);
+  });
+}
+
+const employeeContractFields = [
+  ["employer_afm", "ΑΦΜ εργοδότη"], ["branch_aa", "Παράρτημα"], ["employee_afm", "ΑΦΜ εργαζομένου"],
+  ["eponymo", "Επώνυμο"], ["onoma", "Όνομα"], ["specialty", "Ειδικότητα"],
+  ["characterization", "Χαρακτηρισμός"], ["step92", "ΣΤΕΠ 92"],
+  ["weekly_work_days", "Ημέρες εβδομαδιαίας απασχόλησης"], ["prior_service", "Προϋπηρεσία"],
+  ["employment_relation", "Σχέση απασχόλησης"], ["fixed_term_from", "Ορισμένου χρόνου από"],
+  ["fixed_term_to", "Ορισμένου χρόνου έως"], ["regime", "Καθεστώς"],
+  ["weekly_hours", "Ώρες εβδομαδιαίως"], ["salary", "Αποδοχές"], ["hourly_wage", "Ωρομίσθιο"],
+  ["total_weekly_hours", "Συνολικές ώρες εβδομαδιαίως"],
+  ["fulltime_contract_weekly_hours", "Συμβατικές ώρες πλήρους απασχόλησης"],
+  ["break_minutes", "Διάλειμμα (λεπτά)"], ["break_in_work", "Διάλειμμα εντός ωραρίου"],
+  ["flex_arrival_minutes", "Ευέλικτη προσέλευση (λεπτά)"],
+  ["ergani_updated_at", "Ημ/νία τελευταίας ενημέρωσης Ergani"], ["synced_at", "Τελευταίος συγχρονισμός"],
+  ["source", "Πηγή"],
+];
+
+function employeeContractValue(key, value) {
+  if (value == null || value === "") return "—";
+  if (key === "break_in_work") return value === 1 || value === true || value === "1" ? "Ναι" : "Όχι";
+  if (key === "flex_arrival_minutes" && Office.formatFlexMinutes) return Office.formatFlexMinutes(value);
+  if (key === "synced_at") return String(value).replace("T", " ").slice(0, 19);
+  return String(value);
+}
+
+function employeeContractTable(row) {
+  return `<table class="data employee-contract-fields-table"><thead><tr><th>Πεδίο</th><th>Τιμή</th></tr></thead><tbody>` +
+    employeeContractFields.map(([key, label]) => `<tr><td class="employee-contract-field-label">${attr(label)}</td><td>${attr(employeeContractValue(key, row?.[key]))}</td></tr>`).join("") +
+    `</tbody></table>`;
+}
+
+async function openEmployeeDetail(afm) {
+  const cleanAfm = String(afm || "").replace(/\D/g, "");
+  const modal = document.getElementById("apologisticEmployeeModal");
+  const title = document.getElementById("apologisticEmployeeModalTitle");
+  const meta = document.getElementById("apologisticEmployeeModalMeta");
+  const body = document.getElementById("apologisticEmployeeModalBody");
+  if (!cleanAfm || !modal || !title || !meta || !body) return;
+  closeExplanation();
+  openEmployeeAfm = cleanAfm;
+  title.textContent = "Στοιχεία εργαζομένου";
+  meta.textContent = `ΑΦΜ ${cleanAfm}`;
+  body.innerHTML = `<p class="apologistic-employee-loading"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p>`;
+  modal.classList.remove("hidden");
+  try {
+    const res = await fetch(`/api/employees/contract/history?employee_afm=${encodeURIComponent(cleanAfm)}`, {cache:"no-store"});
+    const data = await res.json().catch(() => ({}));
+    if (openEmployeeAfm !== cleanAfm) return;
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const rows = data.contracts || [];
+    title.textContent = data.employee_name || `ΑΦΜ ${cleanAfm}`;
+    meta.textContent = `ΑΦΜ ${cleanAfm}${data.store ? ` · ${data.store.name || ""} · παράρτημα ${data.store.branch_aa ?? "0"}` : ""}`;
+    if (!rows.length) {
+      body.innerHTML = `<p style="color:var(--muted);">Δεν υπάρχουν στοιχεία σύμβασης.</p>`;
+      return;
+    }
+    const current = rows.find((row) => row.is_current === true || row.is_current === 1 || row.is_current === "1") || rows[0];
+    const previous = rows.filter((row) => row !== current);
+    body.innerHTML = `<section><h3>Τρέχουσα κατάσταση</h3>${employeeContractTable(current)}</section>` +
+      (previous.length ? `<details class="apologistic-employee-history"><summary>Προηγούμενες εκδόσεις (${previous.length})</summary>` +
+        previous.map((row) => `<details><summary>${attr(employeeContractValue("synced_at", row.synced_at))} · ${attr(employeeContractValue("specialty", row.specialty))}</summary>${employeeContractTable(row)}</details>`).join("") +
+        `</details>` : "");
+  } catch (error) {
+    if (openEmployeeAfm === cleanAfm) body.innerHTML = `<p style="color:var(--err);">${attr(error)}</p>`;
+  }
+}
+
+function closeEmployeeDetail() {
+  const modal = document.getElementById("apologisticEmployeeModal");
+  const body = document.getElementById("apologisticEmployeeModalBody");
+  openEmployeeAfm = null;
+  modal?.classList.add("hidden");
+  if (body) body.innerHTML = "";
 }
 
 function previousMonday() {
@@ -55,6 +148,7 @@ function signedMins(value) {
 function diffClass(value) { return value > 0 ? "time-diff--plus" : value < 0 ? "time-diff--minus" : ""; }
 function attr(value) { return Office.escapeHtml(String(value ?? "")); }
 function statusLabel(status) { return status === "ok" ? "Σύμφωνο" : status === "change" ? "Μεταβολή" : "Έλεγχος"; }
+function statusShortLabel(status) { return status === "ok" ? "Σ" : status === "change" ? "Μ" : "Ε"; }
 function rowExplanationId(row) { return `${row.employee_afm}-${String(row.work_date || "").replace(/\//g, "")}`; }
 
 function findExplanationRow(id) {
@@ -136,6 +230,11 @@ function compactScheduleLabel(value) {
 function compactDayState(value) {
   return ({"Εργασία":"Εργ.", "Ρεπό":"Ρεπό", "Μη εργασία":"Μη εργ.", "Τηλεργασία":"Τηλεργ.", "Άδεια":"Άδεια", "Αργία":"Αργία"})[value] || "Χωρίς";
 }
+function overtimeCell(row) {
+  const segments = row.overtime_segments || [];
+  if (!segments.length) return "—";
+  return segments.map((segment) => `${attr(segment.from)}–${attr(segment.to)}`).join("<br>");
+}
 
 async function loadReport() {
   const wrap = document.getElementById("apologisticWrap");
@@ -214,7 +313,7 @@ function renderRows(rows, store) {
   }
   const filterLabel = reportState.filter === "ok" ? " · φίλτρο: Σύμφωνο" : reportState.filter === "change" ? " · φίλτρο: Μεταβολές" : reportState.filter === "review" ? " · φίλτρο: Για έλεγχο" : "";
   let html = `<p class="table-meta"><i class="bi bi-shop-window"></i> <strong>${Office.escapeHtml(store?.name || "")}</strong> · ${attr(reportState.selectedDate)} · ${rows.length} εργαζόμενοι${filterLabel}</p>`;
-  html += `<table class="data apologistic-table"><thead><tr><th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλειμμα εκτός</th><th>Καθαρή διαφορά</th><th>Πρόταση</th><th>Αποτέλεσμα</th></tr></thead><tbody>`;
+  html += `<table class="data apologistic-table"><thead><tr><th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτ.</th></tr></thead><tbody>`;
   for (const row of rows) {
     const punchRecorded = row.punch_recorded ?? row.actual ?? "—";
     const explanationId = rowExplanationId(row);
@@ -235,13 +334,15 @@ function renderRows(rows, store) {
       `Καθαρή διαφορά: ${signedMins(row.net_difference_minutes)}`,
       row.overwork_minutes ? `Υπερεργασία: ${mins(row.overwork_minutes)}` : "",
       row.overtime_minutes ? `Υπερωρία: ${mins(row.overtime_minutes)}${row.overtime_from && row.overtime_to ? ` (${row.overtime_from}–${row.overtime_to})` : ""}` : "",
+      ...(row.overtime_segments || []).map((segment) => `Υποβολή ${segment.date}: ${segment.from}–${segment.to}`),
+      ...(row.corrected_extra_punches || []).map((item) => `Λανθασμένο πρόσθετο χτύπημα: κλείσιμο ${item.corrected}`),
       row.undeclared_extra_minutes ? `Πρόσθετος χρόνος χωρίς δήλωση υπερωρίας: ${mins(row.undeclared_extra_minutes)}` : "",
       row.unlawful_overtime_minutes ? `Πέρα από το ημερήσιο όριο 4 ωρών: ${mins(row.unlawful_overtime_minutes)}` : "",
       row.night_minutes ? `Νυχτερινά: ${mins(row.night_minutes)}` : "",
       row.classification_warning || "",
     ].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
-      `<td title="${attr(`ΑΦΜ: ${row.employee_afm}`)}"><strong>${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</strong></td>` +
+      `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης`)}"><button type="button" class="apologistic-employee-btn" data-employee-afm="${attr(row.employee_afm)}">${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</button></td>` +
       `<td title="${attr(contractTip)}">${attr(compactDayState(row.day_state))}</td>` +
       `<td title="${attr(declaredTip)}">${attr(compactScheduleLabel(row.declared))}</td>` +
       `<td class="apologistic-punch-cell" title="${attr(punchTip)}">${formatPunchCell(punchRecorded)}${row.overnight ? "*" : ""}</td>` +
@@ -251,8 +352,9 @@ function renderRows(rows, store) {
       `<td title="Πραγματική μείον δηλωμένη διάρκεια" class="${diffClass(row.gross_difference_minutes)}">${signedMins(row.gross_difference_minutes)}</td>` +
       `<td title="${attr(breakTip)}">${row.outside_break_minutes ? mins(row.outside_break_minutes) : "—"}</td>` +
       `<td title="${attr(netDetails)}" class="${diffClass(row.net_difference_minutes)}"><strong>${signedMins(row.net_difference_minutes)}</strong></td>` +
+      `<td title="${attr((row.overtime_segments || []).map((segment) => `${segment.date}: ${segment.from}–${segment.to} (${mins(segment.minutes)})`).join(" · ") || "Δεν προκύπτει υπερωρία")}" class="${row.overtime_minutes ? "time-diff--plus" : ""}"><strong>${overtimeCell(row)}</strong></td>` +
       `<td title="${attr(`Προτεινόμενο απολογιστικό: ${row.proposed} · ${row.proposal_basis || ""}`)}"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></td>` +
-      `<td class="apologistic-result-cell"><span class="status-badge apologistic-status--${row.status}">${statusLabel(row.status)}</span>` +
+      `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status))}"><span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status)}</span>` +
       `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td></tr>`;
   }
   wrap.innerHTML = html + `</tbody></table>`;

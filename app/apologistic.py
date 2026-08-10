@@ -103,6 +103,9 @@ def _build_status_explanation(
     flex: int,
     punch_count: int,
     matched_parts: int,
+    single_schedule: bool,
+    overtime_segments: list[dict[str, Any]],
+    corrected_extra_punches: list[dict[str, Any]],
 ) -> list[str]:
     status_names = {"ok": "Σύμφωνο", "change": "Μεταβολή", "review": "Έλεγχος"}
     lines = [f"Αποτέλεσμα: {status_names.get(status, status)}", reason]
@@ -114,7 +117,11 @@ def _build_status_explanation(
         for item in day_punches:
             lines.append(f"  · {_format_recorded_punch(item)}")
 
-    if punch_count > matched_parts and matched_parts:
+    if punch_count > matched_parts and matched_parts and single_schedule:
+        lines.append(
+            f"Υπάρχουν {punch_count} εγγραφές σε μη σπαστό ωράριο· για τη διάρκεια χρησιμοποιήθηκε όλο το διάστημα από την πρώτη είσοδο έως την τελευταία έξοδο ({actual_label})."
+        )
+    elif punch_count > matched_parts and matched_parts:
         lines.append(
             f"Αντιστοιχίστηκαν {matched_parts} από {punch_count} εγγραφές με το δηλωμένο ωράριο ({declared_label})."
         )
@@ -123,6 +130,12 @@ def _build_status_explanation(
         lines.append(f"Επιπλέον μη αντιστοιχισμένες εγγραφές ({len(orphan_punches)}):")
         for item in orphan_punches:
             lines.append(f"  · {_format_recorded_punch(item)}")
+
+    for item in corrected_extra_punches:
+        lines.append(
+            f"Λανθασμένο πρόσθετο χτύπημα {_format_recorded_punch(item['recorded'])}: "
+            f"η ελλιπής πλευρά κλείνει στην ίδια ώρα ({item['corrected']})."
+        )
 
     if inferred and matched:
         for index, item in enumerate(matched, start=1):
@@ -153,6 +166,11 @@ def _build_status_explanation(
 
     if classification_warning:
         lines.append(classification_warning)
+
+    for segment in overtime_segments:
+        lines.append(
+            f"Υπερωρία προς υποβολή στις {segment['date']}: {segment['from']}–{segment['to']} ({segment['minutes']} λεπτά)."
+        )
 
     lines.append(f"Βεβαιότητα: {confidence}.")
     if requires_confirmation:
@@ -224,8 +242,39 @@ def _match_punches(
         selected = max(complete, key=lambda p: _minutes(p.get("hour_from"), p.get("hour_to")) or 0) if complete else (punches[0] if punches else None)
         if not selected:
             return [], []
-        return [{"from": selected.get("hour_from"), "to": selected.get("hour_to"),
-                 "inferred_from": False, "inferred_to": False, "punch": selected}], []
+        start = selected.get("hour_from") if _clock(selected.get("hour_from")) else selected.get("hour_to")
+        end = selected.get("hour_to") if _clock(selected.get("hour_to")) else selected.get("hour_from")
+        return [{"from": start, "to": end,
+                 "inferred_from": not bool(_clock(selected.get("hour_from"))),
+                 "inferred_to": not bool(_clock(selected.get("hour_to"))),
+                 "punch": selected}], []
+
+    if len(declared) == 1 and punches:
+        slot = declared[0]
+        complete = [p for p in punches if _minutes(p.get("hour_from"), p.get("hour_to")) is not None]
+        if complete and len(punches) > 1:
+            starts = [(_minute_of_day(p.get("hour_from")), p) for p in punches if _clock(p.get("hour_from"))]
+            actual_start, first_punch = min(starts, key=lambda item: item[0])
+            boundaries: list[tuple[int, dict[str, Any]]] = []
+            for item in punches:
+                value = item.get("hour_to") if _clock(item.get("hour_to")) else item.get("hour_from")
+                minute = _minute_of_day(value, after=actual_start)
+                if minute is not None:
+                    boundaries.append((minute, item))
+            actual_end, last_punch = max(boundaries, key=lambda item: item[0])
+            return [{"from": _hm(actual_start), "to": _hm(actual_end),
+                     "inferred_from": False, "inferred_to": False,
+                     "punch": first_punch, "slot": slot,
+                     "extra_punches": [p for p in punches if p is not first_punch],
+                     "envelope_from_multiple": True, "last_punch": last_punch}], []
+        pick = complete[0] if complete else min(punches, key=lambda p: _distance(p, slot))
+        actual_from = pick.get("hour_from") if _clock(pick.get("hour_from")) else slot.get("hour_from")
+        actual_to = pick.get("hour_to") if _clock(pick.get("hour_to")) else slot.get("hour_to")
+        return [{"from": actual_from, "to": actual_to,
+                 "inferred_from": not bool(_clock(pick.get("hour_from"))),
+                 "inferred_to": not bool(_clock(pick.get("hour_to"))),
+                 "punch": pick, "slot": slot,
+                 "extra_punches": [p for p in punches if p is not pick]}], []
 
     available = list(punches)
     matched: list[dict[str, Any]] = []
@@ -317,6 +366,24 @@ def _proposed_normal_slot(
     return ps, ps + declared_minutes + outside_break, "Από την πραγματική έναρξη"
 
 
+def _overtime_segments(work_date: str, start: int | None, end: int | None) -> list[dict[str, Any]]:
+    """Split overtime by calendar day because each part is submitted on the day it occurs."""
+    if start is None or end is None or end <= start:
+        return []
+    base = datetime.strptime(work_date, "%d/%m/%Y").date()
+    segments: list[dict[str, Any]] = []
+    cursor = start
+    while cursor < end:
+        day_index = cursor // 1440
+        boundary = (day_index + 1) * 1440
+        segment_end = min(end, boundary)
+        segment_date = base + timedelta(days=day_index)
+        segments.append({"date": segment_date.strftime("%d/%m/%Y"), "from": _hm(cursor),
+                         "to": _hm(segment_end), "minutes": segment_end - cursor})
+        cursor = segment_end
+    return segments
+
+
 def build_weekly_report(
     schedule_rows: list[dict[str, Any]], work_rows: list[dict[str, Any]], contracts: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -335,6 +402,15 @@ def build_weekly_report(
         slots, day_punches = schedules.get((afm, work_date), []), punches.get((afm, work_date), [])
         work_slots = _working_slots(slots)
         matched, orphan_punches = _match_punches(day_punches, slots)
+        extra_punches = matched[0].get("extra_punches", []) if len(_working_slots(slots)) == 1 and matched else []
+        corrected_extra_punches = []
+        for extra in extra_punches:
+            extra_from = _format_recorded_boundary(extra.get("hour_from"))
+            extra_to = _format_recorded_boundary(extra.get("hour_to"))
+            if bool(extra_from) != bool(extra_to):
+                boundary = extra_from or extra_to
+                corrected_extra_punches.append({"recorded": extra, "from": boundary, "to": boundary,
+                                                "corrected": f"{boundary}–{boundary}"})
         contract = contracts_by_afm.get(afm)
         contract_kind, weekly_days = _contract_kind(contract)
         contract_flags = _contract_flags(contract)
@@ -409,6 +485,7 @@ def build_weekly_report(
             threshold = 540 if contract_kind == "Πλήρης" and weekly_days == 5 else 480 if contract_kind == "Πλήρης" and weekly_days == 6 else declared_minutes
             overtime_from = ps + outside_break + threshold
             overtime_to = min(pe, overtime_from + bands["overtime_minutes"])
+        overtime_segments = _overtime_segments(work_date, overtime_from, overtime_to)
         requires_confirmation = (status != "ok" or contract_kind in ("Άγνωστη σύμβαση", "Μη προσδιορισμένη")
                                  or break_in_work is None and break_minutes > 0
                                  or contract_flags["work_arrangement"] or contract_flags["uneven_distribution"])
@@ -428,6 +505,8 @@ def build_weekly_report(
             break_minutes=break_minutes, break_in_work=break_in_work,
             classification_warning=bands.get("classification_warning") or "",
             flex=flex, punch_count=len(day_punches), matched_parts=len(matched),
+            single_schedule=len(work_slots) == 1, overtime_segments=overtime_segments,
+            corrected_extra_punches=corrected_extra_punches,
         )
         daily.append({
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
@@ -437,6 +516,8 @@ def build_weekly_report(
             "actual": actual_label, "proposed": proposed,
             "proposal_basis": proposal_basis, "status": status, "reason": reason,
             "status_explanation": status_explanation, "orphan_punches": orphan_details,
+            "corrected_extra_punches": [{k: v for k, v in item.items() if k != "recorded"}
+                                         for item in corrected_extra_punches],
             "declared_minutes": declared_minutes, "actual_minutes": actual_minutes,
             "effective_actual_minutes": effective_actual, "extra_minutes": max(0, net_difference or 0),
             "punch_count": len(day_punches), "matched_parts": len(matched), "orphan_punch_count": len(orphan_punches),
@@ -450,6 +531,7 @@ def build_weekly_report(
             **bands, "overtime_candidate_minutes": bands["overtime_minutes"],
             "overtime_from": _hm(overtime_from) if overtime_from is not None else None,
             "overtime_to": _hm(overtime_to) if overtime_to is not None else None,
+            "overtime_segments": overtime_segments,
             "overnight": bool(first and _minutes(first.get("from"), first.get("to")) is not None and (_minute_of_day(first.get("to")) or 0) < (_minute_of_day(first.get("from")) or 0)),
             "requires_confirmation": requires_confirmation, "confidence": confidence,
             "sixth_day_candidate": False, "suggested_rest": False,
