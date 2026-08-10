@@ -6,6 +6,8 @@ venv/
 documentation/document_extracted.txt
 logs/
 data/portal_excel_debug/
+listener/**/bin/
+listener/**/obj/
 
 # Scripts — προσωρινά / δοκιμές
 scripts/temp_portal_output/

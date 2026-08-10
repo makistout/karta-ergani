@@ -194,3 +194,12 @@ def capture_client_context(
         "client_ip": client_ip,
         "client_device": device_json,
     }
+
+
+def observed_peer_ip(req: Request | None = None) -> str | None:
+    """Trusted edge/TCP peer IP used as network evidence; ignores X-Forwarded-For."""
+    if req is None:
+        if not has_request_context():
+            return None
+        req = request
+    return _clean_ip(req.headers.get("X-ARR-ClientIP")) or _clean_ip(req.remote_addr)

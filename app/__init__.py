@@ -27,6 +27,7 @@ from app.routes_contact import contact_bp
 from app.access_control import register_access_context
 from app.routes_users import users_bp
 from app.routes_apologistic import apologistic_bp
+from app.routes_card_listener import card_listener_bp
 
 
 def create_app() -> Flask:
@@ -51,6 +52,7 @@ def create_app() -> Flask:
     app.register_blueprint(wto_week_bp)
     app.register_blueprint(local_bp)
     app.register_blueprint(store_bp)
+    app.register_blueprint(card_listener_bp)
     app.register_blueprint(ergani_bp)
     app.register_blueprint(sync_bp)
     app.register_blueprint(period_sync_bp)

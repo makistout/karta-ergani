@@ -766,6 +766,8 @@ def run_auto_close_prev_day_for_store(
 
     submitted = 0
     failures: list[dict[str, Any]] = []
+    from app.submission_identity import server_submission_identity
+    submission_ip, executor_instance = server_submission_identity()
     for idx, item in enumerate(plan, 1):
         emp_afm = norm_afm(item["employee_afm"])
         if idx > 1:
@@ -853,6 +855,9 @@ def run_auto_close_prev_day_for_store(
                 None,
                 None,
                 client_device="erganiOS scheduled auto close",
+                submission_channel="erganios",
+                submission_ip=submission_ip,
+                executor_instance=executor_instance,
             )
         except Exception as ex:
             failures.append({**item, "error": f"persist: {ex}"})

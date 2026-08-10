@@ -34,6 +34,7 @@ let actionSettings = {
   auto_close_prev_day_last_run_date: null,
   notify_grace_minutes: 15,
 };
+let cardListenerSettings = { card_submission_mode: "erganios", listener_offline_seconds: 60, device: null };
 
 function storeAcLabel(item) {
   return `${item.description || "Κατάστημα"} (ID ${item.value})`;
@@ -58,6 +59,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("settings");
   initNotifyRecipientButtons();
   initActionSettingsButtons();
+  initCardListenerButtons();
   await initStorePicker();
 });
 
@@ -244,7 +246,7 @@ async function selectStore(storeId, pushUrl) {
     url.searchParams.set("id", String(storeId));
     history.replaceState(null, "", url.pathname + url.search);
   }
-  await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId)]);
+  await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId), loadCardListenerSettings(storeId)]);
   updateNotifyUiState();
 }
 
@@ -273,10 +275,75 @@ function updateNotifyUiState() {
   const testBtn = document.getElementById("btnTestNotify");
   const addBtn = document.getElementById("btnAddNotifyRecipient");
   const actionBtn = document.getElementById("btnSaveActionSettings");
+  const listenerBtn = document.getElementById("btnSaveListenerSettings");
+  const pairBtn = document.getElementById("btnPairListener");
+  const revokeBtn = document.getElementById("btnRevokeListener");
   if (saveBtn) saveBtn.disabled = !hasId;
   if (testBtn) testBtn.disabled = !hasId;
   if (addBtn) addBtn.disabled = !hasId;
   if (actionBtn) actionBtn.disabled = !hasId;
+  if (listenerBtn) listenerBtn.disabled = !hasId;
+  if (pairBtn) pairBtn.disabled = !hasId;
+  if (revokeBtn) revokeBtn.disabled = !hasId || !cardListenerSettings.device;
+}
+
+function renderCardListenerSettings() {
+  document.getElementById("cardSubmissionMode").value = cardListenerSettings.card_submission_mode || "erganios";
+  document.getElementById("listenerOfflineSeconds").value = String(cardListenerSettings.listener_offline_seconds || 60);
+  const device = cardListenerSettings.device;
+  const status = document.getElementById("listenerDeviceStatus");
+  if (!device) status.textContent = "Δεν υπάρχει συνδεδεμένος listener για αυτό το κατάστημα.";
+  else status.textContent = `${device.is_online ? "Online" : "Offline"} · ${device.device_name || device.device_id} · IP ${device.last_seen_ip || "—"} · έκδοση ${device.agent_version || "—"} · τελευταία επικοινωνία ${device.last_seen_at || "—"}`;
+  updateNotifyUiState();
+}
+
+async function loadCardListenerSettings(storeId) {
+  const res = await fetch(`/api/store/${storeId}/card-listener-settings`, { credentials: "same-origin" });
+  const data = await Office.parseJson(res);
+  if (!res.ok) {
+    Office.showMsg("stepMsg", data.error || data.db_setup || "Αποτυχία φόρτωσης listener", false);
+    return;
+  }
+  cardListenerSettings = data.settings;
+  renderCardListenerSettings();
+}
+
+async function saveCardListenerSettings() {
+  const seconds = Math.max(15, Math.min(600, parseInt(document.getElementById("listenerOfflineSeconds").value || "60", 10)));
+  const res = await fetch(`/api/store/${currentStoreId}/card-listener-settings`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+    body: JSON.stringify({ card_submission_mode: document.getElementById("cardSubmissionMode").value, listener_offline_seconds: seconds }),
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης listener", false);
+  cardListenerSettings = data.settings; renderCardListenerSettings();
+  Office.showMsg("stepMsg", "Οι ρυθμίσεις listener αποθηκεύτηκαν.", true);
+}
+
+async function pairCardListener() {
+  const deviceName = prompt("Όνομα υπολογιστή / listener:", "erganiOS Listener") || "erganiOS Listener";
+  const res = await fetch(`/api/store/${currentStoreId}/card-listener/pair`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ device_name: deviceName }),
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία pairing", false);
+  const result = document.getElementById("listenerPairingResult");
+  result.textContent = `Device ID: ${data.device_id} | Token: ${data.device_token} — αντιγράψτε τα τώρα, το token δεν εμφανίζεται ξανά.`;
+  await loadCardListenerSettings(currentStoreId);
+}
+
+async function revokeCardListener() {
+  if (!confirm("Να ανακληθεί ο listener αυτού του καταστήματος;")) return;
+  const res = await fetch(`/api/store/${currentStoreId}/card-listener/revoke`, { method: "POST", credentials: "same-origin" });
+  const data = await Office.parseJson(res);
+  if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία ανάκλησης", false);
+  await loadCardListenerSettings(currentStoreId);
+}
+
+function initCardListenerButtons() {
+  document.getElementById("btnSaveListenerSettings").onclick = saveCardListenerSettings;
+  document.getElementById("btnPairListener").onclick = pairCardListener;
+  document.getElementById("btnRevokeListener").onclick = revokeCardListener;
 }
 
 function normalizeActionTime(value) {

@@ -8,6 +8,25 @@
 
 ---
 
+## 2026-08-10 — Τοπικός listener ψηφιακής κάρτας v0.3.1
+
+- Additive ρυθμίσεις `card_submission_mode` / `listener_offline_seconds` ανά κατάστημα,
+  με default `erganios` για όλα τα υπάρχοντα καταστήματα.
+- Νέοι πίνακες `karta_card_listener_device`, `karta_card_listener_job` και
+  `karta_card_listener_attempt`, με μοναδική συσκευή και credentials ανά store.
+- Device-authenticated API για health, περιοδική ενημέρωση δημόσιας IP, long polling και
+  result callback.
+- Καταγραφή `submission_channel`, `submission_ip` και `executor_instance`. Η IP server
+  λαμβάνεται μόνο από config και η IP listener ανανεώνεται ανεξάρτητα κάθε 5 λεπτά.
+- Νέο UI ρυθμίσεων ανά κατάστημα για mode, timeout, pairing, status και revoke.
+- Windows listener v0.3.1: WinForms setup, DPAPI, Windows Service automatic start/recovery,
+  ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
+- Η υπάρχουσα ροή χτυπημάτων παραμένει ενεργή. Ο dispatcher προς listener jobs δεν έχει
+  ακόμη συνδεθεί.
+- Αναλυτική τεκμηρίωση: `docs/CARD_LISTENER.md`.
+
+---
+
 ## 2026-08-08 — Λεπτομέρειες εργαζομένου (σύμβαση)
 
 - Στο `/ui/employees`: εικονίδιο πίνακα αριστερά στη γραμμή → νέα σελίδα

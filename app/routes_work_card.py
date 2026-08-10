@@ -460,6 +460,8 @@ def _submit_work_card(
 
     persist_error: str | None = None
     persisted = False
+    from app.submission_identity import server_submission_identity
+    submission_ip, executor_instance = server_submission_identity()
     try:
         persist_wrk_card_submit(
             SUBMISSION_CODE_WRK_CARD,
@@ -473,6 +475,9 @@ def _submit_work_card(
             replace_existing=correction_mode,
             client_ip=client_ip,
             client_device=client_device,
+            submission_channel="erganios",
+            submission_ip=submission_ip,
+            executor_instance=executor_instance,
         )
         persisted = bool(resp.ok)
     except Exception as ex:
@@ -516,6 +521,9 @@ def _submit_work_card(
             "error": err_msg,
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),
+            "submission_channel": "erganios",
+            "submission_ip": submission_ip,
+            "executor_instance": executor_instance,
             "ergani_response": parsed if not resp.ok else None,
         },
         client_ip=client_ip,

@@ -53,7 +53,7 @@ _PUBLIC_EXACT = frozenset({
     "/favicon.ico",
 }) | seo_public_paths()
 
-_PUBLIC_PREFIXES = ("/static/",)
+_PUBLIC_PREFIXES = ("/static/", "/api/card-listener/v1/")
 
 # Σελίδες/API onboarding — επιτρέπονται όταν ο χρήστης είναι συνδεδεμένος
 # αλλά δεν έχει ολοκληρώσει αλλαγή κωδικού / αποδοχή όρων.

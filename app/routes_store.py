@@ -114,6 +114,58 @@ def save_store_action_settings(store_id: int):
     return jsonify({"success": True, "settings": settings})
 
 
+@store_bp.get("/<int:store_id>/card-listener-settings")
+def get_card_listener_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app import repo_card_listener
+    try:
+        settings = repo_card_listener.get_listener_settings(store_id)
+    except Exception as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_card_listener.sql"}), 503
+    return jsonify({"success": True, "settings": _json_rows([settings])[0]})
+
+
+@store_bp.put("/<int:store_id>/card-listener-settings")
+def put_card_listener_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app import repo_card_listener
+    data = request.get_json(silent=True) or {}
+    try:
+        settings = repo_card_listener.save_listener_settings(
+            store_id,
+            data.get("card_submission_mode") or "erganios",
+            data.get("listener_offline_seconds") or 60,
+        )
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 400
+    except Exception as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_card_listener.sql"}), 503
+    return jsonify({"success": True, "settings": _json_rows([settings])[0]})
+
+
+@store_bp.post("/<int:store_id>/card-listener/pair")
+def pair_card_listener(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app import repo_card_listener
+    data = request.get_json(silent=True) or {}
+    try:
+        credential = repo_card_listener.pair_device(store_id, data.get("device_name"))
+    except Exception as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_card_listener.sql"}), 503
+    return jsonify({"success": True, **credential})
+
+
+@store_bp.post("/<int:store_id>/card-listener/revoke")
+def revoke_card_listener(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    from app import repo_card_listener
+    return jsonify({"success": True, "revoked": repo_card_listener.revoke_device(store_id)})
+
+
 def _resolve_wizard_secrets(data: dict, existing: dict | None) -> dict[str, str]:
     store_id = data.get("id")
     ex = existing or (repo.get_store_config(int(store_id)) if store_id else None)

@@ -140,6 +140,8 @@ class Config:
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
     ).strip().rstrip("/")
+    SERVER_INSTANCE_ID = (os.environ.get("SERVER_INSTANCE_ID") or "").strip()
+    ERGANI_EGRESS_IP = (os.environ.get("ERGANI_EGRESS_IP") or "").strip()
 
     CATALOG_DATABASE = (os.environ.get("CATALOG_DATABASE") or "").strip() or "ergani_ii"
 

@@ -63,16 +63,19 @@ def insert_declaration(
     *,
     client_ip: str | None = None,
     client_device: str | None = None,
+    submission_channel: str | None = None,
+    submission_ip: str | None = None,
+    executor_instance: str | None = None,
 ) -> int:
     cur.execute(
         """
         INSERT INTO dbo.karta_declaration (
             submission_code, direction, employer_afm, protocol, submit_date_text,
             ergani_submission_id, http_status, success, request_json, response_json,
-            client_ip, client_device
+            client_ip, client_device, submission_channel, submission_ip, executor_instance
         )
         OUTPUT INSERTED.id
-        VALUES (?, N'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, N'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             submission_code,
@@ -86,6 +89,9 @@ def insert_declaration(
             response_json,
             (client_ip or "").strip()[:45] or None,
             (client_device or "").strip()[:2000] or None,
+            (submission_channel or "").strip()[:16] or None,
+            (submission_ip or "").strip()[:45] or None,
+            (executor_instance or "").strip()[:200] or None,
         ),
     )
     row = cur.fetchone()
@@ -197,6 +203,9 @@ def persist_wrk_card_submit(
     replace_existing: bool = False,
     client_ip: str | None = None,
     client_device: str | None = None,
+    submission_channel: str | None = None,
+    submission_ip: str | None = None,
+    executor_instance: str | None = None,
 ) -> None:
     req_str = json.dumps(request_dict, ensure_ascii=False)
     emp_afm = extract_employer_afm_from_request(request_dict)
@@ -222,6 +231,9 @@ def persist_wrk_card_submit(
             response_body,
             client_ip=client_ip,
             client_device=client_device,
+            submission_channel=submission_channel,
+            submission_ip=submission_ip,
+            executor_instance=executor_instance,
         )
         if not success:
             return
@@ -286,7 +298,7 @@ def list_card_events_for_store_date(
             e.id, e.f_afm, e.f_eponymo, e.f_onoma, e.f_type,
             e.f_reference_date, e.f_date, e.f_aitiologia,
             emp.flex_arrival_minutes,
-            d.success, d.protocol
+            d.success, d.protocol, d.submission_channel, d.submission_ip, d.executor_instance
         FROM dbo.karta_card_event e
         INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
         LEFT JOIN dbo.karta_employee emp ON emp.afm = e.f_afm
@@ -322,6 +334,7 @@ def list_card_events_for_store_range(
             e.f_reference_date, e.f_date, e.f_aitiologia,
             emp.flex_arrival_minutes,
             d.success, d.protocol, d.submit_date_text, d.ergani_submission_id,
+            d.submission_channel, d.submission_ip, d.executor_instance,
             CAST(d.created_at AS datetime2) AS declaration_created_at
         FROM dbo.karta_card_event e
         INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
@@ -345,7 +358,8 @@ def list_card_events(limit: int = 100) -> list[dict[str, Any]]:
             e.f_afm, e.f_eponymo, e.f_onoma, e.f_type,
             e.f_reference_date, e.f_date, e.f_aitiologia,
             d.protocol, d.submit_date_text, d.ergani_submission_id,
-            d.http_status, d.success, d.response_json
+            d.http_status, d.success, d.response_json,
+            d.submission_channel, d.submission_ip, d.executor_instance
         FROM dbo.karta_card_event e
         INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
         ORDER BY e.id DESC

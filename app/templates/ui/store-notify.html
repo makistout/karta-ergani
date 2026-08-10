@@ -129,11 +129,45 @@
             </button>
           </div>
         </section>
+        <section class="card settings-section" id="cardListenerCard" aria-labelledby="cardListenerTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="cardListenerTitle"><i class="bi bi-pc-display" aria-hidden="true"></i> Listener ψηφιακής κάρτας</h2>
+              <p class="field-hint">Αφορά αποκλειστικά τα χτυπήματα WRKCardSE του επιλεγμένου καταστήματος. Η τρέχουσα ροή δεν αλλάζει μέχρι να επιλεγεί listener.</p>
+            </div>
+          </div>
+          <div class="settings-action-block">
+            <div class="settings-action-row settings-action-row--field">
+              <span><strong>Τρόπος υποβολής χτυπημάτων</strong></span>
+              <label class="settings-action-time" for="cardSubmissionMode">
+                <span class="settings-action-time-label">Διαδρομή</span>
+                <select id="cardSubmissionMode" class="input-select settings-action-select">
+                  <option value="erganios">erganiOS (τρέχουσα λειτουργία)</option>
+                  <option value="listener">Τοπικός listener με fallback</option>
+                </select>
+              </label>
+            </div>
+            <div class="settings-action-row settings-action-row--field">
+              <span><strong>Listener offline μετά από</strong><small>Αν δεν υπάρχει επικοινωνία, τα χτυπήματα θα χρησιμοποιούν το υπάρχον erganiOS path όταν ενεργοποιηθεί ο dispatcher.</small></span>
+              <label class="settings-action-time" for="listenerOfflineSeconds">
+                <span class="settings-action-time-label">Δευτερόλεπτα</span>
+                <input id="listenerOfflineSeconds" type="number" min="15" max="600" step="1" value="60">
+              </label>
+            </div>
+            <p class="field-hint" id="listenerDeviceStatus">Δεν έχει φορτωθεί κατάσταση listener.</p>
+          </div>
+          <div class="actions settings-section-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveListenerSettings" disabled><i class="bi bi-save"></i><span>Αποθήκευση listener</span></button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnPairListener" disabled><i class="bi bi-link-45deg"></i><span>Νέο pairing</span></button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnRevokeListener" disabled><i class="bi bi-x-circle"></i><span>Ανάκληση</span></button>
+          </div>
+          <div id="listenerPairingResult" class="msg"></div>
+        </section>
       </div>
       <div id="stepMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260803fixedexit"></script>
+  <script src="/static/js/store-notify.js?v=20260810cardlistener3"></script>
 {% endblock %}

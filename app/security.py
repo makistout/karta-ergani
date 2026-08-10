@@ -26,6 +26,8 @@ def register_api_token_guard(app: Flask) -> None:
         path = request.path or ""
         if path in _PUBLIC_API_PATHS:
             return None
+        if path.startswith("/api/card-listener/v1/"):
+            return None
         if not path.startswith("/api/"):
             return None
         got = (request.headers.get("X-Office-Token") or "").strip()
