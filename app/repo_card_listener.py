@@ -43,7 +43,10 @@ def get_listener_settings(store_id: int) -> dict[str, Any]:
             cur.execute(
                 """
                 SELECT TOP (1) device_id, device_name, agent_version, enabled,
-                       paired_at, last_seen_at, last_seen_ip, revoked_at,
+                       CONVERT(nvarchar(40), paired_at, 127) AS paired_at,
+                       CONVERT(nvarchar(40), last_seen_at, 127) AS last_seen_at,
+                       last_seen_ip,
+                       CONVERT(nvarchar(40), revoked_at, 127) AS revoked_at,
                        CASE WHEN enabled = 1 AND revoked_at IS NULL
                                   AND last_seen_at >= DATEADD(second, -?, SYSDATETIMEOFFSET())
                             THEN 1 ELSE 0 END AS is_online
@@ -178,7 +181,9 @@ def lease_next_job(store_id: int, device_id: str, lease_seconds: int = 45) -> di
                 lease_expires_at = DATEADD(second, ?, SYSDATETIMEOFFSET()),
                 attempt_count = attempt_count + 1, updated_at = SYSDATETIMEOFFSET()
             OUTPUT inserted.id, inserted.job_uuid, inserted.store_id, inserted.payload_json,
-                   inserted.ergani_api_base_url, inserted.fallback_deadline, inserted.attempt_count;
+                   inserted.ergani_api_base_url,
+                   CONVERT(nvarchar(40), inserted.fallback_deadline, 127) AS fallback_deadline,
+                   inserted.attempt_count;
             """,
             (int(store_id), str(device_id), int(lease_seconds)),
         )
