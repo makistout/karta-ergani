@@ -156,12 +156,33 @@
             </div>
             <p class="field-hint listener-device-status" id="listenerDeviceStatus">Δεν έχει φορτωθεί κατάσταση listener.</p>
           </div>
+          <div class="listener-pairing-panel">
+            <label for="listenerDeviceName">
+              <strong>Όνομα υπολογιστή / listener</strong>
+              <span class="field-hint">Ένα αναγνωρίσιμο όνομα, π.χ. ΤΑΜΕΙΟ-PC-01.</span>
+            </label>
+            <input id="listenerDeviceName" type="text" maxlength="200" placeholder="π.χ. ΤΑΜΕΙΟ-PC-01" autocomplete="off" disabled>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnPairListener" disabled><i class="bi bi-link-45deg"></i><span>Δημιουργία νέου pairing</span></button>
+          </div>
           <div class="actions settings-section-actions">
-            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveListenerSettings" disabled><i class="bi bi-save"></i><span>Αποθήκευση listener</span></button>
-            <button type="button" class="btn btn-secondary btn-sm" id="btnPairListener" disabled><i class="bi bi-link-45deg"></i><span>Νέο pairing</span></button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveListenerSettings" disabled><i class="bi bi-save"></i><span>Αποθήκευση ρυθμίσεων</span></button>
             <button type="button" class="btn btn-secondary btn-sm" id="btnRevokeListener" disabled><i class="bi bi-x-circle"></i><span>Ανάκληση</span></button>
           </div>
-          <div id="listenerPairingResult" class="msg"></div>
+          <p class="field-hint listener-save-hint">Η αποθήκευση αλλάζει μόνο τη διαδρομή υποβολής και το χρονικό όριο offline. Δεν δημιουργεί pairing.</p>
+          <div id="listenerPairingResult" class="listener-pairing-result hidden" aria-live="polite">
+            <strong>Το pairing δημιουργήθηκε</strong>
+            <p>Αντιγράψτε τώρα τα δύο στοιχεία. Το Device Token δεν εμφανίζεται ξανά.</p>
+            <label for="listenerPairingDeviceId">Device ID</label>
+            <div class="listener-copy-row">
+              <input id="listenerPairingDeviceId" type="text" readonly>
+              <button type="button" class="btn btn-secondary btn-sm" data-listener-copy="listenerPairingDeviceId"><i class="bi bi-copy"></i><span>Αντιγραφή</span></button>
+            </div>
+            <label for="listenerPairingToken">Device Token</label>
+            <div class="listener-copy-row">
+              <input id="listenerPairingToken" type="text" readonly>
+              <button type="button" class="btn btn-secondary btn-sm" data-listener-copy="listenerPairingToken"><i class="bi bi-copy"></i><span>Αντιγραφή</span></button>
+            </div>
+          </div>
         </section>
       </div>
       <div id="stepMsg" class="msg"></div>
@@ -169,5 +190,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260810cardlistener4"></script>
+  <script src="/static/js/store-notify.js?v=20260810cardlistener5"></script>
 {% endblock %}

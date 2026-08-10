@@ -1,6 +1,6 @@
 /* Split stylesheet manifest. Keep imports ordered to preserve legacy cascade. */
 @import url("./office-foundation.css?v=20260629rolematrix2");
-@import url("./office-work-card.css?v=20260810listenerlayout1");
+@import url("./office-work-card.css?v=20260810listenerpairing1");
 @import url("./office-components.css?v=20260803useracts1");
 @import url("./office-sync.css?v=20260629rolematrix2");
 @import url("./office-forms-date.css?v=20260629rolematrix2");

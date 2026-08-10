@@ -281,12 +281,14 @@ function updateNotifyUiState() {
   const listenerBtn = document.getElementById("btnSaveListenerSettings");
   const pairBtn = document.getElementById("btnPairListener");
   const revokeBtn = document.getElementById("btnRevokeListener");
+  const deviceName = document.getElementById("listenerDeviceName");
   if (saveBtn) saveBtn.disabled = !hasId;
   if (testBtn) testBtn.disabled = !hasId;
   if (addBtn) addBtn.disabled = !hasId;
   if (actionBtn) actionBtn.disabled = !hasId;
   if (listenerBtn) listenerBtn.disabled = !hasId;
   if (pairBtn) pairBtn.disabled = !hasId;
+  if (deviceName) deviceName.disabled = !hasId;
   if (revokeBtn) revokeBtn.disabled = !hasId || !cardListenerSettings.device;
 }
 
@@ -301,6 +303,7 @@ function renderCardListenerSettings() {
 }
 
 async function loadCardListenerSettings(storeId) {
+  hideListenerPairingResult();
   const res = await fetch(`/api/store/${storeId}/card-listener-settings`, { credentials: "same-origin" });
   const data = await Office.parseJson(res);
   if (!res.ok) {
@@ -324,15 +327,45 @@ async function saveCardListenerSettings() {
 }
 
 async function pairCardListener() {
-  const deviceName = prompt("Όνομα υπολογιστή / listener:", "erganiOS Listener") || "erganiOS Listener";
+  const deviceNameInput = document.getElementById("listenerDeviceName");
+  const deviceName = String(deviceNameInput?.value || "").trim();
+  if (!deviceName) {
+    deviceNameInput?.focus();
+    Office.showMsg("stepMsg", "Συμπληρώστε το όνομα του υπολογιστή / listener.", false);
+    return;
+  }
   const res = await fetch(`/api/store/${currentStoreId}/card-listener/pair`, {
     method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ device_name: deviceName }),
   });
   const data = await Office.parseJson(res);
   if (!res.ok) return Office.showMsg("stepMsg", data.error || "Αποτυχία pairing", false);
-  const result = document.getElementById("listenerPairingResult");
-  result.textContent = `Device ID: ${data.device_id} | Token: ${data.device_token} — αντιγράψτε τα τώρα, το token δεν εμφανίζεται ξανά.`;
   await loadCardListenerSettings(currentStoreId);
+  document.getElementById("listenerPairingDeviceId").value = data.device_id || "";
+  document.getElementById("listenerPairingToken").value = data.device_token || "";
+  document.getElementById("listenerPairingResult").classList.remove("hidden");
+  Office.showMsg("stepMsg", "Το pairing δημιουργήθηκε. Αντιγράψτε τώρα το Device ID και το Device Token.", true);
+}
+
+function hideListenerPairingResult() {
+  const result = document.getElementById("listenerPairingResult");
+  if (result) result.classList.add("hidden");
+  const deviceId = document.getElementById("listenerPairingDeviceId");
+  const token = document.getElementById("listenerPairingToken");
+  if (deviceId) deviceId.value = "";
+  if (token) token.value = "";
+}
+
+async function copyListenerPairingValue(inputId) {
+  const value = document.getElementById(inputId)?.value || "";
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    Office.showMsg("stepMsg", "Αντιγράφηκε στο πρόχειρο.", true);
+  } catch {
+    const input = document.getElementById(inputId);
+    input?.select();
+    Office.showMsg("stepMsg", "Το πεδίο επιλέχθηκε. Πατήστε Ctrl+C για αντιγραφή.", true);
+  }
 }
 
 async function revokeCardListener() {
@@ -347,6 +380,9 @@ function initCardListenerButtons() {
   document.getElementById("btnSaveListenerSettings").onclick = saveCardListenerSettings;
   document.getElementById("btnPairListener").onclick = pairCardListener;
   document.getElementById("btnRevokeListener").onclick = revokeCardListener;
+  document.querySelectorAll("[data-listener-copy]").forEach((button) => {
+    button.onclick = () => copyListenerPairingValue(button.dataset.listenerCopy);
+  });
 }
 
 function normalizeActionTime(value) {

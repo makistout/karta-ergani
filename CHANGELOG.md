@@ -23,6 +23,9 @@
   backend δεν μπορεί να φορτώσει καταστήματα λόγω αποτυχίας σύνδεσης με τη βάση.
 - Συμβατότητα pairing/polling με `pyodbc` εγκαταστάσεις που δεν υποστηρίζουν απευθείας
   SQL Server `datetimeoffset` (`ODBC type -155`), μέσω ασφαλούς μετατροπής σε ISO κείμενο.
+- Το όνομα υπολογιστή μεταφέρθηκε από browser prompt μέσα στη φόρμα pairing. Μετά τη
+  δημιουργία εμφανίζονται ευδιάκριτα Device ID/Token με ανεξάρτητα κουμπιά αντιγραφής,
+  ενώ η αποθήκευση διευκρινίζει ότι αφορά μόνο mode και offline timeout.
 - Windows listener v0.3.1: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η υπάρχουσα ροή χτυπημάτων παραμένει ενεργή. Ο dispatcher προς listener jobs δεν έχει
