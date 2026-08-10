@@ -113,9 +113,22 @@ def test_sixth_actual_day_is_not_automatically_changed_by_retrospective_engine()
 def test_missing_exit_is_completed_from_declared_boundary():
     result = build_weekly_report([sched()], [punch("09:00", None)], [contract(flex=0)])
     row = result["days"][0]
+    assert row["punch_recorded"] == "09:00–"
     assert row["actual"] == "09:00–17:00"
     assert row["punch_completeness"] == "Τεκμαρτό"
     assert row["status"] == "ok"
+    assert any("Λείπει έξοδος" in line for line in row["status_explanation"])
+
+
+def test_orphan_punch_is_explained():
+    result = build_weekly_report(
+        [sched()], [punch("09:02", "17:03"), punch("19:23", "20:30")], [contract()]
+    )
+    row = result["days"][0]
+    assert row["punch_recorded"] == "09:02–17:03\n19:23–20:30"
+    assert row["status"] == "review"
+    assert row["orphan_punch_count"] == 1
+    assert any("μη αντιστοιχισμέν" in line for line in row["status_explanation"])
 
 
 def test_split_schedule_matches_each_punch_independently():

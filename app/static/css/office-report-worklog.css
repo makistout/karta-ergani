@@ -938,8 +938,18 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-table td { padding:.42rem .25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .apologistic-table td:first-child { white-space:normal; line-height:1.1; font-size:.68rem; overflow-wrap:anywhere; }
 .apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(12) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:.72rem; font-variant-numeric:tabular-nums; }
+.apologistic-table td.apologistic-punch-cell { white-space:normal; line-height:1.25; vertical-align:top; text-align:center; }
+.apologistic-table th:nth-child(4) { text-align:center; }
 .apologistic-table td:nth-child(n+5):nth-child(-n+11) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .apologistic-table td:last-child { text-align:center; overflow:visible; }
+.apologistic-result-cell { white-space:nowrap; }
+.apologistic-result-cell .status-badge { vertical-align:middle; }
+.apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .2rem; margin-left:.15rem; vertical-align:middle; line-height:1; }
+.apologistic-info-btn:hover, .apologistic-info-btn[aria-expanded="true"] { color:var(--accent); }
+.apologistic-info-modal-panel { width:min(100%,32rem); max-height:min(88vh,560px); }
+.apologistic-info-modal-body { overflow:auto; flex:1 1 auto; min-height:0; margin-bottom:.75rem; }
+.apologistic-info-list { margin:0; padding-left:1.1rem; font-size:.78rem; line-height:1.45; color:var(--text); }
+.apologistic-info-list li + li { margin-top:.45rem; }
 .apologistic-table .status-badge { font-size:.68rem; padding:.18rem .32rem; white-space:nowrap; }
 .apologistic-table td small { display:none; }
 .apologistic-table .time-diff--plus { color:#9a5e00; }

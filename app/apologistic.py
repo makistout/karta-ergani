@@ -51,6 +51,116 @@ def _hm(total: int) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+def _format_recorded_boundary(value: Any) -> str:
+    return str(value or "").strip()[:5] if _clock(value) else ""
+
+
+def _format_recorded_punch(punch: dict[str, Any]) -> str:
+    """Ώρες όπως καταγράφονται στην κάρτα· κενό όριο = κενή εμφάνιση."""
+    start = _format_recorded_boundary(punch.get("hour_from"))
+    end = _format_recorded_boundary(punch.get("hour_to"))
+    if not start and not end:
+        return "—"
+    if start and end:
+        return f"{start}–{end}"
+    if start:
+        return f"{start}–"
+    return f"–{end}"
+
+
+def _format_recorded_punches(punches: list[dict[str, Any]]) -> str:
+    if not punches:
+        return "—"
+    return "\n".join(_format_recorded_punch(p) for p in punches)
+
+
+def _format_matched_label(matched: list[dict[str, Any]]) -> str:
+    if not matched:
+        return "—"
+    return " · ".join(f"{m.get('from') or '—'}–{m.get('to') or '—'}" for m in matched)
+
+
+def _build_status_explanation(
+    *,
+    status: str,
+    reason: str,
+    day_punches: list[dict[str, Any]],
+    orphan_punches: list[dict[str, Any]],
+    matched: list[dict[str, Any]],
+    inferred: bool,
+    fully_missing: bool,
+    declared_label: str,
+    actual_label: str,
+    punch_recorded: str,
+    proposed: str,
+    proposal_basis: str,
+    confidence: str,
+    requires_confirmation: bool,
+    contract_kind: str,
+    break_minutes: int,
+    break_in_work: int | None,
+    classification_warning: str,
+    flex: int,
+    punch_count: int,
+    matched_parts: int,
+) -> list[str]:
+    status_names = {"ok": "Σύμφωνο", "change": "Μεταβολή", "review": "Έλεγχος"}
+    lines = [f"Αποτέλεσμα: {status_names.get(status, status)}", reason]
+
+    if fully_missing:
+        lines.append("Δεν υπάρχει καμία εγγραφή χτυπήματος στην κάρτα.")
+    elif punch_recorded != "—":
+        lines.append(f"Καταγεγραμμένα χτυπήματα ({punch_count}):")
+        for item in day_punches:
+            lines.append(f"  · {_format_recorded_punch(item)}")
+
+    if punch_count > matched_parts and matched_parts:
+        lines.append(
+            f"Αντιστοιχίστηκαν {matched_parts} από {punch_count} εγγραφές με το δηλωμένο ωράριο ({declared_label})."
+        )
+
+    if orphan_punches:
+        lines.append(f"Επιπλέον μη αντιστοιχισμένες εγγραφές ({len(orphan_punches)}):")
+        for item in orphan_punches:
+            lines.append(f"  · {_format_recorded_punch(item)}")
+
+    if inferred and matched:
+        for index, item in enumerate(matched, start=1):
+            prefix = f"Τμήμα {index}: " if len(matched) > 1 else ""
+            if item.get("inferred_from"):
+                lines.append(f"{prefix}Λείπει είσοδος στην κάρτα — για υπολογισμό χρησιμοποιήθηκε δηλωμένη έναρξη ({item.get('from')}).")
+            if item.get("inferred_to"):
+                lines.append(f"{prefix}Λείπει έξοδος στην κάρτα — για υπολογισμό χρησιμοποιήθηκε δηλωμένη λήξη ({item.get('to')}).")
+
+    if actual_label != punch_recorded and actual_label != "—" and inferred:
+        lines.append(f"Για ώρες και διαφορές αξιολογήθηκε (τεκμαίρεται): {actual_label}")
+
+    if proposed and proposed != declared_label:
+        lines.append(f"Πρόταση απολογιστικού: {proposed} ({proposal_basis}).")
+    elif status == "ok":
+        lines.append(f"Πρόταση: διατήρηση δηλωμένου ωραρίου ({declared_label}).")
+
+    if flex:
+        lines.append(f"Ευέλικτη προσέλευση σύμβασης: {flex} λεπτά.")
+
+    if contract_kind in ("Άγνωστη σύμβαση", "Μη προσδιορισμένη"):
+        lines.append(f"Σύμβαση: {contract_kind} — απαιτείται χειροκίνητος έλεγχος.")
+
+    if break_minutes and break_in_work is None:
+        lines.append(
+            f"Διάλειμμα {break_minutes} λεπτά χωρίς ρητή ένδειξη «εντός/εκτός» — δεν αφαιρέθηκε αυτόματα."
+        )
+
+    if classification_warning:
+        lines.append(classification_warning)
+
+    lines.append(f"Βεβαιότητα: {confidence}.")
+    if requires_confirmation:
+        lines.append("Χρειάζεται επιβεβαίωση πριν από οποιαδήποτε δήλωση.")
+
+    return lines
+
+
 def _night_minutes(start: Any, end: Any) -> int:
     """Minutes overlapping 22:00–06:00, attributed to the start date."""
     a = _minute_of_day(start)
@@ -233,7 +343,8 @@ def build_weekly_report(
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
         fully_missing = bool(work_slots and not day_punches)
         declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "—")
-        actual_label = " · ".join(f"{m.get('from') or '—'}–{m.get('to') or '—'}" for m in matched) or "—"
+        punch_recorded = _format_recorded_punches(day_punches)
+        actual_label = _format_matched_label(matched)
         flex = int((contract or {}).get("flex_arrival_minutes") or (work_slots[0].get("flex_arrival_minutes") if work_slots else 0) or 0)
         break_minutes, break_in_work, outside_break = _break_context(contract, work_slots)
         effective_actual = max(0, (actual_minutes or 0) - outside_break) if actual_minutes is not None else None
@@ -302,12 +413,30 @@ def build_weekly_report(
                                  or break_in_work is None and break_minutes > 0
                                  or contract_flags["work_arrangement"] or contract_flags["uneven_distribution"])
         confidence = "Χαμηλή" if requires_confirmation else ("Μέση" if len(day_punches) > len(work_slots) else "Υψηλή")
+        orphan_details = [
+            {"from": _format_recorded_boundary(p.get("hour_from")) or None,
+             "to": _format_recorded_boundary(p.get("hour_to")) or None,
+             "label": _format_recorded_punch(p)}
+            for p in orphan_punches
+        ]
+        status_explanation = _build_status_explanation(
+            status=status, reason=reason, day_punches=day_punches, orphan_punches=orphan_punches,
+            matched=matched, inferred=inferred, fully_missing=fully_missing,
+            declared_label=declared_label, actual_label=actual_label, punch_recorded=punch_recorded,
+            proposed=proposed, proposal_basis=proposal_basis, confidence=confidence,
+            requires_confirmation=requires_confirmation, contract_kind=contract_kind,
+            break_minutes=break_minutes, break_in_work=break_in_work,
+            classification_warning=bands.get("classification_warning") or "",
+            flex=flex, punch_count=len(day_punches), matched_parts=len(matched),
+        )
         daily.append({
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
             **contract_flags,
-            "declared": declared_label, "actual": actual_label, "proposed": proposed,
+            "declared": declared_label, "punch_recorded": punch_recorded,
+            "actual": actual_label, "proposed": proposed,
             "proposal_basis": proposal_basis, "status": status, "reason": reason,
+            "status_explanation": status_explanation, "orphan_punches": orphan_details,
             "declared_minutes": declared_minutes, "actual_minutes": actual_minutes,
             "effective_actual_minutes": effective_actual, "extra_minutes": max(0, net_difference or 0),
             "punch_count": len(day_punches), "matched_parts": len(matched), "orphan_punch_count": len(orphan_punches),
@@ -335,9 +464,14 @@ def build_weekly_report(
         if len(declared_workdays) == 7:
             for row in declared_workdays:
                 if row["punch_count"] == 0:
-                    row.update(status="review", reason="Εβδομάδα 7 δηλωμένων ημερών χωρίς χτύπημα: πρόταση ρεπό με έγκριση",
+                    rest_reason = "Εβδομάδα 7 δηλωμένων ημερών χωρίς χτύπημα: πρόταση ρεπό με έγκριση"
+                    row.update(status="review", reason=rest_reason,
                                proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", suggested_rest=True,
-                               requires_confirmation=True, confidence="Χαμηλή")
+                               requires_confirmation=True, confidence="Χαμηλή",
+                               status_explanation=["Αποτέλεσμα: Έλεγχος", rest_reason,
+                                                   "Δεν υπάρχει καμία εγγραφή χτυπήματος στην κάρτα.",
+                                                   "Πρόταση: ΑΝΑΠΑΥΣΗ/ΡΕΠΟ (μόνο με έγκριση).",
+                                                   "Βεβαιότητα: Χαμηλή.", "Χρειάζεται επιβεβαίωση πριν από οποιαδήποτε δήλωση."])
 
     summaries = []
     for afm, rows in by_employee.items():

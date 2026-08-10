@@ -10,7 +10,6 @@
       <button type="button" class="btn btn-secondary" id="weekPrev"><i class="bi bi-chevron-left"></i></button>
       <strong id="weekLabel">Φόρτωση…</strong>
       <button type="button" class="btn btn-secondary" id="weekNext"><i class="bi bi-chevron-right"></i></button>
-      <button type="button" class="btn" id="weekDefault">Προηγούμενη εβδομάδα</button>
     </div>
     <div id="apologisticDayTabs" class="apologistic-day-tabs" aria-label="Ημέρες εβδομάδας"></div>
   </div>
@@ -19,7 +18,18 @@
     <div id="apologisticWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
   </div>
   <div class="msg msg-warn" id="apologisticNotice"></div>
+  <div id="apologisticInfoModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticInfoModalTitle">
+    <div class="office-modal-backdrop" data-apologistic-info-close></div>
+    <div class="office-modal-panel office-modal-panel--history apologistic-info-modal-panel">
+      <h2 id="apologisticInfoModalTitle" class="office-modal-title">Ανάλυση αποτελέσματος</h2>
+      <p id="apologisticInfoModalSub" class="office-modal-sub"></p>
+      <div id="apologisticInfoModalBody" class="apologistic-info-modal-body"></div>
+      <div class="office-modal-actions">
+        <button type="button" class="btn btn-secondary" data-apologistic-info-close>Κλείσιμο</button>
+      </div>
+    </div>
+  </div>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/apologistic.js?v=20260809a8"></script>
+  <script src="/static/js/apologistic.js?v=20260810a6"></script>
 {% endblock %}
