@@ -154,7 +154,22 @@
                 <input id="listenerOfflineSeconds" type="number" min="15" max="600" step="1" value="60">
               </label>
             </div>
-            <p class="field-hint listener-device-status" id="listenerDeviceStatus">Δεν έχει φορτωθεί κατάσταση listener.</p>
+            <div class="listener-device-list" aria-live="polite">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Κατάσταση</th>
+                    <th>Όνομα υπολογιστή</th>
+                    <th>Device ID</th>
+                    <th>Δημόσια IP</th>
+                    <th>Έκδοση</th>
+                    <th>Τελευταία επικοινωνία</th>
+                  </tr>
+                </thead>
+                <tbody id="listenerDeviceRows"></tbody>
+              </table>
+              <p class="field-hint listener-device-empty" id="listenerDeviceEmpty">Δεν έχει φορτωθεί κατάσταση listener.</p>
+            </div>
           </div>
           <div class="listener-pairing-panel">
             <label for="listenerDeviceName">
@@ -190,5 +205,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260810cardlistener5"></script>
+  <script src="/static/js/store-notify.js?v=20260810cardlistener6"></script>
 {% endblock %}

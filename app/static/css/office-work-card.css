@@ -872,10 +872,59 @@ input, select {
   width: 6rem;
 }
 
-.listener-device-status {
+.listener-device-list {
   margin: 0.6rem 0 0;
   padding-top: 0.65rem;
   border-top: 1px solid #e8edf2;
+  overflow-x: auto;
+}
+
+.listener-device-list table {
+  width: 100%;
+  min-width: 56rem;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.listener-device-list th,
+.listener-device-list td {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #dfe6ee;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.listener-device-list th {
+  background: #eef3f8;
+  color: #52647a;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.listener-device-list td {
+  font-size: 0.84rem;
+}
+
+.listener-device-empty {
+  margin: 0;
+  padding: 0.55rem 0;
+}
+
+.listener-status-online,
+.listener-status-offline {
+  font-weight: 700;
+}
+
+.listener-status-online { color: #16834b; }
+.listener-status-offline { color: #b45309; }
+
+.listener-device-id {
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .listener-pairing-panel {

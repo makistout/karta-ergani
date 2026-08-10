@@ -295,11 +295,44 @@ function updateNotifyUiState() {
 function renderCardListenerSettings() {
   document.getElementById("cardSubmissionMode").value = cardListenerSettings.card_submission_mode || "erganios";
   document.getElementById("listenerOfflineSeconds").value = String(cardListenerSettings.listener_offline_seconds || 60);
-  const device = cardListenerSettings.device;
-  const status = document.getElementById("listenerDeviceStatus");
-  if (!device) status.textContent = "Δεν υπάρχει συνδεδεμένος listener για αυτό το κατάστημα.";
-  else status.textContent = `${device.is_online ? "Online" : "Offline"} · ${device.device_name || device.device_id} · IP ${device.last_seen_ip || "—"} · έκδοση ${device.agent_version || "—"} · τελευταία επικοινωνία ${device.last_seen_at || "—"}`;
+  renderListenerDevices(cardListenerSettings.devices || (cardListenerSettings.device ? [cardListenerSettings.device] : []));
   updateNotifyUiState();
+}
+
+function formatListenerDateTime(value) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return new Intl.DateTimeFormat("el-GR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(parsed).replace(",", "");
+}
+
+function appendListenerCell(row, text, className = "") {
+  const cell = document.createElement("td");
+  cell.textContent = text;
+  if (className) cell.className = className;
+  row.appendChild(cell);
+}
+
+function renderListenerDevices(devices) {
+  const body = document.getElementById("listenerDeviceRows");
+  const empty = document.getElementById("listenerDeviceEmpty");
+  body.replaceChildren();
+  const rows = Array.isArray(devices) ? devices : [];
+  empty.classList.toggle("hidden", rows.length > 0);
+  empty.textContent = rows.length ? "" : "Δεν υπάρχει συνδεδεμένος listener για αυτό το κατάστημα.";
+  rows.forEach((device) => {
+    const row = document.createElement("tr");
+    appendListenerCell(row, device.is_online ? "Online" : "Offline", device.is_online ? "listener-status-online" : "listener-status-offline");
+    appendListenerCell(row, device.device_name || "—");
+    appendListenerCell(row, device.device_id || "—", "listener-device-id");
+    appendListenerCell(row, device.last_seen_ip || "—");
+    appendListenerCell(row, device.agent_version || "—");
+    appendListenerCell(row, formatListenerDateTime(device.last_seen_at));
+    body.appendChild(row);
+  });
 }
 
 async function loadCardListenerSettings(storeId) {

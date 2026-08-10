@@ -60,6 +60,7 @@ def get_listener_settings(store_id: int) -> dict[str, Any]:
             data["device"] = row_to_dict(cur, device) if device else None
         else:
             data["device"] = None
+    data["devices"] = [data["device"]] if data.get("device") else []
     data["card_submission_mode"] = str(data.get("card_submission_mode") or "erganios")
     data["listener_offline_seconds"] = int(data.get("listener_offline_seconds") or 60)
     return data

@@ -26,6 +26,9 @@
 - Το όνομα υπολογιστή μεταφέρθηκε από browser prompt μέσα στη φόρμα pairing. Μετά τη
   δημιουργία εμφανίζονται ευδιάκριτα Device ID/Token με ανεξάρτητα κουμπιά αντιγραφής,
   ενώ η αποθήκευση διευκρινίζει ότι αφορά μόνο mode και offline timeout.
+- Η κατάσταση listener εμφανίζεται πλέον σε responsive πίνακα συσκευών. Η τελευταία
+  επικοινωνία μορφοποιείται στην τοπική ώρα ως `ηη/μμ/εεεε ωω:λλ`, ενώ το API παρέχει
+  συλλογή `devices` για μελλοντική υποστήριξη πολλαπλών listeners.
 - Windows listener v0.3.2: WinForms setup, DPAPI, Windows Service automatic start/recovery,
   ACL, self-install/uninstall και disabled ένδειξη περιβάλλοντος ΕΡΓΑΝΗ.
 - Η setup φόρμα είναι resizable/scrollable και προσαρμόζεται στο διαθέσιμο working area για
