@@ -633,6 +633,10 @@ def test_auto_close_retries_without_aitiologia_when_ergani_forbids(monkeypatch):
 
     client = FakeClient()
     monkeypatch.setattr(auto_close_cards, "client_for_store", lambda cfg: client)
+    monkeypatch.setattr(auto_close_cards, "get_listener_settings", lambda sid: {
+        "card_submission_mode": "listener", "listener_offline_seconds": 60,
+        "device": {"is_online": False},
+    })
     monkeypatch.setattr(
         auto_close_cards,
         "api_login_credentials",
@@ -693,3 +697,82 @@ def test_auto_close_retries_without_aitiologia_when_ergani_forbids(monkeypatch):
     second = client.calls[1]["Cards"]["Card"][0]["Details"]["CardDetails"][0]
     assert first.get("f_aitiologia") == "001"
     assert second.get("f_aitiologia") is None
+
+
+def test_auto_close_uses_online_listener_without_direct_ergani_call(monkeypatch):
+    monkeypatch.setattr(auto_close_cards, "store_api_context", lambda cfg: {
+        "employer_afm": "999999999", "branch_aa": "0", "api_base_url": "https://api.example.test",
+    })
+    monkeypatch.setattr(auto_close_cards, "_load_previous_day_rows", lambda *a, **k: ([{
+        "employee_afm": "122643591", "eponymo": "TEST", "onoma": "USER",
+        "work_date_iso": "2026-08-05", "portal_hour_from": "18:00", "portal_hour_to": "",
+        "hour_from": "18:00", "hour_to": "", "employee_active": True,
+        "schedule": {"hour_from": "18:00", "hour_to": "01:00"},
+    }], {}))
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(auto_close_cards, "has_entry_for_checkout", lambda **k: True)
+    monkeypatch.setattr(auto_close_cards, "get_listener_settings", lambda sid: {
+        "card_submission_mode": "listener", "listener_offline_seconds": 60,
+        "device": {"is_online": True},
+    })
+    captured = {}
+    monkeypatch.setattr(auto_close_cards, "enqueue_job", lambda **k: captured.update(k) or {"job_uuid": "job-1"})
+    monkeypatch.setattr(auto_close_cards, "wait_for_job", lambda *a, **k: {
+        "status": "succeeded", "upstream_http_status": 200, "protocol": "P-LISTENER",
+        "ergani_submission_id": "77", "submit_date_text": "now", "result_data": {"ok": True},
+        "submission_ip": "198.51.100.10", "executor_instance": "device-1",
+    })
+    persisted = {}
+    monkeypatch.setattr(auto_close_cards, "persist_wrk_card_submit", lambda *a, **k: persisted.update(k) or 991)
+    monkeypatch.setattr(auto_close_cards, "attach_job_declaration", lambda *a, **k: None)
+    monkeypatch.setattr(auto_close_cards, "record_audit_event", lambda **k: None)
+    monkeypatch.setattr(auto_close_cards, "_send_auto_close_notification", lambda **k: {"sent": False})
+    monkeypatch.setattr(auto_close_cards, "_auto_close_queue_delay_seconds", lambda: 0)
+    monkeypatch.setattr(auto_close_cards, "apply_punch_time_jitter", lambda *a, **k: a[0] if a else k.get("hm"))
+    monkeypatch.setattr(auto_close_cards, "client_for_store", lambda cfg: (_ for _ in ()).throw(AssertionError("direct path called")))
+
+    result = auto_close_cards.run_auto_close_prev_day_for_store(
+        {"id": 11, "name": "TEST", "auto_close_prev_day_time": "02:00", "auto_close_fixed_exit_time": None},
+        work_date_iso="2026-08-05",
+    )
+
+    assert result["submitted"] == 1
+    assert result["failed"] == 0
+    assert captured["store_id"] == 11
+    assert captured["ergani_api_base_url"] == "https://api.example.test"
+    assert persisted["submission_channel"] == "listener"
+    assert persisted["submission_ip"] == "198.51.100.10"
+
+
+def test_auto_close_does_not_fallback_after_listener_has_leased_job(monkeypatch):
+    monkeypatch.setattr(auto_close_cards, "store_api_context", lambda cfg: {
+        "employer_afm": "999999999", "branch_aa": "0", "api_base_url": "https://api.example.test",
+    })
+    monkeypatch.setattr(auto_close_cards, "_load_previous_day_rows", lambda *a, **k: ([{
+        "employee_afm": "122643591", "eponymo": "TEST", "onoma": "USER",
+        "work_date_iso": "2026-08-05", "portal_hour_from": "18:00", "portal_hour_to": "",
+        "hour_from": "18:00", "hour_to": "", "employee_active": True,
+        "schedule": {"hour_from": "18:00", "hour_to": "01:00"},
+    }], {}))
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(auto_close_cards, "has_entry_for_checkout", lambda **k: True)
+    monkeypatch.setattr(auto_close_cards, "get_listener_settings", lambda sid: {
+        "card_submission_mode": "listener", "listener_offline_seconds": 60, "device": {"is_online": True},
+    })
+    monkeypatch.setattr(auto_close_cards, "enqueue_job", lambda **k: {"job_uuid": "job-2"})
+    monkeypatch.setattr(auto_close_cards, "wait_for_job", lambda *a, **k: {"status": "leased"})
+    monkeypatch.setattr(auto_close_cards, "cancel_queued_job_for_fallback", lambda *a, **k: False)
+    monkeypatch.setattr(auto_close_cards, "record_audit_event", lambda **k: None)
+    monkeypatch.setattr(auto_close_cards, "_send_auto_close_notification", lambda **k: {"sent": False})
+    monkeypatch.setattr(auto_close_cards, "_auto_close_queue_delay_seconds", lambda: 0)
+    monkeypatch.setattr(auto_close_cards, "apply_punch_time_jitter", lambda *a, **k: a[0] if a else k.get("hm"))
+    monkeypatch.setattr(auto_close_cards, "client_for_store", lambda cfg: (_ for _ in ()).throw(AssertionError("unsafe direct fallback")))
+
+    result = auto_close_cards.run_auto_close_prev_day_for_store(
+        {"id": 11, "name": "TEST", "auto_close_prev_day_time": "02:00", "auto_close_fixed_exit_time": None},
+        work_date_iso="2026-08-05",
+    )
+
+    assert result["submitted"] == 0
+    assert result["failed"] == 1
+    assert "παραλήφθηκε" in result["failures"][0]["error"]

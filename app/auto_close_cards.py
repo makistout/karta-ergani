@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import random
 import time
 from datetime import datetime, timedelta
@@ -13,6 +15,13 @@ from app.ergani_env import api_login_credentials, client_for_store, store_api_co
 from app.http_helpers import json_or_text, response_body_text
 from app.karta_log import KartaLogger
 from app.repo_card import card_event_exists, persist_wrk_card_submit
+from app.repo_card_listener import (
+    attach_job_declaration,
+    cancel_queued_job_for_fallback,
+    enqueue_job,
+    get_listener_settings,
+    wait_for_job,
+)
 from app.repo_work_log import (
     enrich_work_log_rows_with_schedule,
     list_work_log_for_store,
@@ -754,15 +763,29 @@ def run_auto_close_prev_day_for_store(
             "notification": notification,
         }
 
-    client = client_for_store(cfg)
-    api_user, api_pwd, api_ut = api_login_credentials(cfg)
-    auth_resp = client.authenticate(api_user, api_pwd, api_ut)
-    auth_data = json_or_text(auth_resp)
-    bearer = auth_data.get("accessToken") if auth_resp.ok and isinstance(auth_data, dict) else None
-    if not bearer:
-        detail = f"Αποτυχία Ergani API login ({auth_resp.status_code})"
-        log.error(detail)
-        return {"success": False, "work_date": work_date_iso, "submitted": 0, "failed": len(plan), "detail": detail, "plan": plan, "skipped": skipped}
+    client = None
+    bearer = None
+
+    def ensure_direct_client() -> tuple[Any, str | None, str | None]:
+        nonlocal client, bearer
+        if client is not None and bearer:
+            return client, bearer, None
+        client = client_for_store(cfg)
+        api_user, api_pwd, api_ut = api_login_credentials(cfg)
+        auth_resp = client.authenticate(api_user, api_pwd, api_ut)
+        auth_data = json_or_text(auth_resp)
+        bearer = auth_data.get("accessToken") if auth_resp.ok and isinstance(auth_data, dict) else None
+        return client, bearer, None if bearer else f"Αποτυχία Ergani API login ({auth_resp.status_code})"
+
+    try:
+        listener_cfg = get_listener_settings(sid)
+    except Exception:
+        log.error("Αδυναμία ανάγνωσης listener routing — χρήση erganiOS")
+        listener_cfg = {"card_submission_mode": "erganios"}
+    listener_selected = listener_cfg.get("card_submission_mode") == "listener"
+    listener_device = listener_cfg.get("device") or {}
+    listener_online = bool(listener_device.get("is_online"))
+    listener_timeout = int(listener_cfg.get("listener_offline_seconds") or 60)
 
     submitted = 0
     failures: list[dict[str, Any]] = []
@@ -811,6 +834,82 @@ def run_auto_close_prev_day_for_store(
             )
         except WorkCardPayloadError as ex:
             failures.append({**item, "error": str(ex)})
+            continue
+
+        listener_fallback_reason = "listener_offline" if listener_selected and not listener_online else None
+        if listener_selected and listener_online:
+            queued = None
+            try:
+                canonical = json.dumps({"store_id": sid, "payload": payload}, ensure_ascii=False,
+                                       sort_keys=True, separators=(",", ":"))
+                queued = enqueue_job(
+                    store_id=sid,
+                    idempotency_key=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+                    employee_afm=emp_afm,
+                    f_type="1" if event == "check_out" else "0",
+                    reference_date=str(item["reference_date"]),
+                    event_at=event_at,
+                    payload=payload,
+                    ergani_api_base_url=str(ctx.get("api_base_url") or Config.ERGANI_API_BASE_URL),
+                    fallback_seconds=listener_timeout,
+                )
+                listener_job = wait_for_job(queued["job_uuid"], sid, listener_timeout)
+            except Exception:
+                log.error("Αποτυχία dispatch στον listener πριν την υποβολή — χρήση erganiOS", employee_afm=emp_afm)
+                listener_job = None
+
+            if listener_job and listener_job.get("status") in {"succeeded", "failed", "needs_review"}:
+                job_status = str(listener_job.get("status"))
+                listener_ok = job_status == "succeeded"
+                listener_http_status = int(listener_job.get("upstream_http_status") or (200 if listener_ok else 502))
+                listener_data = listener_job.get("result_data")
+                try:
+                    declaration_id = persist_wrk_card_submit(
+                        SUBMISSION_CODE_WRK_CARD, listener_http_status, listener_ok, payload,
+                        json.dumps(listener_data, ensure_ascii=False) if listener_data is not None else None,
+                        listener_job.get("protocol"), listener_job.get("submit_date_text"),
+                        listener_job.get("ergani_submission_id"),
+                        client_device="erganiOS scheduled auto close",
+                        submission_channel="listener", submission_ip=listener_job.get("submission_ip"),
+                        executor_instance=listener_job.get("executor_instance"),
+                    )
+                    attach_job_declaration(queued["job_uuid"], sid, declaration_id)
+                except Exception as ex:
+                    failures.append({**item, "error": f"persist listener: {ex}"})
+                    continue
+                record_audit_event(
+                    action="work_card_punch_submit", success=listener_ok,
+                    http_status=listener_http_status, store_id=sid,
+                    employer_afm=ctx["employer_afm"], branch_aa=ctx["branch_aa"],
+                    entity_type="employee", entity_id=emp_afm,
+                    details={"source": "auto_close_prev_day", "employee_afm": emp_afm,
+                             "employee_name": item.get("employee_name"), "event": event,
+                             "reference_date": item["reference_date"], "event_date": event_date,
+                             "event_at": event_at, "batch_index": idx, "batch_total": len(plan),
+                             "duration_minutes": item["duration_minutes"], "duration_source": item["duration_source"],
+                             "submission_channel": "listener", "listener_job_uuid": queued["job_uuid"],
+                             "listener_status": job_status, "submission_ip": listener_job.get("submission_ip"),
+                             "executor_instance": listener_job.get("executor_instance")},
+                    client_device="erganiOS scheduled auto close",
+                )
+                if listener_ok:
+                    submitted += 1
+                    log.info(f"Αυτόματο κλείσιμο {idx}/{len(plan)} OK μέσω listener: {item['employee_name']} {item['retro_time']}",
+                             employee_afm=emp_afm, listener_job_uuid=queued["job_uuid"])
+                else:
+                    failures.append({**item, "error": listener_job.get("error_summary") or job_status})
+                continue
+
+            if queued:
+                if cancel_queued_job_for_fallback(queued["job_uuid"], sid):
+                    listener_fallback_reason = "listener_timeout"
+                else:
+                    failures.append({**item, "error": "Το χτύπημα παραλήφθηκε από τον listener· αναμένεται/απαιτεί έλεγχο"})
+                    continue
+
+        client, bearer, auth_error = ensure_direct_client()
+        if auth_error or not bearer:
+            failures.append({**item, "error": auth_error or "Αποτυχία Ergani API login"})
             continue
         resp = client.document_submit(SUBMISSION_CODE_WRK_CARD, payload, bearer)
         parsed = json_or_text(resp)
@@ -884,6 +983,8 @@ def run_auto_close_prev_day_for_store(
                 "duration_minutes": item["duration_minutes"],
                 "duration_source": item["duration_source"],
                 "aitiologia_retry": aitiologia_retry,
+                "submission_channel": "erganios",
+                "listener_fallback_reason": listener_fallback_reason,
                 "ergani_response": parsed if not resp.ok else None,
             },
             client_device="erganiOS scheduled auto close",

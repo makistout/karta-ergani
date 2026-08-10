@@ -8,6 +8,21 @@
 
 ---
 
+## 2026-08-11 — Αυτόματο κλείσιμο μέσω Listener
+
+- Το `auto_close_prev_day` ακολουθεί πλέον το `card_submission_mode` του
+  καταστήματος όπως κάθε υποβολή `WRKCardSE`.
+- Με online Listener δημιουργείται idempotent job και η υποβολή καταγράφεται με
+  `submission_channel=listener`, δημόσια IP και executor device.
+- Με offline Listener ή ακυρώσιμο queued timeout χρησιμοποιείται η υπάρχουσα
+  απευθείας διαδρομή erganiOS και καταγράφεται ο λόγος fallback.
+- Αν το job έχει ήδη παραληφθεί από Listener, απαγορεύεται direct fallback ώστε
+  να μην προκύψει διπλό χτύπημα.
+- Προστέθηκαν regression tests για online Listener, offline fallback και leased
+  job χωρίς δεύτερη υποβολή.
+
+---
+
 ## 2026-08-10 — Τοπικός listener ψηφιακής κάρτας v0.3.4
 
 - Προστέθηκε κοινή ζωντανή ένδειξη εξέλιξης σε όλα τα UI σημεία υποβολής `WRKCardSE`: αρχική
