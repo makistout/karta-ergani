@@ -7,7 +7,7 @@
 άλλη υπηρεσία ΕΡΓΑΝΗ.
 
 Έχουν υλοποιηθεί schema, ρυθμίσεις, pairing, device isolation, listener API και Windows
-listener v0.3.4. Ο dispatcher είναι συνδεδεμένος αποκλειστικά στη ροή `WRKCardSE`:
+listener v0.3.5. Ο dispatcher είναι συνδεδεμένος αποκλειστικά στη ροή `WRKCardSE`:
 όταν το κατάστημα είναι σε mode `listener` και η συσκευή είναι online, δημιουργείται job και η
 υποβολή γίνεται από τον listener. Όλες οι άλλες υπηρεσίες και τα καταστήματα σε mode `erganios`
 συνεχίζουν από το υπάρχον erganiOS path.
@@ -105,7 +105,7 @@ ERGANI_EGRESS_IP=203.0.113.10
 ## Περιβάλλον ΕΡΓΑΝΗ
 
 Το authenticated health response επιστρέφει `ergani_env`, ελληνική ετικέτα και API base
-URL του καταστήματος. Ο listener v0.3.4 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
+URL του καταστήματος. Ο listener v0.3.5 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
 από το `Usertype` κατά τον έλεγχο pairing.
 
 Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job, το οποίο παράγεται από το
@@ -127,7 +127,7 @@ URL του καταστήματος. Ο listener v0.3.4 εμφανίζει το 
   timer ανά δευτερόλεπτο, ένδειξη ελέγχου fallback στα 60″ και τελικό κανάλι εκτέλεσης. Τα κουμπιά
   παραμένουν κλειδωμένα όσο εκκρεμεί η απόκριση, ώστε να αποφεύγεται δεύτερη υποβολή.
 
-## Windows listener v0.3.4
+## Windows listener v0.3.5
 
 - Project: `listener/Erganios.Listener/`.
 - Self-contained compressed single-file Win-x64 executable.
@@ -166,5 +166,5 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 
 - Backend regression suite: 216 tests πέρασαν, εξαιρώντας το γνωστό ανεξάρτητο test που
   ανοίγει πραγματική DB σύνδεση αντί για πλήρες mock.
-- Listener v0.3.4: επιτυχές restore/publish.
+- Listener v0.3.5: πλήρες globalization support για Windows cultures (`el-GR`) και επιτυχές restore/publish.
 - Tests για store isolation, network refresh και trial environment health response.
