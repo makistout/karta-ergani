@@ -27,12 +27,15 @@ from app.repo_work_log import (
     list_work_log_for_store,
 )
 from app.work_card_payload import (
+    FUTURE_EVENT_AT_ERROR,
     RETRO_AITIOLOGIA_INTERNET,
     SUBMISSION_CODE_WRK_CARD,
     WorkCardPayloadError,
     build_wrk_card_se_payload,
     ergani_forbids_aitiologia,
+    event_at_is_future,
     norm_afm,
+    parse_event_at,
     tz_athens,
 )
 from app.punch_time_jitter import apply_punch_time_jitter
@@ -810,6 +813,17 @@ def run_auto_close_prev_day_for_store(
         event_date = str(item.get("event_date_iso") or item["reference_date"]).strip()[:10]
         event_at = f"{event_date}T{item['retro_time']}:00"
         event = str(item.get("event") or "check_out").strip() or "check_out"
+        if event_at_is_future(parse_event_at(event_at, str(item["reference_date"]))):
+            skipped.append({**item, "reason": FUTURE_EVENT_AT_ERROR, "event_at": event_at})
+            log.info(
+                f"Παράλειψη αυτόματου κλεισίματος {idx}/{len(plan)}: μελλοντική ώρα {event_at}",
+                employee_afm=emp_afm,
+                event=event,
+                event_at=event_at,
+                batch_index=idx,
+                batch_total=len(plan),
+            )
+            continue
         if event == "check_out" and not has_entry_for_checkout(
             employer_afm=ctx["employer_afm"],
             branch_aa=ctx["branch_aa"],

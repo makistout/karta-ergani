@@ -591,6 +591,42 @@ def test_empty_fixed_exit_keeps_schedule_based_times(monkeypatch):
     assert plan[0]["duration_source"] == "schedule"
 
 
+def test_auto_close_skips_future_event_without_calling_ergani(monkeypatch):
+    monkeypatch.setattr(auto_close_cards, "store_api_context", lambda cfg: {
+        "employer_afm": "999999999", "branch_aa": "0",
+    })
+    monkeypatch.setattr(auto_close_cards, "_load_previous_day_rows", lambda *a, **k: ([{
+        "employee_afm": "122643591", "eponymo": "TEST", "onoma": "USER",
+        "work_date_iso": "2026-08-10", "portal_hour_from": "18:49",
+        "portal_hour_to": "", "hour_from": "18:49", "hour_to": "",
+        "employee_active": True,
+        "schedule": {"hour_from": "18:49", "hour_to": "01:49"},
+    }], {}))
+    monkeypatch.setattr(auto_close_cards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(auto_close_cards, "event_at_is_future", lambda dt: True)
+    monkeypatch.setattr(auto_close_cards, "get_listener_settings", lambda sid: {
+        "card_submission_mode": "erganios", "device": {},
+    })
+    monkeypatch.setattr(auto_close_cards, "_auto_close_queue_delay_seconds", lambda: 0)
+    monkeypatch.setattr(auto_close_cards, "_send_auto_close_notification", lambda **k: {"sent": False})
+    monkeypatch.setattr(
+        auto_close_cards,
+        "client_for_store",
+        lambda cfg: (_ for _ in ()).throw(AssertionError("Ergani call must not happen")),
+    )
+
+    result = auto_close_cards.run_auto_close_prev_day_for_store(
+        {"id": 11, "name": "TEST", "auto_close_prev_day_time": "01:30"},
+        work_date_iso="2026-08-10",
+    )
+
+    assert result["success"] is True
+    assert result["submitted"] == 0
+    assert result["failed"] == 0
+    assert len(result["skipped"]) == 1
+    assert "μελλοντική" in result["skipped"][0]["reason"]
+
+
 def test_auto_close_retries_without_aitiologia_when_ergani_forbids(monkeypatch):
     class FakeResp:
         def __init__(self, ok, status_code, payload):

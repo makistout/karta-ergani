@@ -34,6 +34,9 @@ class WorkCardPayloadError(ValueError):
     pass
 
 
+FUTURE_EVENT_AT_ERROR = "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική"
+
+
 @lru_cache(maxsize=1)
 def tz_athens():
     try:
@@ -83,6 +86,17 @@ def parse_event_at(raw: str | None, reference_date: str | None) -> datetime:
             raise WorkCardPayloadError("Μη έγκυρο reference_date") from ex
         return datetime.combine(d, now.time(), tzinfo=tz_athens())
     return now
+
+
+def event_at_is_future(dt: datetime, *, now: datetime | None = None) -> bool:
+    """Κοινός guard για κάθε κανάλι υποβολής κάρτας εργασίας."""
+    event_dt = dt
+    if event_dt.tzinfo is None:
+        event_dt = event_dt.replace(tzinfo=tz_athens())
+    else:
+        event_dt = event_dt.astimezone(tz_athens())
+    current = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    return event_dt > current
 
 
 def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
@@ -268,6 +282,8 @@ def build_wrk_card_se_payload(
     aa = (branch_aa or "0").strip()[:32] or "0"
     ft = f_type_from_event(event, f_type)
     dt = parse_event_at(event_at, reference_date)
+    if event_at and event_at_is_future(dt):
+        raise WorkCardPayloadError(FUTURE_EVENT_AT_ERROR)
     ref = (reference_date or "").strip()[:10] or dt.date().isoformat()
     datetime.strptime(ref, "%Y-%m-%d")
     f_date = format_f_date_for_ergani(dt)

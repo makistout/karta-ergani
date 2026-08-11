@@ -1,9 +1,11 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.work_card_payload import (
     RETRO_AITIOLOGIA_INTERNET,
+    WorkCardPayloadError,
     build_wrk_card_se_payload,
+    event_at_is_future,
     ergani_forbids_aitiologia,
     resolve_wrk_card_aitiologia,
     tz_athens,
@@ -133,6 +135,29 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         detail = payload["Cards"]["Card"][0]["Details"]["CardDetails"][0]
         self.assertIsNone(detail["f_aitiologia"])
+
+    def test_payload_rejects_future_event_for_every_submission_channel(self):
+        future = datetime.now(tz_athens()) + timedelta(minutes=10)
+        with self.assertRaisesRegex(WorkCardPayloadError, "μελλοντική"):
+            build_wrk_card_se_payload(
+                employer_afm="123456789",
+                branch_aa="0",
+                employee_afm="987654321",
+                employee_last_name="Test",
+                employee_first_name="User",
+                event="check_out",
+                reference_date=future.date().isoformat(),
+                event_at=future.isoformat(),
+            )
+
+    def test_future_guard_accepts_current_or_past_event(self):
+        now = datetime(2026, 8, 11, 1, 36, 10, tzinfo=tz_athens())
+        self.assertTrue(event_at_is_future(
+            datetime(2026, 8, 11, 1, 49, tzinfo=tz_athens()), now=now
+        ))
+        self.assertFalse(event_at_is_future(
+            datetime(2026, 8, 11, 1, 36, tzinfo=tz_athens()), now=now
+        ))
 
     def test_routes_detects_ergani_xsd_aitiologia_requirement(self):
         from app.routes_work_card import _ergani_missing_aitiologia

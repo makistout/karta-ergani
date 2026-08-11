@@ -2709,3 +2709,9 @@ sequenceDiagram
 ### Σημείωση εγκατάστασης (2026-06-04)
 
 Η σύνδεση pyodbc στο `ergani-karta` είναι επιτυχής· αν το `apply_schema.py` αποτύχει με `CREATE TABLE permission denied`, ο login `ergani` χρειάζεται `db_owner` ή `CREATE TABLE` στη βάση (ζητήστε από DBA ή εκτελέστε το `sql/schema.sql` με sysadmin).
+# 2026-08-11 — Κάρτα εργασίας: καθολικός έλεγχος μελλοντικής ώρας
+
+- Κάθε προσπάθεια χτυπήματος (UI, API, Telegram, auto-close και listener dispatch)
+  απορρίπτεται τοπικά πριν από την υποβολή όταν το `event_at` είναι μελλοντικό.
+- Στο `auto_close_prev_day` η μελλοντική υπολογισμένη έξοδος καταγράφεται ως
+  παράλειψη και δεν δημιουργεί αποτυχημένη δήλωση προς την ΕΡΓΑΝΗ.
