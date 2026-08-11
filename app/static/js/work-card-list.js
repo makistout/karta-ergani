@@ -639,6 +639,9 @@ async function submitCard(eventName, options = {}) {
       body: JSON.stringify(body),
     });
     const data = await Office.parseJson(res);
+    // The WRKCardSE request has finished. Stop before rendering its result or
+    // refreshing the tables, otherwise the interval can overwrite success.
+    progress.stop();
     if (data._parseError) {
       showWorkCardMsg(data._parseError, false);
       return;
@@ -680,6 +683,7 @@ async function submitCard(eventName, options = {}) {
     await loadDayData();
     document.getElementById("workCardWrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
+    progress.stop();
     showWorkCardMsg(String(e), false);
   } finally {
     progress.stop();

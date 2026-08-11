@@ -124,6 +124,9 @@ async function submitRetro(eventName, options = {}) {
       }),
     });
     const data = await Office.parseJson(res);
+    // Stop as soon as submission responds; subsequent UI work is not part of
+    // the listener/Ergani execution time.
+    progress.stop();
     if (res.status === 409 && data.correction_available && !correctionMode) {
       progress.stop();
       const go = window.confirm(
@@ -156,6 +159,7 @@ async function submitRetro(eventName, options = {}) {
     ok += Office.workCardExecutionSuffix(data, progress.elapsedSeconds());
     showRetroMsg(ok, true);
   } catch (e) {
+    progress.stop();
     showRetroMsg(String(e), false);
     setFormEnabled(true);
   } finally {
