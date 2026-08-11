@@ -199,6 +199,7 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("POST", "/api/work-log/sync", "work_log.sync"),
     RouteRule("GET", "/api/work-log/sync/status/*", "work_log.view"),
     RouteRule("GET", "/api/apologistic/*", "work_log.view"),
+    RouteRule("PUT", "/api/apologistic/proposal", "work_log.view"),
     RouteRule("GET", "/api/monthly-status/*", "monthly_status.view"),
     RouteRule("POST", "/api/monthly-status/sync", "monthly_status.sync"),
     RouteRule("GET", "/api/work-card/*", "work_card.view"),

@@ -114,6 +114,16 @@ class Config:
     KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME = (
         os.environ.get("KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME") or "04:00"
     ).strip() or "04:00"
+    KARTA_SCHEDULED_APOLOGISTIC_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_APOLOGISTIC_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_APOLOGISTIC_WEEKDAY = int(
+        (os.environ.get("KARTA_SCHEDULED_APOLOGISTIC_WEEKDAY") or "0").strip() or "0"
+    )
+    KARTA_SCHEDULED_APOLOGISTIC_TIME = (
+        os.environ.get("KARTA_SCHEDULED_APOLOGISTIC_TIME") or "03:00"
+    ).strip() or "03:00"
     KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS = max(
         0,
         int(

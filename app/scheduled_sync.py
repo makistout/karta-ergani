@@ -25,6 +25,7 @@ OPERATION_FUTURE_SCHEDULE_SYNC = "scheduled_future_schedule_sync"
 OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
 OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
 OPERATION_EMPLOYMENT_CONTRACT_SYNC = "scheduled_employment_contract_sync"
+OPERATION_APOLOGISTIC_SNAPSHOT = "scheduled_apologistic_snapshot"
 FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
 _RUNNING_GRACE_MINUTES = 15
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
@@ -136,6 +137,16 @@ def _run_configured_auto_actions(
             "from_iso": recent_from or None,
             "to_iso": recent_to or None,
         }
+
+    apologistic_should_run, apologistic_reason = should_run_apologistic_snapshot(cfg)
+    if apologistic_should_run:
+        from app.apologistic import previous_week
+        from app.apologistic_snapshot import generate_store_week
+
+        week_from, week_to = previous_week()
+        actions["apologistic_snapshot"] = generate_store_week(cfg, week_from, week_to)
+    else:
+        actions["apologistic_snapshot"] = {"skipped": True, "reason": apologistic_reason}
 
     weekly_should_run, weekly_from, weekly_to, weekly_reason = (
         should_run_weekly_repair_work_log_sync(cfg)
@@ -358,6 +369,30 @@ def should_run_employment_contract_sync(
         base_date,
     ):
         return False, "έχει ήδη εκτελεστεί σήμερα"
+    return True, "έτοιμο"
+
+
+def should_run_apologistic_snapshot(
+    cfg: dict[str, Any], *, now: datetime | None = None,
+) -> tuple[bool, str]:
+    """Monday 03:00 guard; missing/failed stores retry on subsequent scheduler passes."""
+    from app.apologistic import previous_week
+    from app import repo_apologistic
+
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_APOLOGISTIC_ENABLED:
+        return False, "απενεργοποιημένο από ρύθμιση"
+    if local_now.weekday() != int(Config.KARTA_SCHEDULED_APOLOGISTIC_WEEKDAY or 0):
+        return False, "δεν είναι ημέρα παραγωγής απολογιστικού"
+    run_time = _normalized_sync_time(Config.KARTA_SCHEDULED_APOLOGISTIC_TIME, default="03:00")
+    if local_now.strftime("%H:%M") < run_time:
+        return False, f"αναμονή μέχρι {run_time}"
+    if not repo_apologistic.tables_available():
+        return False, "λείπουν οι πίνακες απολογιστικού"
+    week_from, _ = previous_week(local_now.date())
+    run = repo_apologistic.get_run(int(cfg["id"]), week_from)
+    if run and run.get("status") in ("draft", "approved", "locked"):
+        return False, "η προηγούμενη εβδομάδα έχει ήδη παραχθεί"
     return True, "έτοιμο"
 
 

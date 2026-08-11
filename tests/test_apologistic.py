@@ -108,13 +108,51 @@ def test_rest_with_punch_requires_review():
     assert result["days"][0]["status"] == "review"
 
 
+def test_rest_punch_is_ok_when_card_days_cover_contract_days():
+    schedules, punches = [], []
+    for offset in range(5):
+        day = f"{3 + offset:02d}/08/2026"
+        if offset == 4:
+            schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"))
+        else:
+            schedules.append(sched(day=day))
+        punches.append(punch(day=day))
+    row = next(item for item in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+               if item["work_date"] == "07/08/2026")
+    assert row["status"] == "ok"
+    assert row["weekly_punch_days"] == 5
+    assert row["contract_required_days"] == 5
+    assert row["replacement_candidates"] == []
+    assert [item["work_date"] for item in row["weekly_punch_details"]] == [
+        "03/08/2026", "04/08/2026", "05/08/2026", "06/08/2026", "07/08/2026"
+    ]
+    assert row["weekly_punch_details"][0]["punches"] == ["09:10–17:10"]
+    assert any("καλύπτουν ή υπερβαίνουν" in line for line in row["status_explanation"])
+    assert any("03/08/2026: 09:10–17:10" in line for line in row["status_explanation"])
+
+
+def test_rest_punch_lists_declared_days_without_card_when_contract_days_not_met():
+    schedules = [
+        sched(day="03/08/2026"),
+        sched(day="04/08/2026"),
+        sched(day="05/08/2026", start=None, end=None, shift="ΜΗ ΕΡΓΑΣΙΑ"),
+    ]
+    punches = [punch(day="03/08/2026"), punch(day="05/08/2026")]
+    row = next(item for item in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+               if item["work_date"] == "05/08/2026")
+    assert row["status"] == "review"
+    assert row["weekly_punch_days"] == 2
+    assert row["replacement_candidates"] == [{"work_date": "04/08/2026", "declared": "09:00–17:00"}]
+    assert any("04/08/2026: 09:00–17:00" in line for line in row["status_explanation"])
+
+
 def test_full_five_day_work_on_rest_proposes_eight_hours_and_separate_overtime():
     row = build_weekly_report(
         [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
         [punch("07:57", "16:58")],
         [contract(flex=0, days="5")],
     )["days"][0]
-    assert row["status"] == "change"
+    assert row["status"] == "review"
     assert row["proposed"] == "07:57–15:57"
     assert row["actual_minutes"] == 541
     assert row["overwork_minutes"] == 60

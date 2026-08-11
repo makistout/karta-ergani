@@ -1,7 +1,9 @@
 let weekStart = previousMonday();
+const latestCompletedWeekStart = new Date(weekStart);
 let reportState = { rows: [], store: null, filter: "all", selectedDate: "", dates: [] };
 let openExplanationId = null;
 let openEmployeeAfm = null;
+let proposalEditRow = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("apologistic");
@@ -9,7 +11,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("weekNext").onclick = () => moveWeek(7);
   initExplanationModal();
   initEmployeeModal();
+  initProposalModal();
   document.addEventListener("click", (event) => {
+    const proposalButton = event.target.closest(".apologistic-proposal-btn");
+    if (proposalButton) {
+      event.stopPropagation();
+      editProposal(proposalButton.dataset.employeeAfm || "", proposalButton.dataset.workDate || "");
+      return;
+    }
     const employeeButton = event.target.closest(".apologistic-employee-btn");
     if (employeeButton) {
       event.stopPropagation();
@@ -23,7 +32,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (openEmployeeAfm) closeEmployeeDetail();
+    if (proposalEditRow) closeProposalEditor();
+    else if (openEmployeeAfm) closeEmployeeDetail();
     else closeExplanation();
   });
   try {
@@ -49,6 +59,22 @@ function initEmployeeModal() {
   modal.querySelectorAll("[data-apologistic-employee-close]").forEach((el) => {
     el.addEventListener("click", closeEmployeeDetail);
   });
+}
+
+function initProposalModal() {
+  const modal = document.getElementById("apologisticProposalModal");
+  const form = document.getElementById("apologisticProposalForm");
+  if (!modal || !form || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-apologistic-proposal-close]").forEach((el) => el.addEventListener("click", closeProposalEditor));
+  modal.querySelectorAll(".input-time-24").forEach((input) => {
+    input.addEventListener("input", () => { input.value = Office.formatHourMinuteInput(input.value || ""); });
+    input.addEventListener("blur", () => {
+      const normalized = Office.normalizeHourMinute(input.value || "");
+      if (normalized) input.value = normalized;
+    });
+  });
+  form.addEventListener("submit", saveProposalEditor);
 }
 
 const employeeContractFields = [
@@ -134,7 +160,21 @@ function previousMonday() {
 }
 function iso(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
-function moveWeek(days) { weekStart = addDays(weekStart, days); loadReport(); }
+function syncWeekNavigation() {
+  const next = document.getElementById("weekNext");
+  if (!next) return;
+  const disabled = iso(weekStart) >= iso(latestCompletedWeekStart);
+  next.disabled = disabled;
+  next.setAttribute("aria-disabled", disabled ? "true" : "false");
+  next.title = disabled ? "Η τρέχουσα και οι επόμενες εβδομάδες δεν έχουν ακόμη απολογιστικά δεδομένα" : "Επόμενη ολοκληρωμένη εβδομάδα";
+}
+function moveWeek(days) {
+  const candidate = addDays(weekStart, days);
+  if (candidate > latestCompletedWeekStart) return;
+  weekStart = candidate;
+  syncWeekNavigation();
+  loadReport();
+}
 function mins(value) {
   if (value == null) return "—";
   const h = Math.floor(value / 60), m = value % 60;
@@ -150,6 +190,66 @@ function attr(value) { return Office.escapeHtml(String(value ?? "")); }
 function statusLabel(status) { return status === "ok" ? "Σύμφωνο" : status === "change" ? "Μεταβολή" : "Έλεγχος"; }
 function statusShortLabel(status) { return status === "ok" ? "Σ" : status === "change" ? "Μ" : "Ε"; }
 function rowExplanationId(row) { return `${row.employee_afm}-${String(row.work_date || "").replace(/\//g, "")}`; }
+
+function proposalHistory(row) {
+  const history = Array.isArray(row.proposal_history) ? row.proposal_history : [];
+  if (!history.length) return `<div class="apologistic-proposal-history-empty">Δεν έχει γίνει χειροκίνητη αλλαγή.</div>`;
+  return history.map((item) => {
+    const when = item.changed_at ? new Date(item.changed_at).toLocaleString("el-GR") : "—";
+    return `<div class="apologistic-proposal-history-item"><strong>${attr(item.new_value || "—")}</strong>` +
+      `<span>${attr(item.old_value || "—")} → ${attr(item.new_value || "—")}</span>` +
+      `<small>${attr(when)}${item.changed_by ? ` · ${attr(item.changed_by)}` : ""}</small></div>`;
+  }).join("");
+}
+
+async function editProposal(employeeAfm, workDate) {
+  const row = reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate);
+  if (!row) return;
+  const match = String(row.proposed || "").match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
+  proposalEditRow = row;
+  document.getElementById("apologisticProposalModalMeta").textContent = `${row.eponymo || ""} ${row.onoma || ""} · ${row.work_date}`;
+  document.getElementById("apologisticProposalFrom").value = match?.[1] || "";
+  document.getElementById("apologisticProposalTo").value = match?.[2] || "";
+  document.getElementById("apologisticProposalError").textContent = "";
+  document.getElementById("apologisticProposalModal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("apologisticProposalFrom")?.focus(), 0);
+}
+
+function closeProposalEditor() {
+  proposalEditRow = null;
+  document.getElementById("apologisticProposalModal")?.classList.add("hidden");
+  const error = document.getElementById("apologisticProposalError");
+  if (error) error.textContent = "";
+}
+
+async function saveProposalEditor(event) {
+  event.preventDefault();
+  const row = proposalEditRow;
+  if (!row) return;
+  const from = Office.normalizeHourMinute(document.getElementById("apologisticProposalFrom").value || "");
+  const to = Office.normalizeHourMinute(document.getElementById("apologisticProposalTo").value || "");
+  const errorBox = document.getElementById("apologisticProposalError");
+  if (!from || !to) {
+    errorBox.textContent = "Συμπληρώστε έγκυρες ώρες σε μορφή ΩΩ:ΛΛ.";
+    return;
+  }
+  const requested = `${from}–${to}`;
+  if (requested === row.proposed) { closeProposalEditor(); return; }
+  try {
+    const res = await fetch("/api/apologistic/proposal", {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({week_from: iso(weekStart), employee_afm: row.employee_afm, work_date: row.work_date, proposed: requested}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    row.proposed = data.proposed;
+    row.proposal_history = data.history || [];
+    closeProposalEditor();
+    renderVisibleRows();
+  } catch (error) {
+    errorBox.textContent = String(error.message || error);
+  }
+}
 
 function findExplanationRow(id) {
   return reportState.rows.find((row) => rowExplanationId(row) === id) || null;
@@ -182,13 +282,56 @@ function openExplanation(id) {
   sub.innerHTML = `<strong>${attr(employeeName)}</strong> · ${attr(row.work_date || "")} · ` +
     `<span class="status-badge apologistic-status--${attr(row.status)}">${attr(statusLabel(row.status))}</span>`;
 
-  const lines = Array.isArray(row.status_explanation) ? row.status_explanation : [row.reason || ""];
-  body.innerHTML = `<ul class="apologistic-info-list">${lines.map((line) => `<li>${attr(line)}</li>`).join("")}</ul>`;
+  if (Array.isArray(row.weekly_punch_details) && row.weekly_punch_details.length) {
+    body.innerHTML = weeklyNonWorkExplanation(row);
+  } else {
+    const lines = Array.isArray(row.status_explanation) ? row.status_explanation : [row.reason || ""];
+    body.innerHTML = `<ul class="apologistic-info-list">${lines.map((line) => `<li>${attr(line)}</li>`).join("")}</ul>`;
+  }
 
   modal.classList.remove("hidden");
   document.querySelectorAll(`.apologistic-info-btn[data-explanation-id="${id}"]`).forEach((button) => {
     button.setAttribute("aria-expanded", "true");
   });
+}
+
+function weeklyNonWorkExplanation(row) {
+  const currentPunches = String(row.punch_recorded || "—").split("\n").filter(Boolean);
+  const weeklyDays = row.weekly_punch_details || [];
+  const candidates = row.replacement_candidates || [];
+  const ignoredPrefixes = [
+    "Αποτέλεσμα:", "Χτύπημα σε ", "Καταγεγραμμένα χτυπήματα", "  · ",
+    "Εβδομαδιαίος έλεγχος:", "Η τρέχουσα σύμβαση προβλέπει",
+    "Αναλυτικές ημέρες και χτυπήματα", "Οι ημέρες με κάρτα καλύπτουν",
+    "Δηλωμένες ημέρες εργασίας χωρίς χτύπημα", "Δεν βρέθηκε δηλωμένη ημέρα",
+  ];
+  const notes = (row.status_explanation || []).filter((line) =>
+    line && !ignoredPrefixes.some((prefix) => String(line).startsWith(prefix))
+  );
+  const dayRows = weeklyDays.map((item) => {
+    const current = item.work_date === row.work_date;
+    return `<div class="apologistic-analysis-day${current ? " is-current" : ""}">` +
+      `<span>${attr(item.work_date)}${current ? " <em>τρέχουσα</em>" : ""}</span>` +
+      `<strong>${attr((item.punches || []).join(" · ") || "—")}</strong></div>`;
+  }).join("");
+  const candidateRows = candidates.length
+    ? candidates.map((item) => `<div class="apologistic-analysis-candidate"><span>${attr(item.work_date)}</span><strong>${attr(item.declared)}</strong></div>`).join("")
+    : `<p class="apologistic-analysis-empty">Δεν βρέθηκε δηλωμένη ημέρα εργασίας χωρίς χτύπημα.</p>`;
+  return `<div class="apologistic-analysis-grid">` +
+    `<section class="apologistic-analysis-card"><h3><i class="bi bi-calendar-event"></i> Τρέχουσα ημέρα</h3>` +
+      `<dl><div><dt>Κατάσταση</dt><dd>${attr(row.day_state || "—")}</dd></div>` +
+      `<div><dt>Χτύπημα${currentPunches.length > 1 ? "τα" : ""}</dt><dd>${currentPunches.map(attr).join(" · ")}</dd></div>` +
+      `<div><dt>Πρόταση</dt><dd>${attr(row.proposed || "—")}</dd></div></dl></section>` +
+    `<section class="apologistic-analysis-card"><h3><i class="bi bi-calendar-week"></i> Έλεγχος εβδομάδας</h3>` +
+      `<div class="apologistic-analysis-metrics"><div><strong>${attr(row.weekly_punch_days ?? weeklyDays.length)}</strong><span>ημέρες με κάρτα</span></div>` +
+      `<div><strong>${attr(row.contract_required_days ?? "—")}</strong><span>ημέρες σύμβασης</span></div></div>` +
+      `<div class="apologistic-analysis-days">${dayRows}</div></section>` +
+    `<section class="apologistic-analysis-card"><h3><i class="bi bi-arrow-left-right"></i> Υποψήφιες ημέρες αντικατάστασης</h3>${candidateRows}</section>` +
+    (notes.length ? `<section class="apologistic-analysis-card"><h3><i class="bi bi-info-circle"></i> Παρατηρήσεις</h3><ul>${notes.map((line) => `<li>${attr(line)}</li>`).join("")}</ul></section>` : "") +
+    `<section class="apologistic-analysis-conclusion apologistic-analysis-conclusion--${attr(row.status)}">` +
+      `<div><span>Συμπέρασμα</span><strong>${attr(row.reason || "—")}</strong></div>` +
+      `<span class="status-badge apologistic-status--${attr(row.status)}">${attr(statusLabel(row.status))}</span></section>` +
+    `</div>`;
 }
 
 function formatPunchPart(value, title) {
@@ -240,6 +383,7 @@ async function loadReport() {
   const wrap = document.getElementById("apologisticWrap");
   const end = addDays(weekStart, 6);
   document.getElementById("weekLabel").textContent = `${weekStart.toLocaleDateString("el-GR")} – ${end.toLocaleDateString("el-GR")}`;
+  syncWeekNavigation();
   Office.showTableLoading(wrap);
   closeExplanation();
   const res = await fetch(`/api/apologistic/week?from=${iso(weekStart)}&to=${iso(end)}`);
@@ -313,7 +457,7 @@ function renderRows(rows, store) {
   }
   const filterLabel = reportState.filter === "ok" ? " · φίλτρο: Σύμφωνο" : reportState.filter === "change" ? " · φίλτρο: Μεταβολές" : reportState.filter === "review" ? " · φίλτρο: Για έλεγχο" : "";
   let html = `<p class="table-meta"><i class="bi bi-shop-window"></i> <strong>${Office.escapeHtml(store?.name || "")}</strong> · ${attr(reportState.selectedDate)} · ${rows.length} εργαζόμενοι${filterLabel}</p>`;
-  html += `<table class="data apologistic-table"><thead><tr><th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτ.</th></tr></thead><tbody>`;
+  html += `<table class="data apologistic-table"><thead><tr><th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th></tr></thead><tbody>`;
   for (const row of rows) {
     const punchRecorded = row.punch_recorded ?? row.actual ?? "—";
     const explanationId = rowExplanationId(row);
@@ -353,9 +497,17 @@ function renderRows(rows, store) {
       `<td title="${attr(breakTip)}">${row.outside_break_minutes ? mins(row.outside_break_minutes) : "—"}</td>` +
       `<td title="${attr(netDetails)}" class="${diffClass(row.net_difference_minutes)}"><strong>${signedMins(row.net_difference_minutes)}</strong></td>` +
       `<td title="${attr((row.overtime_segments || []).map((segment) => `${segment.date}: ${segment.from}–${segment.to} (${mins(segment.minutes)})`).join(" · ") || "Δεν προκύπτει υπερωρία")}" class="${row.overtime_minutes ? "time-diff--plus" : ""}"><strong>${overtimeCell(row)}</strong></td>` +
-      `<td title="${attr(`Προτεινόμενο απολογιστικό: ${row.proposed} · ${row.proposal_basis || ""}`)}"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></td>` +
+      `<td class="apologistic-proposal-cell"><div class="apologistic-proposal-wrap">` +
+      `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></button>` +
+      `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status))}"><span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status)}</span>` +
       `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td></tr>`;
+    if ((row.replacement_candidates || []).length) {
+      html += `<tr class="apologistic-replacement-row"><td colspan="14"><div class="apologistic-replacement-options">` +
+        `<span><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Υποψήφιες ημέρες αντικατάστασης:</span>` +
+        row.replacement_candidates.map((item) => `<strong>${attr(item.work_date)} · ${attr(item.declared)}</strong>`).join("") +
+        `</div></td></tr>`;
+    }
   }
   wrap.innerHTML = html + `</tbody></table>`;
   if (openExplanationId) {

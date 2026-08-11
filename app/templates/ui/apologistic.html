@@ -40,7 +40,24 @@
       <div id="apologisticEmployeeModalBody" class="apologistic-employee-modal-body"></div>
     </div>
   </div>
+  <div id="apologisticProposalModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticProposalModalTitle">
+    <div class="office-modal-backdrop" data-apologistic-proposal-close></div>
+    <form id="apologisticProposalForm" class="office-modal-panel apologistic-proposal-modal-panel">
+      <h2 id="apologisticProposalModalTitle" class="office-modal-title">Αλλαγή προτεινόμενου ωραρίου</h2>
+      <p id="apologisticProposalModalMeta" class="office-modal-sub"></p>
+      <div class="apologistic-proposal-time-grid">
+        <label><span class="field-label">Από</span><input id="apologisticProposalFrom" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="09:00" autocomplete="off" required></label>
+        <span class="apologistic-proposal-time-separator" aria-hidden="true">–</span>
+        <label><span class="field-label">Έως</span><input id="apologisticProposalTo" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="17:00" autocomplete="off" required></label>
+      </div>
+      <p id="apologisticProposalError" class="apologistic-proposal-error" role="alert"></p>
+      <div class="office-modal-actions">
+        <button type="button" class="btn btn-secondary" data-apologistic-proposal-close>Ακύρωση</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Αποθήκευση</button>
+      </div>
+    </form>
+  </div>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/apologistic.js?v=20260810a11"></script>
+  <script src="/static/js/apologistic.js?v=20260811analysis3"></script>
 {% endblock %}
