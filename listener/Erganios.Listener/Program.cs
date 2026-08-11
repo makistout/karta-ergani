@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.7";
+    internal const string Version = "0.3.8";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -81,7 +81,7 @@ internal sealed class SetupForm : Form
         StartPosition = FormStartPosition.CenterScreen; AutoScroll = false;
         FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
 
-        var page = new Panel { Dock = DockStyle.Fill, AutoScroll = false, BackColor = BackColor };
+        var page = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = BackColor };
         var content = new TableLayoutPanel {
             Dock = DockStyle.Top, Padding = new Padding(20, 14, 20, 14), ColumnCount = 1,
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, BackColor = BackColor
@@ -104,7 +104,7 @@ internal sealed class SetupForm : Form
         AddRow(ergani, 2, "Username", _username);
         AddRow(ergani, 3, "Password", _password);
         AddRow(ergani, 4, "Usertype", _usertype);
-        AddRow(ergani, 5, "Περιβάλλον Ergani API", _environment);
+        AddRow(ergani, 5, "Ergani API", _environment);
 
         StyleInput(_server); StyleInput(_device); StyleInput(_token); StyleInput(_username);
         StyleInput(_password); StyleInput(_usertype); StyleInput(_environment);
