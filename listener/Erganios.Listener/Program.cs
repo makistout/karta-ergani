@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.5";
+    internal const string Version = "0.3.6";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -65,6 +65,7 @@ internal sealed class SetupForm : Form
     private readonly TextBox _usertype = new() { Text = "02" };
     private readonly TextBox _environment = new() { ReadOnly = true, Enabled = false, Text = "Θα αναγνωριστεί κατά τη σύνδεση" };
     private readonly Label _status = new() { AutoSize = true, Text = "Συμπληρώστε τα στοιχεία pairing και ΕΡΓΑΝΗ." };
+    private readonly Label _serviceState = new() { AutoSize = true, Text = "Μη εγκατεστημένη" };
     private readonly Button _save = new() { Text = "Έλεγχος και αποθήκευση", AutoSize = true };
     private readonly Button _install = new() { Text = "Εγκατάσταση υπηρεσίας", AutoSize = true };
     private readonly Button _uninstall = new() { Text = "Αφαίρεση υπηρεσίας", AutoSize = true };
@@ -73,27 +74,60 @@ internal sealed class SetupForm : Form
     {
         Text = $"erganiOS Listener {Program.Version}";
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(620, 500); MinimumSize = new Size(460, 390);
+        Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        BackColor = Color.FromArgb(244, 247, 251);
+        ForeColor = Color.FromArgb(25, 39, 58);
+        ClientSize = new Size(760, 760); MinimumSize = new Size(520, 590);
         StartPosition = FormStartPosition.CenterScreen; AutoScroll = true;
         FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
-        var table = new TableLayoutPanel { Dock = DockStyle.Top, Padding = new Padding(18), ColumnCount = 2, RowCount = 10, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        AddRow(table, 0, "erganiOS URL", _server);
-        AddRow(table, 1, "Device ID", _device);
-        AddRow(table, 2, "Device Token", _token);
-        AddRow(table, 3, "ΕΡΓΑΝΗ username", _username);
-        AddRow(table, 4, "ΕΡΓΑΝΗ password", _password);
-        AddRow(table, 5, "Usertype", _usertype);
-        AddRow(table, 6, "Περιβάλλον Ergani API", _environment);
-        var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill };
+
+        var page = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = BackColor };
+        var content = new TableLayoutPanel {
+            Dock = DockStyle.Top, Padding = new Padding(24, 20, 24, 28), ColumnCount = 1,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, BackColor = BackColor
+        };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var header = new Panel { Dock = DockStyle.Top, Height = 118, BackColor = Color.FromArgb(18, 54, 78), Padding = new Padding(28, 21, 28, 16) };
+        var title = new Label { Text = "erganiOS Listener", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 19F) };
+        var subtitle = new Label { Text = "Ασφαλής τοπική υποβολή ψηφιακής κάρτας", AutoSize = true, ForeColor = Color.FromArgb(190, 219, 235), Font = new Font("Segoe UI", 10.5F), Location = new Point(31, 59) };
+        var version = new Label { Text = $"v{Program.Version}", AutoSize = true, ForeColor = Color.FromArgb(18, 54, 78), BackColor = Color.FromArgb(205, 235, 247), Font = new Font("Segoe UI Semibold", 9F), Padding = new Padding(9, 4, 9, 4), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+        header.Controls.Add(title); header.Controls.Add(subtitle); header.Controls.Add(version);
+        header.Resize += (_, _) => version.Location = new Point(Math.Max(20, header.ClientSize.Width - version.Width - 28), 25);
+
+        var pairing = CreateSection("Σύνδεση με erganiOS", "Τα στοιχεία pairing συνδέουν αυτή τη συσκευή αποκλειστικά με το συγκεκριμένο κατάστημα.");
+        AddRow(pairing, 2, "Διεύθυνση erganiOS", _server);
+        AddRow(pairing, 3, "Device ID", _device);
+        AddRow(pairing, 4, "Device Token", _token);
+
+        var ergani = CreateSection("Στοιχεία ΕΡΓΑΝΗ", "Χρησιμοποιούνται μόνο τοπικά για την αποστολή WRKCardSE από τη δημόσια IP της επιχείρησης.");
+        AddRow(ergani, 2, "Username", _username);
+        AddRow(ergani, 3, "Password", _password);
+        AddRow(ergani, 4, "Usertype", _usertype);
+        AddRow(ergani, 5, "Περιβάλλον Ergani API", _environment);
+
+        StyleInput(_server); StyleInput(_device); StyleInput(_token); StyleInput(_username);
+        StyleInput(_password); StyleInput(_usertype); StyleInput(_environment);
+        _environment.BackColor = Color.FromArgb(239, 243, 247);
+
+        StyleButton(_save, Color.FromArgb(30, 126, 166), Color.White);
+        StyleButton(_install, Color.FromArgb(28, 145, 104), Color.White);
+        StyleButton(_uninstall, Color.FromArgb(235, 241, 246), Color.FromArgb(60, 76, 93));
+        var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 8), BackColor = BackColor };
         buttons.Controls.AddRange([_save, _install, _uninstall]);
-        table.Controls.Add(buttons, 0, 7); table.SetColumnSpan(buttons, 2);
-        _status.MaximumSize = new Size(550, 0);
-        table.Controls.Add(_status, 0, 8); table.SetColumnSpan(_status, 2);
-        var note = new Label { AutoSize = true, MaximumSize = new Size(550, 0), Text = "Τα credentials αποθηκεύονται κρυπτογραφημένα με Windows DPAPI.\r\nΗ υπηρεσία ξεκινά αυτόματα με τα Windows." };
-        table.Controls.Add(note, 0, 9); table.SetColumnSpan(note, 2);
-        Controls.Add(table);
+
+        var statusCard = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Padding = new Padding(18, 14, 18, 14), BackColor = Color.FromArgb(231, 243, 250), Margin = new Padding(0, 4, 0, 8) };
+        statusCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        statusCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _status.ForeColor = Color.FromArgb(23, 83, 112); _status.Font = new Font("Segoe UI Semibold", 9.5F); _status.Dock = DockStyle.Fill; _status.MaximumSize = new Size(570, 0);
+        _serviceState.ForeColor = Color.FromArgb(87, 101, 115); _serviceState.BackColor = Color.White; _serviceState.Font = new Font("Segoe UI Semibold", 9F); _serviceState.Padding = new Padding(9, 5, 9, 5); _serviceState.Margin = new Padding(14, 0, 0, 0);
+        statusCard.Controls.Add(_status, 0, 0); statusCard.Controls.Add(_serviceState, 1, 0);
+
+        var note = new Label { AutoSize = true, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(91, 105, 120), Font = new Font("Segoe UI", 9F), Margin = new Padding(2, 5, 2, 0), Text = "🔒 Τα credentials αποθηκεύονται κρυπτογραφημένα με Windows DPAPI.\r\nΗ υπηρεσία ξεκινά αυτόματα με τα Windows." };
+
+        content.Controls.Add(pairing); content.Controls.Add(ergani); content.Controls.Add(buttons); content.Controls.Add(statusCard); content.Controls.Add(note);
+        page.Controls.Add(content); page.Controls.Add(header); Controls.Add(page);
+        AcceptButton = _save;
         Shown += (_, _) => FitToWorkingArea();
         _save.Click += async (_, _) => await SaveAsync();
         _install.Click += (_, _) => InstallService();
@@ -109,11 +143,38 @@ internal sealed class SetupForm : Form
         Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2), work.Top + Math.Max(0, (work.Height - Height) / 2));
     }
 
+    private static TableLayoutPanel CreateSection(string title, string subtitle)
+    {
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, Padding = new Padding(20, 17, 20, 18), BackColor = Color.White, Margin = new Padding(0, 0, 0, 14) };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var heading = new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 12F), ForeColor = Color.FromArgb(24, 55, 75), Margin = new Padding(0, 0, 0, 3) };
+        var description = new Label { Text = subtitle, AutoSize = true, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(96, 111, 126), Font = new Font("Segoe UI", 8.8F), Margin = new Padding(0, 0, 0, 13), MaximumSize = new Size(620, 0) };
+        table.Controls.Add(heading, 0, 0); table.SetColumnSpan(heading, 2);
+        table.Controls.Add(description, 0, 1); table.SetColumnSpan(description, 2);
+        return table;
+    }
+
     private static void AddRow(TableLayoutPanel table, int row, string label, TextBox input)
     {
         input.Dock = DockStyle.Fill;
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        input.Margin = new Padding(8, 5, 0, 7);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Color.FromArgb(51, 68, 84), Font = new Font("Segoe UI Semibold", 9.3F), Margin = new Padding(0, 9, 8, 7) }, 0, row);
         table.Controls.Add(input, 1, row);
+    }
+
+    private static void StyleInput(TextBox input)
+    {
+        input.Font = new Font("Segoe UI", 10F); input.BorderStyle = BorderStyle.FixedSingle;
+        input.BackColor = Color.White; input.ForeColor = Color.FromArgb(26, 42, 58);
+    }
+
+    private static void StyleButton(Button button, Color background, Color foreground)
+    {
+        button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderSize = 0;
+        button.BackColor = background; button.ForeColor = foreground;
+        button.Font = new Font("Segoe UI Semibold", 9.4F); button.Padding = new Padding(13, 7, 13, 7);
+        button.Margin = new Padding(0, 0, 9, 0); button.Cursor = Cursors.Hand;
     }
 
     private void LoadExisting()
@@ -127,9 +188,9 @@ internal sealed class SetupForm : Form
             _username.Text = Dpapi.UnprotectString(cfg.ErganiUsername);
             _password.Text = Dpapi.UnprotectString(cfg.ErganiPassword);
             _usertype.Text = cfg.ErganiUsertype;
-            _status.Text = $"Φορτώθηκε η αποθηκευμένη ρύθμιση από {Program.ConfigPath}.";
+            SetStatus($"Φορτώθηκε η αποθηκευμένη ρύθμιση από {Program.ConfigPath}.", true);
         }
-        catch (Exception ex) { _status.Text = "Σφάλμα ανάγνωσης ρύθμισης: " + ex.Message; }
+        catch (Exception ex) { SetStatus("Σφάλμα ανάγνωσης ρύθμισης: " + ex.Message, false); }
     }
 
     private async Task SaveAsync()
@@ -142,21 +203,21 @@ internal sealed class SetupForm : Form
             _environment.Text = $"{connection.EnvironmentLabel} ({connection.Environment})";
             cfg.Save();
             if (!File.Exists(Program.ConfigPath)) throw new IOException("Το αρχείο ρύθμισης δεν δημιουργήθηκε.");
-            _status.Text = $"Επιτυχής έλεγχος και ασφαλής αποθήκευση στο {Program.ConfigPath}. Δημόσια IP: {ListenerAgent.CurrentPublicIp ?? "—"}. Μπορείτε να εγκαταστήσετε την υπηρεσία.";
+            SetStatus($"Επιτυχής έλεγχος και ασφαλής αποθήκευση. Δημόσια IP: {ListenerAgent.CurrentPublicIp ?? "—"}. Μπορείτε να εγκαταστήσετε την υπηρεσία.", true);
         }
-        catch (Exception ex) { _status.Text = "Αποτυχία: " + ex.Message; }
+        catch (Exception ex) { SetStatus("Αποτυχία: " + ex.Message, false); }
         finally { SetBusy(false); }
     }
 
     private void InstallService()
     {
-        if (!File.Exists(Program.ConfigPath)) { _status.Text = "Πρώτα εκτελέστε Έλεγχο και αποθήκευση."; return; }
+        if (!File.Exists(Program.ConfigPath)) { SetStatus("Πρώτα εκτελέστε Έλεγχο και αποθήκευση.", false); return; }
         try
         {
             RunSelfElevated("--install");
-            _status.Text = "Η υπηρεσία εγκαταστάθηκε και ξεκίνησε.";
+            SetStatus("Η υπηρεσία εγκαταστάθηκε και ξεκίνησε.", true);
         }
-        catch (Exception ex) { _status.Text = "Αποτυχία εγκατάστασης: " + ex.Message; }
+        catch (Exception ex) { SetStatus("Αποτυχία εγκατάστασης: " + ex.Message, false); }
         UpdateServiceState();
     }
 
@@ -165,9 +226,9 @@ internal sealed class SetupForm : Form
         try
         {
             RunSelfElevated("--uninstall");
-            _status.Text = "Η υπηρεσία αφαιρέθηκε. Τα κρυπτογραφημένα στοιχεία διατηρήθηκαν.";
+            SetStatus("Η υπηρεσία αφαιρέθηκε. Τα κρυπτογραφημένα στοιχεία διατηρήθηκαν.", true);
         }
-        catch (Exception ex) { _status.Text = "Αποτυχία αφαίρεσης: " + ex.Message; }
+        catch (Exception ex) { SetStatus("Αποτυχία αφαίρεσης: " + ex.Message, false); }
         UpdateServiceState();
     }
 
@@ -186,11 +247,23 @@ internal sealed class SetupForm : Form
         {
             using var service = new ServiceController(Program.ServiceName);
             _install.Text = service.Status == ServiceControllerStatus.Running ? "Υπηρεσία ενεργή" : "Εκκίνηση/επανεγκατάσταση";
+            _serviceState.Text = service.Status == ServiceControllerStatus.Running ? "● Online" : "● Εγκατεστημένη";
+            _serviceState.ForeColor = service.Status == ServiceControllerStatus.Running ? Color.FromArgb(24, 132, 91) : Color.FromArgb(184, 116, 20);
             _uninstall.Enabled = true;
         }
-        catch { _install.Text = "Εγκατάσταση υπηρεσίας"; _uninstall.Enabled = false; }
+        catch { _install.Text = "Εγκατάσταση υπηρεσίας"; _serviceState.Text = "Μη εγκατεστημένη"; _serviceState.ForeColor = Color.FromArgb(87, 101, 115); _uninstall.Enabled = false; }
     }
-    private void SetBusy(bool busy, string? message = null) { _save.Enabled = !busy; _install.Enabled = !busy; if (message != null) _status.Text = message; UseWaitCursor = busy; }
+    private void SetStatus(string message, bool? success = null)
+    {
+        _status.Text = message;
+        _status.ForeColor = success switch
+        {
+            true => Color.FromArgb(21, 112, 78),
+            false => Color.FromArgb(176, 54, 54),
+            _ => Color.FromArgb(23, 83, 112),
+        };
+    }
+    private void SetBusy(bool busy, string? message = null) { _save.Enabled = !busy; _install.Enabled = !busy; if (message != null) SetStatus(message); UseWaitCursor = busy; }
 }
 
 internal static class ServiceInstaller

@@ -1,6 +1,6 @@
 # erganiOS Card Listener
 
-Lightweight Windows listener v0.3.5 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
+Lightweight Windows listener v0.3.6 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
 
 ## Build
 
