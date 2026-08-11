@@ -308,6 +308,35 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
     return "Μη προσδιορισμένη", days
 
 
+def _effective_weekly_days(
+    schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
+) -> tuple[int | None, str]:
+    """Infer the week's 5/6-day system from its declarations, then fall back to the contract."""
+    declared_by_date: dict[str, int] = defaultdict(int)
+    for row in schedule_rows:
+        duration = _minutes(row.get("hour_from"), row.get("hour_to"))
+        if duration is not None and duration > 0:
+            declared_by_date[str(row.get("work_date") or "")] += duration
+
+    declared_days = len(declared_by_date)
+    if declared_days >= 6:
+        return 6, "Δηλωμένο πρόγραμμα εβδομάδας"
+    if declared_days == 5:
+        return 5, "Δηλωμένο πρόγραμμα εβδομάδας"
+
+    # Leave/holiday weeks may contain fewer working declarations. In that case
+    # the declared daily duration is stronger evidence than the stale contract field.
+    durations = list(declared_by_date.values())
+    if durations:
+        five_day_score = sum(abs(duration - 480) for duration in durations)
+        six_day_score = sum(abs(duration - 400) for duration in durations)
+        if five_day_score < six_day_score:
+            return 5, "Δηλωμένη ημερήσια διάρκεια εβδομάδας"
+        if six_day_score < five_day_score:
+            return 6, "Δηλωμένη ημερήσια διάρκεια εβδομάδας"
+    return contract_weekly_days, "Τρέχουσα σύμβαση"
+
+
 def _break_context(
     contract: dict[str, Any] | None,
     work_slots: list[dict[str, Any]],
@@ -402,11 +431,25 @@ def build_weekly_report(
             target[(afm, str(row.get("work_date") or ""))].append(row)
             names[afm] = (str(row.get("eponymo") or ""), str(row.get("onoma") or ""))
 
+    schedules_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in schedule_rows:
+        schedules_by_afm[str(row.get("employee_afm") or "").zfill(9)].append(row)
+    weekly_system_by_afm: dict[str, tuple[int | None, str]] = {}
+    for afm in set(schedules_by_afm) | set(contracts_by_afm):
+        _, contract_weekly_days = _contract_kind(contracts_by_afm.get(afm))
+        weekly_system_by_afm[afm] = _effective_weekly_days(
+            schedules_by_afm.get(afm, []), contract_weekly_days
+        )
+
     daily: list[dict[str, Any]] = []
     for afm, work_date in sorted(set(schedules) | set(punches), key=lambda k: (datetime.strptime(k[1], "%d/%m/%Y"), names.get(k[0], ("", "")), k[0])):
         slots, day_punches = schedules.get((afm, work_date), []), punches.get((afm, work_date), [])
         work_slots = _working_slots(slots)
         matched, orphan_punches = _match_punches(day_punches, slots)
+        fully_missing = bool(work_slots and not day_punches)
+        if fully_missing:
+            # A declaration without any card record is not evidence of actual work.
+            matched = []
         extra_punches = matched[0].get("extra_punches", []) if len(_working_slots(slots)) == 1 and matched else []
         corrected_extra_punches = []
         for extra in extra_punches:
@@ -417,12 +460,14 @@ def build_weekly_report(
                 corrected_extra_punches.append({"recorded": extra, "from": boundary, "to": boundary,
                                                 "corrected": f"{boundary}–{boundary}"})
         contract = contracts_by_afm.get(afm)
-        contract_kind, weekly_days = _contract_kind(contract)
+        contract_kind, _contract_weekly_days = _contract_kind(contract)
+        weekly_days, weekly_days_source = weekly_system_by_afm.get(
+            afm, (_contract_weekly_days, "Τρέχουσα σύμβαση")
+        )
         contract_flags = _contract_flags(contract)
         declared_minutes = sum(_minutes(s.get("hour_from"), s.get("hour_to")) or 0 for s in work_slots)
         actual_minutes = sum(_minutes(m.get("from"), m.get("to")) or 0 for m in matched) if matched else None
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
-        fully_missing = bool(work_slots and not day_punches)
         declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "—")
         punch_recorded = _format_recorded_punches(day_punches)
         actual_label = _format_matched_label(matched)
@@ -464,7 +509,7 @@ def build_weekly_report(
             else:
                 status, reason, proposed = "review", "Χτύπημα χωρίς ωράριο ή σε ημέρα μη εργασίας", actual_label
         elif work_slots and fully_missing:
-            status, reason, proposed = "review", "Δεν υπάρχει χτύπημα· τεκμαίρεται το δηλωμένο ωράριο", declared_label
+            status, reason, proposed = "ok", "Δεν υπάρχει χτύπημα· δεν προκύπτει απολογιστική μεταβολή ή υπερωρία", declared_label
         elif work_slots and matched:
             arrival_in_flex = bool(ds is not None and ps is not None and ds <= ps <= ds + flex)
             has_declarable_extra = bands["overtime_minutes"] > 0
@@ -530,6 +575,7 @@ def build_weekly_report(
         daily.append({
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
+            "weekly_days_source": weekly_days_source,
             **contract_flags,
             "declared": declared_label, "punch_recorded": punch_recorded,
             "actual": actual_label, "proposed": proposed,
@@ -578,7 +624,10 @@ def build_weekly_report(
     for afm, rows in by_employee.items():
         overwork = sum(r["overwork_minutes"] for r in rows)
         overtime = sum(r["overtime_minutes"] for r in rows)
-        contract_kind, weekly_days = _contract_kind(contracts_by_afm.get(afm))
+        contract_kind, contract_weekly_days = _contract_kind(contracts_by_afm.get(afm))
+        weekly_days, weekly_days_source = weekly_system_by_afm.get(
+            afm, (contract_weekly_days, "Τρέχουσα σύμβαση")
+        )
         weekly_warning = ""
         cap = 300 if weekly_days == 5 else 480 if weekly_days == 6 else None
         if cap is not None and overwork > cap:
@@ -587,6 +636,7 @@ def build_weekly_report(
             weekly_warning = "Η ημερήσια ζώνη υπερεργασίας είναι προσωρινή: το εβδομαδιαίο σύνολο δεν ξεπερνά τις 40 ώρες"
         summaries.append({"employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
                           "contract_kind": contract_kind, "weekly_days": weekly_days,
+                          "weekly_days_source": weekly_days_source,
                           "declared": sum(r["declared_minutes"] for r in rows),
                           "actual": sum(r["effective_actual_minutes"] or 0 for r in rows),
                           "extra": sum(r["extra_minutes"] for r in rows),

@@ -39,9 +39,45 @@ def test_punch_without_schedule_is_review_not_automatic_work():
     assert row["proposed"] == "09:10–17:10"
 
 
-def test_schedule_without_punch_is_review():
+def test_schedule_without_punch_is_ok_and_does_not_infer_actual_work():
     result = build_weekly_report([sched()], [], [contract()])
-    assert result["days"][0]["status"] == "review"
+    row = result["days"][0]
+    assert row["status"] == "ok"
+    assert row["actual_minutes"] is None
+    assert row["overtime_minutes"] == 0
+    assert row["requires_confirmation"] is False
+
+
+def test_declared_five_day_week_overrides_six_day_contract_for_overtime():
+    schedules, punches = [], []
+    for index in range(5):
+        day = f"{3 + index:02d}/08/2026"
+        schedules.append(sched(day=day, start="09:00", end="17:00"))
+        punches.append(punch(day=day, start="09:00", end="17:00"))
+    punches[-1] = punch(day="07/08/2026", start="09:00", end="17:30")
+
+    rows = build_weekly_report(schedules, punches, [contract(flex=0, days="6")])["days"]
+    friday = next(row for row in rows if row["work_date"] == "07/08/2026")
+    assert friday["weekly_days"] == 5
+    assert friday["weekly_days_source"] == "Δηλωμένο πρόγραμμα εβδομάδας"
+    assert friday["overwork_minutes"] == 30
+    assert friday["overtime_minutes"] == 0
+
+
+def test_declared_six_day_week_overrides_five_day_contract_for_overtime():
+    schedules, punches = [], []
+    for index in range(6):
+        day = f"{3 + index:02d}/08/2026"
+        schedules.append(sched(day=day, start="08:00", end="14:40"))
+        punches.append(punch(day=day, start="08:00", end="14:40"))
+    punches[-1] = punch(day="08/08/2026", start="08:00", end="16:30")
+
+    rows = build_weekly_report(schedules, punches, [contract(flex=0, days="5")])["days"]
+    saturday = next(row for row in rows if row["work_date"] == "08/08/2026")
+    assert saturday["weekly_days"] == 6
+    assert saturday["weekly_days_source"] == "Δηλωμένο πρόγραμμα εβδομάδας"
+    assert saturday["overwork_minutes"] == 80
+    assert saturday["overtime_minutes"] == 30
 
 
 def test_non_split_uses_longest_complete_interval():
