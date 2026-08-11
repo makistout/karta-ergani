@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.6";
+    internal const string Version = "0.3.7";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -62,7 +62,7 @@ internal sealed class SetupForm : Form
     private readonly TextBox _token = new() { UseSystemPasswordChar = true };
     private readonly TextBox _username = new();
     private readonly TextBox _password = new() { UseSystemPasswordChar = true };
-    private readonly TextBox _usertype = new() { Text = "02" };
+    private readonly TextBox _usertype = new() { Text = "01" };
     private readonly TextBox _environment = new() { ReadOnly = true, Enabled = false, Text = "Θα αναγνωριστεί κατά τη σύνδεση" };
     private readonly Label _status = new() { AutoSize = true, Text = "Συμπληρώστε τα στοιχεία pairing και ΕΡΓΑΝΗ." };
     private readonly Label _serviceState = new() { AutoSize = true, Text = "Μη εγκατεστημένη" };
@@ -77,23 +77,23 @@ internal sealed class SetupForm : Form
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
         BackColor = Color.FromArgb(244, 247, 251);
         ForeColor = Color.FromArgb(25, 39, 58);
-        ClientSize = new Size(760, 760); MinimumSize = new Size(520, 590);
-        StartPosition = FormStartPosition.CenterScreen; AutoScroll = true;
+        ClientSize = new Size(760, 690); MinimumSize = new Size(520, 620);
+        StartPosition = FormStartPosition.CenterScreen; AutoScroll = false;
         FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
 
-        var page = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = BackColor };
+        var page = new Panel { Dock = DockStyle.Fill, AutoScroll = false, BackColor = BackColor };
         var content = new TableLayoutPanel {
-            Dock = DockStyle.Top, Padding = new Padding(24, 20, 24, 28), ColumnCount = 1,
+            Dock = DockStyle.Top, Padding = new Padding(20, 14, 20, 14), ColumnCount = 1,
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, BackColor = BackColor
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 118, BackColor = Color.FromArgb(18, 54, 78), Padding = new Padding(28, 21, 28, 16) };
+        var header = new Panel { Dock = DockStyle.Top, Height = 96, BackColor = Color.FromArgb(18, 54, 78), Padding = new Padding(28, 14, 28, 10) };
         var title = new Label { Text = "erganiOS Listener", AutoSize = true, ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 19F) };
-        var subtitle = new Label { Text = "Ασφαλής τοπική υποβολή ψηφιακής κάρτας", AutoSize = true, ForeColor = Color.FromArgb(190, 219, 235), Font = new Font("Segoe UI", 10.5F), Location = new Point(31, 59) };
+        var subtitle = new Label { Text = "Ασφαλής τοπική υποβολή ψηφιακής κάρτας", AutoSize = true, ForeColor = Color.FromArgb(190, 219, 235), Font = new Font("Segoe UI", 10F), Location = new Point(31, 52) };
         var version = new Label { Text = $"v{Program.Version}", AutoSize = true, ForeColor = Color.FromArgb(18, 54, 78), BackColor = Color.FromArgb(205, 235, 247), Font = new Font("Segoe UI Semibold", 9F), Padding = new Padding(9, 4, 9, 4), Anchor = AnchorStyles.Top | AnchorStyles.Right };
         header.Controls.Add(title); header.Controls.Add(subtitle); header.Controls.Add(version);
-        header.Resize += (_, _) => version.Location = new Point(Math.Max(20, header.ClientSize.Width - version.Width - 28), 25);
+        header.Resize += (_, _) => version.Location = new Point(Math.Max(20, header.ClientSize.Width - version.Width - 28), 18);
 
         var pairing = CreateSection("Σύνδεση με erganiOS", "Τα στοιχεία pairing συνδέουν αυτή τη συσκευή αποκλειστικά με το συγκεκριμένο κατάστημα.");
         AddRow(pairing, 2, "Διεύθυνση erganiOS", _server);
@@ -116,7 +116,7 @@ internal sealed class SetupForm : Form
         var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 8), BackColor = BackColor };
         buttons.Controls.AddRange([_save, _install, _uninstall]);
 
-        var statusCard = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Padding = new Padding(18, 14, 18, 14), BackColor = Color.FromArgb(231, 243, 250), Margin = new Padding(0, 4, 0, 8) };
+        var statusCard = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Padding = new Padding(16, 10, 16, 10), BackColor = Color.FromArgb(231, 243, 250), Margin = new Padding(0, 2, 0, 5) };
         statusCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         statusCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _status.ForeColor = Color.FromArgb(23, 83, 112); _status.Font = new Font("Segoe UI Semibold", 9.5F); _status.Dock = DockStyle.Fill; _status.MaximumSize = new Size(570, 0);
@@ -145,11 +145,11 @@ internal sealed class SetupForm : Form
 
     private static TableLayoutPanel CreateSection(string title, string subtitle)
     {
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, Padding = new Padding(20, 17, 20, 18), BackColor = Color.White, Margin = new Padding(0, 0, 0, 14) };
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, Padding = new Padding(18, 12, 18, 12), BackColor = Color.White, Margin = new Padding(0, 0, 0, 10) };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         var heading = new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 12F), ForeColor = Color.FromArgb(24, 55, 75), Margin = new Padding(0, 0, 0, 3) };
-        var description = new Label { Text = subtitle, AutoSize = true, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(96, 111, 126), Font = new Font("Segoe UI", 8.8F), Margin = new Padding(0, 0, 0, 13), MaximumSize = new Size(620, 0) };
+        var description = new Label { Text = subtitle, AutoSize = true, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(96, 111, 126), Font = new Font("Segoe UI", 8.8F), Margin = new Padding(0, 0, 0, 8), MaximumSize = new Size(620, 0) };
         table.Controls.Add(heading, 0, 0); table.SetColumnSpan(heading, 2);
         table.Controls.Add(description, 0, 1); table.SetColumnSpan(description, 2);
         return table;
@@ -158,8 +158,8 @@ internal sealed class SetupForm : Form
     private static void AddRow(TableLayoutPanel table, int row, string label, TextBox input)
     {
         input.Dock = DockStyle.Fill;
-        input.Margin = new Padding(8, 5, 0, 7);
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Color.FromArgb(51, 68, 84), Font = new Font("Segoe UI Semibold", 9.3F), Margin = new Padding(0, 9, 8, 7) }, 0, row);
+        input.Margin = new Padding(8, 3, 0, 4);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Color.FromArgb(51, 68, 84), Font = new Font("Segoe UI Semibold", 9.3F), Margin = new Padding(0, 7, 8, 4) }, 0, row);
         table.Controls.Add(input, 1, row);
     }
 
@@ -173,7 +173,7 @@ internal sealed class SetupForm : Form
     {
         button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderSize = 0;
         button.BackColor = background; button.ForeColor = foreground;
-        button.Font = new Font("Segoe UI Semibold", 9.4F); button.Padding = new Padding(13, 7, 13, 7);
+        button.Font = new Font("Segoe UI Semibold", 9.4F); button.Padding = new Padding(12, 5, 12, 5);
         button.Margin = new Padding(0, 0, 9, 0); button.Cursor = Cursors.Hand;
     }
 
@@ -458,7 +458,7 @@ internal sealed record ListenerConfig(string ServerUrl, string DeviceId, string 
         if (!Uri.TryCreate(server, UriKind.Absolute, out var uri) || uri.Scheme != "https") throw new InvalidOperationException("Απαιτείται έγκυρο HTTPS URL.");
         _ = Guid.Parse(device.Trim());
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password)) throw new InvalidOperationException("Λείπουν υποχρεωτικά στοιχεία.");
-        return new(server, device.Trim(), Dpapi.ProtectString(token), Dpapi.ProtectString(user), Dpapi.ProtectString(password), string.IsNullOrWhiteSpace(usertype) ? "02" : usertype.Trim());
+        return new(server, device.Trim(), Dpapi.ProtectString(token), Dpapi.ProtectString(user), Dpapi.ProtectString(password), string.IsNullOrWhiteSpace(usertype) ? "01" : usertype.Trim());
     }
     public void Save() { Directory.CreateDirectory(Program.DataDir); File.WriteAllText(Program.ConfigPath, JsonSerializer.Serialize(this, AppJsonContext.Default.ListenerConfig)); }
     public static ListenerConfig Load() => JsonSerializer.Deserialize(File.ReadAllText(Program.ConfigPath), AppJsonContext.Default.ListenerConfig) ?? throw new InvalidOperationException("Invalid configuration");

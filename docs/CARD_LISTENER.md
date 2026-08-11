@@ -7,7 +7,7 @@
 άλλη υπηρεσία ΕΡΓΑΝΗ.
 
 Έχουν υλοποιηθεί schema, ρυθμίσεις, pairing, device isolation, listener API και Windows
-listener v0.3.6. Ο dispatcher είναι συνδεδεμένος αποκλειστικά στη ροή `WRKCardSE`:
+listener v0.3.7. Ο dispatcher είναι συνδεδεμένος αποκλειστικά στη ροή `WRKCardSE`:
 όταν το κατάστημα είναι σε mode `listener` και η συσκευή είναι online, δημιουργείται job και η
 υποβολή γίνεται από τον listener. Όλες οι άλλες υπηρεσίες και τα καταστήματα σε mode `erganios`
 συνεχίζουν από το υπάρχον erganiOS path.
@@ -105,7 +105,7 @@ ERGANI_EGRESS_IP=203.0.113.10
 ## Περιβάλλον ΕΡΓΑΝΗ
 
 Το authenticated health response επιστρέφει `ergani_env`, ελληνική ετικέτα και API base
-URL του καταστήματος. Ο listener v0.3.6 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
+URL του καταστήματος. Ο listener v0.3.7 εμφανίζει το περιβάλλον σε disabled πεδίο κάτω
 από το `Usertype` κατά τον έλεγχο pairing.
 
 Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job, το οποίο παράγεται από το
@@ -127,7 +127,7 @@ URL του καταστήματος. Ο listener v0.3.6 εμφανίζει το 
   timer ανά δευτερόλεπτο, ένδειξη ελέγχου fallback στα 60″ και τελικό κανάλι εκτέλεσης. Τα κουμπιά
   παραμένουν κλειδωμένα όσο εκκρεμεί η απόκριση, ώστε να αποφεύγεται δεύτερη υποβολή.
 
-## Windows listener v0.3.6
+## Windows listener v0.3.7
 
 - Project: `listener/Erganios.Listener/`.
 - Self-contained compressed single-file Win-x64 executable.
@@ -154,7 +154,7 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 1. Deploy/restart του backend.
 2. Ρυθμίσεις καταστήματος → **Νέο pairing**.
 3. Διπλό κλικ στο `erganios-listener.exe`.
-4. Συμπλήρωση Device ID/token και API credentials (`Usertype 02`).
+4. Συμπλήρωση Device ID/token και API credentials (`Usertype 01`, προεπιλεγμένο).
 5. **Έλεγχος και αποθήκευση**.
 6. Έλεγχος disabled πεδίου **Περιβάλλον Ergani API**.
 7. **Εγκατάσταση υπηρεσίας** και αποδοχή UAC.
@@ -166,6 +166,6 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 
 - Backend regression suite: 216 tests πέρασαν, εξαιρώντας το γνωστό ανεξάρτητο test που
   ανοίγει πραγματική DB σύνδεση αντί για πλήρες mock.
-- Listener v0.3.6: πλήρες globalization support για Windows cultures (`el-GR`), σύγχρονο responsive
-  setup UI με διακριτές ενότητες, status banner/service badge και επιτυχές restore/publish.
+- Listener v0.3.7: πλήρες globalization support για Windows cultures (`el-GR`), σύγχρονο συμπαγές
+  setup UI χωρίς scrollbar, προεπιλεγμένο `Usertype 01`, status banner/service badge και επιτυχές restore/publish.
 - Tests για store isolation, network refresh και trial environment health response.
