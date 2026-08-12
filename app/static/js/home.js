@@ -464,7 +464,7 @@ async function loadCardReport() {
       return;
     }
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
 
@@ -476,7 +476,7 @@ async function loadCardReport() {
       isMultiDayReport(data)
     );
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 

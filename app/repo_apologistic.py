@@ -9,7 +9,12 @@ from datetime import date, datetime
 from typing import Any
 
 from app.db import cursor
+from app.apologistic_submit import parse_wto_request_meta
 from app.row_util import row_to_dict, rows_to_dicts
+from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A
+from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A
+
+_SUBMIT_TABLE = "karta_apologistic_submit"
 
 
 def tables_available() -> bool:
@@ -273,6 +278,15 @@ def load_report(store_id: int, week_from: date) -> tuple[dict[str, Any], dict[st
     for day in report.get("days") or []:
         day["proposal_history"] = histories.get((str(day.get("employee_afm") or ""), str(day.get("work_date") or "")), [])
         day["incoming_rest_obligations"] = rest_due_by_afm.get(str(day.get("employee_afm") or ""), [])
+    _attach_ergani_submits(int(run["id"]), report)
+    _attach_ergani_submits_from_declarations(
+        int(run["id"]),
+        int(store_id),
+        week_from,
+        run.get("week_to") or week_from,
+        str(run.get("employer_afm") or ""),
+        report,
+    )
     report["rest_obligations"] = [
         {"employee_afm": afm, **item}
         for afm, items in rest_due_by_afm.items() for item in items
@@ -357,3 +371,473 @@ def update_proposed(*, store_id: int, week_from: date, employee_afm: str,
         cur.execute("UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
                     (_json(report), run_id))
     return {"proposed": value, "changed": True}
+
+
+def submit_table_available() -> bool:
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(f"SELECT OBJECT_ID(N'dbo.{_SUBMIT_TABLE}', N'U')")
+            return bool(cur.fetchone()[0])
+    except Exception:
+        return False
+
+
+def get_day_id(*, store_id: int, week_from: date, employee_afm: str, work_date: date) -> int | None:
+    with cursor(commit=False) as cur:
+        cur.execute("""
+            SELECT d.id
+            FROM dbo.karta_apologistic_day d
+            INNER JOIN dbo.karta_apologistic_run r ON r.id = d.run_id
+            WHERE r.store_id = ? AND r.week_from = ? AND d.employee_afm = ? AND d.work_date = ?
+        """, (int(store_id), week_from, employee_afm, work_date))
+        row = cur.fetchone()
+        return int(row[0]) if row else None
+
+
+def _submit_entry_from_row(record: dict[str, Any], *, proposed: str | None = None) -> dict[str, Any]:
+    submitted_at = record.get("submitted_at")
+    if hasattr(submitted_at, "isoformat"):
+        submitted_at = submitted_at.isoformat(timespec="seconds")
+    entry = {
+        "protocol": record.get("protocol"),
+        "ergani_submission_id": record.get("ergani_submission_id"),
+        "submit_date": record.get("submit_date_text"),
+        "submitted_at": submitted_at,
+        "declaration_id": record.get("declaration_id"),
+        "proposed_at_submit": record.get("proposed_at_submit"),
+        "segment_date": record.get("segment_date"),
+    }
+    if proposed is not None and record.get("proposed_at_submit"):
+        entry["matches_proposal"] = str(record.get("proposed_at_submit") or "").strip() == str(proposed or "").strip()
+    return entry
+
+
+def _attach_ergani_submits(run_id: int, report: dict[str, Any]) -> None:
+    if not submit_table_available():
+        return
+    with cursor(commit=False) as cur:
+        cur.execute("""
+            SELECT d.employee_afm, d.work_date, d.effective_json,
+                   s.submission_code, s.proposed_at_submit, s.segment_reference_date,
+                   s.protocol, s.ergani_submission_id, s.submit_date_text, s.declaration_id,
+                   CAST(s.submitted_at AS datetime2) AS submitted_at
+            FROM dbo.karta_apologistic_submit s
+            INNER JOIN dbo.karta_apologistic_day d ON d.id = s.day_id
+            WHERE d.run_id = ? AND s.success = 1
+            ORDER BY s.submitted_at DESC, s.id DESC
+        """, (int(run_id),))
+        rows = rows_to_dicts(cur)
+    latest: dict[tuple[str, str, str, str | None], dict[str, Any]] = {}
+    for row in rows:
+        seg = row.get("segment_reference_date")
+        seg_key = seg.strftime("%d/%m/%Y") if hasattr(seg, "strftime") else (str(seg)[:10] if seg else None)
+        key = (
+            str(row.get("employee_afm") or ""),
+            row.get("work_date").strftime("%d/%m/%Y") if hasattr(row.get("work_date"), "strftime") else str(row.get("work_date") or ""),
+            str(row.get("submission_code") or ""),
+            seg_key,
+        )
+        if key in latest:
+            continue
+        item = dict(row)
+        item["segment_date"] = seg_key
+        latest[key] = item
+    for day in report.get("days") or []:
+        afm = str(day.get("employee_afm") or "")
+        wd = str(day.get("work_date") or "")
+        proposed = str(day.get("proposed") or "")
+        ergani_submit: dict[str, Any] = {}
+        schedule = latest.get((afm, wd, SUBMISSION_CODE_WTO_DAILY_A, None))
+        if schedule:
+            ergani_submit["schedule"] = _submit_entry_from_row(schedule, proposed=proposed)
+        overtime: dict[str, Any] = {}
+        for (key_afm, key_wd, code, seg_date), record in latest.items():
+            if key_afm != afm or key_wd != wd or code != SUBMISSION_CODE_WTO_OV_A or not seg_date:
+                continue
+            overtime[seg_date] = _submit_entry_from_row(record)
+        if overtime:
+            ergani_submit["overtime"] = overtime
+        if ergani_submit:
+            day["ergani_submit"] = ergani_submit
+
+
+def _merge_day_ergani_submit(day: dict[str, Any], fragment: dict[str, Any]) -> None:
+    if not fragment:
+        return
+    current = day.setdefault("ergani_submit", {})
+    if fragment.get("schedule") and not current.get("schedule"):
+        current["schedule"] = fragment["schedule"]
+    if fragment.get("overtime"):
+        bucket = current.setdefault("overtime", {})
+        for seg_date, entry in fragment["overtime"].items():
+            if seg_date and not bucket.get(seg_date):
+                bucket[seg_date] = entry
+
+
+def _attach_ergani_submits_from_declarations(
+    run_id: int,
+    store_id: int,
+    week_from: date,
+    week_to: date,
+    employer_afm: str,
+    report: dict[str, Any],
+) -> None:
+    if not employer_afm:
+        return
+    week_days = {
+        (str(day.get("employee_afm") or ""), str(day.get("work_date") or ""))
+        for day in (report.get("days") or [])
+    }
+    if not week_days:
+        return
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT id, submission_code, protocol, ergani_submission_id, submit_date_text,
+                   request_json, CAST(created_at AS datetime2) AS created_at
+            FROM dbo.karta_declaration
+            WHERE employer_afm = ? AND success = 1
+              AND submission_code IN (?, ?)
+              AND created_at >= DATEADD(day, -21, SYSDATETIMEOFFSET())
+            ORDER BY id DESC
+            """,
+            (employer_afm, SUBMISSION_CODE_WTO_DAILY_A, SUBMISSION_CODE_WTO_OV_A),
+        )
+        declarations = rows_to_dicts(cur)
+    latest_decl: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in declarations:
+        afm, work_date, proposed = parse_wto_request_meta(item.get("request_json"))
+        if not afm or not work_date or (afm, work_date) not in week_days:
+            continue
+        try:
+            wd = datetime.strptime(work_date, "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        if wd < week_from or wd > week_to:
+            continue
+        code = str(item.get("submission_code") or "")
+        key = (afm, work_date, code)
+        if key in latest_decl:
+            continue
+        submitted_at = item.get("created_at")
+        if hasattr(submitted_at, "isoformat"):
+            submitted_at = submitted_at.isoformat(timespec="seconds")
+        latest_decl[key] = {
+            "protocol": item.get("protocol"),
+            "ergani_submission_id": item.get("ergani_submission_id"),
+            "submit_date": item.get("submit_date_text"),
+            "submitted_at": submitted_at,
+            "declaration_id": item.get("id"),
+            "proposed_at_submit": proposed,
+            "segment_date": work_date if code == SUBMISSION_CODE_WTO_OV_A else None,
+        }
+    if not latest_decl:
+        return
+    for day in report.get("days") or []:
+        afm = str(day.get("employee_afm") or "")
+        wd = str(day.get("work_date") or "")
+        proposed = str(day.get("proposed") or "")
+        schedule_key = (afm, wd, SUBMISSION_CODE_WTO_DAILY_A)
+        if schedule_key in latest_decl and not (day.get("ergani_submit") or {}).get("schedule"):
+            entry = dict(latest_decl[schedule_key])
+            if entry.get("proposed_at_submit"):
+                entry["matches_proposal"] = str(entry["proposed_at_submit"]).strip() == proposed.strip()
+            _merge_day_ergani_submit(day, {"schedule": entry})
+            _ensure_submit_row_from_declaration(
+                run_id, store_id, week_from, afm, wd, SUBMISSION_CODE_WTO_DAILY_A,
+                latest_decl[schedule_key], proposed_at_submit=entry.get("proposed_at_submit"),
+            )
+        ot_key = (afm, wd, SUBMISSION_CODE_WTO_OV_A)
+        if ot_key in latest_decl:
+            ot = (day.get("ergani_submit") or {}).get("overtime") or {}
+            seg = wd
+            if not ot.get(seg):
+                entry = dict(latest_decl[ot_key])
+                entry["segment_date"] = seg
+                _merge_day_ergani_submit(day, {"overtime": {seg: entry}})
+                _ensure_submit_row_from_declaration(
+                    run_id, store_id, week_from, afm, wd, SUBMISSION_CODE_WTO_OV_A,
+                    latest_decl[ot_key], segment_reference_date=datetime.strptime(wd, "%d/%m/%Y").date(),
+                )
+
+
+def _ensure_submit_row_from_declaration(
+    run_id: int,
+    store_id: int,
+    week_from: date,
+    employee_afm: str,
+    work_date_str: str,
+    submission_code: str,
+    entry: dict[str, Any],
+    *,
+    proposed_at_submit: str | None = None,
+    segment_reference_date: date | None = None,
+) -> None:
+    if not submit_table_available():
+        return
+    try:
+        work_date = datetime.strptime(work_date_str, "%d/%m/%Y").date()
+    except ValueError:
+        return
+    day_id = get_day_id(store_id=store_id, week_from=week_from, employee_afm=employee_afm, work_date=work_date)
+    if not day_id or not entry.get("declaration_id"):
+        return
+    with cursor(commit=True) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP 1 1 FROM dbo.{_SUBMIT_TABLE}
+            WHERE day_id = ? AND submission_code = ? AND declaration_id = ?
+            """,
+            (int(day_id), submission_code, int(entry["declaration_id"])),
+        )
+        if cur.fetchone():
+            return
+        cur.execute(
+            f"""
+            INSERT dbo.{_SUBMIT_TABLE}
+                (day_id, submission_code, declaration_id, proposed_at_submit, segment_reference_date,
+                 protocol, ergani_submission_id, submit_date_text, success)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                int(day_id),
+                submission_code,
+                int(entry["declaration_id"]),
+                (str(proposed_at_submit).strip()[:64] if proposed_at_submit else None),
+                segment_reference_date,
+                (str(entry.get("protocol") or "").strip()[:64] or None),
+                (str(entry.get("ergani_submission_id") or "").strip()[:32] or None),
+                (str(entry.get("submit_date") or "").strip()[:64] or None),
+            ),
+        )
+
+
+def record_ergani_submit(
+    *,
+    store_id: int,
+    week_from: date,
+    employee_afm: str,
+    work_date: date,
+    submission_code: str,
+    declaration_id: int | None,
+    success: bool,
+    protocol: str | None,
+    ergani_submission_id: str | None,
+    submit_date_text: str | None,
+    proposed_at_submit: str | None = None,
+    segment_reference_date: date | None = None,
+    submitted_by: str | None = None,
+) -> dict[str, Any] | None:
+    if not submit_table_available():
+        return None
+    day_id = get_day_id(
+        store_id=store_id,
+        week_from=week_from,
+        employee_afm=employee_afm,
+        work_date=work_date,
+    )
+    if not day_id:
+        return None
+    with cursor(commit=True) as cur:
+        cur.execute(f"""
+            INSERT dbo.{_SUBMIT_TABLE}
+                (day_id, submission_code, declaration_id, proposed_at_submit, segment_reference_date,
+                 protocol, ergani_submission_id, submit_date_text, success, submitted_by)
+            OUTPUT INSERTED.id,
+                   CAST(INSERTED.submitted_at AS datetime2) AS submitted_at
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            int(day_id),
+            str(submission_code),
+            int(declaration_id) if declaration_id else None,
+            (str(proposed_at_submit).strip()[:64] if proposed_at_submit else None),
+            segment_reference_date,
+            (str(protocol).strip()[:64] if protocol else None),
+            (str(ergani_submission_id).strip()[:32] if ergani_submission_id else None),
+            (str(submit_date_text).strip()[:64] if submit_date_text else None),
+            1 if success else 0,
+            (str(submitted_by).strip()[:128] if submitted_by else None),
+        ))
+        inserted = cur.fetchone()
+    seg_display = segment_reference_date.strftime("%d/%m/%Y") if segment_reference_date else None
+    entry = {
+        "protocol": protocol,
+        "ergani_submission_id": ergani_submission_id,
+        "submit_date": submit_date_text,
+        "submitted_at": inserted[1].isoformat(timespec="seconds") if inserted and inserted[1] else None,
+        "declaration_id": declaration_id,
+        "proposed_at_submit": proposed_at_submit,
+        "segment_date": seg_display,
+    }
+    if submission_code == SUBMISSION_CODE_WTO_DAILY_A and proposed_at_submit:
+        entry["matches_proposal"] = True
+    if submission_code == SUBMISSION_CODE_WTO_DAILY_A:
+        return {"schedule": entry}
+    if submission_code == SUBMISSION_CODE_WTO_OV_A and seg_display:
+        return {"overtime": {seg_display: entry}}
+    return None
+
+
+_EVENT_TYPE_ORDER = {"ergani_submit": 0, "proposal_edit": 1, "recalc": 2}
+
+
+def _apologistic_activity_row(item: dict[str, Any]) -> dict[str, Any]:
+    event_at = item.get("event_at")
+    if hasattr(event_at, "isoformat"):
+        item["event_at"] = event_at.isoformat(timespec="seconds")
+    for key in ("week_from", "week_to"):
+        value = item.get(key)
+        if hasattr(value, "isoformat"):
+            item[key] = value.isoformat()
+    if item.get("employee_name"):
+        item["employee_name"] = str(item["employee_name"]).strip() or None
+    return item
+
+
+def list_apologistic_activity(
+    *,
+    store_id: int | None = None,
+    limit: int = 20,
+    before_at: datetime | None = None,
+    before_type: str | None = None,
+    before_id: int | None = None,
+) -> dict[str, Any]:
+    """Ενοποιημένο ιστορικό επαναϋπολογισμών, χειροκίνητων προτάσεων και υποβολών Ergani."""
+    if not tables_available():
+        return {"rows": [], "has_more": False, "next_before": None, "limit": limit}
+    limit = max(1, min(int(limit or 20), 200))
+    run_store = "AND r.store_id = ?" if store_id is not None else ""
+    day_store = "AND d.store_id = ?" if store_id is not None else ""
+    submit_union = ""
+    if submit_table_available():
+        submit_union = f"""
+            UNION ALL
+
+            SELECT
+                N'ergani_submit',
+                s.id,
+                s.submitted_at,
+                0,
+                d.store_id,
+                st.name,
+                r.week_from, r.week_to, r.calculation_version, r.status,
+                NULL, NULL,
+                d.employee_afm,
+                LTRIM(RTRIM(CONCAT(
+                    COALESCE(JSON_VALUE(d.effective_json, '$.eponymo'), N''),
+                    N' ',
+                    COALESCE(JSON_VALUE(d.effective_json, '$.onoma'), N'')
+                ))),
+                CONVERT(varchar(10), d.work_date, 103),
+                NULL, NULL, NULL, s.submitted_by,
+                s.submission_code, s.protocol, s.proposed_at_submit,
+                CASE
+                    WHEN s.segment_reference_date IS NULL THEN NULL
+                    ELSE CONVERT(varchar(10), s.segment_reference_date, 103)
+                END,
+                s.success, s.submitted_by
+            FROM dbo.karta_apologistic_submit s
+            INNER JOIN dbo.karta_apologistic_day d ON d.id = s.day_id
+            INNER JOIN dbo.karta_apologistic_run r ON r.id = d.run_id
+            INNER JOIN dbo.karta_store_config st ON st.id = d.store_id
+            WHERE s.success = 1
+            {day_store}
+        """
+
+    cursor_filter = ""
+    params: list[Any] = []
+    if store_id is not None:
+        sid = int(store_id)
+        params.extend([sid, sid])
+        if submit_table_available():
+            params.append(sid)
+
+    if before_at is not None and before_type and before_id is not None:
+        type_rank = _EVENT_TYPE_ORDER.get(str(before_type), 99)
+        cursor_filter = """
+          AND (
+            src.event_at < ?
+            OR (src.event_at = ? AND src.type_rank > ?)
+            OR (src.event_at = ? AND src.type_rank = ? AND src.event_id < ?)
+          )
+        """
+        params.extend([before_at, before_at, type_rank, before_at, type_rank, int(before_id)])
+
+    params.append(limit + 1)
+    sql = f"""
+        SELECT TOP (?)
+            src.event_type, src.event_id,
+            CAST(src.event_at AS datetime2) AS event_at,
+            src.type_rank, src.store_id, src.store_name,
+            src.week_from, src.week_to, src.calculation_version, src.run_status,
+            src.day_count, src.error_summary,
+            src.employee_afm, src.employee_name, src.work_date,
+            src.field_name, src.old_value, src.new_value, src.changed_by,
+            src.submission_code, src.protocol, src.proposed_at_submit,
+            src.segment_date, src.submit_success, src.submitted_by
+        FROM (
+            SELECT
+                N'recalc' AS event_type,
+                r.id AS event_id,
+                COALESCE(r.completed_at, r.updated_at) AS event_at,
+                2 AS type_rank,
+                r.store_id,
+                st.name AS store_name,
+                r.week_from, r.week_to, r.calculation_version, r.status AS run_status,
+                (SELECT COUNT(*) FROM dbo.karta_apologistic_day d2 WHERE d2.run_id = r.id) AS day_count,
+                r.error_summary,
+                NULL AS employee_afm, NULL AS employee_name, NULL AS work_date,
+                NULL AS field_name, NULL AS old_value, NULL AS new_value, NULL AS changed_by,
+                NULL AS submission_code, NULL AS protocol, NULL AS proposed_at_submit,
+                NULL AS segment_date, NULL AS submit_success, NULL AS submitted_by
+            FROM dbo.karta_apologistic_run r
+            INNER JOIN dbo.karta_store_config st ON st.id = r.store_id
+            WHERE r.status <> N'running' AND COALESCE(r.completed_at, r.updated_at) IS NOT NULL
+            {run_store}
+
+            UNION ALL
+
+            SELECT
+                N'proposal_edit',
+                c.id,
+                c.changed_at,
+                1,
+                d.store_id,
+                st.name,
+                r.week_from, r.week_to, r.calculation_version, r.status,
+                NULL, NULL,
+                d.employee_afm,
+                LTRIM(RTRIM(CONCAT(
+                    COALESCE(JSON_VALUE(d.effective_json, '$.eponymo'), N''),
+                    N' ',
+                    COALESCE(JSON_VALUE(d.effective_json, '$.onoma'), N'')
+                ))),
+                CONVERT(varchar(10), d.work_date, 103),
+                c.field_name, c.old_value, c.new_value, c.changed_by,
+                NULL, NULL, NULL, NULL, NULL, NULL
+            FROM dbo.karta_apologistic_change c
+            INNER JOIN dbo.karta_apologistic_day d ON d.id = c.day_id
+            INNER JOIN dbo.karta_apologistic_run r ON r.id = d.run_id
+            INNER JOIN dbo.karta_store_config st ON st.id = d.store_id
+            WHERE c.field_name = N'proposed'
+            {day_store}
+            {submit_union}
+        ) src
+        WHERE 1=1
+        {cursor_filter}
+        ORDER BY src.event_at DESC, src.type_rank ASC, src.event_id DESC
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql, tuple(params))
+        raw_rows = rows_to_dicts(cur)
+    rows = [_apologistic_activity_row(dict(item)) for item in raw_rows[:limit]]
+    has_more = len(raw_rows) > limit
+    next_before = None
+    if has_more and rows:
+        last = rows[-1]
+        next_before = {
+            "at": last.get("event_at"),
+            "type": last.get("event_type"),
+            "id": last.get("event_id"),
+        }
+    return {"rows": rows, "has_more": has_more, "next_before": next_before, "limit": limit}

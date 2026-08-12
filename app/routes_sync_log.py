@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, jsonify, request
 
 from app.http_helpers import resolve_active_store
-from app import repo_sync_log
+from app import repo_apologistic, repo_sync_log
 
 sync_log_bp = Blueprint("sync_log", __name__, url_prefix="/api/sync-log")
 
@@ -106,4 +108,68 @@ def sync_log_notifications():
         "before_id": before_id,
         "store_id": store_id,
         "q": q,
+    })
+
+
+@sync_log_bp.get("/apologistic")
+def sync_log_apologistic():
+    if not repo_apologistic.tables_available():
+        return jsonify({
+            "error": "Δεν υπάρχουν οι πίνακες απολογιστικού στη βάση.",
+            "db_setup": "sql/alter_add_apologistic_snapshots.sql",
+        }), 503
+
+    store_id = request.args.get("store_id", type=int)
+    active_only = request.args.get("active_store") in ("1", "true", "yes")
+    if active_only:
+        ctx = resolve_active_store()
+        if ctx:
+            store_id = int(ctx["id"])
+
+    try:
+        limit = int(request.args.get("limit", "20"))
+    except ValueError:
+        limit = 20
+    limit = max(1, min(limit, 200))
+
+    before_at = before_type = None
+    before_id = request.args.get("before_id", type=int)
+    before_at_raw = (request.args.get("before_at") or "").strip()
+    before_type = (request.args.get("before_type") or "").strip() or None
+    before_at_dt = None
+    if before_at_raw:
+        try:
+            from datetime import datetime
+
+            before_at_dt = datetime.fromisoformat(before_at_raw.replace("Z", "+00:00")[:26])
+        except ValueError:
+            before_at_dt = None
+
+    try:
+        if before_id is not None and before_at_dt is not None and before_type:
+            result = repo_apologistic.list_apologistic_activity(
+                store_id=store_id,
+                limit=limit,
+                before_at=before_at_dt,
+                before_type=before_type,
+                before_id=before_id,
+            )
+        else:
+            result = repo_apologistic.list_apologistic_activity(store_id=store_id, limit=limit)
+    except Exception:
+        logging.exception("sync_log_apologistic failed store_id=%s", store_id)
+        return jsonify({"error": "Αποτυχία φόρτωσης ιστορικού απολογιστικού."}), 500
+
+    rows = result.get("rows") or []
+    next_before = result.get("next_before")
+    return jsonify({
+        "events": rows,
+        "count": len(rows),
+        "has_more": bool(result.get("has_more")),
+        "next_before": next_before,
+        "next_before_at": (next_before or {}).get("at"),
+        "next_before_type": (next_before or {}).get("type"),
+        "next_before_id": (next_before or {}).get("id"),
+        "limit": result.get("limit") or limit,
+        "store_id": store_id,
     })

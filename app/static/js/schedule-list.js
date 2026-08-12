@@ -130,7 +130,7 @@ async function loadSchedule(cachedActive) {
       return;
     }
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       if (data.db_setup) {
         wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;">${Office.escapeHtml(data.db_setup)}</p>`;
       }
@@ -145,7 +145,7 @@ async function loadSchedule(cachedActive) {
     );
     Office.updateSyncMetaLine("scheduleSyncMeta", activeData.store, "schedule");
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -1032,7 +1032,7 @@ async function loadScheduleDayFormData(dateIso) {
     });
     const data = await Office.parseJson(res);
     if (!res.ok || !data.success) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα φόρτωσης")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα φόρτωσης")}</p>`;
       showScheduleDayFormMsg(data.error || "Αποτυχία φόρτωσης", false);
       return;
     }
@@ -1050,7 +1050,7 @@ async function loadScheduleDayFormData(dateIso) {
           : base;
     }
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     showScheduleDayFormMsg(String(e), false);
   }
 }

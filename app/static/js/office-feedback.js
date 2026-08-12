@@ -8,7 +8,7 @@ Object.assign(window.Office, {
       return;
     }
     const ic = ok ? "check-circle-fill" : "exclamation-triangle-fill";
-    el.innerHTML = `${this.icon(ic)} <span>${this.escapeHtml(text)}</span>`;
+    el.innerHTML = `${this.icon(ic)} <span>${this.formatMultilineHtml(text)}</span>`;
     el.className = "msg show " + (ok ? "ok" : "err");
   },
 
@@ -34,7 +34,7 @@ Object.assign(window.Office, {
           const prefix = ts ? `[${ts}] ` : "";
           return (
             `<div class="sync-log-line sync-log-${lvl}">` +
-            `${this.escapeHtml(prefix + (line.message || ""))}</div>`
+            `${this.formatMultilineHtml(prefix + (line.message || ""))}</div>`
           );
         })
         .join("");

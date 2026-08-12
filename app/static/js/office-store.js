@@ -25,6 +25,17 @@ Object.assign(window.Office, {
       .replace(/"/g, "&quot;");
   },
 
+  /** Ergani/API: literal \\n → πραγματική αλλαγή γραμμής. */
+  normalizeMultilineText(text) {
+    return String(text ?? "")
+      .replace(/\\n/g, "\n")
+      .replace(/\r\n/g, "\n");
+  },
+
+  formatMultilineHtml(text) {
+    return this.escapeHtml(this.normalizeMultilineText(text)).replace(/\n/g, "<br>");
+  },
+
   _activeStoreCache: null,
   _activeStoreInflight: null,
 

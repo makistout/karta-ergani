@@ -28,9 +28,9 @@ from app.repo_work_log import (
 )
 from app.work_card_payload import (
     FUTURE_EVENT_AT_ERROR,
-    RETRO_AITIOLOGIA_INTERNET,
     SUBMISSION_CODE_WRK_CARD,
     WorkCardPayloadError,
+    aitiologia_for_wrk_card_submit,
     build_wrk_card_se_payload,
     ergani_forbids_aitiologia,
     event_at_is_future,
@@ -834,6 +834,17 @@ def run_auto_close_prev_day_for_store(
             failures.append({**item, "error": "χωρίς πραγματική/κάρτα είσοδο"})
             continue
         try:
+            card_f_type = "1" if event == "check_out" else "0"
+            submitted_at = datetime.now(tz_athens())
+            resolved_aitiologia = aitiologia_for_wrk_card_submit(
+                f_type=card_f_type,
+                reference_date=str(item["reference_date"]),
+                event_at=event_at,
+                employer_afm=str(ctx["employer_afm"]),
+                branch_aa=str(ctx["branch_aa"]),
+                employee_afm=emp_afm,
+                submitted_at=submitted_at,
+            )
             payload = build_wrk_card_se_payload(
                 employer_afm=ctx["employer_afm"],
                 branch_aa=ctx["branch_aa"],
@@ -843,7 +854,7 @@ def run_auto_close_prev_day_for_store(
                 event=event,
                 reference_date=item["reference_date"],
                 event_at=event_at,
-                aitiologia=RETRO_AITIOLOGIA_INTERNET,
+                aitiologia=resolved_aitiologia,
                 comments="erganiOS automatic last-day close",
             )
         except WorkCardPayloadError as ex:

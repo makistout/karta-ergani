@@ -4,10 +4,6 @@ let employeeAc = null;
 let clockTimer = null;
 let workCardPortalSyncBusy = false;
 
-const RETRO_AITIOLOGIA = "001";
-const RETRO_AITIOLOGIA_LABEL =
-  "001 — ΠΡΟΒΛΗΜΑ ΣΤΗΝ ΗΛΕΚΤΡΟΔΟΤΗΣΗ/ΤΗΛΕΠΙΚΟΙΝΩΝΙΕΣ";
-
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("workcard");
   Office.initWorkLogHistoryModal();

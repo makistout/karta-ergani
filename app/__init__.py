@@ -27,6 +27,7 @@ from app.routes_contact import contact_bp
 from app.access_control import register_access_context
 from app.routes_users import users_bp
 from app.routes_apologistic import apologistic_bp
+from app.routes_wto_apologistic import wto_apologistic_bp
 from app.routes_card_listener import card_listener_bp
 
 
@@ -64,6 +65,7 @@ def create_app() -> Flask:
     app.register_blueprint(work_log_bp)
     app.register_blueprint(monthly_status_bp)
     app.register_blueprint(apologistic_bp)
+    app.register_blueprint(wto_apologistic_bp)
     app.register_blueprint(telegram_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)
@@ -95,6 +97,10 @@ def create_app() -> Flask:
             "leave_types": "GET /api/leave/types",
             "leave_submit": "POST /api/leave/submit",
             "wto_daily_submit": "POST /api/wto-daily/submit",
+            "wto_daily_a_submit": "POST /api/wto-daily-a/submit",
+            "wto_ov_a_submit": "POST /api/wto-ov-a/submit",
+            "apologistic_submit_schedule": "POST /api/apologistic/submit-schedule",
+            "apologistic_submit_overtime": "POST /api/apologistic/submit-overtime",
             "wto_week_submit": "POST /api/wto-week/submit",
             "local": "/api/local/",
             "audit": "/api/audit/list",

@@ -17,6 +17,15 @@ AITIOLOGIA_CODES: dict[str, str] = {
     "003": "ΠΡΟΒΛΗΜΑ ΣΥΝΔΕΣΗΣ ΜΕ ΤΟ ΠΣ ΕΡΓΑΝΗ",
 }
 RETRO_AITIOLOGIA_INTERNET = "001"
+# Αν η ώρα κίνησης ≈ ώρα υποβολής (live ή retro με «σήμερα + τώρα»), χωρίς αιτιολογία.
+IMMEDIATE_PUNCH_TOLERANCE_SECONDS = 120
+
+
+def _is_immediate_punch(event_dt: datetime, *, submitted_at: datetime | None = None) -> bool:
+    """Ίδια λογική ανεξάρτητα από κανάλι: η κίνηση δηλώνεται «τώρα»."""
+    submitted = (submitted_at or datetime.now(tz_athens())).astimezone(tz_athens())
+    event_local = event_dt.astimezone(tz_athens()) if event_dt.tzinfo else event_dt.replace(tzinfo=tz_athens())
+    return abs((event_local - submitted).total_seconds()) <= IMMEDIATE_PUNCH_TOLERANCE_SECONDS
 
 
 def ergani_forbids_aitiologia(parsed: Any) -> bool:
@@ -119,9 +128,16 @@ def wrk_card_needs_aitiologia(
     schedule_hour_from: str | None = None,
     schedule_hour_to: str | None = None,
     flex_arrival_minutes: int | None = None,
+    submitted_at: datetime | None = None,
 ) -> bool:
-    """Αν χρειάζεται f_aitiologia: προηγούμενη ημέρα πάντα· σήμερα έλεγχος ώρας+ευελιξίας."""
-    today_iso = datetime.now(tz_athens()).date().isoformat()
+    """
+    Αν χρειάζεται f_aitiologia — μόνο από ΠΟΤΕ είναι το χτύπημα (όχι από κανάλι).
+
+    1) Ημέρα αναφοράς ≠ σήμερα → πάντα αιτιολογία (εκπρόθεσμη δήλωση).
+    2) Ώρα κίνησης ≈ ώρα υποβολής → όχι (live ή retro «τώρα»).
+    3) Σήμερα, αλλού: έλεγχος έναντι ψηφιακού ωραρίου ± ευελιξία.
+    """
+    today_iso = (submitted_at or datetime.now(tz_athens())).astimezone(tz_athens()).date().isoformat()
     ref = str(reference_date or "").strip()[:10]
     if not ref and event_at:
         ref = str(event_at).strip()[:10]
@@ -131,17 +147,18 @@ def wrk_card_needs_aitiologia(
         return False
 
     dt = parse_event_at(event_at, ref or None)
+    if _is_immediate_punch(dt, submitted_at=submitted_at):
+        return False
+
     punch_min = dt.hour * 60 + dt.minute
     tol = _flex_tolerance_minutes(flex_arrival_minutes)
     ft = str(f_type).strip()
 
     if ft == "0":
         s_start = _hm_to_minutes(schedule_hour_from)
-        # Αν δεν έχουμε ωράριο/ευελιξία, δεν μπορούμε να αποφανθούμε.
-        # Αφήνουμε το retry/error-handling στους routes να χειριστεί XSD/Ergani μηνύματα.
         if s_start is None:
             return False
-        return punch_min < s_start or punch_min > s_start + tol
+        return punch_min < s_start - tol or punch_min > s_start + tol
 
     s_end = _hm_to_minutes(schedule_hour_to)
     if s_end is None:
@@ -158,6 +175,7 @@ def resolve_wrk_card_aitiologia(
     schedule_hour_from: str | None = None,
     schedule_hour_to: str | None = None,
     flex_arrival_minutes: int | None = None,
+    submitted_at: datetime | None = None,
 ) -> str | None:
     """Απόφαση αιτιολογίας WRKCardSE πριν την υποβολή στην Ergani."""
     ref = str(reference_date or "").strip()[:10] or None
@@ -171,6 +189,7 @@ def resolve_wrk_card_aitiologia(
         schedule_hour_from=schedule_hour_from,
         schedule_hour_to=schedule_hour_to,
         flex_arrival_minutes=flex_arrival_minutes,
+        submitted_at=submitted_at,
     ):
         return None
 
@@ -178,6 +197,38 @@ def resolve_wrk_card_aitiologia(
         ait = normalize_aitiologia(requested_aitiologia)
         return ait or RETRO_AITIOLOGIA_INTERNET
     return RETRO_AITIOLOGIA_INTERNET
+
+
+def aitiologia_for_wrk_card_submit(
+    *,
+    f_type: str,
+    reference_date: str,
+    event_at: str,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    requested_aitiologia: str | None = None,
+    submitted_at: datetime | None = None,
+) -> str | None:
+    """Ενιαία απόφαση αιτιολογίας για κάθε κανάλι υποβολής WRKCardSE."""
+    from app.date_util import format_date_for_ergani
+
+    sched_ctx = lookup_punch_schedule_context(
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employee_afm=employee_afm,
+        work_date_ergani=format_date_for_ergani(reference_date),
+    )
+    return resolve_wrk_card_aitiologia(
+        f_type=f_type,
+        event_at=event_at,
+        reference_date=reference_date,
+        requested_aitiologia=requested_aitiologia,
+        schedule_hour_from=sched_ctx.get("schedule_hour_from"),
+        schedule_hour_to=sched_ctx.get("schedule_hour_to"),
+        flex_arrival_minutes=sched_ctx.get("flex_arrival_minutes"),
+        submitted_at=submitted_at,
+    )
 
 
 def lookup_punch_schedule_context(
@@ -295,11 +346,9 @@ def build_wrk_card_se_payload(
         "f_type": ft,
         "f_reference_date": ref,
         "f_date": f_date,
+        # Πάντα στοιχείο f_aitiologia: κωδικός ή κενό string (XSD Ergani).
+        "f_aitiologia": ait if ait else "",
     }
-    if include_null_aitiologia and not ait:
-        detail["f_aitiologia"] = None
-    elif ait:
-        detail["f_aitiologia"] = ait
     return {
         "Cards": {
             "Card": [

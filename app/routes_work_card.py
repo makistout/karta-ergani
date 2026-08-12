@@ -17,6 +17,7 @@ from app.http_helpers import (
     bearer_from_request,
     ensure_ergani_bearer,
     json_or_text,
+    normalize_multiline_text,
     resolve_active_store,
     response_body_text,
 )
@@ -38,10 +39,9 @@ from app.repo_store import get_store_by_afm
 from app.work_card_payload import (
     SUBMISSION_CODE_WRK_CARD,
     WorkCardPayloadError,
+    aitiologia_for_wrk_card_submit,
     build_wrk_card_se_payload,
     f_type_from_event,
-    lookup_punch_schedule_context,
-    resolve_wrk_card_aitiologia,
     RETRO_AITIOLOGIA_INTERNET,
     tz_athens,
 )
@@ -146,7 +146,7 @@ def _wrk_card_error_message(resp, parsed: Any) -> str | None:
             _add(body[:600])
 
     if parts:
-        return f"Ergani ({resp.status_code}): " + " · ".join(parts)
+        return normalize_multiline_text(f"Ergani ({resp.status_code}): " + " · ".join(parts))
 
     from app.ergani_errors import ergani_failure_detail
 
@@ -360,26 +360,21 @@ def _submit_work_card(
             )
         ), 409
 
-    aitiologia_raw = str(body.get("aitiologia") or "").strip() or None
-    explicit_aitiologia = bool(aitiologia_raw)
+    requested_aitiologia = str(body.get("aitiologia") or "").strip() or None
+    submitted_at = datetime.now(tz_athens())
     if not event_at_str:
-        event_at_str = datetime.now(tz_athens()).isoformat(timespec="seconds")
-    if event_at_str:
-        sched_ctx = lookup_punch_schedule_context(
-            employer_afm=erg_s,
-            branch_aa=aa_s,
-            employee_afm=emp_afm,
-            work_date_ergani=format_date_for_ergani(ref_date),
-        )
-        aitiologia_raw = resolve_wrk_card_aitiologia(
-            f_type=resolved_type,
-            event_at=event_at_str,
-            reference_date=ref_date,
-            requested_aitiologia=aitiologia_raw,
-            schedule_hour_from=sched_ctx.get("schedule_hour_from"),
-            schedule_hour_to=sched_ctx.get("schedule_hour_to"),
-            flex_arrival_minutes=sched_ctx.get("flex_arrival_minutes"),
-        )
+        event_at_str = submitted_at.isoformat(timespec="seconds")
+    aitiologia_raw = aitiologia_for_wrk_card_submit(
+        f_type=resolved_type,
+        reference_date=ref_date,
+        event_at=event_at_str,
+        employer_afm=erg_s,
+        branch_aa=aa_s,
+        employee_afm=emp_afm,
+        requested_aitiologia=requested_aitiologia,
+        submitted_at=submitted_at,
+    )
+    explicit_aitiologia = requested_aitiologia is not None and aitiologia_raw is not None
 
     def build_payload(
         resolved_aitiologia: str | None,

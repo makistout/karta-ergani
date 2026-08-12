@@ -210,8 +210,6 @@ def submit_retro_hit_from_session(
         "event_at": f"{ref}T{rt}:00",
         "correction_mode": correction_mode,
     }
-    if aitiologia:
-        body["aitiologia"] = aitiologia
     body["source"] = "telegram_retro"
     resp, status = _submit_work_card(
         body=body,

@@ -1,4 +1,4 @@
-﻿let retroDatePicker = null;
+let retroDatePicker = null;
 let hitContext = null;
 const hitToken = (new URLSearchParams(window.location.search).get("t") || "").trim();
 
@@ -45,7 +45,7 @@ async function loadContext() {
     if (!res.ok || !data.context) {
       if (intro) {
         intro.textContent =
-          data.error || "Η συνεδρία έληξε. Ανοίξτε ξανά τον σύνδεσμο από το Telegram.";
+          data.error || "� �������� �����. ������� ���� ��� �������� ��� �� Telegram.";
       }
       return;
     }
@@ -53,13 +53,13 @@ async function loadContext() {
     const c = hitContext;
     const name = c.employee_name || c.employee_afm || "";
     if (intro) {
-      intro.textContent = `Κατάστημα: ${c.store_name || ""} — επιβεβαιώστε την προγενέστερη καταχώρηση.`;
+      intro.textContent = `���������: ${c.store_name || ""} � ������������ ��� ������������ ����������.`;
     }
     if (emp) {
       emp.classList.remove("hidden");
       emp.innerHTML =
         `<strong>${Office.escapeHtml(name)}</strong>` +
-        ` <span class="retro-hit-afm">(ΑΦΜ ${Office.escapeHtml(c.employee_afm || "")})</span>`;
+        ` <span class="retro-hit-afm">(��� ${Office.escapeHtml(c.employee_afm || "")})</span>`;
     }
     const refIso = c.reference_date_iso || "";
     if (retroDatePicker && refIso) retroDatePicker.setIso(refIso);
@@ -81,10 +81,8 @@ function showRetroMsg(text, ok) {
   const el = document.getElementById("rhMsg");
   if (!el) return;
   const ic = ok ? "check-circle-fill" : "exclamation-triangle-fill";
-  const normalized = String(text || "")
-    .replace(/\\n/g, "\n")
-    .replace(/\r\n/g, "\n");
-  const html = Office.escapeHtml(normalized).replace(/\n/g, "<br>");
+  const normalized = Office.normalizeMultilineText(text || "");
+  const html = Office.formatMultilineHtml(normalized);
   el.innerHTML = `${Office.icon(ic)} <span>${html}</span>`;
   el.className = "msg show " + (ok ? "ok" : "err");
 }
@@ -100,14 +98,14 @@ async function submitRetro(eventName, options = {}) {
     "";
   const retroTime = readRetroTimeValue();
   if (!referenceDate || !retroTime) {
-    showRetroMsg("Συμπληρώστε ημερομηνία και ώρα κτυπήματος.", false);
+    showRetroMsg("����������� ���������� ��� ��� ����������.", false);
     return;
   }
   setFormEnabled(false);
-  const label = eventName === "check_in" ? "Είσοδος" : "Έξοδος";
+  const label = eventName === "check_in" ? "�������" : "������";
   const progress = Office.startWorkCardSubmissionProgress(
     (text) => Office.showLoading("rhMsg", text),
-    { label: `προγενέστερης ${label.toLowerCase()}` }
+    { label: `������������� ${label.toLowerCase()}` }
   );
   try {
     const res = await fetch("/api/telegram/retro-hit/submit", {
@@ -130,31 +128,31 @@ async function submitRetro(eventName, options = {}) {
     if (res.status === 409 && data.correction_available && !correctionMode) {
       progress.stop();
       const go = window.confirm(
-        `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
-        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
+        `${Office.normalizeMultilineText(data.error || "������� ��� ����������.")}\n\n` +
+        "�� ����������, �� ������ ���������� �������."
       );
       if (go) {
         await submitRetro(eventName, { correctionMode: true });
       } else {
-        showRetroMsg(data.error || "Η διόρθωση ακυρώθηκε.", false);
+        showRetroMsg(data.error || "� �������� ���������.", false);
         setFormEnabled(true);
       }
       return;
     }
     if (!res.ok || !data.success) {
       showRetroMsg(
-        (data.error || data.errors?.join(" · ") || "Αποτυχία υποβολής") +
+        (data.error || data.errors?.join(" � ") || "�������� ��������") +
           Office.workCardExecutionSuffix(data, progress.elapsedSeconds()),
         false
       );
       setFormEnabled(true);
       return;
     }
-    let ok = `Επιτυχία — ${data.f_type_label || label}`;
-    if (data.correction_mode) ok += " · διορθωτικό";
-    if (data.protocol) ok += ` · Πρωτόκολο: ${data.protocol}`;
+    let ok = `�������� � ${data.f_type_label || label}`;
+    if (data.correction_mode) ok += " � ����������";
+    if (data.protocol) ok += ` � ���������: ${data.protocol}`;
     if (data.sync_triggered) {
-      ok += " · Συγχρονισμός σήμερα ξεκίνησε στο παρασκήνιο.";
+      ok += " � ������������ ������ �������� ��� ����������.";
     }
     ok += Office.workCardExecutionSuffix(data, progress.elapsedSeconds());
     showRetroMsg(ok, true);

@@ -1,4 +1,4 @@
-"""Κατασκευή σώματος POST Documents/WTODaily — ημερήσιο τροποποιούμενο ωράριο."""
+"""Κατασκευή σώματος POST Documents/WTOOvA — απολογιστικές υπερωρίες."""
 
 from __future__ import annotations
 
@@ -7,9 +7,8 @@ from typing import Any
 from app.date_util import format_date_for_ergani
 from app.work_card_payload import WorkCardPayloadError, norm_afm
 
-SUBMISSION_CODE_WTO_DAILY = "WTODaily"
-
-_VALID_TYPES = frozenset({"ΕΡΓ", "ΤΗΛ", "ΑΝ", "ΜΕ"})
+SUBMISSION_CODE_WTO_OV_A = "WTOOvA"
+_OVERTIME_TYPE = "ΥΠ"
 
 
 def _blank_field(value: str | None) -> str:
@@ -17,17 +16,13 @@ def _blank_field(value: str | None) -> str:
     return s if s else " "
 
 
-SUBMISSION_CODE_WTO_DAILY_A = "WTODailyA"
-
-
-def build_wtos_envelope(
+def build_wto_ov_a_payload(
     *,
     branch_aa: str,
     employee_afm: str,
     employee_last_name: str,
     employee_first_name: str,
     reference_date: str,
-    schedule_type: str = "ΕΡΓ",
     hour_from: str | None = None,
     hour_to: str | None = None,
     intervals: list[dict[str, Any]] | None = None,
@@ -39,32 +34,25 @@ def build_wtos_envelope(
     if not ep or not on:
         raise WorkCardPayloadError("Απαιτούνται επώνυμο και όνομα εργαζομένου")
 
-    stype = str(schedule_type or "ΕΡΓ").strip().upper()
-    if stype == "ERG":
-        stype = "ΕΡΓ"
-    if stype not in _VALID_TYPES:
-        raise WorkCardPayloadError(
-            f"Μη έγκυρος τύπος ωραρίου: {schedule_type}. "
-            f"Επιτρεπτοί: {', '.join(sorted(_VALID_TYPES))}"
-        )
-
     ergani_date = format_date_for_ergani(reference_date)
     aa = str(branch_aa or "0").strip()[:5] or "0"
 
-    if intervals and stype != "ΑΝ":
-        analytics = []
+    analytics: list[dict[str, str]] = []
+    if intervals:
         for item in intervals:
             hf = str((item or {}).get("hour_from") or "").strip()
             ht = str((item or {}).get("hour_to") or "").strip()
             if not hf and not ht:
                 continue
             if not hf or not ht:
-                raise WorkCardPayloadError("Στο σπαστό ωράριο κάθε διάστημα θέλει ώρα από και έως")
-            analytics.append({"f_type": stype, "f_from": _blank_field(hf), "f_to": _blank_field(ht)})
-        if not analytics:
-            analytics = [{"f_type": stype, "f_from": _blank_field(hour_from), "f_to": _blank_field(hour_to)}]
-    else:
-        analytics = [{"f_type": stype, "f_from": _blank_field(hour_from), "f_to": _blank_field(hour_to)}]
+                raise WorkCardPayloadError("Σε κάθε διάστημα υπερωρίας απαιτούνται ώρα από και έως")
+            analytics.append({"f_type": _OVERTIME_TYPE, "f_from": _blank_field(hf), "f_to": _blank_field(ht)})
+    if not analytics:
+        hf = str(hour_from or "").strip()
+        ht = str(hour_to or "").strip()
+        if not hf or not ht:
+            raise WorkCardPayloadError("Απαιτούνται hour_from και hour_to (ή intervals)")
+        analytics = [{"f_type": _OVERTIME_TYPE, "f_from": _blank_field(hf), "f_to": _blank_field(ht)}]
 
     employee_block = {
         "f_afm": emp,
@@ -91,18 +79,4 @@ def build_wtos_envelope(
     }
 
 
-def build_wto_daily_payload(**kwargs: Any) -> dict[str, Any]:
-    return build_wtos_envelope(**kwargs)
-
-
-def build_wto_daily_a_payload(**kwargs: Any) -> dict[str, Any]:
-    return build_wtos_envelope(**kwargs)
-
-
-__all__ = [
-    "SUBMISSION_CODE_WTO_DAILY",
-    "SUBMISSION_CODE_WTO_DAILY_A",
-    "build_wtos_envelope",
-    "build_wto_daily_payload",
-    "build_wto_daily_a_payload",
-]
+__all__ = ["SUBMISSION_CODE_WTO_OV_A", "build_wto_ov_a_payload"]

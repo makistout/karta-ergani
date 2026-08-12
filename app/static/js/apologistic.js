@@ -4,16 +4,26 @@ let reportState = { rows: [], store: null, filter: "all", selectedDate: "", date
 let openExplanationId = null;
 let openEmployeeAfm = null;
 let proposalEditRow = null;
+let submitModalState = null;
+const canSubmitErgani = document.querySelector(".apologistic-toolbar")?.dataset.canSubmit === "1";
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("apologistic");
   document.getElementById("weekPrev").onclick = () => moveWeek(-7);
   document.getElementById("weekNext").onclick = () => moveWeek(7);
+  document.getElementById("apologisticAllDays")?.addEventListener("click", () => selectAllDays());
   initExplanationModal();
   initEmployeeModal();
   initProposalModal();
-  window.addEventListener("scroll", hideProposalHistoryOverlay, true);
-  window.addEventListener("resize", hideProposalHistoryOverlay);
+  initSubmitModal();
+  window.addEventListener("scroll", () => {
+    hideProposalHistoryOverlay();
+    hideEmployeeWeekOverlay();
+  }, true);
+  window.addEventListener("resize", () => {
+    hideProposalHistoryOverlay();
+    hideEmployeeWeekOverlay();
+  });
   document.addEventListener("click", (event) => {
     const proposalButton = event.target.closest(".apologistic-proposal-btn");
     if (proposalButton) {
@@ -27,6 +37,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       openEmployeeDetail(employeeButton.dataset.employeeAfm || "");
       return;
     }
+    const scheduleSubmitButton = event.target.closest(".apologistic-submit-schedule-btn");
+    if (scheduleSubmitButton) {
+      event.stopPropagation();
+      openSubmitModal("schedule", scheduleSubmitButton.dataset.employeeAfm || "", scheduleSubmitButton.dataset.workDate || "");
+      return;
+    }
+    const overtimeSubmitButton = event.target.closest(".apologistic-submit-overtime-btn");
+    if (overtimeSubmitButton) {
+      event.stopPropagation();
+      openSubmitModal("overtime", overtimeSubmitButton.dataset.employeeAfm || "", overtimeSubmitButton.dataset.workDate || "");
+      return;
+    }
     const button = event.target.closest(".apologistic-info-btn");
     if (!button) return;
     event.stopPropagation();
@@ -34,7 +56,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (proposalEditRow) closeProposalEditor();
+    if (submitModalState) closeSubmitModal();
+    else if (proposalEditRow) closeProposalEditor();
     else if (openEmployeeAfm) closeEmployeeDetail();
     else closeExplanation();
   });
@@ -77,6 +100,399 @@ function initProposalModal() {
     });
   });
   form.addEventListener("submit", saveProposalEditor);
+}
+
+function initSubmitModal() {
+  const modal = document.getElementById("apologisticSubmitModal");
+  if (!modal || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-apologistic-submit-close]").forEach((el) => {
+    el.addEventListener("click", closeSubmitModal);
+  });
+  document.getElementById("apologisticSubmitConfirm")?.addEventListener("click", confirmSubmitModal);
+  document.getElementById("apologisticSubmitSegmentDate")?.addEventListener("change", () => {
+    if (!submitModalState) return;
+    renderSubmitPreviousBanner(
+      submitModalState.row,
+      submitModalState.kind,
+      document.getElementById("apologisticSubmitSegmentDate")?.value || "",
+    );
+  });
+}
+
+function findReportRow(employeeAfm, workDate) {
+  return reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate) || null;
+}
+
+function rowHasOvertime(row) {
+  return Boolean((row.overtime_segments || []).length || (row.overtime_minutes || 0) > 0);
+}
+
+function overtimeSegmentDates(row) {
+  const segments = row.overtime_segments || [];
+  if (!segments.length) return row.work_date ? [row.work_date] : [];
+  return [...new Set(segments.map((segment) => String(segment.date || row.work_date || "").trim()).filter(Boolean))].sort();
+}
+
+function overtimeSegmentsForDate(row, segmentDate) {
+  const segments = row.overtime_segments || [];
+  if (!segments.length) {
+    if (row.overtime_from && row.overtime_to) {
+      return [{ date: row.work_date, from: row.overtime_from, to: row.overtime_to }];
+    }
+    return [];
+  }
+  return segments.filter((segment) => String(segment.date || row.work_date || "").trim() === segmentDate);
+}
+
+function rowHasAnyErganiSubmit(row) {
+  if (String(row.ergani_submit?.schedule?.protocol || "").trim()) return true;
+  return Object.values(row.ergani_submit?.overtime || {}).some(
+    (entry) => String(entry?.protocol || "").trim(),
+  );
+}
+
+function countErganiSubmits(rows) {
+  let total = 0;
+  for (const row of rows || []) {
+    if (String(row.ergani_submit?.schedule?.protocol || "").trim()) total += 1;
+    for (const entry of Object.values(row.ergani_submit?.overtime || {})) {
+      if (String(entry?.protocol || "").trim()) total += 1;
+    }
+  }
+  return total;
+}
+
+function computeReportCounts(rows) {
+  const list = rows || [];
+  return {
+    all: list.length,
+    ok: list.filter((row) => row.status === "ok").length,
+    change: list.filter((row) => row.status === "change").length,
+    review: list.filter((row) => row.status === "review").length,
+    submitted: countErganiSubmits(list),
+  };
+}
+
+function refreshSummaryCounts() {
+  renderSummary({
+    employees: Array(reportState.employeeCount || 0).fill(null),
+    days: reportState.rows,
+    counts: computeReportCounts(reportState.rows),
+  });
+}
+
+function isAllDaysSelected() {
+  return !reportState.selectedDate;
+}
+
+function selectAllDays() {
+  reportState.selectedDate = "";
+  syncDaySelectionUi();
+  renderVisibleRows();
+}
+
+function syncDaySelectionUi() {
+  const allBtn = document.getElementById("apologisticAllDays");
+  if (allBtn) {
+    const active = isAllDaysSelected();
+    allBtn.classList.toggle("is-active", active);
+    allBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+  document.querySelectorAll(".apologistic-day-tab").forEach((button) => {
+    const active = button.dataset.workDate === reportState.selectedDate;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function visibleReportRows() {
+  let rows = isAllDaysSelected()
+    ? reportState.rows.slice()
+    : reportState.rows.filter((row) => row.work_date === reportState.selectedDate);
+  if (reportState.filter === "submitted") {
+    rows = rows.filter(rowHasAnyErganiSubmit);
+  } else if (reportState.filter !== "all") {
+    rows = rows.filter((row) => row.status === reportState.filter);
+  }
+  if (isAllDaysSelected()) {
+    rows.sort((left, right) => {
+      const dateCmp = String(left.work_date || "").localeCompare(String(right.work_date || ""), "el");
+      if (dateCmp) return dateCmp;
+      return String(left.eponymo || "").localeCompare(String(right.eponymo || ""), "el");
+    });
+  }
+  return rows;
+}
+
+function reportPeriodLabel() {
+  if (!isAllDaysSelected()) return reportState.selectedDate;
+  const dates = reportState.dates || [];
+  if (!dates.length) return "όλη η εβδομάδα";
+  const start = dates[0].slice(0, 5);
+  const end = dates[dates.length - 1].slice(0, 5);
+  return `${start}–${end} · όλη η εβδομάδα`;
+}
+
+function scheduleLabelsMatch(row) {
+  const declared = String(row.declared || "").trim();
+  const proposed = String(row.proposed || "").trim();
+  return Boolean(declared && proposed && declared === proposed);
+}
+
+function canSubmitScheduleRow(row) {
+  if (row.status !== "change") return false;
+  if (scheduleLabelsMatch(row) && rowHasOvertime(row)) return false;
+  return true;
+}
+
+function mergeErganiSubmit(row, fragment) {
+  if (!fragment || typeof fragment !== "object") return;
+  if (!row.ergani_submit) row.ergani_submit = {};
+  if (fragment.schedule) row.ergani_submit.schedule = fragment.schedule;
+  if (fragment.overtime) {
+    if (!row.ergani_submit.overtime) row.ergani_submit.overtime = {};
+    Object.assign(row.ergani_submit.overtime, fragment.overtime);
+  }
+}
+
+function refreshScheduleSubmitMatch(row) {
+  const schedule = row.ergani_submit?.schedule;
+  if (!schedule?.proposed_at_submit) return;
+  schedule.matches_proposal = String(schedule.proposed_at_submit).trim() === String(row.proposed || "").trim();
+}
+
+function overtimeSubmitForRow(row) {
+  const overtime = row.ergani_submit?.overtime;
+  if (!overtime) return null;
+  for (const date of overtimeSegmentDates(row)) {
+    if (overtime[date]?.protocol) return { ...overtime[date], segment_date: date };
+  }
+  return null;
+}
+
+function existingSubmitForKind(row, kind, segmentDate) {
+  if (kind === "schedule") {
+    const schedule = row.ergani_submit?.schedule;
+    return schedule?.protocol ? schedule : null;
+  }
+  const seg = segmentDate || overtimeSegmentDates(row)[0] || row.work_date;
+  const entry = row.ergani_submit?.overtime?.[seg];
+  return entry?.protocol ? { ...entry, segment_date: seg } : null;
+}
+
+function formatSubmittedAt(value) {
+  if (!value) return "—";
+  const normalized = String(value).includes("T") ? String(value) : String(value).replace(" ", "T");
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 19).replace("T", " ");
+  return d.toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function renderSubmitPreviousBanner(row, kind, segmentDate) {
+  const box = document.getElementById("apologisticSubmitPrevious");
+  const confirmBtn = document.getElementById("apologisticSubmitConfirm");
+  if (!box || !confirmBtn) return;
+  const existing = existingSubmitForKind(row, kind, segmentDate);
+  if (!existing?.protocol) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    confirmBtn.innerHTML = '<i class="bi bi-send" aria-hidden="true"></i> Υποβολή';
+    return;
+  }
+  const doc = kind === "schedule" ? "WTODailyA" : "WTOOvA";
+  const lines = [
+    `Έχετε ήδη καταχωρήσει ${doc} για αυτή την ημέρα.`,
+    `Πρωτόκολλο: ${existing.protocol}`,
+    `Ημερομηνία/ώρα υποβολής: ${formatSubmittedAt(existing.submitted_at || existing.submit_date)}`,
+  ];
+  if (kind === "schedule" && existing.proposed_at_submit) {
+    lines.push(`Ωράριο που στάλθηκε: ${existing.proposed_at_submit}`);
+    if (existing.matches_proposal === false) {
+      lines.push("Η τρέχουσα πρόταση διαφέρει — η επαναποστολή θα στείλει το νέο ωράριο.");
+    }
+  }
+  if (kind === "overtime" && existing.segment_date) {
+    lines.push(`Ημέρα υπερωρίας: ${existing.segment_date}`);
+  }
+  lines.push("Θέλετε να το υποβάλετε ξανά;");
+  box.innerHTML =
+    `<strong><i class="bi bi-check2-circle" aria-hidden="true"></i> Υπάρχει καταχωρημένη υποβολή</strong>` +
+    `<p>${lines.map((line) => attr(line)).join("<br>")}</p>`;
+  box.classList.remove("hidden");
+  confirmBtn.innerHTML = '<i class="bi bi-arrow-repeat" aria-hidden="true"></i> Υποβολή ξανά';
+}
+
+function showSubmitToast(text, ok) {
+  Office.showMsg("apologisticSubmitMsg", text, ok);
+}
+
+function closeSubmitModal() {
+  submitModalState = null;
+  document.getElementById("apologisticSubmitModal")?.classList.add("hidden");
+  const error = document.getElementById("apologisticSubmitError");
+  if (error) error.textContent = "";
+  const previous = document.getElementById("apologisticSubmitPrevious");
+  if (previous) {
+    previous.classList.add("hidden");
+    previous.innerHTML = "";
+  }
+  const confirmBtn = document.getElementById("apologisticSubmitConfirm");
+  if (confirmBtn) confirmBtn.innerHTML = '<i class="bi bi-send" aria-hidden="true"></i> Υποβολή';
+}
+
+function openSubmitModal(kind, employeeAfm, workDate) {
+  if (!canSubmitErgani) return;
+  const row = findReportRow(employeeAfm, workDate);
+  const modal = document.getElementById("apologisticSubmitModal");
+  const title = document.getElementById("apologisticSubmitModalTitle");
+  const meta = document.getElementById("apologisticSubmitModalMeta");
+  const detail = document.getElementById("apologisticSubmitModalDetail");
+  const segmentWrap = document.getElementById("apologisticSubmitSegmentWrap");
+  const segmentSelect = document.getElementById("apologisticSubmitSegmentDate");
+  const errorBox = document.getElementById("apologisticSubmitError");
+  if (!row || !modal || !title || !meta || !detail || !segmentWrap || !segmentSelect) return;
+
+  closeExplanation();
+  submitModalState = { kind, row };
+  errorBox.textContent = "";
+  const employeeName = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
+  meta.textContent = `${employeeName} · ${row.work_date}`;
+
+  if (kind === "schedule") {
+    title.textContent = "Υποβολή απολογιστικής μεταβολής";
+    detail.innerHTML = `Έγγραφο: <strong>WTODailyA</strong><br>Πρόταση: <strong>${attr(compactScheduleLabel(row.proposed))}</strong>`;
+    segmentWrap.classList.add("hidden");
+    segmentSelect.innerHTML = "";
+  } else {
+    title.textContent = "Υποβολή απολογιστικής υπερωρίας";
+    const dates = overtimeSegmentDates(row);
+    segmentSelect.innerHTML = dates.map((date) => {
+      const segments = overtimeSegmentsForDate(row, date);
+      const label = segments.map((segment) => `${segment.from}–${segment.to}`).join(", ");
+      return `<option value="${attr(date)}">${attr(date)} · ${attr(label)}</option>`;
+    }).join("");
+    if (dates.length > 1) {
+      segmentWrap.classList.remove("hidden");
+      detail.innerHTML = `Έγγραφο: <strong>WTOOvA</strong><br>Η υπερωρία απλώνεται σε περισσότερες από μία ημέρες — επιλέξτε ημέρα υποβολής.`;
+    } else {
+      segmentWrap.classList.add("hidden");
+      const onlyDate = dates[0] || row.work_date;
+      const label = overtimeSegmentsForDate(row, onlyDate).map((segment) => `${segment.from}–${segment.to}`).join(", ");
+      detail.innerHTML = `Έγγραφο: <strong>WTOOvA</strong><br>Διάστημα: <strong>${attr(label || "—")}</strong>`;
+    }
+  }
+  const segmentDate = kind === "overtime"
+    ? (segmentSelect.value || overtimeSegmentDates(row)[0] || row.work_date)
+    : "";
+  renderSubmitPreviousBanner(row, kind, segmentDate);
+  modal.classList.remove("hidden");
+}
+
+async function confirmSubmitModal() {
+  const state = submitModalState;
+  const btn = document.getElementById("apologisticSubmitConfirm");
+  const errorBox = document.getElementById("apologisticSubmitError");
+  if (!state || !btn) return;
+
+  const { kind, row } = state;
+  const body = {
+    week_from: iso(weekStart),
+    work_date: row.work_date,
+    employee_afm: row.employee_afm,
+    use_snapshot: true,
+  };
+  if (kind === "overtime") {
+    const segmentDate = document.getElementById("apologisticSubmitSegmentDate")?.value || overtimeSegmentDates(row)[0] || "";
+    if (segmentDate) body.segment_date = segmentDate;
+  }
+
+  const url = kind === "schedule" ? "/api/apologistic/submit-schedule" : "/api/apologistic/submit-overtime";
+  Office.setButtonLoading(btn, true);
+  errorBox.textContent = "";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      errorBox.innerHTML = Office.formatMultilineHtml(
+        data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`,
+      );
+      return;
+    }
+    mergeErganiSubmit(row, data.ergani_submit);
+    if (kind === "schedule" && !data.ergani_submit?.schedule) {
+      mergeErganiSubmit(row, {
+        schedule: {
+          protocol: data.protocol || null,
+          ergani_submission_id: data.ergani_submission_id || null,
+          submit_date: data.submit_date || null,
+          submitted_at: new Date().toISOString(),
+          proposed_at_submit: row.proposed,
+          matches_proposal: true,
+        },
+      });
+    } else if (kind === "overtime" && !data.ergani_submit?.overtime) {
+      const segmentDate = body.segment_date || overtimeSegmentDates(row)[0] || row.work_date;
+      mergeErganiSubmit(row, {
+        overtime: {
+          [segmentDate]: {
+            protocol: data.protocol || null,
+            ergani_submission_id: data.ergani_submission_id || null,
+            submit_date: data.submit_date || null,
+            submitted_at: new Date().toISOString(),
+            segment_date: segmentDate,
+          },
+        },
+      });
+    }
+    closeSubmitModal();
+    refreshSummaryCounts();
+    renderVisibleRows();
+    const proto = data.protocol ? ` · πρωτ. ${data.protocol}` : "";
+    showSubmitToast(
+      kind === "schedule"
+        ? `Η απολογιστική μεταβολή ωραρίου υποβλήθηκε${proto}.`
+        : `Η απολογιστική υπερωρία υποβλήθηκε${proto}.`,
+      true,
+    );
+  } catch (error) {
+    errorBox.innerHTML = Office.formatMultilineHtml(error.message || error);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
+}
+
+function renderErganiActions(row) {
+  if (!canSubmitErgani) return "";
+  const actions = [];
+  const schedule = row.ergani_submit?.schedule;
+  if (canSubmitScheduleRow(row)) {
+    const done = schedule?.protocol;
+    const stale = Boolean(done && schedule.matches_proposal === false);
+    const stateClass = done ? (stale ? " is-stale" : " is-done") : "";
+    actions.push(
+      `<button type="button" class="apologistic-ergani-btn apologistic-submit-schedule-btn${stateClass}" ` +
+      `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
+      `title="${attr(done ? (stale ? `Υποβλήθηκε WTODailyA · ${schedule.protocol} · η πρόταση άλλαξε — κλικ για επαναποστολή` : `Υποβλήθηκε WTODailyA · ${schedule.protocol} · ${formatSubmittedAt(schedule.submitted_at || schedule.submit_date)}`) : "Υποβολή απολογιστικής μεταβολής (WTODailyA)")}">` +
+      `<i class="bi ${done && !stale ? "bi-check2-circle" : stale ? "bi-arrow-repeat" : "bi-calendar-check"}" aria-hidden="true"></i></button>`,
+    );
+  }
+  if (rowHasOvertime(row)) {
+    const submitted = overtimeSubmitForRow(row);
+    const done = submitted?.protocol;
+    actions.push(
+      `<button type="button" class="apologistic-ergani-btn apologistic-submit-overtime-btn${done ? " is-done" : ""}" ` +
+      `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
+      `title="${attr(done ? `Υποβλήθηκε WTOOvA · ${submitted.protocol}${submitted.segment_date ? ` · ${submitted.segment_date}` : ""} · ${formatSubmittedAt(submitted.submitted_at || submitted.submit_date)}` : "Υποβολή απολογιστικής υπερωρίας (WTOOvA)")}">` +
+      `<i class="bi ${done ? "bi-check2-circle" : "bi-clock-history"}" aria-hidden="true"></i></button>`,
+    );
+  }
+  if (!actions.length) return "—";
+  return `<div class="apologistic-ergani-actions">${actions.join("")}</div>`;
 }
 
 const employeeContractFields = [
@@ -208,21 +624,17 @@ function hideProposalHistoryOverlay() {
   document.getElementById("apologisticProposalHistoryOverlay")?.remove();
 }
 
-function showProposalHistoryOverlay(anchor) {
-  hideProposalHistoryOverlay();
-  const source = anchor.querySelector(".apologistic-proposal-history");
-  if (!source) return;
-  const overlay = document.createElement("div");
-  overlay.id = "apologisticProposalHistoryOverlay";
-  overlay.className = "apologistic-proposal-history-overlay";
-  overlay.innerHTML = source.innerHTML;
-  document.body.appendChild(overlay);
+function hideEmployeeWeekOverlay() {
+  document.getElementById("apologisticEmployeeWeekOverlay")?.remove();
+}
+
+function positionApologisticHoverOverlay(overlay, anchor) {
   const anchorRect = anchor.getBoundingClientRect();
   const overlayRect = overlay.getBoundingClientRect();
   const gap = 8;
   const left = Math.max(gap, Math.min(
     window.innerWidth - overlayRect.width - gap,
-    anchorRect.right - overlayRect.width,
+    anchorRect.left,
   ));
   const fitsBelow = anchorRect.bottom + gap + overlayRect.height <= window.innerHeight;
   const top = fitsBelow
@@ -232,12 +644,73 @@ function showProposalHistoryOverlay(anchor) {
   overlay.style.top = `${top}px`;
 }
 
+function employeeWeekHistoryHtml(employeeAfm, highlightWorkDate) {
+  const rows = reportState.rows
+    .filter((item) => item.employee_afm === employeeAfm)
+    .sort((left, right) => String(left.work_date || "").localeCompare(String(right.work_date || ""), "el"));
+  if (!rows.length) {
+    return `<div class="apologistic-employee-week-empty">Δεν βρέθηκαν ημέρες για αυτή την εβδομάδα.</div>`;
+  }
+  const name = `${rows[0].eponymo || ""} ${rows[0].onoma || ""}`.trim();
+  const body = rows.map((item) => {
+    const punch = item.punch_recorded ?? item.actual ?? "—";
+    const current = highlightWorkDate && item.work_date === highlightWorkDate;
+    return `<tr class="${current ? "is-current" : ""}">` +
+      `<td>${attr(String(item.work_date || "").slice(0, 5))}</td>` +
+      `<td>${attr(compactDayState(item.day_state))}</td>` +
+      `<td>${attr(compactScheduleLabel(item.declared))}</td>` +
+      `<td class="apologistic-week-punch">${formatPunchCell(punch)}${item.overnight ? "*" : ""}</td>` +
+      `<td><span class="status-badge apologistic-status--${attr(item.status)}">${statusShortLabel(item.status)}</span></td>` +
+      `</tr>`;
+  }).join("");
+  return `<b>Εβδομάδα · ${attr(name)}</b>` +
+    `<table class="apologistic-employee-week-table"><thead><tr>` +
+    `<th>Ημέρα</th><th>Κατά.</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Αποτ.</th>` +
+    `</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function showEmployeeWeekOverlay(anchor, employeeAfm, workDate) {
+  hideEmployeeWeekOverlay();
+  hideProposalHistoryOverlay();
+  if (!employeeAfm) return;
+  const overlay = document.createElement("div");
+  overlay.id = "apologisticEmployeeWeekOverlay";
+  overlay.className = "apologistic-employee-week-overlay";
+  overlay.innerHTML = employeeWeekHistoryHtml(employeeAfm, workDate);
+  document.body.appendChild(overlay);
+  positionApologisticHoverOverlay(overlay, anchor);
+}
+
+function showProposalHistoryOverlay(anchor) {
+  hideProposalHistoryOverlay();
+  hideEmployeeWeekOverlay();
+  const source = anchor.querySelector(".apologistic-proposal-history");
+  if (!source) return;
+  const overlay = document.createElement("div");
+  overlay.id = "apologisticProposalHistoryOverlay";
+  overlay.className = "apologistic-proposal-history-overlay";
+  overlay.innerHTML = source.innerHTML;
+  document.body.appendChild(overlay);
+  positionApologisticHoverOverlay(overlay, anchor);
+}
+
 function bindProposalHistoryOverlays() {
   document.querySelectorAll(".apologistic-proposal-wrap").forEach((wrap) => {
     wrap.addEventListener("mouseenter", () => showProposalHistoryOverlay(wrap));
     wrap.addEventListener("mouseleave", hideProposalHistoryOverlay);
     wrap.addEventListener("focusin", () => showProposalHistoryOverlay(wrap));
     wrap.addEventListener("focusout", hideProposalHistoryOverlay);
+  });
+}
+
+function bindEmployeeWeekOverlays() {
+  document.querySelectorAll(".apologistic-employee-wrap").forEach((wrap) => {
+    const afm = wrap.dataset.employeeAfm || "";
+    const workDate = wrap.dataset.workDate || "";
+    wrap.addEventListener("mouseenter", () => showEmployeeWeekOverlay(wrap, afm, workDate));
+    wrap.addEventListener("mouseleave", hideEmployeeWeekOverlay);
+    wrap.addEventListener("focusin", () => showEmployeeWeekOverlay(wrap, afm, workDate));
+    wrap.addEventListener("focusout", hideEmployeeWeekOverlay);
   });
 }
 
@@ -283,10 +756,11 @@ async function saveProposalEditor(event) {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     row.proposed = data.proposed;
     row.proposal_history = data.history || [];
+    refreshScheduleSubmitMatch(row);
     closeProposalEditor();
     renderVisibleRows();
   } catch (error) {
-    errorBox.textContent = String(error.message || error);
+    errorBox.innerHTML = Office.formatMultilineHtml(error.message || error);
   }
 }
 
@@ -430,24 +904,31 @@ async function loadReport() {
   if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
   reportState = {
     rows: data.days || [], store: data.store, filter: "all",
-    dates: data.work_dates || [], selectedDate: (data.work_dates || [])[0] || "",
+    dates: data.work_dates || [], selectedDate: "",
+    employeeCount: (data.employees || []).length,
   };
   renderSummary(data);
   renderDayTabs();
+  syncDaySelectionUi();
   renderVisibleRows();
   document.getElementById("apologisticNotice").textContent = data.legal_notice || "";
 }
 function showError(error) {
-  document.getElementById("apologisticWrap").innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(error))}</p>`;
+  document.getElementById("apologisticWrap").innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(error))}</p>`;
 }
 function renderSummary(data) {
-  const counts = data.counts || {};
+  const rows = data.days || reportState.rows || [];
+  const counts = {
+    ...(data.counts || {}),
+    submitted: computeReportCounts(rows).submitted,
+  };
   document.getElementById("apologisticSummary").innerHTML =
     `<div class="card apologistic-kpi"><span>Εργαζόμενοι</span><strong>${(data.employees || []).length}</strong></div>` +
     `<button type="button" class="card apologistic-kpi apologistic-kpi--filter" data-report-filter="all" title="Εμφάνιση όλων των αποτελεσμάτων"><span>Αποτελέσματα</span><strong>${counts.all || 0}</strong></button>` +
     `<button type="button" class="card apologistic-kpi apologistic-kpi--ok apologistic-kpi--filter" data-report-filter="ok" title="Εμφάνιση μόνο των σύμφωνων εγγραφών"><span>Σύμφωνο</span><strong>${counts.ok || 0}</strong></button>` +
     `<button type="button" class="card apologistic-kpi apologistic-kpi--change apologistic-kpi--filter" data-report-filter="change" title="Εμφάνιση μόνο των μεταβολών"><span>Μεταβολές</span><strong>${counts.change || 0}</strong></button>` +
-    `<button type="button" class="card apologistic-kpi apologistic-kpi--review apologistic-kpi--filter" data-report-filter="review" title="Εμφάνιση μόνο των εγγραφών για έλεγχο"><span>Για έλεγχο</span><strong>${counts.review || 0}</strong></button>`;
+    `<button type="button" class="card apologistic-kpi apologistic-kpi--review apologistic-kpi--filter" data-report-filter="review" title="Εμφάνιση μόνο των εγγραφών για έλεγχο"><span>Για έλεγχο</span><strong>${counts.review || 0}</strong></button>` +
+    `<button type="button" class="card apologistic-kpi apologistic-kpi--submitted apologistic-kpi--filter" data-report-filter="submitted" title="Εμφάνιση γραμμών με υποβληθείσα απολογιστική μεταβολή ή υπερωρία (WTODailyA / WTOOvA)"><span>Υποβεβλημένες</span><strong>${counts.submitted || 0}</strong></button>`;
   document.querySelectorAll("[data-report-filter]").forEach((button) => {
     button.addEventListener("click", () => applyReportFilter(button.dataset.reportFilter || "all"));
   });
@@ -477,27 +958,34 @@ function renderDayTabs() {
   mount.querySelectorAll("[data-work-date]").forEach((button) => {
     button.addEventListener("click", () => {
       reportState.selectedDate = button.dataset.workDate || "";
-      renderDayTabs();
+      syncDaySelectionUi();
       renderVisibleRows();
     });
   });
+  syncDaySelectionUi();
 }
 function renderVisibleRows() {
-  let rows = reportState.rows.filter((row) => row.work_date === reportState.selectedDate);
-  if (reportState.filter !== "all") rows = rows.filter((row) => row.status === reportState.filter);
-  renderRows(rows, reportState.store);
+  renderRows(visibleReportRows(), reportState.store);
 }
 function renderRows(rows, store) {
   hideProposalHistoryOverlay();
   const wrap = document.getElementById("apologisticWrap");
   if (!rows.length) {
     const suffix = reportState.filter === "all" ? "" : " με το ενεργό φίλτρο";
-    wrap.innerHTML = `<p style="color:var(--muted);">Δεν υπάρχουν αποτελέσματα για ${attr(reportState.selectedDate)}${suffix}.</p>`;
+    wrap.innerHTML = `<p style="color:var(--muted);">Δεν υπάρχουν αποτελέσματα για ${attr(reportPeriodLabel())}${suffix}.</p>`;
     return;
   }
-  const filterLabel = reportState.filter === "ok" ? " · φίλτρο: Σύμφωνο" : reportState.filter === "change" ? " · φίλτρο: Μεταβολές" : reportState.filter === "review" ? " · φίλτρο: Για έλεγχο" : "";
-  let html = `<p class="table-meta"><i class="bi bi-shop-window"></i> <strong>${Office.escapeHtml(store?.name || "")}</strong> · ${attr(reportState.selectedDate)} · ${rows.length} εργαζόμενοι${filterLabel}</p>`;
-  html += `<table class="data apologistic-table"><thead><tr><th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th></tr></thead><tbody>`;
+  const filterLabel =
+    reportState.filter === "ok" ? " · φίλτρο: Σύμφωνο"
+    : reportState.filter === "change" ? " · φίλτρο: Μεταβολές"
+    : reportState.filter === "review" ? " · φίλτρο: Για έλεγχο"
+    : reportState.filter === "submitted" ? " · φίλτρο: Υποβεβλημένες"
+    : "";
+  const countLabel = isAllDaysSelected() ? `${rows.length} αποτελέσματα` : `${rows.length} εργαζόμενοι`;
+  const showDateColumn = isAllDaysSelected();
+  const erganiHeader = canSubmitErgani ? `<th>Ergani</th>` : "";
+  let html = `<p class="table-meta"><i class="bi bi-shop-window"></i> <strong>${Office.escapeHtml(store?.name || "")}</strong> · ${attr(reportPeriodLabel())} · ${countLabel}${filterLabel}</p>`;
+  html += `<table class="data apologistic-table${canSubmitErgani ? " apologistic-table--ergani" : ""}${showDateColumn ? " apologistic-table--all-days" : ""}"><thead><tr>${showDateColumn ? "<th>Ημέρα</th>" : ""}<th>Εργαζόμενος</th><th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th class="apologistic-overtime-head">Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th>${erganiHeader}</tr></thead><tbody>`;
   for (const row of rows) {
     const punchRecorded = row.punch_recorded ?? row.actual ?? "—";
     const explanationId = rowExplanationId(row);
@@ -526,10 +1014,14 @@ function renderRows(rows, store) {
       row.classification_warning || "",
     ].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
-      `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης`)}"><button type="button" class="apologistic-employee-btn" data-employee-afm="${attr(row.employee_afm)}">${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</button>` +
+      (showDateColumn ? `<td title="${attr(row.work_date || "")}">${attr(String(row.work_date || "").slice(0, 5))}</td>` : "") +
+      `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης · Πέρασμα για εβδομαδιαίο ιστορικό`)}">` +
+      `<div class="apologistic-employee-wrap" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}">` +
+      `<button type="button" class="apologistic-employee-btn" data-employee-afm="${attr(row.employee_afm)}">${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</button>` +
       ((row.incoming_rest_obligations || []).length
         ? `<span class="apologistic-rest-due" title="${attr((row.incoming_rest_obligations || []).map((item) => `Οφείλεται ρεπό από Κυριακή ${item.source_work_date} · ${mins(item.source_actual_minutes)} εργασία`).join(" · "))}"><i class="bi bi-calendar2-check" aria-hidden="true"></i> Οφείλεται ρεπό</span>`
-        : "") + `</td>` +
+        : "") +
+      `</div></td>` +
       `<td title="${attr(contractTip)}">${attr(compactDayState(row.day_state))}</td>` +
       `<td title="${attr(declaredTip)}">${attr(compactScheduleLabel(row.declared))}</td>` +
       `<td class="apologistic-punch-cell" title="${attr(punchTip)}">${formatPunchCell(punchRecorded)}${row.overnight ? "*" : ""}</td>` +
@@ -539,14 +1031,16 @@ function renderRows(rows, store) {
       `<td title="Πραγματική μείον δηλωμένη διάρκεια" class="${diffClass(row.gross_difference_minutes)}">${signedMins(row.gross_difference_minutes)}</td>` +
       `<td title="${attr(breakTip)}">${row.outside_break_minutes ? mins(row.outside_break_minutes) : "—"}</td>` +
       `<td title="${attr(netDetails)}" class="${diffClass(row.net_difference_minutes)}"><strong>${signedMins(row.net_difference_minutes)}</strong></td>` +
-      `<td title="${attr((row.overtime_segments || []).map((segment) => `${segment.date}: ${segment.from}–${segment.to} (${mins(segment.minutes)})`).join(" · ") || "Δεν προκύπτει υπερωρία")}" class="${row.overtime_minutes ? "time-diff--plus" : ""}"><strong>${overtimeCell(row)}</strong></td>` +
+      `<td title="${attr((row.overtime_segments || []).map((segment) => `${segment.date}: ${segment.from}–${segment.to} (${mins(segment.minutes)})`).join(" · ") || "Δεν προκύπτει υπερωρία")}" class="apologistic-overtime-cell${row.overtime_minutes ? " time-diff--plus" : ""}">${overtimeCell(row)}</td>` +
       `<td class="apologistic-proposal-cell"><div class="apologistic-proposal-wrap">` +
       `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></button>` +
       `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status))}"><span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status)}</span>` +
-      `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td></tr>`;
+      `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td>` +
+      (canSubmitErgani ? `<td class="apologistic-ergani-cell">${renderErganiActions(row)}</td>` : "") +
+      `</tr>`;
     if ((row.exchange_options || []).length) {
-      html += `<tr class="apologistic-replacement-row"><td colspan="14"><div class="apologistic-replacement-options">` +
+      html += `<tr class="apologistic-replacement-row"><td colspan="${(canSubmitErgani ? 15 : 14) + (showDateColumn ? 1 : 0)}"><div class="apologistic-replacement-options">` +
         `<span class="apologistic-exchange-title"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Επιλογές ανταλλαγής</span>` +
         row.exchange_options.map((item) => `<div class="apologistic-exchange-card">` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong><span>${attr(item.replacement_declared)}</span></div>` +
@@ -558,6 +1052,7 @@ function renderRows(rows, store) {
   }
   wrap.innerHTML = html + `</tbody></table>`;
   bindProposalHistoryOverlays();
+  bindEmployeeWeekOverlays();
   if (openExplanationId) {
     const modal = document.getElementById("apologisticInfoModal");
     if (findExplanationRow(openExplanationId) && modal && !modal.classList.contains("hidden")) {

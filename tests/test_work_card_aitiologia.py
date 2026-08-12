@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from app.work_card_payload import (
     RETRO_AITIOLOGIA_INTERNET,
     WorkCardPayloadError,
+    aitiologia_for_wrk_card_submit,
     build_wrk_card_se_payload,
     event_at_is_future,
     ergani_forbids_aitiologia,
@@ -50,7 +51,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
 
-    def test_check_in_early_requires_aitiologia(self):
+    def test_check_in_slightly_early_no_aitiologia(self):
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
             reference_date=self.today,
@@ -59,7 +60,57 @@ class WorkCardAitiologiaTests(unittest.TestCase):
             schedule_hour_from="10:00",
             flex_arrival_minutes=15,
         )
+        self.assertIsNone(ait)
+
+    def test_check_in_too_early_requires_aitiologia(self):
+        ait = resolve_wrk_card_aitiologia(
+            f_type="0",
+            reference_date=self.today,
+            event_at=f"{self.today}T09:44:00",
+            requested_aitiologia=None,
+            schedule_hour_from="10:00",
+            flex_arrival_minutes=15,
+        )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
+
+    def test_check_in_before_shift_within_flex_no_aitiologia(self):
+        """08:56 με ωράριο 09:00 — εντός ευελιξίας, όχι αιτιολογία (σφάλμα Ergani)."""
+        ait = resolve_wrk_card_aitiologia(
+            f_type="0",
+            reference_date=self.today,
+            event_at=f"{self.today}T08:56:00",
+            requested_aitiologia="001",
+            schedule_hour_from="09:00",
+            flex_arrival_minutes=15,
+        )
+        self.assertIsNone(ait)
+
+    def test_immediate_punch_no_aitiologia_even_if_late_vs_schedule(self):
+        now = datetime.now(tz_athens()).replace(second=0, microsecond=0)
+        ait = resolve_wrk_card_aitiologia(
+            f_type="0",
+            reference_date=now.date().isoformat(),
+            event_at=now.isoformat(timespec="seconds"),
+            requested_aitiologia=None,
+            schedule_hour_from="09:00",
+            flex_arrival_minutes=15,
+            submitted_at=now,
+        )
+        self.assertIsNone(ait)
+
+    def test_retro_with_now_time_same_as_immediate_punch(self):
+        """Retro σήμερα+τώρα = ίδια λογική με live (όχι από κανάλι)."""
+        now = datetime.now(tz_athens()).replace(second=0, microsecond=0)
+        ait = resolve_wrk_card_aitiologia(
+            f_type="0",
+            reference_date=now.date().isoformat(),
+            event_at=now.isoformat(timespec="seconds"),
+            requested_aitiologia="001",
+            schedule_hour_from="09:00",
+            flex_arrival_minutes=15,
+            submitted_at=now,
+        )
+        self.assertIsNone(ait)
 
     def test_check_out_on_time_no_aitiologia(self):
         ait = resolve_wrk_card_aitiologia(
@@ -105,7 +156,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
 
-    def test_payload_omits_f_aitiologia_when_none(self):
+    def test_payload_uses_empty_f_aitiologia_when_none(self):
         payload = build_wrk_card_se_payload(
             employer_afm="123456789",
             branch_aa="0",
@@ -118,9 +169,9 @@ class WorkCardAitiologiaTests(unittest.TestCase):
             aitiologia=None,
         )
         detail = payload["Cards"]["Card"][0]["Details"]["CardDetails"][0]
-        self.assertNotIn("f_aitiologia", detail)
+        self.assertEqual(detail["f_aitiologia"], "")
 
-    def test_payload_can_include_null_f_aitiologia(self):
+    def test_payload_can_include_null_f_aitiologia_legacy_flag(self):
         payload = build_wrk_card_se_payload(
             employer_afm="123456789",
             branch_aa="0",
@@ -134,7 +185,7 @@ class WorkCardAitiologiaTests(unittest.TestCase):
             include_null_aitiologia=True,
         )
         detail = payload["Cards"]["Card"][0]["Details"]["CardDetails"][0]
-        self.assertIsNone(detail["f_aitiologia"])
+        self.assertEqual(detail["f_aitiologia"], "")
 
     def test_payload_rejects_future_event_for_every_submission_channel(self):
         future = datetime.now(tz_athens()) + timedelta(minutes=10)

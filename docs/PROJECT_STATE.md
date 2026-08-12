@@ -34,7 +34,9 @@
 - `/ui/missing-cards`: ελλιπή χτυπήματα.
 - `/ui/work-card`: υποβολή ψηφιακής κάρτας.
 - `/ui/sync`: χειροκίνητος συγχρονισμός.
-- `/ui/sync-log`: καταγραφές συγχρονισμών και audit σε δύο tabs.
+- `/ui/sync-log`: καταγραφές συγχρονισμών, audit και απολογιστικού (πολλαπλά tabs).
+- `/ui/apologistic`: εβδομαδιαίο απολογιστικό ωραρίου (snapshot από ΒΔ, υποβολές Ergani
+  WTODailyA/WTOOvA, προβολή ΟΛΑ/ανά ημέρα). Βλ. `docs/APOLOGISTIKO_LOGIC.md`.
 
 ## Public Landing
 
@@ -221,6 +223,12 @@
   (φίλτρο `JSON_VALUE(fields_json,'$.event') = today_notification_send`).
 - `/ui/sync-log`: η αναζήτηση στο tab **Συγχρονισμός** ψάχνει και μέσα στις γραμμές
   `karta_sync_log`, συμπεριλαμβανομένων structured fields από αποστολές ειδοποιήσεων.
+- `/ui/sync-log`: το tab **Απολογιστικό** (`#apologistic`) δείχνει επαναϋπολογισμούς
+  εβδομάδας, χειροκίνητες αλλαγές πρότασης και επιτυχημένες υποβολές WTODailyA/WTOOvA
+  (`GET /api/sync-log/apologistic`, δικαίωμα `logs.view_sync`).
+- `/ui/apologistic`: κουμπί **ΟΛΑ** και tabs ημερών· KPI **Υποβεβλημένες**· hover στο
+  όνομα εργαζομένου με εβδομαδιαίο πίνακα χτυπημάτων· στήλη Ergani για υποβολή
+  απολογιστικής μεταβολής/υπερωρίας.
 
 ## Κανόνες Ειδοποιήσεων
 

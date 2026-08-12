@@ -909,6 +909,8 @@ table.data tbody tr.work-log-row--deficient td strong {
   margin-right: 0.25rem;
 }
 .apologistic-toolbar { margin-bottom: 1rem; }
+.apologistic-toolbar .toolbar-dates-row { flex-wrap:wrap; gap:.5rem; }
+.apologistic-all-days-btn.is-active { background:color-mix(in srgb,var(--accent) 10%,var(--surface)); border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent); }
 .apologistic-day-tabs { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:.45rem; margin-top:.85rem; }
 .apologistic-day-tab { border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:inherit; padding:.48rem .35rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.35rem; min-width:0; }
 .apologistic-day-tab span { color:var(--muted); font-size:.72rem; overflow:hidden; text-overflow:ellipsis; }
@@ -916,43 +918,89 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-day-tab small { min-width:1.2rem; padding:.08rem .25rem; border-radius:1rem; background:var(--surface-2); color:var(--muted); font-size:.65rem; }
 .apologistic-day-tab:hover { border-color:var(--accent); }
 .apologistic-day-tab.is-active { background:color-mix(in srgb,var(--accent) 10%,var(--surface)); border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent); }
-.apologistic-summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
+.apologistic-summary { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
 .apologistic-kpi { padding:1rem 1.15rem; display:flex; flex-direction:column; gap:.25rem; }
 .apologistic-kpi span { color:var(--muted); font-size:.82rem; }
 .apologistic-kpi strong { font-size:1.5rem; }
 .apologistic-kpi--change { border-left:4px solid #d99500; }
 .apologistic-kpi--review { border-left:4px solid var(--err); }
 .apologistic-kpi--ok { border-left:4px solid #2d8a52; }
+.apologistic-kpi--submitted { border-left:4px solid #2563eb; }
 .apologistic-kpi--filter { width:100%; font:inherit; text-align:left; color:inherit; cursor:pointer; appearance:none; transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease; }
 .apologistic-kpi--filter:hover { transform:translateY(-1px); box-shadow:0 5px 14px rgba(28,39,52,.1); }
 .apologistic-kpi--filter.is-active { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 28%,transparent); }
 .apologistic-kpi--change.is-active { border-color:#d99500; }
 .apologistic-kpi--review.is-active { border-color:var(--err); }
 .apologistic-kpi--ok.is-active { border-color:#2d8a52; }
+.apologistic-kpi--submitted.is-active { border-color:#2563eb; }
 .apologistic-table td { vertical-align:top; }
 .apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
 .apologistic-table th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; line-height:1; }
 .apologistic-table th:first-child { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
+.apologistic-table--all-days th:first-child { writing-mode:vertical-rl; transform:rotate(180deg); text-align:center; width:4%; }
+.apologistic-table--all-days th:nth-child(2) { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
 .apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(13) { width:9%; }
+.apologistic-table th:nth-child(5), .apologistic-table th:nth-child(6),
+.apologistic-table th:nth-child(7), .apologistic-table th:nth-child(8),
+.apologistic-table th:nth-child(9) { width:5.5%; }
+.apologistic-table--all-days th:nth-child(6), .apologistic-table--all-days th:nth-child(7),
+.apologistic-table--all-days th:nth-child(8), .apologistic-table--all-days th:nth-child(9),
+.apologistic-table--all-days th:nth-child(10) { width:5.5%; }
+.apologistic-table td:nth-child(7), .apologistic-table td:nth-child(8),
+.apologistic-table td:nth-child(9) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10px; font-variant-numeric:tabular-nums; padding-left:.15rem!important; padding-right:.15rem!important; }
+.apologistic-table--all-days td:nth-child(8), .apologistic-table--all-days td:nth-child(9),
+.apologistic-table--all-days td:nth-child(10) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10px; font-variant-numeric:tabular-nums; padding-left:.15rem!important; padding-right:.15rem!important; }
+.apologistic-table th:nth-child(11) { width:4.5%; }
+.apologistic-table th:nth-child(14) { width:9%; }
+.apologistic-table th:nth-child(15) { width:5.5%; }
+.apologistic-table--all-days th:nth-child(4), .apologistic-table--all-days th:nth-child(5), .apologistic-table--all-days th:nth-child(14) { width:9%; }
+.apologistic-table--all-days th:nth-child(12) { width:4.5%; }
+.apologistic-table--all-days th:nth-child(15) { width:9%; }
+.apologistic-table--all-days th:nth-child(16) { width:5.5%; }
 .apologistic-table th:nth-child(10) { width:4%; }
-.apologistic-table th:nth-child(14) { width:4%; }
+.apologistic-table--all-days th:nth-child(11) { width:4%; }
 .apologistic-table td { padding:.42rem .25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .apologistic-table td:first-child { white-space:normal; line-height:1.1; font-size:10px; overflow-wrap:anywhere; }
+.apologistic-table--all-days td:first-child { white-space:nowrap; text-align:center; font-size:10px; font-variant-numeric:tabular-nums; overflow-wrap:normal; }
+.apologistic-table--all-days td:nth-child(2) { white-space:normal; line-height:1.1; font-size:10px; overflow-wrap:anywhere; }
+.apologistic-employee-wrap { position:relative; display:block; min-width:0; }
 .apologistic-rest-due { display:inline-flex; align-items:center; gap:.2rem; margin-top:.28rem; padding:.16rem .32rem; border-radius:999px; background:#fff0bd; color:#805b00; font-size:9px; font-weight:700; white-space:nowrap; }
 .apologistic-employee-btn { border:0; padding:0; background:transparent; color:inherit; font:inherit; font-weight:700; text-align:left; cursor:pointer; line-height:1.1; }
 .apologistic-employee-btn:focus { outline:0; box-shadow:none; }
 .apologistic-employee-btn:hover, .apologistic-employee-btn:focus-visible { color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
-.apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(12), .apologistic-table td:nth-child(13) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10.5px; font-variant-numeric:tabular-nums; }
+.apologistic-table td:nth-child(3), .apologistic-table td:nth-child(4), .apologistic-table td:nth-child(13) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10.5px; font-variant-numeric:tabular-nums; }
+.apologistic-table td:nth-child(11) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; font-variant-numeric:tabular-nums; padding-left:.15rem!important; padding-right:.15rem!important; }
+.apologistic-table--all-days td:nth-child(4), .apologistic-table--all-days td:nth-child(5), .apologistic-table--all-days td:nth-child(14) { overflow:visible; text-overflow:clip; white-space:nowrap; font-size:10.5px; font-variant-numeric:tabular-nums; }
+.apologistic-table--all-days td:nth-child(12) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; font-variant-numeric:tabular-nums; padding-left:.15rem!important; padding-right:.15rem!important; }
 .apologistic-table td.apologistic-punch-cell { white-space:normal; line-height:1.25; vertical-align:top; text-align:center; }
 .apologistic-table th:nth-child(4) { text-align:center; }
-.apologistic-table td:nth-child(n+5):nth-child(-n+12) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.apologistic-table--all-days th:nth-child(5) { text-align:center; }
+.apologistic-table td:nth-child(n+5):nth-child(-n+11) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.apologistic-table--all-days td:nth-child(n+6):nth-child(-n+12) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .apologistic-table td:last-child { text-align:center; overflow:visible; }
-.apologistic-proposal-cell { overflow:visible!important; position:relative; }
-.apologistic-proposal-wrap { position:relative; }
-.apologistic-proposal-btn { border:0; background:transparent; color:inherit; font:inherit; padding:0; cursor:pointer; white-space:nowrap; }
+.apologistic-table td.apologistic-overtime-cell { font-size:10px!important; font-weight:600; font-variant-numeric:tabular-nums; white-space:normal!important; line-height:1.25; overflow:visible!important; text-overflow:clip!important; text-align:right; vertical-align:top; padding:.35rem .2rem!important; }
+.apologistic-table th.apologistic-overtime-head, .apologistic-table td.apologistic-overtime-cell { width:10%; min-width:4.75rem; }
+.apologistic-proposal-cell { overflow:hidden!important; position:relative; max-width:0; }
+.apologistic-proposal-wrap { position:relative; min-width:0; max-width:100%; }
+.apologistic-proposal-btn { border:0; background:transparent; color:inherit; font:inherit; padding:0; cursor:pointer; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; display:block; font-size:10px; }
 .apologistic-proposal-btn:hover, .apologistic-proposal-btn:focus-visible { color:var(--accent); text-decoration:underline; text-underline-offset:2px; outline:0; }
 .apologistic-proposal-history { display:none; }
 .apologistic-proposal-history-overlay { position:fixed; z-index:10000; width:280px; max-height:240px; overflow:auto; padding:.65rem; border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:var(--text); box-shadow:0 14px 36px rgba(20,32,45,.24); white-space:normal; text-align:left; pointer-events:none; }
+.apologistic-employee-week-overlay { position:fixed; z-index:10000; width:min(94vw,580px); overflow:visible; padding:.65rem .75rem; border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:var(--text); box-shadow:0 14px 36px rgba(20,32,45,.24); white-space:normal; text-align:left; pointer-events:none; }
+.apologistic-employee-week-overlay > b { display:block; margin-bottom:.4rem; font-size:11px; line-height:1.35; overflow-wrap:anywhere; }
+.apologistic-employee-week-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; }
+.apologistic-employee-week-table th, .apologistic-employee-week-table td { padding:.34rem .4rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; overflow:hidden; text-overflow:ellipsis; }
+.apologistic-employee-week-table th { color:var(--muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; white-space:nowrap; }
+.apologistic-employee-week-table th:nth-child(1) { width:11%; }
+.apologistic-employee-week-table th:nth-child(2) { width:10%; }
+.apologistic-employee-week-table th:nth-child(3) { width:24%; }
+.apologistic-employee-week-table th:nth-child(4) { width:37%; }
+.apologistic-employee-week-table th:nth-child(5) { width:8%; text-align:center; }
+.apologistic-employee-week-table td:nth-child(5) { text-align:center; overflow:visible; }
+.apologistic-employee-week-table tr.is-current { background:color-mix(in srgb,var(--accent) 9%,var(--surface)); }
+.apologistic-employee-week-table .apologistic-week-punch { font-variant-numeric:tabular-nums; white-space:normal; line-height:1.25; overflow:visible; text-overflow:clip; }
+.apologistic-employee-week-table .status-badge { min-width:1.2rem; font-size:9px; padding:.12rem .18rem; }
+.apologistic-employee-week-empty { color:var(--muted); font-size:10px; }
 .apologistic-proposal-history > b { display:block; margin-bottom:.45rem; font-size:11px; }
 .apologistic-proposal-history-overlay > b { display:block; margin-bottom:.45rem; font-size:11px; }
 .apologistic-proposal-history-item { display:flex; flex-direction:column; gap:.12rem; padding:.38rem 0; border-top:1px solid var(--border); }
@@ -979,9 +1027,9 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-exchange-arrow i { font-size:15px; }
 .apologistic-exchange-arrow small { color:var(--muted); font-size:8px; }
 @media (max-width:650px) { .apologistic-exchange-card { grid-template-columns:1fr; } .apologistic-exchange-side--source { text-align:left; } .apologistic-exchange-arrow { flex-direction:row; gap:.3rem; justify-content:center; } }
-.apologistic-result-cell { white-space:nowrap; padding-left:.1rem!important; padding-right:.1rem!important; }
-.apologistic-result-cell .status-badge { vertical-align:middle; }
-.apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .2rem; margin-left:.15rem; vertical-align:middle; line-height:1; }
+.apologistic-result-cell { white-space:nowrap; padding-left:.2rem!important; padding-right:.2rem!important; min-width:3.2rem; overflow:visible!important; }
+.apologistic-result-cell .status-badge { vertical-align:middle; flex-shrink:0; }
+.apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .15rem; margin-left:.1rem; vertical-align:middle; line-height:1; flex-shrink:0; }
 .apologistic-info-btn:focus { outline:0; box-shadow:none; }
 .apologistic-info-btn:hover, .apologistic-info-btn[aria-expanded="true"] { color:var(--accent); }
 .office-modal-panel.apologistic-info-modal-panel { width:min(92vw,760px); max-height:min(88vh,680px); }
@@ -1027,6 +1075,21 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-employee-history details summary { cursor:pointer; }
 .apologistic-employee-loading { color:var(--muted); }
 .apologistic-table .status-badge { min-width:1.35rem; font-size:10px; padding:.14rem .2rem; white-space:nowrap; text-align:center; }
+.apologistic-table--ergani th:last-child { width:4.5%; }
+.apologistic-ergani-cell { text-align:center!important; overflow:visible!important; white-space:nowrap!important; padding-left:.1rem!important; padding-right:.1rem!important; }
+.apologistic-submit-previous { margin:.5rem 0 .75rem; padding:.65rem .75rem; border-radius:.55rem; border:1px solid color-mix(in srgb,#2d8a52 35%,var(--border)); background:color-mix(in srgb,#2d8a52 8%,var(--surface)); font-size:.78rem; line-height:1.45; }
+.apologistic-submit-previous strong { display:flex; align-items:center; gap:.35rem; margin-bottom:.35rem; color:#2d8a52; }
+.apologistic-submit-previous p { margin:0; color:var(--text); }
+.apologistic-ergani-actions { display:inline-flex; align-items:center; justify-content:center; gap:.18rem; }
+.apologistic-ergani-btn { border:1px solid var(--border); background:var(--surface); color:var(--text); width:1.55rem; height:1.55rem; border-radius:.45rem; padding:0; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:11px; line-height:1; }
+.apologistic-ergani-btn:hover, .apologistic-ergani-btn:focus-visible { border-color:var(--accent); color:var(--accent); outline:0; }
+.apologistic-ergani-btn.is-done { border-color:#2d8a52; color:#2d8a52; background:color-mix(in srgb,#2d8a52 8%,var(--surface)); }
+.apologistic-ergani-btn.is-stale { border-color:#d99500; color:#d99500; background:color-mix(in srgb,#d99500 10%,var(--surface)); }
+.apologistic-submit-modal-panel { width:min(92vw,460px); padding:1.1rem; }
+.apologistic-submit-detail { margin:.35rem 0 .75rem; font-size:.82rem; line-height:1.45; color:var(--text); }
+.apologistic-submit-segment { display:flex; flex-direction:column; gap:.35rem; margin-bottom:.65rem; }
+.apologistic-submit-segment .field-label { font-size:.72rem; font-weight:700; }
+.apologistic-submit-segment .field-input { padding:.55rem .65rem; }
 .apologistic-table td small { display:none; }
 .apologistic-table .time-diff--plus { color:#9a5e00; }
 .apologistic-table .time-diff--minus { color:#315f9c; }

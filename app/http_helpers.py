@@ -189,3 +189,13 @@ def persist_safe(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         fn(*args, **kwargs)
     except Exception:
         current_app.logger.exception("Αποτυχία τοπικής αποθήκευσης στη βάση ergani-karta")
+
+
+def normalize_multiline_text(text: Any) -> str | None:
+    """Ergani API επιστρέφει συχνά \\n ως δύο χαρακτήρες — μετατροπή σε πραγματικές αλλαγές γραμμής."""
+    if text is None:
+        return None
+    s = str(text)
+    if not s:
+        return s
+    return s.replace("\\n", "\n").replace("\r\n", "\n")

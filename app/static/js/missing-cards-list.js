@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     Office.applyActiveStoreChrome(activeData);
     await loadMissingCards(1, 1, activeData);
   } catch (e) {
-    const err = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    const err = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     document.getElementById("missingCardsWrap").innerHTML = err;
     document.getElementById("missingCardsClosedWrap").innerHTML = err;
   }

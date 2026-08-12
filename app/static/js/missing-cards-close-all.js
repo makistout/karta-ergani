@@ -27,7 +27,7 @@ async function loadCloseAllPlan() {
     });
     const data = await Office.parseJson(res);
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       if (desc) desc.textContent = "";
       return;
     }
@@ -54,7 +54,7 @@ async function loadCloseAllPlan() {
     Office.bindCloseAllPlanPage(closeAllState.plan);
     if (confirmBtn) confirmBtn.disabled = planN === 0;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     if (desc) desc.textContent = "";
   }
 }

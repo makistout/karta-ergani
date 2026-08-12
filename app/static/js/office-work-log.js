@@ -447,7 +447,6 @@ Object.assign(window.Office, {
       event: punch.event,
       reference_date: refDate,
       event_at: `${eventDate}T${retroTime}:00`,
-      aitiologia: punch?.aitiologia || this.RETRO_AITIOLOGIA,
       device_info: this.clientDeviceInfo(),
       source: meta.source || punch.source || "office_ui",
     };
@@ -1034,7 +1033,7 @@ Object.assign(window.Office, {
       );
       const data = await res.json();
       if (!res.ok) {
-        wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(data.error || "Σφάλμα")}</p>`;
+        wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
         return;
       }
       const employeeName = displayName || data.employee_name || "";
@@ -1053,7 +1052,7 @@ Object.assign(window.Office, {
           employee_name: employeeName,
         });
     } catch (e) {
-      wrap.innerHTML = `<p style="color:var(--err);">${this.escapeHtml(String(e))}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     }
   },
 
@@ -1209,9 +1208,6 @@ Object.assign(window.Office, {
   },
 
   bindCloseAllPlanPage(plan, onChange) {
-    (plan || []).forEach((punch, idx) => {
-      if (!punch.aitiologia) punch.aitiologia = this.RETRO_AITIOLOGIA;
-    });
     document.querySelectorAll(".close-all-time-input").forEach((el) => {
       const idx = Number(el.dataset.planIdx);
       if (!Number.isFinite(idx) || !plan[idx]) return;

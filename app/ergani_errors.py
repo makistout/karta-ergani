@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.http_helpers import json_or_text
+from app.http_helpers import json_or_text, normalize_multiline_text
 
 _SERVICE_LABELS = {
     "EX_BASE_04": "Μηνιαία κατάσταση (EX_BASE_04)",
@@ -40,5 +40,6 @@ def ergani_failure_detail(resp, service_code: str) -> str:
         )
 
     if upstream:
+        upstream = normalize_multiline_text(upstream) or upstream
         return f"{label}: {upstream}"
     return f"{label}: HTTP {resp.status_code}"

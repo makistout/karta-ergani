@@ -1,63 +1,166 @@
 {% extends "ui/base.html" %}
+
 {% set page_title = 'erganiOS - Απολογιστικό' %}
+
 {% set shell = "office" %}
+
 {% set active_nav = 'apologistic' %}
+
 {% block content %}
+
   <h1 class="page-title"><i class="bi bi-clipboard-data" aria-hidden="true"></i> Απολογιστικό εβδομάδας</h1>
+
   <p class="page-desc">Σύγκριση δηλωμένου ωραρίου, πραγματικής απασχόλησης και σύμβασης για την προηγούμενη ολοκληρωμένη εβδομάδα.</p>
-  <div class="toolbar-dates card apologistic-toolbar">
+
+  <div class="toolbar-dates card apologistic-toolbar" data-can-submit="{{ '1' if office_has_permission('schedule.submit_daily') else '0' }}">
+
     <div class="toolbar-dates-row">
+
       <button type="button" class="btn btn-secondary" id="weekPrev"><i class="bi bi-chevron-left"></i></button>
+
       <strong id="weekLabel">Φόρτωση…</strong>
+
       <button type="button" class="btn btn-secondary" id="weekNext"><i class="bi bi-chevron-right"></i></button>
+
+      <button type="button" class="btn btn-secondary apologistic-all-days-btn is-active" id="apologisticAllDays" aria-pressed="true" title="Εμφάνιση όλων των αποτελεσμάτων της εβδομάδας">ΟΛΑ</button>
+
     </div>
+
     <div id="apologisticDayTabs" class="apologistic-day-tabs" aria-label="Ημέρες εβδομάδας"></div>
+
   </div>
+
   <div id="apologisticSummary" class="apologistic-summary"></div>
+
   <div class="card list-card">
+
     <div id="apologisticWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+
   </div>
+
+  <div class="msg hidden" id="apologisticSubmitMsg" role="status"></div>
+
   <div class="msg msg-warn" id="apologisticNotice"></div>
+
+  <div id="apologisticSubmitModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticSubmitModalTitle">
+
+    <div class="office-modal-backdrop" data-apologistic-submit-close></div>
+
+    <div class="office-modal-panel apologistic-submit-modal-panel">
+
+      <h2 id="apologisticSubmitModalTitle" class="office-modal-title">Υποβολή στο Ergani</h2>
+
+      <p id="apologisticSubmitModalMeta" class="office-modal-sub"></p>
+
+      <p id="apologisticSubmitModalDetail" class="apologistic-submit-detail"></p>
+
+      <div id="apologisticSubmitPrevious" class="apologistic-submit-previous hidden" role="status"></div>
+
+      <label id="apologisticSubmitSegmentWrap" class="apologistic-submit-segment hidden">
+
+        <span class="field-label">Ημέρα υπερωρίας</span>
+
+        <select id="apologisticSubmitSegmentDate" class="field-input"></select>
+
+      </label>
+
+      <p id="apologisticSubmitError" class="apologistic-proposal-error" role="alert"></p>
+
+      <div class="office-modal-actions">
+
+        <button type="button" class="btn btn-secondary" data-apologistic-submit-close>Ακύρωση</button>
+
+        <button type="button" class="btn btn-primary" id="apologisticSubmitConfirm"><i class="bi bi-send" aria-hidden="true"></i> Υποβολή</button>
+
+      </div>
+
+    </div>
+
+  </div>
+
   <div id="apologisticInfoModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticInfoModalTitle">
+
     <div class="office-modal-backdrop" data-apologistic-info-close></div>
+
     <div class="office-modal-panel office-modal-panel--history apologistic-info-modal-panel">
+
       <h2 id="apologisticInfoModalTitle" class="office-modal-title">Ανάλυση αποτελέσματος</h2>
+
       <p id="apologisticInfoModalSub" class="office-modal-sub"></p>
+
       <div id="apologisticInfoModalBody" class="apologistic-info-modal-body"></div>
+
       <div class="office-modal-actions">
+
         <button type="button" class="btn btn-secondary" data-apologistic-info-close>Κλείσιμο</button>
+
       </div>
+
     </div>
+
   </div>
+
   <div id="apologisticEmployeeModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticEmployeeModalTitle">
+
     <div class="office-modal-backdrop" data-apologistic-employee-close></div>
+
     <div class="office-modal-panel apologistic-employee-modal-panel">
+
       <div class="apologistic-employee-modal-head">
+
         <h2 id="apologisticEmployeeModalTitle" class="office-modal-title">Στοιχεία εργαζομένου</h2>
+
         <button type="button" class="btn btn-secondary" data-apologistic-employee-close aria-label="Κλείσιμο"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+
       </div>
+
       <p id="apologisticEmployeeModalMeta" class="office-modal-sub"></p>
+
       <div id="apologisticEmployeeModalBody" class="apologistic-employee-modal-body"></div>
+
     </div>
+
   </div>
+
   <div id="apologisticProposalModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticProposalModalTitle">
+
     <div class="office-modal-backdrop" data-apologistic-proposal-close></div>
+
     <form id="apologisticProposalForm" class="office-modal-panel apologistic-proposal-modal-panel">
+
       <h2 id="apologisticProposalModalTitle" class="office-modal-title">Αλλαγή προτεινόμενου ωραρίου</h2>
+
       <p id="apologisticProposalModalMeta" class="office-modal-sub"></p>
+
       <div class="apologistic-proposal-time-grid">
+
         <label><span class="field-label">Από</span><input id="apologisticProposalFrom" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="09:00" autocomplete="off" required></label>
+
         <span class="apologistic-proposal-time-separator" aria-hidden="true">–</span>
+
         <label><span class="field-label">Έως</span><input id="apologisticProposalTo" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="17:00" autocomplete="off" required></label>
+
       </div>
+
       <p id="apologisticProposalError" class="apologistic-proposal-error" role="alert"></p>
+
       <div class="office-modal-actions">
+
         <button type="button" class="btn btn-secondary" data-apologistic-proposal-close>Ακύρωση</button>
+
         <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Αποθήκευση</button>
+
       </div>
+
     </form>
+
   </div>
+
 {% endblock %}
+
 {% block scripts %}
-  <script src="/static/js/apologistic.js?v=20260812exchange1"></script>
+
+  <script src="/static/js/apologistic.js?v=20260812weekhover4"></script>
+
 {% endblock %}
+

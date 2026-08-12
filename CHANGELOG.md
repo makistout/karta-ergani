@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-08-12 — Απολογιστικό: UI, υποβολές Ergani, καταγραφές
+
+- **Πρόταση ωραρίου**: το διάλειμμα εκτός ωραρίου δεν προστίθεται πλέον στην πρόταση
+  (`CALCULATION_VERSION` `2026-08-12.1`).
+- **Προβολή εβδομάδας**: κουμπί **ΟΛΑ** + tabs ημερών· στήλη «Ημέρα» στην εβδομαδιαία
+  προβολή.
+- **KPI Υποβεβλημένες**: μετράει WTODailyA και WTOOvA· φίλτρο γραμμών με υποβολή.
+- **Υποβολή Ergani** από `/ui/apologistic`: WTODailyA/WTOOvA, πίνακας
+  `karta_apologistic_submit`, stale ένδειξη όταν αλλάζει η πρόταση μετά την υποβολή.
+- **Κανόνας UI/backend**: χωρίς κουμπί WTODailyA όταν η μόνη μεταβολή είναι υπερωρία.
+- **Hover εργαζομένου**: εβδομαδιαίος πίνακας ημερών/χτυπημάτων.
+- **Καταγραφές**: καρτέλα `/ui/sync-log#apologistic` + `GET /api/sync-log/apologistic`.
+- Βλ. `docs/APOLOGISTIKO_LOGIC.md`, migration `sql/alter_add_apologistic_submit.sql`.
+
+---
+
 ## 2026-08-11 — Αυτόματο κλείσιμο μέσω Listener
 
 - Το `auto_close_prev_day` ακολουθεί πλέον το `card_submission_mode` του

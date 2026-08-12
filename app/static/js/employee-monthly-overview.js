@@ -56,7 +56,7 @@ async function loadMonth() {
     if (!response.ok) throw new Error(data.error || "Αποτυχία φόρτωσης");
     renderMonth(data);
   } catch (error) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(error.message || error))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(error.message || error))}</p>`;
   }
 }
 

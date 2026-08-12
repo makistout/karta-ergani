@@ -96,7 +96,7 @@ async function loadEmployeeDetail() {
     );
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     const rows = data.contracts || [];
@@ -168,6 +168,6 @@ async function loadEmployeeDetail() {
     histWrap.innerHTML = "";
     histWrap.appendChild(t);
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }

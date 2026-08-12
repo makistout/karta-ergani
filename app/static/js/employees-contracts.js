@@ -31,7 +31,7 @@ async function loadContracts() {
     const res = await fetch("/api/employees/contract/list", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       if (data.db_setup) {
         wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);">${Office.escapeHtml(data.db_setup)}</p>`;
       }
@@ -39,7 +39,7 @@ async function loadContracts() {
     }
     renderTable(data.contracts || [], data.store);
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -139,7 +139,7 @@ async function openHistory(row) {
     );
     const data = await res.json();
     if (!res.ok) {
-      histWrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      histWrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     const rows = data.contracts || [];
@@ -170,7 +170,7 @@ async function openHistory(row) {
     histWrap.innerHTML = "";
     histWrap.appendChild(t);
   } catch (e) {
-    histWrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    histWrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 

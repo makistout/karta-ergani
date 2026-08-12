@@ -89,7 +89,7 @@ async function loadStoresList() {
     wrap.innerHTML = "";
     wrap.appendChild(t);
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα: ${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα: ${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 

@@ -211,6 +211,27 @@ def test_outside_break_only_reduces_difference_on_work_day_with_punch():
     assert row["net_difference_minutes"] == 30
 
 
+def test_outside_break_is_not_added_to_schedule_proposal():
+    row = build_weekly_report(
+        [sched(day="08/08/2026", start="10:00", end="17:00")],
+        [punch("09:57", "15:59", day="08/08/2026")],
+        [contract(flex=15, break_minutes=30, break_in_work=0)],
+    )["days"][0]
+    assert row["outside_break_minutes"] == 30
+    assert row["proposed"] == "09:57–16:57"
+    assert row["status"] == "change"
+
+
+def test_outside_break_extends_overtime_threshold_not_proposal():
+    row = build_weekly_report(
+        [sched(start="09:00", end="17:00")],
+        [punch("09:00", "19:00")],
+        [contract(flex=0, break_minutes=30, break_in_work=0, days="5")],
+    )["days"][0]
+    assert row["proposed"] == "09:00–17:00"
+    assert row["overtime_from"] == "18:30"
+
+
 def test_break_not_subtracted_on_rest_without_punch():
     result = build_weekly_report(
         [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [],

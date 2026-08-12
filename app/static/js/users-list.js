@@ -200,7 +200,7 @@ async function loadUsers() {
     else selectUser(null);
   } catch (e) {
     document.getElementById("usersListWrap").innerHTML =
-      `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+      `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -844,7 +844,7 @@ async function loadUserActivity(reset) {
       moreBtn.disabled = false;
     }
   } catch (e) {
-    if (reset) wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    if (reset) wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     else Office.showMsg("usersMsg", String(e), false);
     if (moreBtn) moreBtn.disabled = false;
   } finally {

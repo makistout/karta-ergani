@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     const wrap = document.getElementById("workLogWrap");
     if (wrap) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     }
   }
 });
@@ -60,7 +60,7 @@ async function loadWorkLog(cachedActive) {
       return;
     }
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       if (data.db_setup) {
         wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;">${Office.escapeHtml(data.db_setup)}</p>`;
       }
@@ -69,7 +69,7 @@ async function loadWorkLog(cachedActive) {
     renderTable(data.work_log || [], data.count || 0, data.store, r);
     Office.updateSyncMetaLine("workLogSyncMeta", activeData.store, "worklog");
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 

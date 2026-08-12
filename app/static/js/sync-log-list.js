@@ -8,6 +8,8 @@ const syncLogState = {
   punchesCursors: [null],
   schedulePage: 1,
   scheduleCursors: [null],
+  apologisticPage: 1,
+  apologisticCursors: [null],
   authPage: 1,
   authCursors: [null],
   selectedRunId: null,
@@ -19,6 +21,9 @@ const syncLogState = {
   scheduleLoaded: false,
   scheduleStoreId: "",
   scheduleStoreAc: null,
+  apologisticLoaded: false,
+  apologisticStoreId: "",
+  apologisticStoreAc: null,
   authLoaded: false,
   punchesStoreId: "",
   punchesStoreAc: null,
@@ -135,6 +140,17 @@ document.addEventListener("DOMContentLoaded", () => {
     resetCursorPager("schedule");
     loadScheduleChanges();
   });
+  document.getElementById("btnRefreshApologisticChanges")?.addEventListener("click", () => {
+    resetCursorPager("apologistic");
+    loadApologisticChanges();
+  });
+  document.getElementById("btnClearApologisticChangesStore")?.addEventListener("click", () => {
+    syncLogState.apologisticStoreId = "";
+    resetCursorPager("apologistic");
+    syncLogState.apologisticStoreAc?.clearValue();
+    document.getElementById("apologisticChangesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
+    loadApologisticChanges();
+  });
   document.getElementById("btnClearScheduleChangesStore")?.addEventListener("click", () => {
     syncLogState.scheduleStoreId = "";
     resetCursorPager("schedule");
@@ -175,6 +191,10 @@ document.addEventListener("DOMContentLoaded", () => {
     initScheduleChangesStorePicker().finally(() => setLogTab("schedule"));
     return;
   }
+  if (location.hash === "#apologistic") {
+    initApologisticChangesStorePicker().finally(() => setLogTab("apologistic"));
+    return;
+  }
   if (location.hash === "#auth") {
     setLogTab("auth");
     return;
@@ -182,6 +202,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSyncLogStorePicker().finally(() => loadRuns());
   initWorkCardPunchesStorePicker();
   initScheduleChangesStorePicker();
+  initApologisticChangesStorePicker();
 });
 
 function formatTs(iso) {
@@ -254,9 +275,24 @@ function statusBadge(status) {
   return `<span class="sync-status-badge ${cls}">${Office.escapeHtml(label)}</span>`;
 }
 
+function currentApologisticBefore() {
+  const page = syncLogState.apologisticPage || 1;
+  const cursors = syncLogState.apologisticCursors || [null];
+  return cursors[page - 1] ?? null;
+}
+
+function rememberApologisticCursor(hasMore, nextBefore) {
+  const page = syncLogState.apologisticPage || 1;
+  const cursors = syncLogState.apologisticCursors || [null];
+  if (hasMore && nextBefore && nextBefore.at && nextBefore.type && nextBefore.id != null) {
+    cursors[page] = nextBefore;
+  }
+  syncLogState.apologisticCursors = cursors;
+}
+
 function setLogTab(tab) {
   const next =
-    tab === "actions" || tab === "sent" || tab === "punches" || tab === "schedule" || tab === "auth"
+    tab === "actions" || tab === "sent" || tab === "punches" || tab === "schedule" || tab === "apologistic" || tab === "auth"
       ? tab
       : "sync";
   syncLogState.activeTab = next;
@@ -270,6 +306,7 @@ function setLogTab(tab) {
   document.getElementById("notifySentPanel")?.classList.toggle("hidden", next !== "sent");
   document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
   document.getElementById("scheduleChangesPanel")?.classList.toggle("hidden", next !== "schedule");
+  document.getElementById("apologisticChangesPanel")?.classList.toggle("hidden", next !== "apologistic");
   document.getElementById("authLogsPanel")?.classList.toggle("hidden", next !== "auth");
   if (next === "actions") {
     history.replaceState(null, "", `${location.pathname}#actions`);
@@ -283,6 +320,9 @@ function setLogTab(tab) {
   } else if (next === "schedule") {
     history.replaceState(null, "", `${location.pathname}#schedule`);
     loadScheduleChanges();
+  } else if (next === "apologistic") {
+    history.replaceState(null, "", `${location.pathname}#apologistic`);
+    loadApologisticChanges();
   } else if (next === "auth") {
     history.replaceState(null, "", `${location.pathname}#auth`);
     if (!syncLogState.authLoaded) loadAuthLogs();
@@ -338,14 +378,14 @@ async function loadAuthLogs() {
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     rememberNextCursor("auth", data.next_before_id, data.has_more);
     renderAuthLogs(data.audit || [], Boolean(data.has_more));
     syncLogState.authLoaded = true;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -424,7 +464,7 @@ async function loadRuns(silent) {
     const res = await fetch(`/api/sync-log/runs?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       if (data.db_setup) {
         wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);">Εκτελέστε: <code>${Office.escapeHtml(data.db_setup)}</code></p>`;
       }
@@ -437,7 +477,7 @@ async function loadRuns(silent) {
     }
   } catch (e) {
     if (!silent) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     }
   }
 }
@@ -625,14 +665,14 @@ async function loadWorkCardPunches() {
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     rememberNextCursor("punches", data.next_before_id, data.has_more);
     renderWorkCardPunches(data.audit || [], Boolean(data.has_more));
     syncLogState.punchesLoaded = true;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -850,14 +890,14 @@ async function loadScheduleChanges() {
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     rememberNextCursor("schedule", data.next_before_id, data.has_more);
     renderScheduleChanges(data.audit || [], Boolean(data.has_more));
     syncLogState.scheduleLoaded = true;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -933,6 +973,236 @@ function renderScheduleChanges(rows, hasMore) {
   wrap.innerHTML = "";
   wrap.appendChild(t);
   appendCursorPager(wrap, "schedule", rows.length, hasMore, loadScheduleChanges);
+}
+
+function apologisticEventTypeLabel(eventType) {
+  const t = String(eventType || "");
+  if (t === "recalc") return "Επαναϋπολογισμός";
+  if (t === "proposal_edit") return "Χειροκίνητη πρόταση";
+  if (t === "ergani_submit") return "Υποβολή Ergani";
+  return t || "—";
+}
+
+function apologisticSubmissionLabel(code) {
+  const c = String(code || "");
+  if (c === "WTODailyA") return "Μεταβολή ωραρίου";
+  if (c === "WTOOvA") return "Υπερωρία";
+  return c || "—";
+}
+
+function apologisticRunStatusBadge(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "draft") return `<span class="sync-status-badge sync-status-ok">Πρόχειρο</span>`;
+  if (s === "approved") return `<span class="sync-status-badge sync-status-ok">Εγκεκριμένο</span>`;
+  if (s === "locked") return `<span class="sync-status-badge sync-status-warn">Κλειδωμένο</span>`;
+  if (s === "failed") return `<span class="sync-status-badge sync-status-err">Αποτυχία</span>`;
+  return `<span class="sync-status-badge">${Office.escapeHtml(status || "—")}</span>`;
+}
+
+function apologisticWeekLabel(row) {
+  if (!row.week_from) return "—";
+  const from = String(row.week_from).slice(0, 10);
+  const to = row.week_to ? String(row.week_to).slice(0, 10) : "";
+  return to && to !== from ? `${from} – ${to}` : from;
+}
+
+function apologisticEmployeeText(row) {
+  const name = String(row.employee_name || "").trim();
+  const afm = String(row.employee_afm || "").trim();
+  return [name, afm].filter(Boolean).join(" · ") || "—";
+}
+
+function apologisticDetailsText(row) {
+  const type = String(row.event_type || "");
+  if (type === "recalc") {
+    const bits = [];
+    if (row.calculation_version) bits.push(`Έκδοση: ${row.calculation_version}`);
+    if (row.day_count != null) bits.push(`Ημέρες: ${row.day_count}`);
+    if (row.error_summary) bits.push(String(row.error_summary));
+    return bits.join(" · ") || "—";
+  }
+  if (type === "proposal_edit") {
+    const oldVal = row.old_value || "—";
+    const newVal = row.new_value || "—";
+    const by = row.changed_by ? ` · από ${row.changed_by}` : "";
+    return `${oldVal} → ${newVal}${by}`;
+  }
+  if (type === "ergani_submit") {
+    const bits = [apologisticSubmissionLabel(row.submission_code)];
+    if (row.proposed_at_submit) bits.push(`Πρόταση: ${row.proposed_at_submit}`);
+    if (row.protocol) bits.push(`Πρωτόκολο: ${row.protocol}`);
+    if (row.segment_date && row.segment_date !== row.work_date) bits.push(`Τμήμα: ${row.segment_date}`);
+    if (row.submitted_by) bits.push(`Από: ${row.submitted_by}`);
+    return bits.join(" · ") || "—";
+  }
+  return "—";
+}
+
+async function initApologisticChangesStorePicker() {
+  const input = document.getElementById("apologisticChangesStoreInput");
+  if (!input || syncLogState.apologisticStoreAc) return;
+  syncLogState.apologisticStoreAc = Office.createAutocomplete({
+    inputId: "apologisticChangesStoreInput",
+    listId: "apologisticChangesStoreList",
+    hiddenId: "apologisticChangesStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.apologisticStoreId = String(item.value || "");
+      resetCursorPager("apologistic");
+      loadApologisticChanges();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
+    syncLogState.apologisticStoreAc?.setItems(
+      (stores || []).map((s) => ({
+        value: String(s.id),
+        description: s.name || "Κατάστημα",
+      }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => syncLogState.apologisticStoreAc?.openAll(false);
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
+async function loadApologisticChanges() {
+  const wrap = document.getElementById("apologisticChangesWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({ limit: String(pageSize()) });
+    if (syncLogState.apologisticStoreId) qs.set("store_id", syncLogState.apologisticStoreId);
+    const before = currentApologisticBefore();
+    if (before?.at && before?.type && before?.id != null) {
+      qs.set("before_at", before.at);
+      qs.set("before_type", before.type);
+      qs.set("before_id", String(before.id));
+    }
+    const res = await fetch(`/api/sync-log/apologistic?${qs}`);
+    const data = await Office.parseJson(res);
+    if (data._parseError) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data._parseError)}</p>`;
+      return;
+    }
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
+      if (data.db_setup) {
+        wrap.innerHTML += `<p style="font-size:0.85rem;color:var(--muted);">Εκτελέστε: <code>${Office.escapeHtml(data.db_setup)}</code></p>`;
+      }
+      return;
+    }
+    rememberApologisticCursor(Boolean(data.has_more), data.next_before);
+    renderApologisticChanges(data.events || [], Boolean(data.has_more));
+    syncLogState.apologisticLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
+  }
+}
+
+function appendApologisticPager(wrap, itemCount, hasMore) {
+  if (!wrap) return;
+  const page = syncLogState.apologisticPage || 1;
+  if (page <= 1 && !hasMore) return;
+  wrap.appendChild(
+    Office.buildCursorPager({
+      page,
+      hasMore: Boolean(hasMore),
+      itemCount: itemCount || 0,
+      pageSize: pageSize(),
+      onPrev: () => {
+        if (page <= 1) return;
+        syncLogState.apologisticPage = page - 1;
+        loadApologisticChanges();
+      },
+      onNext: () => {
+        if (!hasMore) return;
+        syncLogState.apologisticPage = page + 1;
+        loadApologisticChanges();
+      },
+    })
+  );
+}
+
+function renderApologisticChanges(rows, hasMore) {
+  const wrap = document.getElementById("apologisticChangesWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα καταγραφές απολογιστικού.</span></p>`;
+    return;
+  }
+
+  const t = document.createElement("table");
+  t.className = "data work-card-punches-table";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  ["Ώρα", "Τύπος", "Κατάστημα", "Εβδομάδα", "Εργαζόμενος", "Ημ/νία", "Κατάσταση", "Λεπτομέρειες"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  t.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    const tdTs = document.createElement("td");
+    tdTs.className = "sync-log-ts work-card-punch-col-ts";
+    tdTs.textContent = formatTs(row.event_at);
+    tr.appendChild(tdTs);
+
+    const tdType = document.createElement("td");
+    tdType.textContent = apologisticEventTypeLabel(row.event_type);
+    tr.appendChild(tdType);
+
+    const tdStore = document.createElement("td");
+    Office.setStoreIdText(tdStore, row.store_id, { storeName: row.store_name });
+    tr.appendChild(tdStore);
+
+    const tdWeek = document.createElement("td");
+    tdWeek.textContent = apologisticWeekLabel(row);
+    tr.appendChild(tdWeek);
+
+    const tdEmp = document.createElement("td");
+    tdEmp.textContent = row.event_type === "recalc" ? "—" : apologisticEmployeeText(row);
+    tr.appendChild(tdEmp);
+
+    const tdDate = document.createElement("td");
+    tdDate.textContent = row.work_date || "—";
+    tr.appendChild(tdDate);
+
+    const tdStatus = document.createElement("td");
+    if (row.event_type === "recalc") {
+      tdStatus.innerHTML = apologisticRunStatusBadge(row.run_status);
+    } else if (row.event_type === "ergani_submit") {
+      tdStatus.innerHTML = `<span class="sync-status-badge sync-status-ok">OK</span>`;
+    } else {
+      tdStatus.innerHTML = `<span class="sync-status-badge sync-status-warn">Επεξεργασία</span>`;
+    }
+    tr.appendChild(tdStatus);
+
+    const tdDetails = document.createElement("td");
+    tdDetails.className = "work-card-punch-details";
+    tdDetails.textContent = apologisticDetailsText(row);
+    tdDetails.title = tdDetails.textContent;
+    tr.appendChild(tdDetails);
+
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody);
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
+  appendApologisticPager(wrap, rows.length, hasMore);
 }
 
 function auditSuccessBadge(row) {
@@ -1033,14 +1303,14 @@ async function loadNotifySent() {
     const res = await fetch(`/api/sync-log/notifications?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     rememberNextCursor("sent", data.next_before_id, data.has_more);
     renderNotifySent(data.notifications || [], Boolean(data.has_more));
     syncLogState.sentLoaded = true;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
@@ -1129,14 +1399,14 @@ async function loadNotifyActions() {
     const res = await fetch(`/api/audit/list?${qs}`);
     const data = await res.json();
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(data.error || "Σφάλμα")}</p>`;
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
       return;
     }
     rememberNextCursor("actions", data.next_before_id, data.has_more);
     renderNotifyActions(data.audit || [], Boolean(data.has_more));
     syncLogState.actionsLoaded = true;
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.escapeHtml(String(e))}</p>`;
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 

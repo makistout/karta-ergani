@@ -732,7 +732,7 @@ def test_auto_close_retries_without_aitiologia_when_ergani_forbids(monkeypatch):
     first = client.calls[0]["Cards"]["Card"][0]["Details"]["CardDetails"][0]
     second = client.calls[1]["Cards"]["Card"][0]["Details"]["CardDetails"][0]
     assert first.get("f_aitiologia") == "001"
-    assert second.get("f_aitiologia") is None
+    assert second.get("f_aitiologia") == ""
 
 
 def test_auto_close_uses_online_listener_without_direct_ergani_call(monkeypatch):

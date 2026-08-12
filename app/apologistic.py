@@ -396,8 +396,10 @@ def _proposed_normal_slot(
 ) -> tuple[int, int, str]:
     if actual_minutes <= declared_minutes and pe > de + flex:
         # Suspected late/missed entry: anchor backwards from the real exit.
-        return pe - declared_minutes - outside_break, pe, "Ανάστροφα από την πραγματική λήξη"
-    return ps, ps + declared_minutes + outside_break, "Από την πραγματική έναρξη"
+        # Outside break extends physical presence but not the declared schedule slot.
+        work_end = pe - outside_break
+        return work_end - declared_minutes, work_end, "Ανάστροφα από την πραγματική λήξη"
+    return ps, ps + declared_minutes, "Από την πραγματική έναρξη"
 
 
 def _overtime_segments(work_date: str, start: int | None, end: int | None) -> list[dict[str, Any]]:
@@ -541,7 +543,7 @@ def build_weekly_report(
             if (contract_kind == "Πλήρης" and normal_limit is not None
                     and (effective_actual or 0) > normal_limit and ps is not None and pe is not None):
                 normal_work = min(effective_actual or 0, normal_limit)
-                proposed = f"{_hm(ps)}–{_hm(ps + normal_work + outside_break)}"
+                proposed = f"{_hm(ps)}–{_hm(ps + normal_work)}"
                 proposal_basis = f"Όριο κανονικής εργασίας πλήρους {weekly_days}ημέρου ({_hm(normal_limit)})"
                 status = "change"
                 reason = (
