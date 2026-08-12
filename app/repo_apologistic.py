@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
@@ -55,6 +56,10 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
                 report: dict[str, Any], calculation_version: str) -> dict[str, Any]:
     store_id = int(store["id"])
     with cursor(commit=True) as cur:
+        # Connections are pooled, therefore SQL Server local temp tables may
+        # survive until the same connection is checked out again.  Always
+        # clean stale staging tables before starting a new store/week save.
+        cur.execute("DROP TABLE IF EXISTS #apologistic_day_stage; DROP TABLE IF EXISTS #apologistic_rest_stage;")
         cur.execute("""
             SELECT id, status FROM dbo.karta_apologistic_run WITH (UPDLOCK, HOLDLOCK)
             WHERE store_id = ? AND week_from = ?
@@ -81,12 +86,11 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
         cur.execute("SELECT employee_afm, work_date, override_json, review_status FROM dbo.karta_apologistic_day WHERE run_id=?", (run_id,))
         saved = {(str(r[0]), r[1]): (r[2], str(r[3])) for r in cur.fetchall()}
         effective_days: list[dict[str, Any]] = []
-        live_keys: set[tuple[str, date]] = set()
+        day_stage: list[tuple[Any, ...]] = []
         for day in report.get("days") or []:
             work_date = datetime.strptime(str(day["work_date"]), "%d/%m/%Y").date()
             afm = str(day.get("employee_afm") or "")
             key = (afm, work_date)
-            live_keys.add(key)
             override_raw, review_status = saved.get(key, (None, "draft"))
             try:
                 override = json.loads(override_raw) if override_raw else None
@@ -94,18 +98,110 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
                 override = None
             effective = _merge(day, override)
             effective_days.append(effective)
-            cur.execute("""
-                MERGE dbo.karta_apologistic_day AS target
-                USING (SELECT ? AS run_id, ? AS employee_afm, ? AS work_date) AS source
-                ON target.run_id=source.run_id AND target.employee_afm=source.employee_afm AND target.work_date=source.work_date
-                WHEN MATCHED THEN UPDATE SET generated_json=?, effective_json=?, generated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
-                WHEN NOT MATCHED THEN INSERT (run_id, store_id, employee_afm, work_date, generated_json, effective_json)
-                    VALUES (?, ?, ?, ?, ?, ?);
-            """, (run_id, afm, work_date, _json(day), _json(effective), run_id, store_id, afm, work_date, _json(day), _json(effective)))
+            day_stage.append((afm, work_date, _json(day), _json(effective)))
 
-        for key, (_, review_status) in saved.items():
-            if key not in live_keys and review_status not in ("approved", "locked"):
-                cur.execute("DELETE FROM dbo.karta_apologistic_day WHERE run_id=? AND employee_afm=? AND work_date=? AND override_json IS NULL", (run_id, key[0], key[1]))
+        cur.execute("""
+            CREATE TABLE #apologistic_day_stage (
+                employee_afm NVARCHAR(9) NOT NULL,
+                work_date DATE NOT NULL,
+                generated_json NVARCHAR(MAX) NOT NULL,
+                effective_json NVARCHAR(MAX) NOT NULL,
+                PRIMARY KEY (employee_afm, work_date)
+            )
+        """)
+        if day_stage:
+            day_payload = [{
+                "employee_afm": row[0], "work_date": row[1].isoformat(),
+                "generated_json": row[2], "effective_json": row[3],
+            } for row in day_stage]
+            cur.execute("""
+                INSERT #apologistic_day_stage(employee_afm, work_date, generated_json, effective_json)
+                SELECT employee_afm, work_date, generated_json, effective_json
+                FROM OPENJSON(?) WITH (
+                    employee_afm NVARCHAR(9) '$.employee_afm', work_date DATE '$.work_date',
+                    generated_json NVARCHAR(MAX) '$.generated_json', effective_json NVARCHAR(MAX) '$.effective_json'
+                )
+            """, (_json(day_payload),))
+        cur.execute("""
+            MERGE dbo.karta_apologistic_day AS target
+            USING #apologistic_day_stage AS source
+            ON target.run_id=? AND target.employee_afm=source.employee_afm AND target.work_date=source.work_date
+            WHEN MATCHED THEN UPDATE SET generated_json=source.generated_json,
+                effective_json=source.effective_json, generated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            WHEN NOT MATCHED THEN INSERT (run_id, store_id, employee_afm, work_date, generated_json, effective_json)
+                VALUES (?, ?, source.employee_afm, source.work_date, source.generated_json, source.effective_json);
+        """, (run_id, run_id, store_id))
+        cur.execute("""
+            DELETE target FROM dbo.karta_apologistic_day target
+            WHERE target.run_id=? AND target.override_json IS NULL
+              AND target.review_status NOT IN (N'approved', N'locked')
+              AND NOT EXISTS (
+                  SELECT 1 FROM #apologistic_day_stage source
+                  WHERE source.employee_afm=target.employee_afm AND source.work_date=target.work_date
+              )
+        """, (run_id,))
+
+        obligation_stage: list[tuple[Any, ...]] = []
+        for day in report.get("days") or []:
+            if not day.get("compensatory_rest_due"):
+                continue
+            source_date = datetime.strptime(str(day["work_date"]), "%d/%m/%Y").date()
+            target_from = datetime.strptime(str(day["compensatory_rest_target_week"]), "%Y-%m-%d").date()
+            afm = str(day.get("employee_afm") or "")
+            obligation_stage.append((afm, source_date, int(day.get("effective_actual_minutes") or 0),
+                                     int(day.get("weekly_punch_days") or 0), target_from,
+                                     target_from.fromordinal(target_from.toordinal() + 6)))
+        cur.execute("""
+            CREATE TABLE #apologistic_rest_stage (
+                employee_afm NVARCHAR(9) NOT NULL, source_work_date DATE NOT NULL,
+                source_actual_minutes INT NOT NULL, source_punch_days INT NOT NULL,
+                target_week_from DATE NOT NULL, target_week_to DATE NOT NULL,
+                PRIMARY KEY(employee_afm, source_work_date)
+            )
+        """)
+        if obligation_stage:
+            obligation_payload = [{
+                "employee_afm": row[0], "source_work_date": row[1].isoformat(),
+                "source_actual_minutes": row[2], "source_punch_days": row[3],
+                "target_week_from": row[4].isoformat(), "target_week_to": row[5].isoformat(),
+            } for row in obligation_stage]
+            cur.execute("""
+                INSERT #apologistic_rest_stage
+                    (employee_afm, source_work_date, source_actual_minutes, source_punch_days, target_week_from, target_week_to)
+                SELECT employee_afm, source_work_date, source_actual_minutes, source_punch_days, target_week_from, target_week_to
+                FROM OPENJSON(?) WITH (
+                    employee_afm NVARCHAR(9) '$.employee_afm', source_work_date DATE '$.source_work_date',
+                    source_actual_minutes INT '$.source_actual_minutes', source_punch_days INT '$.source_punch_days',
+                    target_week_from DATE '$.target_week_from', target_week_to DATE '$.target_week_to'
+                )
+            """, (_json(obligation_payload),))
+        cur.execute("""
+            MERGE dbo.karta_apologistic_rest_obligation AS target
+            USING #apologistic_rest_stage AS source
+            ON target.store_id=? AND target.employee_afm=source.employee_afm
+               AND target.source_work_date=source.source_work_date
+            WHEN MATCHED AND target.status=N'pending' THEN UPDATE SET source_run_id=?,
+                source_actual_minutes=source.source_actual_minutes, source_punch_days=source.source_punch_days,
+                target_week_from=source.target_week_from, target_week_to=source.target_week_to,
+                updated_at=SYSDATETIMEOFFSET()
+            WHEN NOT MATCHED THEN INSERT
+                (store_id, employee_afm, source_run_id, source_work_date, source_actual_minutes,
+                 source_punch_days, target_week_from, target_week_to)
+                VALUES (?, source.employee_afm, ?, source.source_work_date, source.source_actual_minutes,
+                        source.source_punch_days, source.target_week_from, source.target_week_to);
+        """, (store_id, run_id, store_id, run_id))
+        cur.execute("""
+            UPDATE target SET status=N'cancelled',
+                resolution_note=N'Δεν προκύπτει πλέον μετά τον επανυπολογισμό',
+                resolved_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_apologistic_rest_obligation target
+            WHERE target.store_id=? AND target.source_work_date BETWEEN ? AND ?
+              AND target.status=N'pending' AND NOT EXISTS (
+                  SELECT 1 FROM #apologistic_rest_stage source
+                  WHERE source.employee_afm=target.employee_afm
+                    AND source.source_work_date=target.source_work_date
+              )
+        """, (store_id, week_from, week_to))
 
         effective_report = dict(report)
         effective_report["days"] = effective_days
@@ -115,6 +211,7 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
                 effective_report_json=?, completed_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
             WHERE id=?
         """, (_json(report), _json(effective_report), run_id))
+        cur.execute("DROP TABLE IF EXISTS #apologistic_day_stage; DROP TABLE IF EXISTS #apologistic_rest_stage;")
         return {"run_id": run_id, "skipped": False, "days": len(effective_days)}
 
 
@@ -156,10 +253,64 @@ def load_report(store_id: int, week_from: date) -> tuple[dict[str, Any], dict[st
                 "old_value": row[2], "new_value": row[3], "changed_by": row[4],
                 "changed_at": row[5].isoformat(timespec="seconds") if row[5] else None,
             })
+        cur.execute("""
+            SELECT employee_afm, source_work_date, source_actual_minutes, source_punch_days,
+                   target_week_from, target_week_to, status
+            FROM dbo.karta_apologistic_rest_obligation
+            WHERE store_id=? AND target_week_from=? AND status=N'pending'
+            ORDER BY employee_afm, source_work_date
+        """, (int(store_id), week_from))
+        rest_due_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in cur.fetchall():
+            rest_due_by_afm[str(row[0])].append({
+                "source_work_date": row[1].strftime("%d/%m/%Y"),
+                "source_actual_minutes": int(row[2]),
+                "source_punch_days": int(row[3]),
+                "target_week_from": row[4].isoformat(),
+                "target_week_to": row[5].isoformat(),
+                "status": str(row[6]),
+            })
     for day in report.get("days") or []:
         day["proposal_history"] = histories.get((str(day.get("employee_afm") or ""), str(day.get("work_date") or "")), [])
+        day["incoming_rest_obligations"] = rest_due_by_afm.get(str(day.get("employee_afm") or ""), [])
+    report["rest_obligations"] = [
+        {"employee_afm": afm, **item}
+        for afm, items in rest_due_by_afm.items() for item in items
+    ]
     meta = {k: run.get(k) for k in ("id", "status", "calculation_version", "started_at", "completed_at", "updated_at")}
     return report, meta
+
+
+def list_employee_days(*, store_id: int, employee_afm: str,
+                       date_from: date, date_to: date) -> list[dict[str, Any]]:
+    """Effective (including manual overrides) retrospective rows for a month view."""
+    with cursor(commit=False) as cur:
+        cur.execute("""
+            SELECT d.work_date, d.effective_json, r.week_from, r.week_to,
+                   r.status, r.calculation_version,
+                   CAST(r.completed_at AS datetime2) AS completed_at
+            FROM dbo.karta_apologistic_day d
+            INNER JOIN dbo.karta_apologistic_run r ON r.id=d.run_id
+            WHERE r.store_id=? AND d.employee_afm=?
+              AND d.work_date BETWEEN ? AND ?
+              AND r.status IN (N'draft', N'approved', N'locked')
+            ORDER BY d.work_date
+        """, (int(store_id), employee_afm, date_from, date_to))
+        rows: list[dict[str, Any]] = []
+        for record in cur.fetchall():
+            try:
+                item = json.loads(record[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            item["source"] = "snapshot"
+            item["finalized"] = True
+            item["week_from"] = record[2].isoformat()
+            item["week_to"] = record[3].isoformat()
+            item["run_status"] = str(record[4])
+            item["calculation_version"] = str(record[5])
+            item["completed_at"] = record[6].isoformat() if record[6] else None
+            rows.append(item)
+        return rows
 
 
 def update_proposed(*, store_id: int, week_from: date, employee_afm: str,

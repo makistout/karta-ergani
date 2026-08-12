@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from time import perf_counter
 from typing import Any
 
 from app.apologistic import build_weekly_report, previous_week
 from app.date_util import iso_to_ergani_dates
+from app.karta_log import KartaLogger
+from app import repo_sync_log
 from app.repo_apologistic import mark_failed, save_report
 from app.repo_employment_contract import list_current_for_store
 from app.repo_schedule import list_schedule_for_range
@@ -16,6 +19,19 @@ CALCULATION_VERSION = "2026-08-11.1"
 
 
 def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -> dict[str, Any]:
+    logger = KartaLogger(
+        "scheduled_apologistic_snapshot",
+        store_id=int(store["id"]),
+        store_name=store.get("name"),
+        extra={"week_from": week_from.isoformat(), "week_to": week_to.isoformat()},
+    )
+    started = perf_counter()
+    logger.info(
+        "Έναρξη εβδομαδιαίου απολογιστικού",
+        week_from=week_from.isoformat(),
+        week_to=week_to.isoformat(),
+        calculation_version=CALCULATION_VERSION,
+    )
     try:
         dates = iso_to_ergani_dates(week_from.isoformat(), week_to.isoformat(), 7)
         afm, branch = str(store["employer_afm"]), str(store["branch_aa"])
@@ -28,11 +44,52 @@ def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -
         report = build_weekly_report(schedule, work_log, contracts)
         saved = save_report(store=store, week_from=week_from, week_to=week_to,
                             report=report, calculation_version=CALCULATION_VERSION)
-        return {"success": True, "store_id": int(store["id"]), "store_name": store.get("name"), **saved}
+        elapsed = round(perf_counter() - started, 3)
+        result = {
+            "success": True, "store_id": int(store["id"]), "store_name": store.get("name"),
+            "week_from": week_from.isoformat(), "week_to": week_to.isoformat(),
+            "elapsed_seconds": elapsed, **saved,
+        }
+        logger.info(
+            "Ολοκλήρωση εβδομαδιαίου απολογιστικού",
+            success=True,
+            elapsed_seconds=elapsed,
+            result_days=int(saved.get("days") or 0),
+            run_id=saved.get("run_id"),
+            skipped=bool(saved.get("skipped")),
+        )
+        repo_sync_log.finish_run(
+            logger.run_id,
+            status="done",
+            message=f"Ολοκληρώθηκε σε {elapsed:.3f}s — {int(saved.get('days') or 0)} αποτελέσματα",
+            result=result,
+        )
+        return result
     except Exception as exc:
-        mark_failed(store=store, week_from=week_from, week_to=week_to,
-                    calculation_version=CALCULATION_VERSION, error=str(exc))
-        return {"success": False, "store_id": int(store["id"]), "store_name": store.get("name"), "error": str(exc)}
+        elapsed = round(perf_counter() - started, 3)
+        try:
+            mark_failed(store=store, week_from=week_from, week_to=week_to,
+                        calculation_version=CALCULATION_VERSION, error=str(exc))
+        except Exception:
+            pass
+        result = {
+            "success": False, "store_id": int(store["id"]), "store_name": store.get("name"),
+            "week_from": week_from.isoformat(), "week_to": week_to.isoformat(),
+            "elapsed_seconds": elapsed, "error": str(exc),
+        }
+        logger.error(
+            "Αποτυχία εβδομαδιαίου απολογιστικού",
+            success=False,
+            elapsed_seconds=elapsed,
+            error=str(exc),
+        )
+        repo_sync_log.finish_run(
+            logger.run_id,
+            status="error",
+            message=f"Αποτυχία μετά από {elapsed:.3f}s: {str(exc)[:350]}",
+            result=result,
+        )
+        return result
 
 
 def generate_previous_week(stores: list[dict[str, Any]], *, today: date | None = None) -> dict[str, Any]:

@@ -461,6 +461,10 @@ def build_weekly_report(
             missing_declared_by_afm[afm].append({
                 "work_date": work_date,
                 "declared": " · ".join(f"{slot.get('hour_from')}–{slot.get('hour_to')}" for slot in working),
+                "declared_minutes": sum(
+                    _minutes(slot.get("hour_from"), slot.get("hour_to")) or 0
+                    for slot in working
+                ),
             })
     for rows in missing_declared_by_afm.values():
         rows.sort(key=lambda item: datetime.strptime(item["work_date"], "%d/%m/%Y"))
@@ -519,10 +523,19 @@ def build_weekly_report(
         status, reason, proposed, proposal_basis = "ok", "Δεν απαιτείται μεταβολή", declared_label, "Δηλωμένο ωράριο"
         state = _day_state(slots)
         replacement_candidates: list[dict[str, Any]] = []
+        exchange_options: list[dict[str, Any]] = []
         weekly_punch_details: list[dict[str, Any]] = []
         weekly_punch_days: int | None = None
         contract_required_days: int | None = _contract_weekly_days
         special_non_work_punch = bool(matched and state in ("Μη εργασία", "Ρεπό") and day_punches)
+        parsed_work_date = datetime.strptime(work_date, "%d/%m/%Y").date()
+        compensatory_rest_due = bool(
+            parsed_work_date.weekday() == 6
+            and contract_required_days == 5
+            and len(punch_dates_by_afm.get(afm, set())) >= 6
+            and (effective_actual or 0) > 300
+            and day_punches
+        )
         if matched and (not slots or _is_non_work(slots)) and day_punches:
             normal_limit = 480 if weekly_days == 5 else 400 if weekly_days == 6 else None
             if (contract_kind == "Πλήρης" and normal_limit is not None
@@ -542,13 +555,27 @@ def build_weekly_report(
                 weekly_punch_details = list(weekly_punch_details_by_afm.get(afm, []))
                 if contract_required_days and weekly_punch_days >= contract_required_days:
                     status = "ok"
+                    proposed = actual_label
+                    proposal_basis = "Πλήρης κάλυψη ημερών σύμβασης — διάρκεια πραγματικού χτυπήματος στο ρεπό"
                     reason = (
                         f"Χτύπημα σε {state}: οι {weekly_punch_days} ημέρες με κάρτα καλύπτουν "
-                        f"τις {contract_required_days} ημέρες της σύμβασης"
+                        f"τις {contract_required_days} ημέρες της σύμβασης· διατηρείται η διάρκεια του χτυπήματος"
                     )
                 else:
                     status = "review"
                     replacement_candidates = list(missing_declared_by_afm.get(afm, []))
+                    if ps is not None:
+                        exchange_options = [{
+                            "rest_work_date": work_date,
+                            "rest_punch": actual_label,
+                            "replacement_work_date": item["work_date"],
+                            "replacement_declared": item["declared"],
+                            "contract_duration_minutes": item["declared_minutes"],
+                            "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
+                        } for item in replacement_candidates if item.get("declared_minutes")]
+                    if exchange_options:
+                        proposed = exchange_options[0]["proposed"]
+                        proposal_basis = "Διάρκεια δηλωμένου ωραρίου της υποψήφιας ημέρας αντικατάστασης"
                     required_label = str(contract_required_days) if contract_required_days else "άγνωστες"
                     reason = (
                         f"Χτύπημα σε {state}: {weekly_punch_days} ημέρες με κάρτα έναντι "
@@ -632,7 +659,12 @@ def build_weekly_report(
                 status_explanation.append("Οι ημέρες με κάρτα καλύπτουν ή υπερβαίνουν τις ημέρες σύμβασης, επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο.")
             elif replacement_candidates:
                 status_explanation.append("Δηλωμένες ημέρες εργασίας χωρίς χτύπημα που μπορούν να εξεταστούν για αντικατάσταση:")
-                status_explanation.extend(f"  · {item['work_date']}: {item['declared']}" for item in replacement_candidates)
+                status_explanation.extend(
+                    f"  · {item['replacement_work_date']}: {item['replacement_declared']} "
+                    f"({_hm(item['contract_duration_minutes'])} διάρκεια) ↔ {work_date}: "
+                    f"πρόταση {item['proposed']}"
+                    for item in exchange_options
+                )
             else:
                 status_explanation.append("Δεν βρέθηκε δηλωμένη ημέρα εργασίας χωρίς χτύπημα ως υποψήφια αντικατάστασης.")
         daily.append({
@@ -666,7 +698,13 @@ def build_weekly_report(
             "weekly_punch_days": weekly_punch_days,
             "contract_required_days": contract_required_days,
             "replacement_candidates": replacement_candidates,
+            "exchange_options": exchange_options,
             "weekly_punch_details": weekly_punch_details,
+            "compensatory_rest_due": compensatory_rest_due,
+            "compensatory_rest_target_week": (
+                (parsed_work_date + timedelta(days=1)).isoformat()
+                if compensatory_rest_due else None
+            ),
         })
 
     # If seven workdays were declared and one has no card, propose (never auto-apply) rest.

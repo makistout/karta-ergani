@@ -1,0 +1,35 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Μηνιαία εικόνα εργαζομένου' %}
+{% set shell = "office" %}
+{% set active_nav = 'employees' %}
+{% set body_class = "" %}
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/css/employee-monthly-overview.css?v=20260812month1">
+{% endblock %}
+{% block content %}
+  <div class="employee-month-head">
+    <div>
+      <h1 class="page-title"><i class="bi bi-calendar3" aria-hidden="true"></i> Μηνιαία εικόνα εργαζομένου</h1>
+      <p class="page-desc" id="employeeMonthDesc">Συγκεντρωτική ημερήσια εικόνα απολογιστικού.</p>
+    </div>
+    <a href="/ui/employees" class="btn btn-secondary"><i class="bi bi-arrow-left"></i><span>Εργαζόμενοι</span></a>
+  </div>
+
+  <div class="card employee-month-toolbar">
+    <button type="button" class="btn btn-secondary" id="btnPrevMonth" aria-label="Προηγούμενος μήνας"><i class="bi bi-chevron-left"></i></button>
+    <label class="field-inline">
+      <span>Μήνας</span>
+      <select id="employeeMonthSelect" class="input-select" aria-label="Επιλογή μήνα"></select>
+    </label>
+    <button type="button" class="btn btn-secondary" id="btnNextMonth" aria-label="Επόμενος μήνας"><i class="bi bi-chevron-right"></i></button>
+  </div>
+
+  <div class="employee-month-summary" id="employeeMonthSummary"></div>
+  <div class="card list-card">
+    <div id="employeeMonthWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+  </div>
+  <div id="employeeMonthMsg" class="msg"></div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/employee-monthly-overview.js?v=20260812month1"></script>
+{% endblock %}

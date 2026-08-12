@@ -131,6 +131,30 @@ def test_rest_punch_is_ok_when_card_days_cover_contract_days():
     assert any("03/08/2026: 09:10–17:10" in line for line in row["status_explanation"])
 
 
+def test_sunday_sixth_day_over_five_hours_creates_next_week_rest_due():
+    schedules, punches = [], []
+    for offset in range(6):
+        day = f"{3 + offset:02d}/08/2026" if offset < 5 else "09/08/2026"
+        schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") if offset == 5 else sched(day=day))
+        punches.append(punch(day=day, start="09:00", end="15:01"))
+    sunday = next(row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+                  if row["work_date"] == "09/08/2026")
+    assert sunday["compensatory_rest_due"] is True
+    assert sunday["compensatory_rest_target_week"] == "2026-08-10"
+    assert sunday["proposed"] == "09:00–15:01"
+
+
+def test_sunday_five_hours_does_not_create_next_week_rest_due():
+    schedules, punches = [], []
+    for offset in range(6):
+        day = f"{3 + offset:02d}/08/2026" if offset < 5 else "09/08/2026"
+        schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") if offset == 5 else sched(day=day))
+        punches.append(punch(day=day, start="09:00", end="14:00"))
+    sunday = next(row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+                  if row["work_date"] == "09/08/2026")
+    assert sunday["compensatory_rest_due"] is False
+
+
 def test_rest_punch_lists_declared_days_without_card_when_contract_days_not_met():
     schedules = [
         sched(day="03/08/2026"),
@@ -142,7 +166,10 @@ def test_rest_punch_lists_declared_days_without_card_when_contract_days_not_met(
                if item["work_date"] == "05/08/2026")
     assert row["status"] == "review"
     assert row["weekly_punch_days"] == 2
-    assert row["replacement_candidates"] == [{"work_date": "04/08/2026", "declared": "09:00–17:00"}]
+    assert row["replacement_candidates"] == [{
+        "work_date": "04/08/2026", "declared": "09:00–17:00", "declared_minutes": 480,
+    }]
+    assert row["exchange_options"][0]["proposed"] == "09:10–17:10"
     assert any("04/08/2026: 09:00–17:00" in line for line in row["status_explanation"])
 
 

@@ -19,6 +19,7 @@ _OPERATION_LABELS = {
     "scheduled_today_sync": "Αυτόματος συγχρονισμός",
     "scheduled_recent_work_log_sync": "Νυχτερινό 30ήμερο πραγματικής",
     "scheduled_weekly_repair_work_log_sync": "Κυριακάτικο 90ήμερο repair πραγματικής",
+    "scheduled_apologistic_snapshot": "Εβδομαδιαίο απολογιστικό",
     "scheduled_employment_contract_sync": "Ημερήσιο στοιχεία σύμβασης",
     "scheduled_post_sync_notify": "Ειδοποιήσεις μετά το sync",
 }

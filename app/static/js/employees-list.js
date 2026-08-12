@@ -58,11 +58,14 @@ function renderTable(rows, count, store) {
   const t = document.createElement("table");
   t.className = "data";
   const hr = document.createElement("tr");
-  ["__detail__", "ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "__weekly__", "__history__"].forEach((h) => {
+  ["__detail__", "ΑΦΜ", "Επώνυμο", "Όνομα", "Ευελ. (λεπτά)", "Κατάσταση", "__monthly__", "__weekly__", "__history__"].forEach((h) => {
     const th = document.createElement("th");
     if (h === "__detail__") {
       th.className = "work-log-action-cell";
       th.setAttribute("aria-label", "Στοιχεία σύμβασης");
+    } else if (h === "__monthly__") {
+      th.className = "work-log-action-cell";
+      th.setAttribute("aria-label", "Μηνιαία εικόνα");
     } else if (h === "__weekly__") {
       th.className = "work-log-action-cell";
       th.setAttribute("aria-label", "Εβδομαδιαίο ωράριο");
@@ -91,7 +94,7 @@ function renderTable(rows, count, store) {
       detailLink.className = "employee-detail-link";
       detailLink.title = "Στοιχεία σύμβασης Ergani";
       detailLink.setAttribute("aria-label", `Στοιχεία σύμβασης — ${empName}`);
-      detailLink.innerHTML = Office.icon("table");
+      detailLink.innerHTML = Office.icon("info-circle");
       tdDetail.appendChild(detailLink);
     }
     tr.appendChild(tdDetail);
@@ -113,6 +116,21 @@ function renderTable(rows, count, store) {
       ? `<span style="color:var(--ok);">${Office.icon("check-circle-fill")} Ενεργός</span>`
       : `<span style="color:var(--muted);">${Office.icon("dash-circle")} Ανενεργός</span>`;
     tr.appendChild(tdSt);
+    const tdMonthly = document.createElement("td");
+    tdMonthly.className = "work-log-action-cell";
+    if (empAfm) {
+      const monthlyLink = document.createElement("a");
+      monthlyLink.href =
+        `/ui/employees/monthly-overview?afm=${encodeURIComponent(empAfm)}` +
+        `&eponymo=${encodeURIComponent(emp.eponymo || "")}` +
+        `&onoma=${encodeURIComponent(emp.onoma || "")}`;
+      monthlyLink.className = "employee-monthly-overview-link";
+      monthlyLink.title = "Συγκεντρωτική μηνιαία εικόνα";
+      monthlyLink.setAttribute("aria-label", `Μηνιαία εικόνα — ${empName}`);
+      monthlyLink.innerHTML = Office.icon("calendar3");
+      tdMonthly.appendChild(monthlyLink);
+    }
+    tr.appendChild(tdMonthly);
     const tdWeekly = document.createElement("td");
     tdWeekly.className = "work-log-action-cell";
     if (empAfm && active) {

@@ -132,6 +132,11 @@ def ui_employee_weekly_schedule():
     return render_template("ui/employee-weekly-schedule.html")
 
 
+@ui_bp.get("/employees/monthly-overview")
+def ui_employee_monthly_overview():
+    return render_template("ui/employee-monthly-overview.html")
+
+
 @ui_bp.get("/schedule")
 def ui_schedule_list():
     return render_template("ui/schedule-list.html")

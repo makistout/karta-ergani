@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   initExplanationModal();
   initEmployeeModal();
   initProposalModal();
+  window.addEventListener("scroll", hideProposalHistoryOverlay, true);
+  window.addEventListener("resize", hideProposalHistoryOverlay);
   document.addEventListener("click", (event) => {
     const proposalButton = event.target.closest(".apologistic-proposal-btn");
     if (proposalButton) {
@@ -200,6 +202,43 @@ function proposalHistory(row) {
       `<span>${attr(item.old_value || "—")} → ${attr(item.new_value || "—")}</span>` +
       `<small>${attr(when)}${item.changed_by ? ` · ${attr(item.changed_by)}` : ""}</small></div>`;
   }).join("");
+}
+
+function hideProposalHistoryOverlay() {
+  document.getElementById("apologisticProposalHistoryOverlay")?.remove();
+}
+
+function showProposalHistoryOverlay(anchor) {
+  hideProposalHistoryOverlay();
+  const source = anchor.querySelector(".apologistic-proposal-history");
+  if (!source) return;
+  const overlay = document.createElement("div");
+  overlay.id = "apologisticProposalHistoryOverlay";
+  overlay.className = "apologistic-proposal-history-overlay";
+  overlay.innerHTML = source.innerHTML;
+  document.body.appendChild(overlay);
+  const anchorRect = anchor.getBoundingClientRect();
+  const overlayRect = overlay.getBoundingClientRect();
+  const gap = 8;
+  const left = Math.max(gap, Math.min(
+    window.innerWidth - overlayRect.width - gap,
+    anchorRect.right - overlayRect.width,
+  ));
+  const fitsBelow = anchorRect.bottom + gap + overlayRect.height <= window.innerHeight;
+  const top = fitsBelow
+    ? anchorRect.bottom + gap
+    : Math.max(gap, anchorRect.top - overlayRect.height - gap);
+  overlay.style.left = `${left}px`;
+  overlay.style.top = `${top}px`;
+}
+
+function bindProposalHistoryOverlays() {
+  document.querySelectorAll(".apologistic-proposal-wrap").forEach((wrap) => {
+    wrap.addEventListener("mouseenter", () => showProposalHistoryOverlay(wrap));
+    wrap.addEventListener("mouseleave", hideProposalHistoryOverlay);
+    wrap.addEventListener("focusin", () => showProposalHistoryOverlay(wrap));
+    wrap.addEventListener("focusout", hideProposalHistoryOverlay);
+  });
 }
 
 async function editProposal(employeeAfm, workDate) {
@@ -449,6 +488,7 @@ function renderVisibleRows() {
   renderRows(rows, reportState.store);
 }
 function renderRows(rows, store) {
+  hideProposalHistoryOverlay();
   const wrap = document.getElementById("apologisticWrap");
   if (!rows.length) {
     const suffix = reportState.filter === "all" ? "" : " με το ενεργό φίλτρο";
@@ -486,7 +526,10 @@ function renderRows(rows, store) {
       row.classification_warning || "",
     ].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
-      `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης`)}"><button type="button" class="apologistic-employee-btn" data-employee-afm="${attr(row.employee_afm)}">${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</button></td>` +
+      `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης`)}"><button type="button" class="apologistic-employee-btn" data-employee-afm="${attr(row.employee_afm)}">${attr(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}</button>` +
+      ((row.incoming_rest_obligations || []).length
+        ? `<span class="apologistic-rest-due" title="${attr((row.incoming_rest_obligations || []).map((item) => `Οφείλεται ρεπό από Κυριακή ${item.source_work_date} · ${mins(item.source_actual_minutes)} εργασία`).join(" · "))}"><i class="bi bi-calendar2-check" aria-hidden="true"></i> Οφείλεται ρεπό</span>`
+        : "") + `</td>` +
       `<td title="${attr(contractTip)}">${attr(compactDayState(row.day_state))}</td>` +
       `<td title="${attr(declaredTip)}">${attr(compactScheduleLabel(row.declared))}</td>` +
       `<td class="apologistic-punch-cell" title="${attr(punchTip)}">${formatPunchCell(punchRecorded)}${row.overnight ? "*" : ""}</td>` +
@@ -502,14 +545,19 @@ function renderRows(rows, store) {
       `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status))}"><span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status)}</span>` +
       `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td></tr>`;
-    if ((row.replacement_candidates || []).length) {
+    if ((row.exchange_options || []).length) {
       html += `<tr class="apologistic-replacement-row"><td colspan="14"><div class="apologistic-replacement-options">` +
-        `<span><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Υποψήφιες ημέρες αντικατάστασης:</span>` +
-        row.replacement_candidates.map((item) => `<strong>${attr(item.work_date)} · ${attr(item.declared)}</strong>`).join("") +
+        `<span class="apologistic-exchange-title"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Επιλογές ανταλλαγής</span>` +
+        row.exchange_options.map((item) => `<div class="apologistic-exchange-card">` +
+          `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong><span>${attr(item.replacement_declared)}</span></div>` +
+          `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
+          `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(item.rest_punch)} → <b>${attr(item.proposed)}</b></span></div>` +
+        `</div>`).join("") +
         `</div></td></tr>`;
     }
   }
   wrap.innerHTML = html + `</tbody></table>`;
+  bindProposalHistoryOverlays();
   if (openExplanationId) {
     const modal = document.getElementById("apologisticInfoModal");
     if (findExplanationRow(openExplanationId) && modal && !modal.classList.contains("hidden")) {
