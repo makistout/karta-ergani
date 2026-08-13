@@ -618,6 +618,7 @@ async function acceptAllReview() {
   if (btn) Office.setButtonLoading(btn, true);
   try {
     let changedTotal = 0;
+    let unresolvedExchangeTotal = 0;
     const changedKeys = new Set();
     const usedReplacementDays = new Set();
     const randomizedExchangeRows = exchangeRows
@@ -631,30 +632,21 @@ async function acceptAllReview() {
       const available = (row.exchange_options || []).filter((option) =>
         !usedReplacementDays.has(`${row.employee_afm}|${option.replacement_work_date}`)
       );
-      if (!available.length) continue;
-      const option = available.length === 1
-        ? available[0]
-        : available[Math.floor(Math.random() * available.length)];
-      const res = await fetch("/api/apologistic/exchange", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          week_from: weekFromForRow(row),
-          employee_afm: row.employee_afm,
-          rest_work_date: row.work_date,
-          replacement_work_date: option.replacement_work_date,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      usedReplacementDays.add(`${row.employee_afm}|${option.replacement_work_date}`);
-      changedTotal += Number((data.rows || []).length || 2);
-      for (const updated of data.rows || []) {
-        const current = reportState.rows.find((item) =>
-          item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
-        );
-        if (current) Object.assign(current, updated);
+      const candidates = available
+        .map((option) => ({ option, order: Math.random() }))
+        .sort((left, right) => left.order - right.order)
+        .map((item) => item.option);
+      let applied = false;
+      for (const option of candidates) {
+        const result = await submitExchangeChoice(row, option.replacement_work_date);
+        if (!result.ok) continue;
+        usedReplacementDays.add(`${row.employee_afm}|${option.replacement_work_date}`);
+        changedTotal += Number((result.data.rows || []).length || 2);
+        mergeExchangeRows(result.data.rows || []);
+        applied = true;
+        break;
       }
+      if (!applied) unresolvedExchangeTotal += 1;
     }
     for (const [weekFrom, items] of groups.entries()) {
       const res = await fetch("/api/apologistic/accept-all-review", {
@@ -677,8 +669,11 @@ async function acceptAllReview() {
     renderVisibleRows();
     Office.showMsg(
       "apologisticSubmitMsg",
-      `Εγκρίθηκαν ${changedTotal} εγγραφές προς μεταβολή (Μ*).`,
-      true,
+      `Εγκρίθηκαν ${changedTotal} εγγραφές προς μεταβολή (Μ*).` +
+        (unresolvedExchangeTotal
+          ? ` ${unresolvedExchangeTotal} ανταλλαγές δεν βρήκαν διαθέσιμο ζεύγος και παρέμειναν σε Έλεγχο.`
+          : ""),
+      changedTotal > 0,
     );
   } catch (error) {
     Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
@@ -1261,6 +1256,34 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
   }
 }
 
+async function submitExchangeChoice(row, replacementWorkDate) {
+  try {
+    const res = await fetch("/api/apologistic/exchange", {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        week_from: weekFromForRow(row),
+        employee_afm: row.employee_afm,
+        rest_work_date: row.work_date,
+        replacement_work_date: replacementWorkDate,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data, error: data.error || `HTTP ${res.status}` };
+  } catch (error) {
+    return { ok: false, data: {}, error: error.message || String(error) };
+  }
+}
+
+function mergeExchangeRows(rows) {
+  for (const updated of rows || []) {
+    const row = reportState.rows.find((item) =>
+      item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
+    );
+    if (row) Object.assign(row, updated);
+  }
+}
+
 async function applyExchange(employeeAfm, restWorkDate, replacementWorkDate, button) {
   const key = `${employeeAfm}|${restWorkDate}|${replacementWorkDate}`;
   if (exchangePending.has(key)) return;
@@ -1274,29 +1297,28 @@ async function applyExchange(employeeAfm, restWorkDate, replacementWorkDate, but
     button.classList.add("is-pending");
   }
   try {
-    const res = await fetch("/api/apologistic/exchange", {
-      method: "PUT",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        week_from: weekFromForRow(source),
-        employee_afm: employeeAfm,
-        rest_work_date: restWorkDate,
-        replacement_work_date: replacementWorkDate,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    for (const updated of data.rows || []) {
-      const row = reportState.rows.find((item) =>
-        item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
-      );
-      if (row) Object.assign(row, updated);
+    const alternatives = (source.exchange_options || []).filter((option) =>
+      option.replacement_work_date !== replacementWorkDate
+    );
+    const candidates = [replacementWorkDate, ...alternatives.map((option) => option.replacement_work_date)];
+    let applied = null;
+    let lastError = "Δεν βρέθηκε διαθέσιμη ημέρα ανταλλαγής";
+    for (const candidate of candidates) {
+      const result = await submitExchangeChoice(source, candidate);
+      if (!result.ok) {
+        lastError = result.error;
+        continue;
+      }
+      applied = { replacementWorkDate: candidate, data: result.data };
+      break;
     }
+    if (!applied) throw new Error(`${lastError}. Η γραμμή παρέμεινε σε Έλεγχο.`);
+    mergeExchangeRows(applied.data.rows || []);
     refreshSummaryCounts();
     renderVisibleRows();
     Office.showMsg(
       "apologisticSubmitMsg",
-      `Η ανταλλαγή ${restWorkDate} ↔ ${replacementWorkDate} αποθηκεύτηκε ως δύο μεταβολές (Μ*).`,
+      `Η ανταλλαγή ${restWorkDate} ↔ ${applied.replacementWorkDate} αποθηκεύτηκε ως δύο μεταβολές (Μ*).`,
       true,
     );
   } catch (error) {
