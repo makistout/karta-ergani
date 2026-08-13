@@ -33,6 +33,7 @@ let actionSettings = {
   auto_close_fixed_exit_time: null,
   auto_close_prev_day_last_run_date: null,
   notify_grace_minutes: 15,
+  sunday_rest_transfer_enabled: false,
 };
 let cardListenerSettings = { card_submission_mode: "erganios", listener_offline_seconds: 60, device: null };
 
@@ -279,6 +280,7 @@ function updateNotifyUiState() {
   const testBtn = document.getElementById("btnTestNotify");
   const addBtn = document.getElementById("btnAddNotifyRecipient");
   const actionBtn = document.getElementById("btnSaveActionSettings");
+  const apologeticBtn = document.getElementById("btnSaveApologisticSettings");
   const listenerBtn = document.getElementById("btnSaveListenerSettings");
   const pairBtn = document.getElementById("btnPairListener");
   const togglePairBtn = document.getElementById("btnTogglePairListener");
@@ -287,6 +289,7 @@ function updateNotifyUiState() {
   if (testBtn) testBtn.disabled = !hasId;
   if (addBtn) addBtn.disabled = !hasId;
   if (actionBtn) actionBtn.disabled = !hasId;
+  if (apologeticBtn) apologeticBtn.disabled = !hasId;
   if (listenerBtn) listenerBtn.disabled = !hasId;
   if (pairBtn) pairBtn.disabled = !hasId;
   if (togglePairBtn) togglePairBtn.disabled = !hasId;
@@ -527,11 +530,13 @@ function renderActionSettings() {
   const fixed = document.getElementById("autoCloseFixedExitTime");
   const last = document.getElementById("autoClosePrevDayLastRun");
   const grace = document.getElementById("notifyGraceMinutes");
+  const sundayRest = document.getElementById("sundayRestTransferEnabled");
   if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
   if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
   if (fixed) fixed.value = actionSettings.auto_close_fixed_exit_time || "";
   if (last) last.textContent = formatActionLastRunDate(actionSettings.auto_close_prev_day_last_run_date);
   if (grace) grace.value = String(normalizeNotifyGraceMinutes(actionSettings.notify_grace_minutes));
+  if (sundayRest) sundayRest.checked = Boolean(actionSettings.sunday_rest_transfer_enabled);
 }
 
 function collectActionSettingsFromDom() {
@@ -540,11 +545,15 @@ function collectActionSettingsFromDom() {
     auto_close_prev_day_time: normalizeActionTime(document.getElementById("autoClosePrevDayTime")?.value),
     auto_close_fixed_exit_time: normalizeOptionalActionTime(document.getElementById("autoCloseFixedExitTime")?.value),
     notify_grace_minutes: normalizeNotifyGraceMinutes(document.getElementById("notifyGraceMinutes")?.value),
+    sunday_rest_transfer_enabled: Boolean(document.getElementById("sundayRestTransferEnabled")?.checked),
   };
 }
 
 function initActionSettingsButtons() {
   document.getElementById("btnSaveActionSettings").onclick = () => saveActionSettings();
+  document.getElementById("btnSaveApologisticSettings").onclick = () => saveActionSettings({
+    successMessage: "Οι ρυθμίσεις απολογιστικού αποθηκεύτηκαν.",
+  });
   Office.bindHourMinuteInput("autoClosePrevDayTime");
   Office.bindHourMinuteInput("autoCloseFixedExitTime");
   document.getElementById("autoClosePrevDayEnabled")?.addEventListener("change", () => {
@@ -561,6 +570,11 @@ function initActionSettingsButtons() {
   document.getElementById("notifyGraceMinutes")?.addEventListener("change", () => {
     actionSettings.notify_grace_minutes = normalizeNotifyGraceMinutes(
       document.getElementById("notifyGraceMinutes")?.value
+    );
+  });
+  document.getElementById("sundayRestTransferEnabled")?.addEventListener("change", () => {
+    actionSettings.sunday_rest_transfer_enabled = Boolean(
+      document.getElementById("sundayRestTransferEnabled")?.checked
     );
   });
 }
@@ -825,6 +839,7 @@ async function loadActionSettings(storeId) {
         auto_close_fixed_exit_time: null,
         auto_close_prev_day_last_run_date: null,
         notify_grace_minutes: 15,
+        sunday_rest_transfer_enabled: false,
       };
       renderActionSettings();
       return;
@@ -835,6 +850,7 @@ async function loadActionSettings(storeId) {
       auto_close_fixed_exit_time: normalizeOptionalActionTime(data.settings?.auto_close_fixed_exit_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
+      sunday_rest_transfer_enabled: asNotifyFlag(data.settings?.sunday_rest_transfer_enabled, false),
     };
     renderActionSettings();
   } catch (e) {
@@ -843,13 +859,15 @@ async function loadActionSettings(storeId) {
   }
 }
 
-async function saveActionSettings() {
+async function saveActionSettings(options = {}) {
   if (!currentStoreId) {
     Office.showMsg("stepMsg", "Επιλέξτε κατάστημα.", false);
     return false;
   }
-  const btn = document.getElementById("btnSaveActionSettings");
-  if (btn) btn.disabled = true;
+  const actionBtn = document.getElementById("btnSaveActionSettings");
+  const apologeticBtn = document.getElementById("btnSaveApologisticSettings");
+  if (actionBtn) actionBtn.disabled = true;
+  if (apologeticBtn) apologeticBtn.disabled = true;
   try {
     const payload = collectActionSettingsFromDom();
     const res = await fetch(`/api/store/${currentStoreId}/action-settings`, {
@@ -860,7 +878,7 @@ async function saveActionSettings() {
     });
     const data = await Office.parseJson(res);
     if (!res.ok) {
-      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ενεργειών", false);
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ρυθμίσεων", false);
       return false;
     }
     actionSettings = {
@@ -869,9 +887,10 @@ async function saveActionSettings() {
       auto_close_fixed_exit_time: normalizeOptionalActionTime(data.settings?.auto_close_fixed_exit_time),
       auto_close_prev_day_last_run_date: data.settings?.auto_close_prev_day_last_run_date || null,
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
+      sunday_rest_transfer_enabled: asNotifyFlag(data.settings?.sunday_rest_transfer_enabled, false),
     };
     renderActionSettings();
-    Office.showMsg("stepMsg", "Οι ενέργειες αποθηκεύτηκαν.", true);
+    Office.showMsg("stepMsg", options.successMessage || "Οι ενέργειες αποθηκεύτηκαν.", true);
     return true;
   } catch (e) {
     Office.showMsg("stepMsg", String(e), false);

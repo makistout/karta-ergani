@@ -106,6 +106,7 @@ def save_store_action_settings(store_id: int):
             auto_close_prev_day_time=time_s,
             auto_close_fixed_exit_time=fixed_s,
             notify_grace_minutes=grace,
+            sunday_rest_transfer_enabled=bool(data.get("sunday_rest_transfer_enabled")),
         )
     except RuntimeError as ex:
         return jsonify({"error": str(ex), "db_setup": "sql/alter_add_store_action_settings.sql"}), 503

@@ -23,9 +23,12 @@
   Νέο κατάστημα (wizard): μετά την τελική αποθήκευση γίνεται αυτόματα **επιλογή**
   του ως ενεργού, **period sync** τελευταίων 30 ημερών και μετάβαση στην **αρχική**.
 - `/ui/stores/credentials`: Ergani API/portal credentials.
-- `/ui/stores/notify`: λήπτες Telegram/Email.
+- `/ui/stores/notify`: λήπτες Telegram/Email· ενέργειες (auto-close, καθυστέρηση
+  ειδοποιήσεων)· ενότητα Απολογιστικό (μεταφορά ΡΕΠΟ Κυριακής ανά κατάστημα).
 - `/ui/employees`: εργαζόμενοι· εικονίδιο πίνακα στη γραμμή → `/ui/employees/detail`
   (προβολή `karta_employment_contract`· διαθέσιμο και σε `viewer` via `employees.view`).
+- `/ui/employees/monthly-overview`: μηνιαία εικόνα απολογιστικού ανά εργαζόμενο (ίδιο UI με
+  `/ui/apologistic`, επιλογή μήνα, 28–31 ημέρες, υποβολές Ergani).
 - `/ui/employees/detail`: πίνακας Πεδίο/Τιμή τρέχουσας σύμβασης + προηγούμενες εκδόσεις.
 - `/ui/employees/contracts`: λίστα τρεχουσών συμβάσεων καταστήματος + sync από Μητρώα
   (`Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx`)· μόνο admin για sync.
@@ -36,7 +39,8 @@
 - `/ui/sync`: χειροκίνητος συγχρονισμός.
 - `/ui/sync-log`: καταγραφές συγχρονισμών, audit και απολογιστικού (πολλαπλά tabs).
 - `/ui/apologistic`: εβδομαδιαίο απολογιστικό ωραρίου (snapshot από ΒΔ, υποβολές Ergani
-  WTODailyA/WTOOvA, προβολή ΟΛΑ/ανά ημέρα). Βλ. `docs/APOLOGISTIKO_LOGIC.md`.
+  WTODailyA/WTOOvA, προβολή ΟΛΑ/ανά ημέρα, εξαγωγή Excel, μαζική προεπισκόπηση εβδομάδας,
+  σπαστό ωράριο στην πρόταση, υποβολή πολλών ημερών υπερωρίας μαζί). Βλ. `docs/APOLOGISTIKO_LOGIC.md`.
 
 ## Public Landing
 
@@ -228,7 +232,7 @@
   (`GET /api/sync-log/apologistic`, δικαίωμα `logs.view_sync`).
 - `/ui/apologistic`: κουμπί **ΟΛΑ** και tabs ημερών· KPI **Υποβεβλημένες**· hover στο
   όνομα εργαζομένου με εβδομαδιαίο πίνακα χτυπημάτων· στήλη Ergani για υποβολή
-  απολογιστικής μεταβολής/υπερωρίας.
+  απολογιστικής μεταβολής/υπερωρίας· κουμπί scroll στην κορυφή σε όλες τις office σελίδες.
 
 ## Κανόνες Ειδοποιήσεων
 

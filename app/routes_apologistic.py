@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, Response, jsonify, request, session
 
 from app.apologistic import previous_week
+from app.apologistic_export import build_apologistic_export_xlsx
 from app.apologistic_submit import (
     load_apologistic_day_row,
     overtime_submit_group_from_row,
@@ -15,7 +16,7 @@ from app.apologistic_submit import (
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
 from app.office_auth import SESSION_USER
-from app.repo_apologistic import load_report, record_ergani_submit, tables_available, update_proposed
+from app.repo_apologistic import accept_all_review, accept_review, load_report, record_ergani_submit, tables_available, update_proposed
 from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_submit_result
 from app.wto_submit import parse_submit_response
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a_payload
@@ -88,6 +89,85 @@ def apologistic_proposal_update():
         history = next((row.get("proposal_history") or [] for row in loaded[0].get("days") or []
                         if row.get("employee_afm") == employee_afm and row.get("work_date") == work_date.strftime("%d/%m/%Y")), [])
     return jsonify({"success": True, **result, "history": history})
+
+
+@apologistic_bp.put("/accept-review")
+def apologistic_accept_review():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+        work_date = datetime.strptime(str(body.get("work_date") or ""), "%d/%m/%Y").date()
+        employee_afm = str(body.get("employee_afm") or "").strip()
+        if len(employee_afm) != 9 or not employee_afm.isdigit():
+            raise ValueError("Μη έγκυρο ΑΦΜ εργαζομένου")
+        result = accept_review(
+            store_id=int(ctx["id"]), week_from=week_from, employee_afm=employee_afm,
+            work_date=work_date, changed_by=str(session.get(SESSION_USER) or "").strip() or None,
+        )
+    except (ValueError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"success": True, **result})
+
+
+@apologistic_bp.put("/accept-all-review")
+def apologistic_accept_all_review():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True) or {}
+    items = body.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "Δεν υπάρχουν εγγραφές για έγκριση"}), 400
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+        result = accept_all_review(
+            store_id=int(ctx["id"]),
+            week_from=week_from,
+            items=items,
+            changed_by=str(session.get(SESSION_USER) or "").strip() or None,
+        )
+    except (ValueError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"success": True, **result})
+
+
+@apologistic_bp.post("/export")
+def apologistic_export():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    if not tables_available():
+        return jsonify({"error": "Δεν έχουν εγκατασταθεί οι πίνακες απολογιστικού"}), 503
+    body = request.get_json(silent=True) or {}
+    headers = body.get("headers") or []
+    rows = body.get("rows") or []
+    if not isinstance(headers, list) or not isinstance(rows, list):
+        return jsonify({"error": "Μη έγκυρα δεδομένα εξαγωγής"}), 400
+    if not headers or not rows:
+        return jsonify({"error": "Δεν υπάρχουν αποτελέσματα για εξαγωγή"}), 400
+    store_name = str(body.get("store_name") or ctx.get("name") or "").strip()
+    period_label = str(body.get("period_label") or "").strip()
+    filter_label = str(body.get("filter_label") or "").strip()
+    meta_parts = [part for part in (store_name, period_label, filter_label) if part]
+    meta_line = " · ".join(meta_parts) if meta_parts else "Απολογιστικό εβδομάδας"
+    try:
+        content = build_apologistic_export_xlsx(meta_line=meta_line, headers=headers, rows=rows)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    week_from = str(body.get("week_from") or "")[:10].replace("-", "")
+    filename = f"apologistic_{week_from or 'week'}.xlsx"
+    return Response(
+        content,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _parse_apologistic_lookup(body: dict) -> tuple[datetime.date, datetime.date, str]:

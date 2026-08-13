@@ -101,11 +101,15 @@ def test_late_shift_proposes_same_declared_duration():
     assert row["gross_difference_minutes"] == 30
 
 
-def test_rest_with_punch_requires_review():
+def test_rest_with_punch_is_ok_when_card_days_under_contract_days():
     result = build_weekly_report(
         [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")], [punch()], [contract()]
     )
-    assert result["days"][0]["status"] == "review"
+    row = result["days"][0]
+    assert row["status"] == "ok"
+    assert row["weekly_punch_days"] == 1
+    assert row["contract_required_days"] == 5
+    assert any("λιγότερες από τις ημέρες εβδομαδιαίας απασχόλησης" in line for line in row["status_explanation"])
 
 
 def test_rest_punch_is_ok_when_card_days_cover_contract_days():
@@ -137,11 +141,24 @@ def test_sunday_sixth_day_over_five_hours_creates_next_week_rest_due():
         day = f"{3 + offset:02d}/08/2026" if offset < 5 else "09/08/2026"
         schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") if offset == 5 else sched(day=day))
         punches.append(punch(day=day, start="09:00", end="15:01"))
-    sunday = next(row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
-                  if row["work_date"] == "09/08/2026")
+    sunday = next(row for row in build_weekly_report(
+        schedules, punches, [contract(days="5")], sunday_rest_transfer_enabled=True,
+    )["days"] if row["work_date"] == "09/08/2026")
     assert sunday["compensatory_rest_due"] is True
     assert sunday["compensatory_rest_target_week"] == "2026-08-10"
     assert sunday["proposed"] == "09:00–15:01"
+
+
+def test_sunday_rest_transfer_disabled_by_default():
+    schedules, punches = [], []
+    for offset in range(6):
+        day = f"{3 + offset:02d}/08/2026" if offset < 5 else "09/08/2026"
+        schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") if offset == 5 else sched(day=day))
+        punches.append(punch(day=day, start="09:00", end="15:01"))
+    sunday = next(row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+                  if row["work_date"] == "09/08/2026")
+    assert sunday["compensatory_rest_due"] is False
+    assert sunday["compensatory_rest_target_week"] is None
 
 
 def test_sunday_five_hours_does_not_create_next_week_rest_due():
@@ -150,12 +167,13 @@ def test_sunday_five_hours_does_not_create_next_week_rest_due():
         day = f"{3 + offset:02d}/08/2026" if offset < 5 else "09/08/2026"
         schedules.append(sched(day=day, start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") if offset == 5 else sched(day=day))
         punches.append(punch(day=day, start="09:00", end="14:00"))
-    sunday = next(row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
-                  if row["work_date"] == "09/08/2026")
+    sunday = next(row for row in build_weekly_report(
+        schedules, punches, [contract(days="5")], sunday_rest_transfer_enabled=True,
+    )["days"] if row["work_date"] == "09/08/2026")
     assert sunday["compensatory_rest_due"] is False
 
 
-def test_rest_punch_lists_declared_days_without_card_when_contract_days_not_met():
+def test_rest_punch_is_ok_when_card_days_under_contract_even_with_missing_declared_day():
     schedules = [
         sched(day="03/08/2026"),
         sched(day="04/08/2026"),
@@ -164,23 +182,23 @@ def test_rest_punch_lists_declared_days_without_card_when_contract_days_not_met(
     punches = [punch(day="03/08/2026"), punch(day="05/08/2026")]
     row = next(item for item in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
                if item["work_date"] == "05/08/2026")
-    assert row["status"] == "review"
+    assert row["status"] == "ok"
     assert row["weekly_punch_days"] == 2
-    assert row["replacement_candidates"] == [{
-        "work_date": "04/08/2026", "declared": "09:00–17:00", "declared_minutes": 480,
-    }]
-    assert row["exchange_options"][0]["proposed"] == "09:10–17:10"
-    assert any("04/08/2026: 09:00–17:00" in line for line in row["status_explanation"])
+    assert row["contract_required_days"] == 5
+    assert row["replacement_candidates"] == []
+    assert row["proposed"] == "09:10–17:10"
+    assert any("λιγότερες από τις ημέρες εβδομαδιαίας απασχόλησης" in line for line in row["status_explanation"])
 
 
-def test_full_five_day_work_on_rest_proposes_eight_hours_and_separate_overtime():
+def test_full_five_day_work_on_rest_is_ok_when_card_days_under_contract():
     row = build_weekly_report(
         [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
         [punch("07:57", "16:58")],
         [contract(flex=0, days="5")],
     )["days"][0]
-    assert row["status"] == "review"
-    assert row["proposed"] == "07:57–15:57"
+    assert row["status"] == "ok"
+    assert row["weekly_punch_days"] == 1
+    assert row["proposed"] == "07:57–16:58"
     assert row["actual_minutes"] == 541
     assert row["overwork_minutes"] == 60
     assert row["overtime_minutes"] == 1
@@ -189,13 +207,15 @@ def test_full_five_day_work_on_rest_proposes_eight_hours_and_separate_overtime()
     ]
 
 
-def test_full_six_day_work_on_rest_proposes_six_hours_forty_minutes():
+def test_full_six_day_work_on_rest_is_ok_when_card_days_under_contract():
     row = build_weekly_report(
         [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
         [punch("08:00", "16:01")],
         [contract(flex=0, days="6")],
     )["days"][0]
-    assert row["proposed"] == "08:00–14:40"
+    assert row["status"] == "ok"
+    assert row["weekly_punch_days"] == 1
+    assert row["proposed"] == "08:00–16:01"
     assert row["overwork_minutes"] == 80
     assert row["overtime_minutes"] == 1
 
@@ -311,7 +331,9 @@ def test_rest_missing_exit_closes_at_entry_time():
     )["days"][0]
     assert row["actual"] == "12:30–12:30"
     assert row["actual_minutes"] == 0
-    assert row["status"] == "review"
+    assert row["status"] == "ok"
+    assert row["weekly_punch_days"] == 1
+    assert row["contract_required_days"] == 5
 
 
 def test_rest_missing_entry_opens_at_exit_time():

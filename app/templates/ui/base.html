@@ -22,8 +22,11 @@
   {% else %}
   {% block public_content %}{% endblock %}
   {% endif %}
+  <button type="button" id="scrollToTopBtn" class="scroll-to-top-btn" aria-label="Επιστροφή στην κορυφή" title="Επιστροφή στην κορυφή">
+    <i class="bi bi-chevron-up" aria-hidden="true"></i>
+  </button>
   <script src="/static/js/office-common.js?v=20260624split2"></script>
-  <script src="/static/js/office-chrome.js?v=20260701settings1"></script>
+  <script src="/static/js/office-chrome.js?v=20260813scrolltop1"></script>
   <script src="/static/js/office-store.js?v=20260624split2"></script>
   <script src="/static/js/office-feedback.js?v=20260710msgfix"></script>
   <script src="/static/js/office-table.js?v=20260727keyset"></script>
@@ -32,7 +35,7 @@
   <script src="/static/js/office-store-sync.js?v=20260624split2"></script>
   <script src="/static/js/office-work-log.js?v=20260810listener-progress"></script>
   <script src="/static/js/office-auth.js?v=20260803forgotfix"></script>
-  <script src="/static/js/office-boot.js?v=20260803forgotfix"></script>
+  <script src="/static/js/office-boot.js?v=20260813scrolltop1"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

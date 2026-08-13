@@ -35,6 +35,14 @@ def test_parse_proposed_schedule_rest_day():
     assert parse_proposed_schedule("ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") == (None, None, "ΑΝ")
 
 
+def test_parse_proposed_schedule_non_work():
+    assert parse_proposed_schedule("ΜΗ ΕΡΓΑΣΙΑ") == (None, None, "ΜΕ")
+
+
+def test_parse_proposed_schedule_telework():
+    assert parse_proposed_schedule("ΤΗΛΕΡΓΑΣΙΑ 09:00–17:00") == ("09:00", "17:00", "ΤΗΛ")
+
+
 def test_parse_proposed_schedule_work_range():
     assert parse_proposed_schedule("09:00–17:00") == ("09:00", "17:00", "ΕΡΓ")
 

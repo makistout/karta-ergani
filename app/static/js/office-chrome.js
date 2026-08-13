@@ -91,4 +91,24 @@ Object.assign(window.Office, {
     });
     bar.appendChild(btn);
   },
+
+  initScrollToTop() {
+    const btn = document.getElementById("scrollToTopBtn");
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+
+    const showAfter = 320;
+    const toggle = () => {
+      const scrolled = window.scrollY || document.documentElement.scrollTop || 0;
+      btn.classList.toggle("is-visible", scrolled >= showAfter);
+    };
+
+    window.addEventListener("scroll", toggle, { passive: true });
+    toggle();
+
+    btn.addEventListener("click", () => {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+  },
 });

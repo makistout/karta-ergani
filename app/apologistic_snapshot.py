@@ -13,9 +13,10 @@ from app import repo_sync_log
 from app.repo_apologistic import mark_failed, save_report
 from app.repo_employment_contract import list_current_for_store
 from app.repo_schedule import list_schedule_for_range
+from app.repo_store import get_sunday_rest_transfer_enabled
 from app.repo_work_log import list_work_log_for_range, normalize_overnight_work_log_rows
 
-CALCULATION_VERSION = "2026-08-12.1"
+CALCULATION_VERSION = "2026-08-13.2"
 
 
 def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -> dict[str, Any]:
@@ -41,7 +42,11 @@ def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -
             employer_afm=afm, branch_aa=branch, ergani_dates=dates,
         )
         contracts = list_current_for_store(afm, branch)
-        report = build_weekly_report(schedule, work_log, contracts)
+        sunday_rest_transfer = get_sunday_rest_transfer_enabled(int(store["id"]))
+        report = build_weekly_report(
+            schedule, work_log, contracts,
+            sunday_rest_transfer_enabled=sunday_rest_transfer,
+        )
         saved = save_report(store=store, week_from=week_from, week_to=week_to,
                             report=report, calculation_version=CALCULATION_VERSION)
         elapsed = round(perf_counter() - started, 3)

@@ -47,6 +47,75 @@ def test_missing_past_snapshot_does_not_calculate_on_the_fly(monkeypatch):
     assert "αποθηκευμένο" in response.get_json()["error"]
 
 
+def test_accept_review_returns_change_from_review(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(
+        routes_apologistic, "accept_review",
+        lambda **kwargs: {
+            "status": "change",
+            "change_from_review": True,
+            "changed": True,
+            "reason": "Εγκρίθηκε η πρόταση",
+            "proposed": "09:00–17:00",
+            "counts": {"review": 0, "change": 5},
+        },
+    )
+    app = _app()
+    app.secret_key = "test"
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["office_user"] = "tester"
+    response = client.put("/api/apologistic/accept-review", json={
+        "week_from": "2026-08-03", "work_date": "04/08/2026", "employee_afm": "123456789",
+    })
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["change_from_review"] is True
+    assert body["status"] == "change"
+
+
+def test_accept_all_review_returns_changed_count(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(
+        routes_apologistic, "accept_all_review",
+        lambda **kwargs: {"changed": len(kwargs.get("items") or []), "skipped": 0, "counts": {"review": 0, "change": 2}},
+    )
+    app = _app()
+    app.secret_key = "test"
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["office_user"] = "tester"
+    response = client.put("/api/apologistic/accept-all-review", json={
+        "week_from": "2026-08-03",
+        "items": [
+            {"employee_afm": "123456789", "work_date": "04/08/2026"},
+            {"employee_afm": "987654321", "work_date": "05/08/2026"},
+        ],
+    })
+    assert response.status_code == 200
+    assert response.get_json()["changed"] == 2
+
+
+def test_export_returns_xlsx(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
+    app = _app()
+    client = app.test_client()
+    response = client.post("/api/apologistic/export", json={
+        "week_from": "2026-06-29",
+        "store_name": "ΥΑΔΕΣ",
+        "period_label": "29/06–05/07 · 30 αποτελέσματα",
+        "filter_label": "φίλτρο: Για έλεγχο",
+        "headers": ["Ημέρα", "Εργαζόμενος", "Πρόταση"],
+        "rows": [["01/07/2026", "ΑΘΑΝΑΣΙΟΥ ΓΕΩΡΓΙΟΣ", "17:55–00:57"]],
+    })
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert response.data[:2] == b"PK"
+
+
 def test_proposal_update_returns_persisted_history(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "update_proposed", lambda **kwargs: {"proposed": kwargs["proposed"], "changed": True})

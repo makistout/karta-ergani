@@ -12,17 +12,32 @@ _PROPOSED_RANGE = re.compile(
     r"^([01]\d|2[0-3]):[0-5]\d[–-]([01]\d|2[0-3]):[0-5]\d$"
 )
 _REST_LABELS = frozenset({"ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "ΡΕΠΟ", "ΑΝΑΠΑΥΣΗ", "ΑΝ"})
+_NON_WORK_LABELS = frozenset({"ΜΗ ΕΡΓΑΣΙΑ", "ΜΕ"})
+_TELEWORK_RANGE = re.compile(
+    r"^(?:ΤΗΛΕΡΓΑΣΙΑ|ΤΗΛ)((?:[01]\d|2[0-3]):[0-5]\d)[–-]((?:[01]\d|2[0-3]):[0-5]\d)$",
+    re.IGNORECASE,
+)
 
 
 def parse_proposed_schedule(value: str) -> tuple[str | None, str | None, str]:
     label = str(value or "").strip()
     upper = label.upper()
-    if not label or upper in _REST_LABELS or "ΡΕΠΟ" in upper or "ΑΝΑΠΑΥΣ" in upper:
+    compact = re.sub(r"\s+", "", label)
+    if not label:
         return None, None, "ΑΝ"
-    match = _PROPOSED_RANGE.match(label.replace(" ", ""))
+    if upper in _NON_WORK_LABELS or upper.startswith("ΜΗ ΕΡΓΑΣΙΑ"):
+        return None, None, "ΜΕ"
+    if upper in _REST_LABELS or "ΡΕΠΟ" in upper or "ΑΝΑΠΑΥΣ" in upper:
+        return None, None, "ΑΝ"
+    tele = _TELEWORK_RANGE.match(compact)
+    if tele:
+        return tele.group(1), tele.group(2), "ΤΗΛ"
+    if upper.startswith("ΤΗΛΕΡΓΑΣ") or upper.startswith("ΤΗΛ"):
+        raise WorkCardPayloadError(f"Η τηλεργασία απαιτεί ωράριο ΩΩ:ΛΛ–ΩΩ:ΛΛ: {value}")
+    match = _PROPOSED_RANGE.match(compact)
     if not match:
         raise WorkCardPayloadError(f"Μη έγκυρη πρόταση ωραρίου: {value}")
-    parts = re.split(r"[–-]", label.replace(" ", ""), maxsplit=1)
+    parts = re.split(r"[–-]", compact, maxsplit=1)
     return parts[0], parts[1], "ΕΡΓ"
 
 

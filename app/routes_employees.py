@@ -19,7 +19,7 @@ from app.repo_entities import list_employees_for_employer
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import start_async_portal_sync
 from app.work_card_payload import norm_afm
-from app.repo_apologistic import list_employee_days
+from app.repo_apologistic import enrich_employee_month_days, list_employee_days
 from app.apologistic import build_weekly_report
 from app.date_util import iso_to_ergani_dates
 from app.repo_schedule import list_schedule_for_range
@@ -126,6 +126,8 @@ def employee_monthly_overview():
             if work_date not in by_date:
                 item["source"] = "live_preview"
                 item["finalized"] = False
+                item["employee_afm"] = employee_afm
+                item["week_from"] = (work_date - timedelta(days=work_date.weekday())).isoformat()
                 by_date[work_date] = item
 
     employee_rows = list_employees_for_employer(
@@ -137,14 +139,26 @@ def employee_monthly_overview():
     while cursor_day <= month_to:
         row = by_date.get(cursor_day)
         if row:
+            row.setdefault("employee_afm", employee_afm)
+            row.setdefault("eponymo", employee.get("eponymo") or "")
+            row.setdefault("onoma", employee.get("onoma") or "")
             days.append(row)
         else:
             days.append({
                 "work_date": cursor_day.strftime("%d/%m/%Y"),
+                "employee_afm": employee_afm,
+                "eponymo": employee.get("eponymo") or "",
+                "onoma": employee.get("onoma") or "",
                 "source": "not_calculated" if cursor_day <= today else "future",
                 "finalized": False,
             })
         cursor_day += timedelta(days=1)
+    enrich_employee_month_days(
+        store_id=int(ctx["id"]),
+        employer_afm=str(ctx["employer_afm"]),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+        days=days,
+    )
     return jsonify({
         "store": {"id": ctx["id"], "name": ctx["name"]},
         "employee": {
@@ -155,6 +169,7 @@ def employee_monthly_overview():
         "year": year, "month": month,
         "current_year": today.year, "current_month": today.month,
         "count": len(snapshot_rows), "days": days,
+        "legal_notice": "Ελεγκτικό προσχέδιο. Οι εγγραφές «Έλεγχος» δεν αποτελούν αυτόματη δήλωση.",
     })
 
 

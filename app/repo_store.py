@@ -11,6 +11,7 @@ _sync_meta_cols: bool | None = None
 _action_settings_cols: bool | None = None
 _notify_grace_col: bool | None = None
 _fixed_exit_col: bool | None = None
+_sunday_rest_transfer_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -89,6 +90,38 @@ def fixed_exit_column_available() -> bool:
     except Exception:
         _fixed_exit_col = False
     return _fixed_exit_col
+
+
+def sunday_rest_transfer_column_available() -> bool:
+    global _sunday_rest_transfer_col
+    if _sunday_rest_transfer_col is True:
+        return _sunday_rest_transfer_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'sunday_rest_transfer_enabled')"
+            )
+            row = cur.fetchone()
+            _sunday_rest_transfer_col = row is not None and row[0] is not None
+    except Exception:
+        _sunday_rest_transfer_col = False
+    return _sunday_rest_transfer_col
+
+
+def get_sunday_rest_transfer_enabled(store_id: int) -> bool:
+    if not sunday_rest_transfer_column_available():
+        return False
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT CAST(sunday_rest_transfer_enabled AS int)
+            FROM dbo.karta_store_config
+            WHERE id = ?
+            """,
+            (int(store_id),),
+        )
+        row = cur.fetchone()
+        return bool(row and int(row[0] or 0))
 
 
 def get_notify_grace_minutes(store_id: int) -> int:
@@ -427,6 +460,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             "auto_close_prev_day_last_run_date": None,
             "auto_close_fixed_exit_time": None,
             "notify_grace_minutes": 15,
+            "sunday_rest_transfer_enabled": False,
             "db_setup": "sql/alter_add_store_action_settings.sql",
         }
     with cursor(commit=False) as cur:
@@ -440,6 +474,11 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             if fixed_exit_column_available()
             else ", CAST(NULL AS nvarchar(5)) AS auto_close_fixed_exit_time"
         )
+        rest_sql = (
+            ", CAST(sunday_rest_transfer_enabled AS int) AS sunday_rest_transfer_enabled"
+            if sunday_rest_transfer_column_available()
+            else ", CAST(0 AS int) AS sunday_rest_transfer_enabled"
+        )
         cur.execute(
             f"""
             SELECT
@@ -448,6 +487,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
                 auto_close_prev_day_last_run_date
                 {fixed_sql}
                 {grace_sql}
+                {rest_sql}
             FROM dbo.karta_store_config
             WHERE id = ?
             """,
@@ -472,11 +512,14 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             data.get("auto_close_fixed_exit_time")
         ),
         "notify_grace_minutes": grace,
+        "sunday_rest_transfer_enabled": bool(int(data.get("sunday_rest_transfer_enabled") or 0)),
     }
     if not notify_grace_column_available():
         out["db_setup_notify_grace"] = "sql/alter_add_store_notify_grace_minutes.sql"
     if not fixed_exit_column_available():
         out["db_setup_fixed_exit"] = "sql/alter_add_auto_close_fixed_exit_time.sql"
+    if not sunday_rest_transfer_column_available():
+        out["db_setup_sunday_rest_transfer"] = "sql/alter_add_store_sunday_rest_transfer.sql"
     return out
 
 
@@ -487,6 +530,7 @@ def save_action_settings(
     auto_close_prev_day_time: str,
     auto_close_fixed_exit_time: str | None = None,
     notify_grace_minutes: int | None = None,
+    sunday_rest_transfer_enabled: bool | None = None,
 ) -> dict[str, Any]:
     if not action_settings_columns_available():
         raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
@@ -496,6 +540,7 @@ def save_action_settings(
     time_s = str(auto_close_prev_day_time or "").strip()[:5] or "00:30"
     fixed_s = normalize_optional_auto_close_time(auto_close_fixed_exit_time)
     grace = normalize_notify_grace_minutes(notify_grace_minutes)
+    rest_enabled = bool(sunday_rest_transfer_enabled)
     sets = [
         "auto_close_prev_day_enabled = ?",
         "auto_close_prev_day_time = ?",
@@ -508,6 +553,9 @@ def save_action_settings(
     if notify_grace_column_available():
         sets.insert(-1, "notify_grace_minutes = ?")
         params.append(grace)
+    if sunday_rest_transfer_column_available():
+        sets.insert(-1, "sunday_rest_transfer_enabled = ?")
+        params.append(1 if rest_enabled else 0)
     params.append(int(store_id))
     with cursor() as cur:
         cur.execute(

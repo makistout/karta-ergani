@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+  window.Office.initScrollToTop();
   const path = window.location.pathname || "";
   const publicLanding =
     path === "/" ||

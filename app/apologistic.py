@@ -422,6 +422,8 @@ def _overtime_segments(work_date: str, start: int | None, end: int | None) -> li
 
 def build_weekly_report(
     schedule_rows: list[dict[str, Any]], work_rows: list[dict[str, Any]], contracts: list[dict[str, Any]],
+    *,
+    sunday_rest_transfer_enabled: bool = False,
 ) -> dict[str, Any]:
     schedules: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     punches: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -532,7 +534,8 @@ def build_weekly_report(
         special_non_work_punch = bool(matched and state in ("Μη εργασία", "Ρεπό") and day_punches)
         parsed_work_date = datetime.strptime(work_date, "%d/%m/%Y").date()
         compensatory_rest_due = bool(
-            parsed_work_date.weekday() == 6
+            sunday_rest_transfer_enabled
+            and parsed_work_date.weekday() == 6
             and contract_required_days == 5
             and len(punch_dates_by_afm.get(afm, set())) >= 6
             and (effective_actual or 0) > 300
@@ -555,7 +558,19 @@ def build_weekly_report(
             if special_non_work_punch:
                 weekly_punch_days = len(punch_dates_by_afm.get(afm, set()))
                 weekly_punch_details = list(weekly_punch_details_by_afm.get(afm, []))
-                if contract_required_days and weekly_punch_days >= contract_required_days:
+                if contract_required_days and weekly_punch_days < contract_required_days:
+                    # Λιγότερες ημέρες με κάρτα από τις ημέρες εβδομαδιαίας απασχόλησης → Σύμφωνο
+                    status = "ok"
+                    proposed = actual_label
+                    proposal_basis = (
+                        "Ημέρες με κάρτα λιγότερες από τις ημέρες σύμβασης — "
+                        "διάρκεια πραγματικού χτυπήματος στο ρεπό/μη εργασία"
+                    )
+                    reason = (
+                        f"Χτύπημα σε {state}: {weekly_punch_days} ημέρες με κάρτα < "
+                        f"{contract_required_days} ημέρες εβδομαδιαίας απασχόλησης· δεν απαιτείται έλεγχος"
+                    )
+                elif contract_required_days and weekly_punch_days >= contract_required_days:
                     status = "ok"
                     proposed = actual_label
                     proposal_basis = "Πλήρης κάλυψη ημερών σύμβασης — διάρκεια πραγματικού χτυπήματος στο ρεπό"
@@ -657,7 +672,12 @@ def build_weekly_report(
                 f"  · {item['work_date']}: {' · '.join(item['punches'])}"
                 for item in weekly_punch_details
             )
-            if contract_required_days and (weekly_punch_days or 0) >= contract_required_days:
+            if contract_required_days and (weekly_punch_days or 0) < contract_required_days:
+                status_explanation.append(
+                    "Οι ημέρες με κάρτα είναι λιγότερες από τις ημέρες εβδομαδιαίας απασχόλησης, "
+                    "επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο."
+                )
+            elif contract_required_days and (weekly_punch_days or 0) >= contract_required_days:
                 status_explanation.append("Οι ημέρες με κάρτα καλύπτουν ή υπερβαίνουν τις ημέρες σύμβασης, επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο.")
             elif replacement_candidates:
                 status_explanation.append("Δηλωμένες ημέρες εργασίας χωρίς χτύπημα που μπορούν να εξεταστούν για αντικατάσταση:")

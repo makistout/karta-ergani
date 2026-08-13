@@ -204,11 +204,38 @@
             </div>
           </div>
         </section>
+
+        <section class="card settings-section" id="apologisticSettingsCard" aria-labelledby="apologisticSettingsTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="apologisticSettingsTitle"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Απολογιστικό</h2>
+              <p class="field-hint">Κανόνες απολογιστικού ανά κατάστημα.</p>
+            </div>
+          </div>
+          <div class="settings-action-block">
+            <label class="settings-action-row" for="sundayRestTransferEnabled">
+              <input id="sundayRestTransferEnabled" type="checkbox">
+              <span>
+                <strong>Υπάγεται στη μεταφορά ΡΕΠΟ λόγω εργασίας την Κυριακή</strong>
+                <small>
+                  Όταν είναι ενεργό, σε πενθήμερο με χτύπημα Κυριακής ως 6η ημέρα κάρτας και διάρκεια &gt; 5 ώρες
+                  δημιουργείται εκκρεμότητα «Οφείλεται ρεπό» για την επόμενη εβδομάδα στο απολογιστικό.
+                  Αν είναι ανενεργό, δεν γίνεται μεταφορά ρεπό.
+                </small>
+              </span>
+            </label>
+          </div>
+          <div class="actions settings-section-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveApologisticSettings" disabled>
+              <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση</span>
+            </button>
+          </div>
+        </section>
       </div>
       <div id="stepMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260810cardlistener9"></script>
+  <script src="/static/js/store-notify.js?v=20260813sundayrest2"></script>
 {% endblock %}
