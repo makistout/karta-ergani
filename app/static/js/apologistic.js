@@ -571,9 +571,7 @@ function updateAcceptAllBar() {
   const btn = document.getElementById("apologisticAcceptAllBtn");
   const hint = document.getElementById("apologisticAcceptAllHint");
   if (!bar || !btn) return;
-  const reviewRows = visibleReportRows().filter((row) =>
-    row.status === "review" && !(row.exchange_options || []).length
-  );
+  const reviewRows = visibleReportRows().filter((row) => row.status === "review");
   const visible = reportState.filter === "review" && reviewRows.length > 0;
   if (!visible) {
     bar.classList.add("hidden");
@@ -584,8 +582,10 @@ function updateAcceptAllBar() {
   bar.classList.remove("hidden");
   btn.hidden = false;
   if (hint) {
+    const exchangeCount = reviewRows.filter((row) => (row.exchange_options || []).length).length;
     hint.textContent =
       `${reviewRows.length} εγγραφές · έγκριση πρότασης και μετάβαση σε Μ* (Μεταβολή)` +
+      (exchangeCount ? ` · ${exchangeCount} με αυτόματη επιλογή ανταλλαγής` : "") +
       (isAllDaysSelected() ? "" : ` · ${reportPeriodLabel()}`);
   }
 }
@@ -599,15 +599,15 @@ function initAcceptAllBar() {
 
 async function acceptAllReview() {
   const btn = document.getElementById("apologisticAcceptAllBtn");
-  const reviewRows = visibleReportRows().filter((row) =>
-    row.status === "review" && !(row.exchange_options || []).length
-  );
+  const reviewRows = visibleReportRows().filter((row) => row.status === "review");
   if (!reviewRows.length) {
     updateAcceptAllBar();
     return;
   }
+  const exchangeRows = reviewRows.filter((row) => (row.exchange_options || []).length);
+  const ordinaryRows = reviewRows.filter((row) => !(row.exchange_options || []).length);
   const groups = new Map();
-  for (const row of reviewRows) {
+  for (const row of ordinaryRows) {
     const weekFrom = weekFromForRow(row);
     if (!groups.has(weekFrom)) groups.set(weekFrom, []);
     groups.get(weekFrom).push({
@@ -619,6 +619,43 @@ async function acceptAllReview() {
   try {
     let changedTotal = 0;
     const changedKeys = new Set();
+    const usedReplacementDays = new Set();
+    const randomizedExchangeRows = exchangeRows
+      .map((row) => ({ row, order: Math.random() }))
+      .sort((left, right) =>
+        (left.row.exchange_options || []).length - (right.row.exchange_options || []).length
+        || left.order - right.order
+      )
+      .map((item) => item.row);
+    for (const row of randomizedExchangeRows) {
+      const available = (row.exchange_options || []).filter((option) =>
+        !usedReplacementDays.has(`${row.employee_afm}|${option.replacement_work_date}`)
+      );
+      if (!available.length) continue;
+      const option = available.length === 1
+        ? available[0]
+        : available[Math.floor(Math.random() * available.length)];
+      const res = await fetch("/api/apologistic/exchange", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_from: weekFromForRow(row),
+          employee_afm: row.employee_afm,
+          rest_work_date: row.work_date,
+          replacement_work_date: option.replacement_work_date,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      usedReplacementDays.add(`${row.employee_afm}|${option.replacement_work_date}`);
+      changedTotal += Number((data.rows || []).length || 2);
+      for (const updated of data.rows || []) {
+        const current = reportState.rows.find((item) =>
+          item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
+        );
+        if (current) Object.assign(current, updated);
+      }
+    }
     for (const [weekFrom, items] of groups.entries()) {
       const res = await fetch("/api/apologistic/accept-all-review", {
         method: "PUT",
