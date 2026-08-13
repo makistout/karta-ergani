@@ -14,6 +14,7 @@ let openEmployeeAfm = null;
 let proposalEditRow = null;
 let submitModalState = null;
 let acceptReviewPending = new Set();
+let exchangePending = new Set();
 const canSubmitErgani = apologisticToolbar?.dataset.canSubmit === "1";
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -40,6 +41,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     hideEmployeeWeekOverlay();
   });
   document.addEventListener("click", (event) => {
+    const exchangeButton = event.target.closest(".apologistic-exchange-card");
+    if (exchangeButton) {
+      event.stopPropagation();
+      applyExchange(
+        exchangeButton.dataset.employeeAfm || "",
+        exchangeButton.dataset.restWorkDate || "",
+        exchangeButton.dataset.replacementWorkDate || "",
+        exchangeButton,
+      );
+      return;
+    }
     const acceptReviewButton = event.target.closest(".apologistic-accept-review-btn");
     if (acceptReviewButton) {
       event.stopPropagation();
@@ -559,7 +571,9 @@ function updateAcceptAllBar() {
   const btn = document.getElementById("apologisticAcceptAllBtn");
   const hint = document.getElementById("apologisticAcceptAllHint");
   if (!bar || !btn) return;
-  const reviewRows = visibleReportRows().filter((row) => row.status === "review");
+  const reviewRows = visibleReportRows().filter((row) =>
+    row.status === "review" && !(row.exchange_options || []).length
+  );
   const visible = reportState.filter === "review" && reviewRows.length > 0;
   if (!visible) {
     bar.classList.add("hidden");
@@ -585,7 +599,9 @@ function initAcceptAllBar() {
 
 async function acceptAllReview() {
   const btn = document.getElementById("apologisticAcceptAllBtn");
-  const reviewRows = visibleReportRows().filter((row) => row.status === "review");
+  const reviewRows = visibleReportRows().filter((row) =>
+    row.status === "review" && !(row.exchange_options || []).length
+  );
   if (!reviewRows.length) {
     updateAcceptAllBar();
     return;
@@ -853,14 +869,22 @@ function openSubmitModal(kind, employeeAfm, workDate) {
   if (!row || !modal || !title || !meta || !detail || !segmentWrap || !segmentSelect) return;
 
   closeExplanation();
-  submitModalState = { kind, row };
+  const pairedRow = kind === "schedule" && row.exchange_pair?.paired_work_date
+    ? findReportRow(row.employee_afm, row.exchange_pair.paired_work_date)
+    : null;
+  const pairRows = pairedRow ? [row, pairedRow] : [row];
+  submitModalState = { kind, row, pairRows };
   errorBox.textContent = "";
   const employeeName = `${row.eponymo || ""} ${row.onoma || ""}`.trim();
   meta.textContent = `${employeeName} · ${row.work_date}`;
 
   if (kind === "schedule") {
     title.textContent = "Υποβολή απολογιστικής μεταβολής";
-    detail.innerHTML = `Έγγραφο: <strong>WTODailyA</strong><br>Πρόταση: <strong>${attr(compactScheduleLabel(row.proposed))}</strong>`;
+    detail.innerHTML = pairRows.length === 2
+      ? `Έγγραφο: <strong>2 × WTODailyA</strong><br>` + pairRows.map((item) =>
+          `<strong>${attr(item.work_date)}</strong>: ${attr(compactScheduleLabel(item.proposed))}`
+        ).join("<br>")
+      : `Έγγραφο: <strong>WTODailyA</strong><br>Πρόταση: <strong>${attr(compactScheduleLabel(row.proposed))}</strong>`;
     segmentWrap.classList.add("hidden");
     segmentSelect.innerHTML = "";
   } else {
@@ -894,36 +918,51 @@ async function confirmSubmitModal() {
   errorBox.textContent = "";
   try {
     if (kind === "schedule") {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(baseBody),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        errorBox.innerHTML = Office.formatMultilineHtml(
-          data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`,
-        );
-        return;
-      }
-      mergeErganiSubmit(row, data.ergani_submit);
-      if (!data.ergani_submit?.schedule) {
-        mergeErganiSubmit(row, {
-          schedule: {
-            protocol: data.protocol || null,
-            ergani_submission_id: data.ergani_submission_id || null,
-            submit_date: data.submit_date || null,
-            submitted_at: new Date().toISOString(),
-            proposed_at_submit: row.proposed,
-            matches_proposal: true,
-          },
+      const scheduleRows = state.pairRows || [row];
+      const pendingRows = scheduleRows.filter((item) =>
+        !scheduleAlreadySubmitted(item) || item.ergani_submit?.schedule?.matches_proposal === false
+      );
+      const protocols = [];
+      for (const scheduleRow of pendingRows) {
+        const submitBody = {
+          week_from: weekFromForRow(scheduleRow),
+          work_date: scheduleRow.work_date,
+          employee_afm: scheduleRow.employee_afm,
+          use_snapshot: true,
+        };
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(submitBody),
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(
+            `${scheduleRow.work_date}: ` +
+            (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
+          );
+        }
+        mergeErganiSubmit(scheduleRow, data.ergani_submit);
+        if (!data.ergani_submit?.schedule) {
+          mergeErganiSubmit(scheduleRow, {
+            schedule: {
+              protocol: data.protocol || null,
+              ergani_submission_id: data.ergani_submission_id || null,
+              submit_date: data.submit_date || null,
+              submitted_at: new Date().toISOString(),
+              proposed_at_submit: scheduleRow.proposed,
+              matches_proposal: true,
+            },
+          });
+        }
+        if (data.protocol) protocols.push(String(data.protocol));
       }
       closeSubmitModal();
       refreshSummaryCounts();
       renderVisibleRows();
-      const proto = data.protocol ? ` · πρωτ. ${data.protocol}` : "";
-      showSubmitToast(`Η απολογιστική μεταβολή ωραρίου υποβλήθηκε${proto}.`, true);
+      const proto = protocols.length ? ` · πρωτ. ${protocols.join(", ")}` : "";
+      const label = scheduleRows.length === 2 ? "Οι δύο μεταβολές της ανταλλαγής υποβλήθηκαν" : "Η απολογιστική μεταβολή ωραρίου υποβλήθηκε";
+      showSubmitToast(`${label}${proto}.`, true);
       return;
     }
 
@@ -1142,6 +1181,9 @@ function statusShortLabel(status, row) {
 function renderResultBadge(row) {
   const title = statusLabel(row.status, row);
   if (row.status === "review") {
+    if ((row.exchange_options || []).length) {
+      return `<span class="status-badge apologistic-status--review" title="Επιλέξτε πρώτα μία από τις διαθέσιμες ανταλλαγές">${statusShortLabel(row.status, row)}</span>`;
+    }
     const key = `${row.employee_afm}|${row.work_date}`;
     const pending = acceptReviewPending.has(key);
     return `<button type="button" class="status-badge apologistic-status--review apologistic-accept-review-btn${pending ? " is-pending" : ""}" ` +
@@ -1179,6 +1221,51 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
     Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
   } finally {
     acceptReviewPending.delete(key);
+  }
+}
+
+async function applyExchange(employeeAfm, restWorkDate, replacementWorkDate, button) {
+  const key = `${employeeAfm}|${restWorkDate}|${replacementWorkDate}`;
+  if (exchangePending.has(key)) return;
+  const source = reportState.rows.find((row) =>
+    row.employee_afm === employeeAfm && row.work_date === restWorkDate
+  );
+  if (!source) return;
+  exchangePending.add(key);
+  if (button) {
+    button.disabled = true;
+    button.classList.add("is-pending");
+  }
+  try {
+    const res = await fetch("/api/apologistic/exchange", {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        week_from: weekFromForRow(source),
+        employee_afm: employeeAfm,
+        rest_work_date: restWorkDate,
+        replacement_work_date: replacementWorkDate,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    for (const updated of data.rows || []) {
+      const row = reportState.rows.find((item) =>
+        item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
+      );
+      if (row) Object.assign(row, updated);
+    }
+    refreshSummaryCounts();
+    renderVisibleRows();
+    Office.showMsg(
+      "apologisticSubmitMsg",
+      `Η ανταλλαγή ${restWorkDate} ↔ ${replacementWorkDate} αποθηκεύτηκε ως δύο μεταβολές (Μ*).`,
+      true,
+    );
+  } catch (error) {
+    Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
+  } finally {
+    exchangePending.delete(key);
   }
 }
 function rowExplanationId(row) { return `${row.employee_afm}-${String(row.work_date || "").replace(/\//g, "")}`; }
@@ -1867,11 +1954,13 @@ function renderRows(rows, store) {
     if ((row.exchange_options || []).length) {
       html += `<tr class="apologistic-replacement-row"><td colspan="${tableCols}"><div class="apologistic-replacement-options">` +
         `<span class="apologistic-exchange-title"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Επιλογές ανταλλαγής</span>` +
-        row.exchange_options.map((item) => `<div class="apologistic-exchange-card">` +
+        row.exchange_options.map((item) => `<button type="button" class="apologistic-exchange-card" ` +
+          `data-employee-afm="${attr(row.employee_afm)}" data-rest-work-date="${attr(item.rest_work_date)}" ` +
+          `data-replacement-work-date="${attr(item.replacement_work_date)}" title="Εφαρμογή ανταλλαγής και δημιουργία δύο μεταβολών Μ*">` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong><span>${attr(item.replacement_declared)}</span></div>` +
           `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(item.rest_punch)} → <b>${attr(item.proposed)}</b></span></div>` +
-        `</div>`).join("") +
+        `</button>`).join("") +
         `</div></td></tr>`;
     }
   }

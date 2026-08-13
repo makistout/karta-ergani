@@ -74,6 +74,43 @@ def test_accept_review_returns_change_from_review(monkeypatch):
     assert body["status"] == "change"
 
 
+def test_exchange_returns_both_changed_rows(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    captured = {}
+
+    def fake_apply_exchange(**kwargs):
+        captured.update(kwargs)
+        return {
+            "changed": True,
+            "rows": [
+                {"employee_afm": "123456789", "work_date": "09/08/2026", "day_state": "Εργασία",
+                 "proposed": "17:23–01:23", "status": "change", "change_from_review": True},
+                {"employee_afm": "123456789", "work_date": "08/08/2026", "day_state": "Ρεπό",
+                 "proposed": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "status": "change", "change_from_review": True},
+            ],
+        }
+
+    monkeypatch.setattr(routes_apologistic, "apply_exchange", fake_apply_exchange)
+    app = _app()
+    app.secret_key = "test"
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["office_user"] = "tester"
+    response = client.put("/api/apologistic/exchange", json={
+        "week_from": "2026-08-03",
+        "employee_afm": "123456789",
+        "rest_work_date": "09/08/2026",
+        "replacement_work_date": "08/08/2026",
+    })
+    assert response.status_code == 200
+    body = response.get_json()
+    assert len(body["rows"]) == 2
+    assert all(row["status"] == "change" for row in body["rows"])
+    assert all(row["change_from_review"] is True for row in body["rows"])
+    assert captured["rest_work_date"] == date(2026, 8, 9)
+    assert captured["replacement_work_date"] == date(2026, 8, 8)
+
+
 def test_accept_all_review_returns_changed_count(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(

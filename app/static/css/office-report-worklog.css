@@ -1035,7 +1035,9 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-replacement-row td { padding:.28rem .55rem .5rem!important; background:color-mix(in srgb,var(--err) 4%,var(--surface))!important; white-space:normal!important; overflow:visible!important; }
 .apologistic-replacement-options { display:flex; align-items:center; flex-wrap:wrap; gap:.45rem; font-size:10px; color:var(--muted); }
 .apologistic-exchange-title { display:flex; align-items:center; gap:.3rem; font-weight:700; color:var(--text); margin-right:.15rem; }
-.apologistic-exchange-card { display:grid; grid-template-columns:minmax(120px,1fr) auto minmax(145px,1.15fr); align-items:center; gap:.45rem; min-width:min(100%,390px); padding:.4rem .5rem; border:1px solid var(--border); border-radius:.65rem; background:var(--surface); box-shadow:0 2px 8px rgba(20,32,45,.06); }
+.apologistic-exchange-card { display:grid; grid-template-columns:minmax(120px,1fr) auto minmax(145px,1.15fr); align-items:center; gap:.45rem; min-width:min(100%,390px); padding:.4rem .5rem; border:1px solid var(--border); border-radius:.65rem; background:var(--surface); color:inherit; font:inherit; text-align:inherit; box-shadow:0 2px 8px rgba(20,32,45,.06); cursor:pointer; }
+.apologistic-exchange-card:hover,.apologistic-exchange-card:focus-visible { border-color:var(--accent); box-shadow:0 3px 12px rgba(20,32,45,.12); outline:0; }
+.apologistic-exchange-card.is-pending { opacity:.6; cursor:wait; }
 .apologistic-exchange-side { display:flex; min-width:0; flex-direction:column; gap:.08rem; }
 .apologistic-exchange-side small { color:var(--muted); font-size:9px; }
 .apologistic-exchange-side strong { color:var(--text); font-size:10px; }

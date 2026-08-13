@@ -566,6 +566,112 @@ def accept_review(*, store_id: int, week_from: date, employee_afm: str,
     }
 
 
+def apply_exchange(*, store_id: int, week_from: date, employee_afm: str,
+                   rest_work_date: date, replacement_work_date: date,
+                   changed_by: str | None) -> dict[str, Any]:
+    """Apply both sides of a proposed rest/work-day exchange in one transaction."""
+    if rest_work_date == replacement_work_date:
+        raise ValueError("Οι δύο ημέρες της ανταλλαγής πρέπει να είναι διαφορετικές")
+    rest_label = rest_work_date.strftime("%d/%m/%Y")
+    replacement_label = replacement_work_date.strftime("%d/%m/%Y")
+    reason = "Εγκρίθηκε ανταλλαγή ημέρας — δημιουργήθηκαν δύο απολογιστικές μεταβολές"
+    with cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT r.id, r.status, r.effective_report_json
+            FROM dbo.karta_apologistic_run r WITH (UPDLOCK, HOLDLOCK)
+            WHERE r.store_id=? AND r.week_from=?
+        """, (int(store_id), week_from))
+        run_row = cur.fetchone()
+        if not run_row:
+            raise LookupError("Δεν βρέθηκε αποθηκευμένο απολογιστικό")
+        if str(run_row[1]) == "locked":
+            raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
+        run_id = int(run_row[0])
+        report = json.loads(run_row[2])
+
+        cur.execute("""
+            SELECT d.id, d.work_date, d.override_json, d.effective_json
+            FROM dbo.karta_apologistic_day d WITH (UPDLOCK, HOLDLOCK)
+            WHERE d.run_id=? AND d.employee_afm=? AND d.work_date IN (?, ?)
+        """, (run_id, employee_afm, rest_work_date, replacement_work_date))
+        rows = list(cur.fetchall())
+        by_date = {
+            (row[1].date() if isinstance(row[1], datetime) else row[1]): row
+            for row in rows
+        }
+        source_row = by_date.get(rest_work_date)
+        target_row = by_date.get(replacement_work_date)
+        if not source_row or not target_row:
+            raise LookupError("Δεν βρέθηκαν και οι δύο ημέρες της ανταλλαγής")
+
+        source = json.loads(source_row[3])
+        target = json.loads(target_row[3])
+        options = source.get("exchange_options") or []
+        option = next((item for item in options
+                       if str(item.get("replacement_work_date") or "") == replacement_label), None)
+        if not option:
+            raise ValueError("Η επιλεγμένη ημέρα δεν είναι διαθέσιμη πρόταση ανταλλαγής")
+        if str(source.get("status") or "") not in {"review", "change"}:
+            raise ValueError("Η αρχική ημέρα δεν βρίσκεται σε κατάσταση Έλεγχος")
+        existing_pair = target.get("exchange_pair") or {}
+        if existing_pair and str(existing_pair.get("paired_work_date") or "") != rest_label:
+            raise ValueError("Η ημέρα αντικατάστασης έχει ήδη χρησιμοποιηθεί σε άλλη ανταλλαγή")
+
+        source_proposed = normalize_proposed_value(str(option.get("proposed") or ""))
+        target_proposed = "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+        pair_id = f"{employee_afm}:{rest_label}:{replacement_label}"
+        source_pair = {"id": pair_id, "role": "work", "paired_work_date": replacement_label}
+        target_pair = {"id": pair_id, "role": "rest", "paired_work_date": rest_label}
+        source_override = json.loads(source_row[2]) if source_row[2] else {}
+        target_override = json.loads(target_row[2]) if target_row[2] else {}
+
+        source_old_status = str(source.get("status") or "")
+        target_old_status = str(target.get("status") or "")
+        source.update({"proposed": source_proposed, "status": "change", "change_from_review": True,
+                       "day_state": "Εργασία", "reason": reason, "exchange_pair": source_pair,
+                       "exchange_options": [], "replacement_candidates": []})
+        target.update({"proposed": target_proposed, "status": "change", "change_from_review": True,
+                       "day_state": "Ρεπό", "reason": reason, "exchange_pair": target_pair})
+        source_override.update({"proposed": source_proposed, "status": "change", "change_from_review": True,
+                                "day_state": "Εργασία", "exchange_pair": source_pair})
+        target_override.update({"proposed": target_proposed, "status": "change", "change_from_review": True,
+                                "day_state": "Ρεπό", "exchange_pair": target_pair})
+
+        updates = ((source_row, source_override, source, source_old_status, source_proposed),
+                   (target_row, target_override, target, target_old_status, target_proposed))
+        for db_row, override, effective, old_status, proposed in updates:
+            cur.execute("""
+                UPDATE dbo.karta_apologistic_day SET override_json=?, effective_json=?,
+                    override_reason=N'Ανταλλαγή ημέρας εργασίας/ρεπό', updated_by=?,
+                    override_updated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+                WHERE id=?
+            """, (_json(override), _json(effective), changed_by, int(db_row[0])))
+            cur.execute("""
+                INSERT dbo.karta_apologistic_change(day_id, field_name, old_value, new_value, changed_by)
+                VALUES (?, N'exchange', ?, ?, ?)
+            """, (int(db_row[0]), old_status, proposed, changed_by))
+
+        effective_by_date = {rest_label: source, replacement_label: target}
+        for item in report.get("days") or []:
+            if str(item.get("employee_afm") or "") != employee_afm:
+                continue
+            updated = effective_by_date.get(str(item.get("work_date") or ""))
+            if updated:
+                item.update(updated)
+        if isinstance(report.get("counts"), dict):
+            counts = report["counts"]
+            old_statuses = (source_old_status, target_old_status)
+            for old_status in old_statuses:
+                if old_status != "change":
+                    counts[old_status] = max(0, int(counts.get(old_status) or 0) - 1)
+                    counts["change"] = int(counts.get("change") or 0) + 1
+        cur.execute(
+            "UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+            (_json(report), run_id),
+        )
+    return {"changed": True, "rows": [source, target], "counts": report.get("counts")}
+
+
 def accept_all_review(*, store_id: int, week_from: date,
                       items: list[dict[str, Any]], changed_by: str | None) -> dict[str, Any]:
     if not items:
