@@ -571,13 +571,34 @@ def build_weekly_report(
                         f"{contract_required_days} ημέρες εβδομαδιαίας απασχόλησης· δεν απαιτείται έλεγχος"
                     )
                 elif contract_required_days and weekly_punch_days >= contract_required_days:
-                    status = "ok"
-                    proposed = actual_label
-                    proposal_basis = "Πλήρης κάλυψη ημερών σύμβασης — διάρκεια πραγματικού χτυπήματος στο ρεπό"
-                    reason = (
-                        f"Χτύπημα σε {state}: οι {weekly_punch_days} ημέρες με κάρτα καλύπτουν "
-                        f"τις {contract_required_days} ημέρες της σύμβασης· διατηρείται η διάρκεια του χτυπήματος"
-                    )
+                    replacement_candidates = list(missing_declared_by_afm.get(afm, []))
+                    if replacement_candidates:
+                        status = "review"
+                        if ps is not None:
+                            exchange_options = [{
+                                "rest_work_date": work_date,
+                                "rest_punch": actual_label,
+                                "replacement_work_date": item["work_date"],
+                                "replacement_declared": item["declared"],
+                                "contract_duration_minutes": item["declared_minutes"],
+                                "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
+                            } for item in replacement_candidates if item.get("declared_minutes")]
+                        if exchange_options:
+                            proposed = exchange_options[0]["proposed"]
+                            proposal_basis = "Προσωρινός κανόνας ανταλλαγής με δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα"
+                        reason = (
+                            f"Χτύπημα σε {state} με {weekly_punch_days} ημέρες κάρτας έναντι "
+                            f"{contract_required_days} ημερών σύμβασης και δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα· "
+                            "απαιτείται έλεγχος και επιλογή ημέρας ανταλλαγής"
+                        )
+                    else:
+                        status = "ok"
+                        proposed = actual_label
+                        proposal_basis = "Πλήρης κάλυψη ημερών σύμβασης — διάρκεια πραγματικού χτυπήματος στο ρεπό"
+                        reason = (
+                            f"Χτύπημα σε {state}: οι {weekly_punch_days} ημέρες με κάρτα καλύπτουν "
+                            f"τις {contract_required_days} ημέρες της σύμβασης· διατηρείται η διάρκεια του χτυπήματος"
+                        )
                 else:
                     status = "review"
                     replacement_candidates = list(missing_declared_by_afm.get(afm, []))
@@ -677,8 +698,6 @@ def build_weekly_report(
                     "Οι ημέρες με κάρτα είναι λιγότερες από τις ημέρες εβδομαδιαίας απασχόλησης, "
                     "επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο."
                 )
-            elif contract_required_days and (weekly_punch_days or 0) >= contract_required_days:
-                status_explanation.append("Οι ημέρες με κάρτα καλύπτουν ή υπερβαίνουν τις ημέρες σύμβασης, επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο.")
             elif replacement_candidates:
                 status_explanation.append("Δηλωμένες ημέρες εργασίας χωρίς χτύπημα που μπορούν να εξεταστούν για αντικατάσταση:")
                 status_explanation.extend(
@@ -687,6 +706,8 @@ def build_weekly_report(
                     f"πρόταση {item['proposed']}"
                     for item in exchange_options
                 )
+            elif contract_required_days and (weekly_punch_days or 0) >= contract_required_days:
+                status_explanation.append("Οι ημέρες με κάρτα καλύπτουν ή υπερβαίνουν τις ημέρες σύμβασης και δεν βρέθηκε δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα, επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο.")
             else:
                 status_explanation.append("Δεν βρέθηκε δηλωμένη ημέρα εργασίας χωρίς χτύπημα ως υποψήφια αντικατάστασης.")
         daily.append({

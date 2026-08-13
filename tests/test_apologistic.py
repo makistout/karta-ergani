@@ -135,6 +135,40 @@ def test_rest_punch_is_ok_when_card_days_cover_contract_days():
     assert any("03/08/2026: 09:10–17:10" in line for line in row["status_explanation"])
 
 
+def test_five_day_rest_punch_with_missing_declared_day_requires_exchange_review():
+    schedules = [
+        sched(day="03/08/2026", start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"),
+        sched(day="04/08/2026"),
+        sched(day="05/08/2026"),
+        sched(day="06/08/2026"),
+        sched(day="07/08/2026"),
+        sched(day="08/08/2026", start="17:30", end="01:30"),
+        sched(day="09/08/2026", start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"),
+    ]
+    punches = [
+        punch(day="03/08/2026", start="13:05", end="20:20"),
+        punch(day="04/08/2026"),
+        punch(day="05/08/2026"),
+        punch(day="06/08/2026"),
+        punch(day="07/08/2026"),
+        punch(day="09/08/2026", start="17:23", end="00:55"),
+    ]
+
+    rest_rows = [
+        row for row in build_weekly_report(schedules, punches, [contract(days="5")])["days"]
+        if row["work_date"] in ("03/08/2026", "09/08/2026")
+    ]
+    assert len(rest_rows) == 2
+    for row in rest_rows:
+        assert row["status"] == "review"
+        assert row["weekly_punch_days"] == 6
+        assert row["contract_required_days"] == 5
+        assert [item["work_date"] for item in row["replacement_candidates"]] == ["08/08/2026"]
+        assert row["exchange_options"][0]["replacement_work_date"] == "08/08/2026"
+        assert row["exchange_options"][0]["contract_duration_minutes"] == 480
+        assert "επιλογή ημέρας ανταλλαγής" in row["reason"]
+
+
 def test_sunday_sixth_day_over_five_hours_creates_next_week_rest_due():
     schedules, punches = [], []
     for offset in range(6):
