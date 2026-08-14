@@ -561,6 +561,107 @@ body.login-page {
   gap: 0.45rem;
 }
 
+#employeesWrap .employees-filter-tabs {
+  margin-top: 0;
+}
+
+#employeesWrap .employees-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+#employeesWrap .log-tab.active .employees-tab-count {
+  background: rgba(29, 78, 216, 0.12);
+  color: var(--brand);
+}
+
+#employeesWrap .employees-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: var(--brand-light);
+  background: #fff;
+  text-decoration: none;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#employeesWrap .employees-action-btn .bi {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+#employeesWrap .employees-action-btn:hover,
+#employeesWrap .employees-action-btn:focus-visible {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: var(--brand);
+}
+
+#employeesWrap table.employees-list-table th.col-status,
+#employeesWrap table.employees-list-table td.col-status,
+#employeesWrap table.employees-list-table td.employees-status-cell {
+  width: 2.5rem;
+  text-align: center;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+#employeesWrap .employees-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+#employeesWrap .employees-status-icon .bi {
+  font-size: 1.15rem;
+}
+
+#employeesWrap .employees-status-icon--active {
+  color: var(--ok);
+}
+
+#employeesWrap .employees-status-icon--inactive {
+  color: var(--muted);
+}
+
+#employeesWrap table.employees-list-table th.col-contract,
+#employeesWrap table.employees-list-table td.col-contract {
+  min-width: 6.5rem;
+  font-size: 0.88rem;
+}
+
+#employeesWrap table.employees-list-table th.col-open-punches,
+#employeesWrap table.employees-list-table td.col-open-punches {
+  width: 4.5rem;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+#employeesWrap .employees-open-punches {
+  color: var(--muted);
+}
+
+#employeesWrap .employees-open-punches--warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .employee-weekly-schedule-link {
   display: inline-flex;
   align-items: center;

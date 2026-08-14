@@ -23,9 +23,36 @@ from app.repo_apologistic import enrich_employee_month_days, list_employee_days
 from app.apologistic import build_weekly_report
 from app.date_util import iso_to_ergani_dates
 from app.repo_schedule import list_schedule_for_range
-from app.repo_work_log import list_work_log_for_range, normalize_overnight_work_log_rows
+from app.repo_work_log import (
+    count_incomplete_punches_by_employee_for_month,
+    list_work_log_for_range,
+    normalize_overnight_work_log_rows,
+)
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/api/employees")
+
+
+def _contract_summary(contract: dict | None) -> str | None:
+    if not contract:
+        return None
+    text = " ".join(
+        str(contract.get(key) or "").upper()
+        for key in ("characterization", "regime", "employment_relation")
+    )
+    days_raw = str(contract.get("weekly_work_days") or "")
+    days = next((n for n in (5, 6) if str(n) in days_raw), None)
+    if "ΕΚ ΠΕΡΙΤΡΟΠ" in text:
+        kind = "Εκ περιτροπής"
+    elif "ΜΕΡΙΚ" in text:
+        kind = "Μερική"
+    elif "ΠΛΗΡ" in text:
+        kind = "Πλήρης"
+    else:
+        specialty = str(contract.get("specialty") or "").strip()
+        return specialty or None
+    if days:
+        return f"{kind} · {days}ημ."
+    return kind
 
 
 def _iso_rows(rows: list[dict]) -> list[dict]:
@@ -56,12 +83,28 @@ def employees_list():
         lim = int(request.args.get("limit", "2000"))
     except ValueError:
         lim = 2000
+    employer_afm = str(ctx["employer_afm"])
+    branch_aa = str(ctx.get("branch_aa") or "0")
     rows = list_employees_for_employer(
-        str(ctx["employer_afm"]),
-        branch_aa=str(ctx.get("branch_aa") or "0"),
-        limit=lim,
+        employer_afm, branch_aa=branch_aa, limit=lim, active_only=False
     )
+    contracts_by_afm: dict[str, dict] = {}
+    try:
+        for contract in list_current_for_store(employer_afm, branch_aa, limit=lim):
+            afm = norm_afm(str(contract.get("employee_afm") or ""))
+            if afm:
+                contracts_by_afm[afm] = contract
+    except pyodbc.Error:
+        contracts_by_afm = {}
+    open_punches = count_incomplete_punches_by_employee_for_month(employer_afm, branch_aa)
+    today = date.today()
+    for row in rows:
+        afm = norm_afm(str(row.get("afm") or ""))
+        contract = contracts_by_afm.get(afm)
+        row["contract_label"] = _contract_summary(contract)
+        row["open_punches_month"] = int(open_punches.get(afm) or 0)
     _iso_rows(rows)
+    active_count = sum(1 for row in rows if row.get("active") not in (False, 0))
     return jsonify({
         "store": {
             "id": ctx["id"],
@@ -72,7 +115,10 @@ def employees_list():
         "employer_afm": ctx["employer_afm"],
         "branch_aa": ctx.get("branch_aa"),
         "count": len(rows),
+        "active_count": active_count,
+        "inactive_count": len(rows) - active_count,
         "employees": rows,
+        "open_punches_month_label": f"{today.strftime('%m/%Y')}",
         "hint": (
             "Οι εργαζόμενοι συνδέονται με εργοδότη μέσω karta_employment "
             "(όχι απευθείας στο karta_employee). Η λίστα φιλτράρεται από το ενεργό σημείο."

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import calendar
+from datetime import date
 from typing import Any
 
 import pyodbc
@@ -757,6 +759,44 @@ def _merge_missing_card_rows(
             existing["hour_to"] = row["hour_to"]
     merged = list(by_key.values())
     return _sort_missing_rows(merged)
+
+
+def count_incomplete_punches_by_employee_for_month(
+    employer_afm: str,
+    branch_aa: str,
+    *,
+    year: int | None = None,
+    month: int | None = None,
+) -> dict[str, int]:
+    """Μετρά ελλιπή χτυπήματα (κενό Από ή Έως) ανά εργαζόμενο για τον τρέχοντα μήνα."""
+    today = date.today()
+    y = int(year or today.year)
+    m = int(month or today.month)
+    month_start = date(y, m, 1)
+    month_end = min(date(y, m, calendar.monthrange(y, m)[1]), today)
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT w.employee_afm, COUNT(*) AS cnt
+            FROM dbo.karta_work_log w
+            WHERE w.employer_afm = ? AND w.branch_aa = ?
+              AND TRY_CONVERT(date, w.work_date, 103) >= ?
+              AND TRY_CONVERT(date, w.work_date, 103) <= ?
+              AND (
+                NULLIF(LTRIM(RTRIM(ISNULL(w.hour_from, N''))), N'') IS NULL
+                OR NULLIF(LTRIM(RTRIM(ISNULL(w.hour_to, N''))), N'') IS NULL
+              )
+            GROUP BY w.employee_afm
+            """,
+            (afm, aa, month_start, month_end),
+        )
+        return {
+            norm_afm(str(row[0] or "")): int(row[1] or 0)
+            for row in cur.fetchall()
+            if row and row[0]
+        }
 
 
 def list_work_log_missing_cards_paged(
