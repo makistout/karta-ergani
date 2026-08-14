@@ -1,6 +1,9 @@
 # erganiOS Card Listener
 
-Lightweight Windows listener v0.3.8 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
+Lightweight Windows listener v0.3.9 for WRKCardSE jobs only. It does not contain scheduling or punch business rules.
+
+Job pickup uses an 8-second long-poll cycle with a 2-second retry delay, so a healthy
+listener receives newly queued punches within 10 seconds while remaining lightweight.
 
 ## Build
 

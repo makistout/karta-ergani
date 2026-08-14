@@ -74,7 +74,9 @@ def next_job():
     device, error = _authenticate()
     if error:
         return error
-    wait_seconds = max(0, min(int(request.args.get("wait") or 25), 25))
+    # Keep every listener request below the 10-second pickup SLA, even behind
+    # proxies that buffer long-poll responses until the request completes.
+    wait_seconds = max(0, min(int(request.args.get("wait") or 8), 8))
     deadline = time.monotonic() + wait_seconds
     while True:
         job = repo.lease_next_job(int(device["store_id"]), str(device["device_id"]))

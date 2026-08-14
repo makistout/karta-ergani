@@ -100,3 +100,17 @@ def test_listener_never_stores_loopback_as_public_ip():
     assert response.status_code == 200
     assert response.json["public_ip"] is None
     update.assert_called_once_with(9, None)
+
+
+def test_listener_job_long_poll_is_capped_at_eight_seconds():
+    device = {"id": 9, "store_id": 27, "device_id": "18cbf129-0939-4e98-85b5-b2215153eceb", "last_seen_ip": None}
+    with (
+        patch("app.routes_card_listener.repo.authenticate_device", return_value=device),
+        patch("app.routes_card_listener.repo.lease_next_job", return_value=None),
+        patch("app.routes_card_listener.time.monotonic", side_effect=[100.0, 108.0]),
+        patch("app.routes_card_listener.time.sleep") as sleep,
+    ):
+        response = _app().test_client().get("/api/card-listener/v1/jobs/next?wait=25")
+    assert response.status_code == 200
+    assert response.json["job"] is None
+    sleep.assert_not_called()

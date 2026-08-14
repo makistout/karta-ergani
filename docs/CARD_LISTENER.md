@@ -105,7 +105,7 @@ ERGANI_EGRESS_IP=203.0.113.10
 ## Περιβάλλον ΕΡΓΑΝΗ
 
 Το authenticated health response επιστρέφει `ergani_env`, ελληνική ετικέτα και API base
-URL του καταστήματος. Ο listener v0.3.8 εμφανίζει το περιβάλλον σε disabled πεδίο `Ergani API` κάτω
+URL του καταστήματος. Ο listener v0.3.9 εμφανίζει το περιβάλλον σε disabled πεδίο `Ergani API` κάτω
 από το `Usertype` κατά τον έλεγχο pairing.
 
 Η εκτέλεση job χρησιμοποιεί το `ergani_api_base_url` του job, το οποίο παράγεται από το
@@ -114,6 +114,10 @@ URL του καταστήματος. Ο listener v0.3.8 εμφανίζει το 
 ## Dispatcher και fallback
 
 - Δημιουργείται idempotent job μόνο για `WRKCardSE` και μόνο όταν ο επιλεγμένος listener είναι online.
+- Ο listener v0.3.9 κρατά long-poll σύνδεση έως 8 δευτερόλεπτα και επαναλαμβάνει
+  αποτυχημένη επικοινωνία μετά από 2 δευτερόλεπτα. Έτσι, με λειτουργική σύνδεση,
+  η παραλαβή νέου job γίνεται το αργότερο εντός 10 δευτερολέπτων, ακόμη και όταν
+  ενδιάμεσο proxy επιστρέφει το long-poll μόνο με τη λήξη του request.
 - Στην παραπάνω ροή περιλαμβάνονται οι χειροκίνητες υποβολές και το
   προγραμματισμένο αυτόματο κλείσιμο προηγούμενης ημέρας.
 - Το HTTP request περιμένει μέχρι το `listener_offline_seconds` για το αποτέλεσμα του listener.
@@ -127,7 +131,7 @@ URL του καταστήματος. Ο listener v0.3.8 εμφανίζει το 
   timer ανά δευτερόλεπτο, ένδειξη ελέγχου fallback στα 60″ και τελικό κανάλι εκτέλεσης. Τα κουμπιά
   παραμένουν κλειδωμένα όσο εκκρεμεί η απόκριση, ώστε να αποφεύγεται δεύτερη υποβολή.
 
-## Windows listener v0.3.8
+## Windows listener v0.3.9
 
 - Project: `listener/Erganios.Listener/`.
 - Self-contained compressed single-file Win-x64 executable.
@@ -139,7 +143,7 @@ URL του καταστήματος. Ο listener v0.3.8 εμφανίζει το 
 - ACL μόνο για SYSTEM και Administrators.
 - Το setup ζητά elevation κατά την εκκίνηση, ώστε να διαβάζει και να ενημερώνει πάντα
   το προστατευμένο `C:\ProgramData\erganiOS Listener\config.json` της υπηρεσίας.
-- Long polling, ένα job κάθε φορά, χωρίς τοπική βάση ή εισερχόμενο port.
+- Long polling 8″, retry 2″, ένα job κάθε φορά, χωρίς τοπική βάση ή εισερχόμενο port.
 - Resizable/scrollable setup form που περιορίζεται στο διαθέσιμο Windows working area για μικρές αναλύσεις και υψηλό DPI.
 
 Build:
@@ -166,6 +170,6 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 
 - Backend regression suite: 216 tests πέρασαν, εξαιρώντας το γνωστό ανεξάρτητο test που
   ανοίγει πραγματική DB σύνδεση αντί για πλήρες mock.
-- Listener v0.3.8: πλήρες globalization support για Windows cultures (`el-GR`), σύγχρονο setup UI
+- Listener v0.3.9: παραλαβή νέων jobs εντός 10″, πλήρες globalization support για Windows cultures (`el-GR`), σύγχρονο setup UI
   με κύλιση για μικρές αναλύσεις, προεπιλεγμένο `Usertype 01`, status banner/service badge και επιτυχές restore/publish.
 - Tests για store isolation, network refresh και trial environment health response.

@@ -14,7 +14,7 @@ namespace Erganios.Listener;
 
 internal static class Program
 {
-    internal const string Version = "0.3.8";
+    internal const string Version = "0.3.9";
     internal const string ServiceName = "erganiOSListener";
     internal static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "erganiOS Listener");
     internal static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
@@ -342,8 +342,8 @@ internal static class ListenerAgent
                 try
                 {
                     var cfg = ListenerConfig.Load();
-                    using var server = ServerClient(cfg, 40);
-                    using var response = await server.GetAsync(cfg.ServerUrl + "/api/card-listener/v1/jobs/next?wait=25", ct);
+                    using var server = ServerClient(cfg, 15);
+                    using var response = await server.GetAsync(cfg.ServerUrl + "/api/card-listener/v1/jobs/next?wait=8", ct);
                     if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) throw new InvalidOperationException("Listener revoked");
                     response.EnsureSuccessStatusCode();
                     var job = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))?["job"];
@@ -351,7 +351,7 @@ internal static class ListenerAgent
                     retry = 2;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-                catch { await Task.Delay(TimeSpan.FromSeconds(retry), ct); retry = Math.Min(30, retry * 2); }
+                catch { await Task.Delay(TimeSpan.FromSeconds(retry), ct); retry = 2; }
             }
         }
         finally { try { await networkRefresh; } catch (OperationCanceledException) { } }
