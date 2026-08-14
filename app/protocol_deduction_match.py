@@ -1,12 +1,12 @@
 """
-Αντιστοίχιση πρωτοκόλλων Ergani με χτυπήματα (απαγωγή 1-1).
+Αντιστοίχιση πρωτοκόλλων Ergani με χτυπήματα.
 
-Πηγή ωρών: karta_work_log (hour_from / hour_to).
-Πηγή πρωτοκόλλων: karta_ergani_protocol (submit_at από portal).
-Στόχος εφαρμογής: karta_work_log.protocol_from / protocol_to (+ κενά karta_declaration).
-
-Κλειδί: κατάστημα + ημερολογιακή ημέρα + ακριβής ώρα (HH:MM).
-1-1 = μοναδικό πρωτόκολλο ΚΑΙ μοναδική ώρα πραγματικής — αλλιώς κενό.
+1. Δικά μας χτυπήματα (karta_card_event + karta_declaration.protocol) →
+   protocol_from / protocol_to στην αντίστοιχη γραμμή πραγματικής.
+2. 1-1 στα υπόλοιπα: μοναδικό πρωτόκολλο ↔ μοναδική κενή ώρα πραγματικής
+   στην ίδια στιγμή. Τα δικά μας (ήδη γεμάτα) και τα πρωτόκολλά τους
+   εξαιρούνται, ώστε π.χ. δύο 08:22 → το δικό μας γεμίζει πρώτο, το άλλο
+   παίρνει το εναπομείναν πρωτόκολλο.
 """
 
 from __future__ import annotations
@@ -128,7 +128,9 @@ def _work_log_rows_for_range(
             w.employee_afm,
             w.work_date,
             w.hour_from,
-            w.hour_to
+            w.hour_to,
+            w.protocol_from,
+            w.protocol_to
         FROM dbo.karta_work_log w
         WHERE w.employer_afm = ?
           AND w.branch_aa = ?
@@ -144,6 +146,8 @@ def _work_log_rows_for_range(
 def _expand_work_log_slots(
     store_id: int,
     rows: list[dict[str, Any]],
+    *,
+    skip_filled: bool = False,
 ) -> list[dict[str, Any]]:
     """hour_from/hour_to → χρονοθέσεις με ημερολογιακή ημέρα υποβολής."""
     slots: list[dict[str, Any]] = []
@@ -157,6 +161,8 @@ def _expand_work_log_slots(
             continue
         hf = _time_hm(row.get("hour_from"))
         ht = _time_hm(row.get("hour_to"))
+        pf = str(row.get("protocol_from") or "").strip()
+        pt = str(row.get("protocol_to") or "").strip()
         emp = str(row.get("employee_afm") or "").strip() or None
         wl_id = int(row["id"]) if row.get("id") is not None else None
         base = {
@@ -165,7 +171,7 @@ def _expand_work_log_slots(
             "employee_afm": emp,
             "work_log_id": wl_id,
         }
-        if hf:
+        if hf and not (skip_filled and pf):
             slots.append(
                 {
                     **base,
@@ -174,7 +180,7 @@ def _expand_work_log_slots(
                     "f_type": "0",
                 }
             )
-        if ht:
+        if ht and not (skip_filled and pt):
             cal = (
                 (work_day + timedelta(days=1)).isoformat()
                 if _is_overnight_exit(hf, ht)
@@ -208,12 +214,153 @@ def _group_protocols(rows: list[dict[str, Any]]) -> dict[MatchKey, list[dict[str
 def _group_work_log_slots(
     store_id: int,
     rows: list[dict[str, Any]],
+    *,
+    skip_filled: bool = False,
 ) -> dict[MatchKey, list[dict[str, Any]]]:
     grouped: dict[MatchKey, list[dict[str, Any]]] = defaultdict(list)
-    for slot in _expand_work_log_slots(store_id, rows):
+    for slot in _expand_work_log_slots(store_id, rows, skip_filled=skip_filled):
         key = (int(store_id), slot["calendar_date"], slot["time_hm"])
         grouped[key].append(slot)
     return grouped
+
+
+def _used_protocols_from_work_log(rows: list[dict[str, Any]]) -> set[str]:
+    used: set[str] = set()
+    for row in rows:
+        for col in ("protocol_from", "protocol_to"):
+            proto = str(row.get(col) or "").strip()
+            if proto:
+                used.add(proto)
+    return used
+
+
+def _card_events_for_range(
+    employer_afm: str,
+    branch_aa: str,
+    from_iso: str,
+    to_iso: str,
+) -> list[dict[str, Any]]:
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    start = str(from_iso).strip()[:10]
+    end = str(to_iso).strip()[:10]
+    if end < start:
+        start, end = end, start
+    try:
+        start_ext = (date.fromisoformat(start) - timedelta(days=1)).isoformat()
+    except ValueError:
+        start_ext = start
+    sql = """
+        SELECT
+            e.id,
+            e.declaration_id,
+            e.f_afm,
+            e.f_type,
+            e.f_reference_date,
+            e.f_date,
+            d.protocol,
+            d.submit_date_text
+        FROM dbo.karta_card_event e
+        INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+        WHERE e.f_afm_ergodoti = ?
+          AND e.f_aa = ?
+          AND d.success = 1
+          AND e.f_reference_date >= ?
+          AND e.f_reference_date <= ?
+          AND e.f_type IN (N'0', N'1')
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql, (afm, aa, start_ext, end))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _own_event_index(
+    events: list[dict[str, Any]],
+) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+    """(employee_afm, work_date_iso, f_type, HH:MM) → card event με πρωτόκολλο."""
+    index: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for ev in events:
+        emp = norm_afm(ev.get("f_afm") or "")
+        wd = str(ev.get("f_reference_date") or "").strip()[:10]
+        ft = str(ev.get("f_type") or "").strip()
+        hm = _time_hm(ev.get("f_date"))
+        if not emp or not wd or ft not in ("0", "1") or not hm:
+            continue
+        key = (emp, wd, ft, hm)
+        proto = str(ev.get("protocol") or "").strip()
+        prev = index.get(key)
+        if prev is None or (proto and not str(prev.get("protocol") or "").strip()):
+            index[key] = ev
+    return index
+
+
+def apply_own_punch_protocols(
+    store_id: int,
+    employer_afm: str,
+    branch_aa: str,
+    *,
+    from_iso: str,
+    to_iso: str,
+) -> dict[str, Any]:
+    """Δικά μας χτυπήματα → protocol_from/to στην πραγματική (κενό πεδίο μόνο)."""
+    wl_rows = _work_log_rows_for_range(employer_afm, branch_aa, from_iso, to_iso)
+    events = _own_event_index(
+        _card_events_for_range(employer_afm, branch_aa, from_iso, to_iso)
+    )
+    if not wl_rows or not events:
+        return {"work_log_updated": 0, "linked": 0}
+
+    updated = 0
+    linked = 0
+    with cursor() as cur:
+        for row in wl_rows:
+            emp = norm_afm(row.get("employee_afm") or "")
+            work_iso = ergani_date_to_iso(str(row.get("work_date") or ""))
+            wl_id = row.get("id")
+            if not emp or not work_iso or wl_id is None:
+                continue
+            for f_type, hour, col in (
+                ("0", _time_hm(row.get("hour_from")), "protocol_from"),
+                ("1", _time_hm(row.get("hour_to")), "protocol_to"),
+            ):
+                if not hour:
+                    continue
+                if str(row.get(col) or "").strip():
+                    continue
+                ev = events.get((emp, work_iso, f_type, hour))
+                proto = str((ev or {}).get("protocol") or "").strip()
+                if not ev or not proto:
+                    continue
+                cur.execute(
+                    f"""
+                    UPDATE dbo.karta_work_log
+                    SET {col} = ?
+                    WHERE id = ?
+                      AND ({col} IS NULL OR LTRIM(RTRIM({col})) = N'')
+                    """,
+                    (proto[:128], int(wl_id)),
+                )
+                if cur.rowcount <= 0:
+                    continue
+                updated += 1
+                row[col] = proto
+                decl_id = ev.get("declaration_id")
+                if decl_id is None:
+                    continue
+                cur.execute(
+                    """
+                    UPDATE dbo.karta_ergani_protocol
+                    SET declaration_id = ?
+                    WHERE store_id = ?
+                      AND protocol = ?
+                      AND declaration_id IS NULL
+                    """,
+                    (int(decl_id), int(store_id), proto[:128]),
+                )
+                if cur.rowcount > 0:
+                    linked += 1
+    return {"work_log_updated": updated, "linked": linked}
 
 
 def _find_card_event(
@@ -268,16 +415,18 @@ def find_one_to_one_matches(
     require_missing_protocol: bool = False,
     require_unlinked_protocol: bool = False,
 ) -> list[ProtocolDeductionMatch]:
-    """Βέβαιες 1-1: μοναδική ώρα πραγματικής ↔ μοναδικό πρωτόκολλο."""
-    protocols = _group_protocols(
-        _protocol_rows_for_range(
+    """Βέβαιες 1-1: μοναδική κενή ώρα πραγματικής ↔ μοναδικό αχρησιμοποίητο πρωτόκολλο."""
+    wl_rows = _work_log_rows_for_range(employer_afm, branch_aa, from_iso, to_iso)
+    used = _used_protocols_from_work_log(wl_rows)
+    proto_rows = [
+        p
+        for p in _protocol_rows_for_range(
             store_id, from_iso, to_iso, require_unlinked=require_unlinked_protocol
         )
-    )
-    work_slots = _group_work_log_slots(
-        store_id,
-        _work_log_rows_for_range(employer_afm, branch_aa, from_iso, to_iso),
-    )
+        if str(p.get("protocol") or "").strip() not in used
+    ]
+    protocols = _group_protocols(proto_rows)
+    work_slots = _group_work_log_slots(store_id, wl_rows, skip_filled=True)
     matches: list[ProtocolDeductionMatch] = []
     for key, proto_list in protocols.items():
         if len(proto_list) != 1:
@@ -348,7 +497,15 @@ def apply_protocol_sync(
     from_iso: str,
     to_iso: str,
 ) -> dict[str, Any]:
-    """1-1 απαγωγή → karta_work_log.protocol_from/to + κενά karta_declaration."""
+    """Δικά μας πρωτόκολλα στην πραγματική, μετά 1-1 στα υπόλοιπα κενά."""
+    own = apply_own_punch_protocols(
+        store_id,
+        employer_afm,
+        branch_aa,
+        from_iso=from_iso,
+        to_iso=to_iso,
+    )
+    own_updated = int(own.get("work_log_updated") or 0)
     matches = find_one_to_one_matches(
         store_id,
         employer_afm,
@@ -358,11 +515,12 @@ def apply_protocol_sync(
         require_missing_protocol=False,
         require_unlinked_protocol=False,
     )
-    if not matches:
+    if not matches and own_updated <= 0:
         return {
             "success": True,
             "matched": 0,
             "work_log_updated": 0,
+            "own_updated": 0,
             "declaration_updated": 0,
             "updated": 0,
             "detail": "Καμία 1-1 αντιστοίχιση",
@@ -415,15 +573,18 @@ def apply_protocol_sync(
                 (m.declaration_id, m.protocol_id),
             )
 
-    total = work_log_updated + declaration_updated
+    total_wl = own_updated + work_log_updated
+    total = total_wl + declaration_updated
     detail = (
-        f"πραγματική {work_log_updated}, δηλώσεις {declaration_updated} "
-        f"({len(matches)} θέσεις 1-1)"
+        f"δικά μας {own_updated}, 1-1 πραγματική {work_log_updated}, "
+        f"δηλώσεις {declaration_updated} ({len(matches)} θέσεις 1-1)"
     )
     return {
         "success": True,
         "matched": len(matches),
-        "work_log_updated": work_log_updated,
+        "work_log_updated": total_wl,
+        "own_updated": own_updated,
+        "one_to_one_updated": work_log_updated,
         "declaration_updated": declaration_updated,
         "updated": total,
         "detail": detail,
