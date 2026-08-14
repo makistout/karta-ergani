@@ -537,7 +537,11 @@ def _submit_work_card(
                     entity_id=emp_afm,
                     details={
                         "source": str(body.get("source") or "office_ui")[:32],
+                        "employee_afm": emp_afm,
+                        "employee_name": employee_display or None,
+                        "event": str(event or "").strip() or None,
                         "f_type": resolved_type,
+                        "f_type_label": _f_type_label(resolved_type),
                         "reference_date": ref_date,
                         "event_at": event_at_str,
                         "protocol": listener_protocol,

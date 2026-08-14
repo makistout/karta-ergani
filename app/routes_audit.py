@@ -9,6 +9,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 from app.audit_log import list_audit_events
+from app.db import cursor
 
 audit_bp = Blueprint("audit", __name__, url_prefix="/api/audit")
 
@@ -110,6 +111,42 @@ def _json_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _attach_employee_names(rows: list[dict[str, Any]]) -> None:
+    """Bulk-fill names for old punch audits that stored only entity_id/AFM."""
+    missing: set[str] = set()
+    for row in rows:
+        details = row.get("details") if isinstance(row.get("details"), dict) else {}
+        afm = str(details.get("employee_afm") or row.get("entity_id") or "").strip()
+        if afm and not str(details.get("employee_name") or "").strip():
+            missing.add(afm)
+    if not missing:
+        return
+    values = sorted(missing)[:200]
+    placeholders = ",".join("?" for _ in values)
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                f"SELECT afm, eponymo, onoma FROM dbo.karta_employee WHERE afm IN ({placeholders})",
+                tuple(values),
+            )
+            names = {
+                str(record[0]): f"{record[1] or ''} {record[2] or ''}".strip()
+                for record in cur.fetchall()
+            }
+    except Exception:
+        return
+    for row in rows:
+        details = row.get("details") if isinstance(row.get("details"), dict) else None
+        if details is None:
+            details = {}
+            row["details"] = details
+        afm = str(details.get("employee_afm") or row.get("entity_id") or "").strip()
+        if afm:
+            details.setdefault("employee_afm", afm)
+            if names.get(afm):
+                details.setdefault("employee_name", names[afm])
+
+
 @audit_bp.get("/list")
 def audit_list():
     raw_store = request.args.get("store_id")
@@ -131,11 +168,14 @@ def audit_list():
         before_id=before_id,
     )
     rows = result.get("rows") or []
+    json_rows = _json_rows(rows)
+    if kind == "work_card_punches":
+        _attach_employee_names(json_rows)
     return jsonify({
         "count": len(rows),
         "has_more": bool(result.get("has_more")),
         "next_before_id": result.get("next_before_id"),
         "limit": result.get("limit") or limit,
         "before_id": before_id,
-        "audit": _json_rows(rows),
+        "audit": json_rows,
     })

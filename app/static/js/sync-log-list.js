@@ -581,19 +581,14 @@ function workCardPunchChannelLabel(details) {
   return "—";
 }
 
-function workCardPunchEmployeeText(row) {
+function workCardPunchEmployeeMeta(row) {
   const d = row.details || {};
   const afm = String(d.employee_afm || row.entity_id || "").trim();
-  let surname = String(d.eponymo || d.employee_last_name || "").trim();
-  if (!surname) {
-    const full = String(d.employee_name || "").trim();
-    if (full && full !== afm) {
-      const parts = full.split(/\s+/).filter(Boolean);
-      surname = parts.length > 1 ? parts[parts.length - 1] : parts[0] || "";
-    }
-  }
-  if (surname && afm && surname !== afm) return `${surname} · ${afm}`;
-  return surname || afm || "—";
+  const fullName = String(
+    d.employee_name ||
+    `${d.eponymo || d.employee_last_name || ""} ${d.onoma || d.employee_first_name || ""}`
+  ).trim();
+  return { afm: afm || "—", fullName: fullName && fullName !== afm ? fullName : "" };
 }
 
 function workCardPunchErganiResponseText(parsed) {
@@ -757,7 +752,12 @@ function renderWorkCardPunches(rows, hasMore) {
 
     const tdEmp = document.createElement("td");
     tdEmp.className = "work-card-punch-col-emp";
-    tdEmp.textContent = workCardPunchEmployeeText(row);
+    const employee = workCardPunchEmployeeMeta(row);
+    tdEmp.textContent = employee.afm;
+    if (employee.fullName) {
+      tdEmp.title = employee.fullName;
+      tdEmp.setAttribute("aria-label", `${employee.afm} — ${employee.fullName}`);
+    }
     tr.appendChild(tdEmp);
 
     const tdDate = document.createElement("td");
