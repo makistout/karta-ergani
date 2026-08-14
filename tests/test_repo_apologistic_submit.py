@@ -1,6 +1,7 @@
 from datetime import date
+import json
 
-from app.repo_apologistic import _submit_entry_from_row
+from app.repo_apologistic import _overtime_minutes_from_request_json, _submit_entry_from_row
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A
 
 
@@ -81,3 +82,15 @@ def test_attach_ergani_submits_groups_latest_per_kind():
     submit = report["days"][0]["ergani_submit"]["schedule"]
     assert submit["protocol"] == "NEW"
     assert submit["matches_proposal"] is True
+
+
+def test_overtime_minutes_are_read_from_submission_payload():
+    payload = {
+        "WTOS": {"WTO": [{"Ergazomenoi": {"ErgazomenoiWTO": [{
+            "ErgazomenosAnalytics": {"ErgazomenosWTOAnalytics": [
+                {"f_from": "21:30", "f_to": "23:00"},
+                {"f_from": "23:30", "f_to": "00:30"},
+            ]}
+        }]}}]}
+    }
+    assert _overtime_minutes_from_request_json(json.dumps(payload)) == 150

@@ -62,6 +62,35 @@ def test_schedule_body_from_apologistic_row_change():
     assert body["schedule_type"] == "ΕΡΓ"
 
 
+def test_schedule_body_preserves_telework_category_from_rule_engine():
+    row = {
+        "status": "change",
+        "proposed": "09:00–17:00",
+        "proposed_schedule_type": "ΤΗΛ",
+        "employee_afm": "123456789",
+        "eponymo": "ΠΑΠΑ",
+        "onoma": "ΜΑΡΙΑ",
+        "work_date": "28/07/2026",
+    }
+    assert schedule_body_from_apologistic_row(row)["schedule_type"] == "ΤΗΛ"
+
+
+def test_schedule_body_supports_split_rule_engine_proposal():
+    row = {
+        "status": "change",
+        "proposed": "09:00–13:00 · 16:00–20:00",
+        "employee_afm": "123456789",
+        "eponymo": "ΠΑΠΑ",
+        "onoma": "ΜΑΡΙΑ",
+        "work_date": "28/07/2026",
+    }
+    body = schedule_body_from_apologistic_row(row)
+    assert body["intervals"] == [
+        {"hour_from": "09:00", "hour_to": "13:00"},
+        {"hour_from": "16:00", "hour_to": "20:00"},
+    ]
+
+
 def test_schedule_body_rejects_overtime_only_change():
     row = {
         "status": "change",

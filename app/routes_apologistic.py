@@ -16,7 +16,10 @@ from app.apologistic_submit import (
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
 from app.office_auth import SESSION_USER
-from app.repo_apologistic import apply_exchange, accept_all_review, accept_review, load_report, record_ergani_submit, tables_available, update_proposed
+from app.repo_apologistic import (
+    apply_exchange, accept_all_review, accept_review, load_report, record_ergani_submit,
+    successful_overtime_minutes_for_year, tables_available, update_proposed,
+)
 from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_submit_result
 from app.wto_submit import parse_submit_response
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a_payload
@@ -363,6 +366,29 @@ def apologistic_submit_overtime():
         return jsonify({"error": str(exc)}), 400
     except WorkCardPayloadError as exc:
         return jsonify({"error": str(exc)}), 400
+
+    reference_year = datetime.strptime(str(submit_body["reference_date"])[:10], "%Y-%m-%d").year
+    submitted_minutes = successful_overtime_minutes_for_year(
+        store_id=int(ctx["id"]), employee_afm=str(submit_body["employee_afm"]), year=reference_year,
+    )
+    new_minutes = 0
+    for interval in submit_body.get("intervals") or [{"hour_from": submit_body.get("hour_from"), "hour_to": submit_body.get("hour_to")}]:
+        start = datetime.strptime(str(interval.get("hour_from") or ""), "%H:%M")
+        end = datetime.strptime(str(interval.get("hour_to") or ""), "%H:%M")
+        minutes = int((end - start).total_seconds() // 60)
+        new_minutes += minutes + (1440 if minutes < 0 else 0)
+    projected_minutes = submitted_minutes + new_minutes
+    if projected_minutes > 150 * 60 and not body.get("confirm_annual_limit"):
+        return jsonify({
+            "error": (
+                f"Με τη νέα υποβολή οι επιτυχώς υποβλημένες υπερωρίες του {reference_year} "
+                f"θα φτάσουν {projected_minutes // 60}:{projected_minutes % 60:02d}, πάνω από το όριο των 150 ωρών."
+            ),
+            "requires_confirmation": True,
+            "annual_submitted_minutes": submitted_minutes,
+            "new_overtime_minutes": new_minutes,
+            "projected_annual_minutes": projected_minutes,
+        }), 409
 
     resp, parsed, auth_retry, declaration_id = execute_apologistic_wto_submit(
         ctx,

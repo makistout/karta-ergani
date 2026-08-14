@@ -134,7 +134,19 @@ def schedule_body_from_apologistic_row(row: dict[str, Any]) -> dict[str, Any]:
         raise WorkCardPayloadError(
             "Η πρόταση ωραρίου συμπίπτει με το δηλωμένο· απαιτείται μόνο απολογιστική υπερωρία"
         )
-    hour_from, hour_to, schedule_type = parse_proposed_schedule(proposed)
+    slot_labels = [part.strip() for part in proposed.split(" · ") if part.strip()]
+    intervals = None
+    if len(slot_labels) > 1:
+        parsed_slots = [parse_proposed_schedule(part) for part in slot_labels]
+        if any(item[2] != "ΕΡΓ" for item in parsed_slots):
+            raise WorkCardPayloadError("Το σπαστό απολογιστικό πρέπει να περιέχει μόνο διαστήματα εργασίας")
+        intervals = [{"hour_from": item[0], "hour_to": item[1]} for item in parsed_slots]
+        hour_from = hour_to = None
+        schedule_type = "ΕΡΓ"
+    else:
+        hour_from, hour_to, schedule_type = parse_proposed_schedule(proposed)
+    if str(row.get("proposed_schedule_type") or "").strip().upper() == "ΤΗΛ":
+        schedule_type = "ΤΗΛ"
     return {
         "employee_afm": str(row.get("employee_afm") or "").strip(),
         "eponymo": str(row.get("eponymo") or "").strip(),
@@ -143,6 +155,7 @@ def schedule_body_from_apologistic_row(row: dict[str, Any]) -> dict[str, Any]:
         "schedule_type": schedule_type,
         "hour_from": hour_from,
         "hour_to": hour_to,
+        "intervals": intervals,
         "proposed": proposed,
     }
 

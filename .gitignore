@@ -15,3 +15,4 @@ scripts/__pycache__/
 scripts/*.json
 scripts/temp_*.py
 scripts/temp_probe_*.py
+sync_out.txt

@@ -11,6 +11,14 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+from app.apologistic_rules import (
+    RuleDecision,
+    classify_extra_minutes,
+    contract_daily_base_minutes,
+    normal_schedule_decision,
+    split_schedule_decision,
+)
+
 
 REST_MARKERS = ("ΑΝΑΠΑΥΣ", "ΡΕΠΟ")
 NON_WORK_MARKERS = (*REST_MARKERS, "ΜΗ ΕΡΓΑΣΙΑ", "ΑΔΕΙΑ", "ΑΡΓΙΑ")
@@ -311,7 +319,9 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
-    """Infer the week's 5/6-day system from its declarations, then fall back to the contract."""
+    """Use the contract as the legal 5/6-day reference; declarations cannot override it."""
+    if contract_weekly_days in (5, 6):
+        return contract_weekly_days, "Σύμβαση εργαζομένου"
     declared_by_date: dict[str, int] = defaultdict(int)
     for row in schedule_rows:
         duration = _minutes(row.get("hour_from"), row.get("hour_to"))
@@ -365,29 +375,7 @@ def _contract_flags(contract: dict[str, Any] | None) -> dict[str, bool]:
 
 
 def _classify_extra(contract_kind: str, weekly_days: int | None, worked: int, declared: int) -> dict[str, Any]:
-    """Daily declaration bands. Weekly/arrangement legality remains a warning."""
-    overwork = overtime = undeclared = unlawful = 0
-    warning = ""
-    if contract_kind == "Πλήρης" and weekly_days == 5:
-        overwork = max(0, min(worked, 540) - 480)
-        overtime = max(0, min(worked - 540, 240))
-        unlawful = max(0, worked - 780)
-    elif contract_kind == "Πλήρης" and weekly_days == 6:
-        overwork = max(0, min(worked, 480) - 400)
-        overtime = max(0, min(worked - 480, 240))
-        unlawful = max(0, worked - 720)
-    elif contract_kind == "Εκ περιτροπής":
-        overtime = max(0, min(worked - declared, 240))
-        unlawful = max(0, worked - declared - 240)
-        warning = "Χωρίς υπερεργασία· το ακριβές όριο εξαρτάται από τη δηλωμένη κατανομή"
-    elif contract_kind == "Μερική":
-        undeclared = max(0, worked - declared)
-        warning = "Δεν παράγεται δήλωση υπερωρίας μερικής απασχόλησης"
-    elif worked > declared:
-        warning = "Άγνωστο καθεστώς· απαιτείται χαρακτηρισμός"
-    return {"overwork_minutes": overwork, "overtime_minutes": overtime,
-            "undeclared_extra_minutes": undeclared, "unlawful_overtime_minutes": unlawful,
-            "classification_warning": warning}
+    return classify_extra_minutes(contract_kind, weekly_days, worked, declared)
 
 
 def _proposed_normal_slot(
@@ -524,7 +512,10 @@ def build_weekly_report(
         elif contract_flags["uneven_distribution"]:
             bands["classification_warning"] = "Ανισομερής κατανομή: απαιτείται επιβεβαίωση της νόμιμης βάσης και του εβδομαδιαίου συνόλου"
 
-        status, reason, proposed, proposal_basis = "ok", "Δεν απαιτείται μεταβολή", declared_label, "Δηλωμένο ωράριο"
+        decision = RuleDecision("review", "Η περίπτωση δεν καλύπτεται από γνωστό κανόνα", actual_label, "Χειροκίνητος έλεγχος", "UNKNOWN_CASE_REVIEW")
+        status, reason, proposed, proposal_basis, rule_id = (
+            decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
+        )
         state = _day_state(slots)
         replacement_candidates: list[dict[str, Any]] = []
         exchange_options: list[dict[str, Any]] = []
@@ -541,125 +532,109 @@ def build_weekly_report(
             and (effective_actual or 0) > 300
             and day_punches
         )
-        if matched and (not slots or _is_non_work(slots)) and day_punches:
-            normal_limit = 480 if weekly_days == 5 else 400 if weekly_days == 6 else None
-            if (contract_kind == "Πλήρης" and normal_limit is not None
-                    and (effective_actual or 0) > normal_limit and ps is not None and pe is not None):
-                normal_work = min(effective_actual or 0, normal_limit)
-                proposed = f"{_hm(ps)}–{_hm(ps + normal_work)}"
-                proposal_basis = f"Όριο κανονικής εργασίας πλήρους {weekly_days}ημέρου ({_hm(normal_limit)})"
-                status = "change"
-                reason = (
-                    f"Εργασία σε ημέρα μη εργασίας: προτείνεται μόνο η κανονική {normal_limit // 60}:"
-                    f"{normal_limit % 60:02d} διάρκεια· η υπερεργασία δεν δηλώνεται και η υπερωρία υποβάλλεται χωριστά"
-                )
+        missing_start = bool(len(day_punches) == 1 and not _clock(day_punches[0].get("hour_from")) and _clock(day_punches[0].get("hour_to")))
+        missing_end = bool(len(day_punches) == 1 and _clock(day_punches[0].get("hour_from")) and not _clock(day_punches[0].get("hour_to")))
+        raw_overnight = bool(
+            len(day_punches) == 1
+            and _minute_of_day(day_punches[0].get("hour_from")) is not None
+            and _minute_of_day(day_punches[0].get("hour_to")) is not None
+            and (_minute_of_day(day_punches[0].get("hour_to")) or 0) < (_minute_of_day(day_punches[0].get("hour_from")) or 0)
+        )
+        declared_overnight = bool(
+            work_slots and _minute_of_day(work_slots[-1].get("hour_to")) is not None
+            and _minute_of_day(work_slots[0].get("hour_from")) is not None
+            and (_minute_of_day(work_slots[-1].get("hour_to")) or 0) < (_minute_of_day(work_slots[0].get("hour_from")) or 0)
+        )
+        if len(work_slots) > 1:
+            if len(matched) >= 2 and not inferred and not orphan_punches:
+                first_start = _minute_of_day(matched[0].get("from"))
+                first_end = _minute_of_day(matched[0].get("to"), after=first_start)
+                second_start = _minute_of_day(matched[1].get("from"), after=first_end)
+                if first_start is not None and first_end is not None and second_start is not None:
+                    decision = split_schedule_decision(
+                        contract_kind=contract_kind,
+                        daily_base=contract_daily_base_minutes(contract_kind, weekly_days),
+                        first_start=first_start,
+                        first_end=first_end,
+                        second_start=second_start,
+                        outside_break=outside_break,
+                        hm=_hm,
+                    )
+                else:
+                    decision = RuleDecision("review", "Μη έγκυρα όρια σπαστού", actual_label, "Χειροκίνητος έλεγχος", "SPLIT_INVALID_BOUNDARIES")
             else:
-                status, reason, proposed = "review", "Χτύπημα χωρίς ωράριο ή σε ημέρα μη εργασίας", actual_label
-            if special_non_work_punch:
-                weekly_punch_days = len(punch_dates_by_afm.get(afm, set()))
-                weekly_punch_details = list(weekly_punch_details_by_afm.get(afm, []))
-                if contract_required_days and weekly_punch_days < contract_required_days:
-                    # Λιγότερες ημέρες με κάρτα από τις ημέρες εβδομαδιαίας απασχόλησης → Σύμφωνο
-                    status = "ok"
-                    proposed = actual_label
-                    proposal_basis = (
-                        "Ημέρες με κάρτα λιγότερες από τις ημέρες σύμβασης — "
-                        "διάρκεια πραγματικού χτυπήματος στο ρεπό/μη εργασία"
-                    )
-                    reason = (
-                        f"Χτύπημα σε {state}: {weekly_punch_days} ημέρες με κάρτα < "
-                        f"{contract_required_days} ημέρες εβδομαδιαίας απασχόλησης· δεν απαιτείται έλεγχος"
-                    )
-                elif contract_required_days and weekly_punch_days >= contract_required_days:
-                    replacement_candidates = list(missing_declared_by_afm.get(afm, []))
-                    if replacement_candidates:
-                        status = "review"
-                        if ps is not None:
-                            exchange_options = [{
-                                "rest_work_date": work_date,
-                                "rest_punch": actual_label,
-                                "replacement_work_date": item["work_date"],
-                                "replacement_declared": item["declared"],
-                                "contract_duration_minutes": item["declared_minutes"],
-                                "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
-                            } for item in replacement_candidates if item.get("declared_minutes")]
-                        if exchange_options:
-                            proposed = exchange_options[0]["proposed"]
-                            proposal_basis = "Προσωρινός κανόνας ανταλλαγής με δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα"
-                        reason = (
-                            f"Χτύπημα σε {state} με {weekly_punch_days} ημέρες κάρτας έναντι "
-                            f"{contract_required_days} ημερών σύμβασης και δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα· "
-                            "απαιτείται έλεγχος και επιλογή ημέρας ανταλλαγής"
-                        )
-                    else:
-                        status = "ok"
-                        proposed = actual_label
-                        proposal_basis = "Πλήρης κάλυψη ημερών σύμβασης — διάρκεια πραγματικού χτυπήματος στο ρεπό"
-                        reason = (
-                            f"Χτύπημα σε {state}: οι {weekly_punch_days} ημέρες με κάρτα καλύπτουν "
-                            f"τις {contract_required_days} ημέρες της σύμβασης· διατηρείται η διάρκεια του χτυπήματος"
-                        )
-                else:
-                    status = "review"
-                    replacement_candidates = list(missing_declared_by_afm.get(afm, []))
-                    if ps is not None:
-                        exchange_options = [{
-                            "rest_work_date": work_date,
-                            "rest_punch": actual_label,
-                            "replacement_work_date": item["work_date"],
-                            "replacement_declared": item["declared"],
-                            "contract_duration_minutes": item["declared_minutes"],
-                            "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
-                        } for item in replacement_candidates if item.get("declared_minutes")]
-                    if exchange_options:
-                        proposed = exchange_options[0]["proposed"]
-                        proposal_basis = "Διάρκεια δηλωμένου ωραρίου της υποψήφιας ημέρας αντικατάστασης"
-                    required_label = str(contract_required_days) if contract_required_days else "άγνωστες"
-                    reason = (
-                        f"Χτύπημα σε {state}: {weekly_punch_days} ημέρες με κάρτα έναντι "
-                        f"{required_label} ημερών σύμβασης· απαιτείται επιλογή ημέρας αντικατάστασης"
-                    )
-        elif work_slots and fully_missing:
-            status, reason, proposed = "ok", "Δεν υπάρχει χτύπημα· δεν προκύπτει απολογιστική μεταβολή ή υπερωρία", declared_label
-        elif work_slots and matched:
-            arrival_in_flex = bool(ds is not None and ps is not None and ds <= ps <= ds + flex)
-            has_declarable_extra = bands["overtime_minutes"] > 0
-            if orphan_punches and len(work_slots) == 1:
-                status, reason = "review", "Υπάρχουν επιπλέον ορφανές εγγραφές χτυπημάτων"
-            elif len(work_slots) > 1:
-                changed_parts = []
-                for item, slot in zip(matched, work_slots):
-                    sf = _minute_of_day(slot.get("hour_from")) or 0
-                    st = _minute_of_day(slot.get("hour_to"), after=sf) or sf
-                    pf = _minute_of_day(item.get("from")) or sf
-                    pt = _minute_of_day(item.get("to"), after=pf) or st
-                    duration = _minutes(slot.get("hour_from"), slot.get("hour_to")) or 0
-                    changed_parts.append(f"{_hm(pf)}–{_hm(pf + duration)}" if (pf != sf or pt != st) else f"{_hm(sf)}–{_hm(st)}")
-                proposed = " · ".join(changed_parts)
-                if inferred or orphan_punches:
-                    status, reason = "review", "Σπαστό ωράριο με τεκμαρτό ή ορφανό χτύπημα"
-                elif proposed != declared_label:
-                    status, reason = "change", "Απόκλιση σε τμήμα σπαστού ωραρίου"
-            elif inferred:
-                if ps != ds or pe != de or has_declarable_extra:
-                    status, reason = "change", "Ελλιπές χτύπημα συμπληρώθηκε από το δηλωμένο όριο"
-                else:
-                    reason = "Ελλιπές χτύπημα· χρησιμοποιήθηκε το δηλωμένο όριο"
-            elif arrival_in_flex:
-                if has_declarable_extra:
-                    status, reason = "change", "Η κανονική βάρδια μένει δηλωμένη· απαιτείται απολογιστική υπερωρία"
-                else:
-                    reason = "Έναρξη εντός ευέλικτης προσέλευσης"
-            elif ps is not None and pe is not None and ds is not None and de is not None:
-                start, end, proposal_basis = _proposed_normal_slot(ds, de, ps, pe, declared_minutes, outside_break, flex, actual_minutes or 0)
-                proposed = f"{_hm(start)}–{_hm(end)}"
-                status, reason = "change", "Απόκλιση πραγματικής από δηλωμένη απασχόληση"
+                decision = RuleDecision("review", "Σπαστό με ελλιπές ή ορφανό χτύπημα", actual_label, "Χειροκίνητος έλεγχος", "SPLIT_INCOMPLETE_REVIEW")
+        else:
+            decision = normal_schedule_decision(
+                contract_kind=contract_kind,
+                weekly_days=weekly_days,
+                day_state=state,
+                declared_label=declared_label,
+                declared_minutes=declared_minutes,
+                actual_label=actual_label,
+                actual_minutes=actual_minutes,
+                effective_actual=effective_actual,
+                declared_start=ds,
+                declared_end=de,
+                actual_start=ps,
+                actual_end=pe,
+                flex=flex,
+                outside_break=outside_break,
+                has_punch=bool(day_punches),
+                missing_start=missing_start,
+                missing_end=missing_end,
+                unpredictable=contract_flags["unpredictable_schedule"],
+                raw_overnight=raw_overnight,
+                declared_overnight=declared_overnight,
+                hm=_hm,
+            )
+        status, reason, proposed, proposal_basis, rule_id = (
+            decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
+        )
+        if len(work_slots) > 1 and status == "change" and proposed == declared_label and bands["overtime_minutes"] == 0:
+            status, reason, rule_id = "ok", "Το πραγματικό σπαστό συμφωνεί με το δηλωμένο", "SPLIT_COMPLIANT"
+        if status == "ok" and bands["overtime_minutes"] > 0:
+            status, reason, rule_id = "change", "Το ωράριο είναι αποδεκτό αλλά απαιτείται απολογιστική υπερωρία", "OVERTIME_ONLY"
+        if orphan_punches and len(work_slots) == 1:
+            status, reason, rule_id = "review", "Υπάρχουν επιπλέον ορφανές εγγραφές χτυπημάτων", "ORPHAN_PUNCH_REVIEW"
+
+        if special_non_work_punch:
+            weekly_punch_days = len(punch_dates_by_afm.get(afm, set()))
+            weekly_punch_details = list(weekly_punch_details_by_afm.get(afm, []))
+            replacement_candidates = list(missing_declared_by_afm.get(afm, []))
+            if ps is not None:
+                exchange_options = [{
+                    "rest_work_date": work_date,
+                    "rest_punch": actual_label,
+                    "replacement_work_date": item["work_date"],
+                    "replacement_declared": item["declared"],
+                    "contract_duration_minutes": item["declared_minutes"],
+                    "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
+                } for item in replacement_candidates if item.get("declared_minutes")]
+            if exchange_options:
+                status, rule_id = "review", "REST_WORK_EXCHANGE_REVIEW"
+                proposed = exchange_options[0]["proposed"]
+                proposal_basis = "Ανταλλαγή με δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα"
+                reason = f"Χτύπημα σε {state} και δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα· απαιτείται επιλογή ανταλλαγής"
+            else:
+                status, rule_id = "change", "NON_WORK_DAY_BECOMES_WORK"
+                reason = f"Χτύπημα σε {state} χωρίς διαθέσιμη ημέρα ανταλλαγής"
 
         overtime_from = overtime_to = None
         if bands["overtime_minutes"] and ps is not None and pe is not None:
-            threshold = 540 if contract_kind == "Πλήρης" and weekly_days == 5 else 480 if contract_kind == "Πλήρης" and weekly_days == 6 else declared_minutes
-            overtime_from = ps + outside_break + threshold
-            overtime_to = min(pe, overtime_from + bands["overtime_minutes"])
+            contract_base = contract_daily_base_minutes(contract_kind, weekly_days)
+            if len(work_slots) > 1 and " · " in proposed:
+                last_part = proposed.split(" · ")[-1]
+                proposed_second_start, proposed_second_end = last_part.split("–", 1)
+                second_anchor = _minute_of_day(proposed_second_start, after=ps)
+                proposed_end = _minute_of_day(proposed_second_end, after=second_anchor)
+                overwork_window = 60 if contract_kind == "Πλήρης" and weekly_days == 5 else 80 if contract_kind == "Πλήρης" and weekly_days == 6 else 0
+                overtime_from = (proposed_end + overwork_window) if proposed_end is not None else None
+            else:
+                threshold = 540 if contract_kind == "Πλήρης" and weekly_days == 5 else 480 if contract_kind == "Πλήρης" and weekly_days == 6 else (contract_base or declared_minutes)
+                overtime_from = ps + outside_break + threshold
+            if overtime_from is not None:
+                overtime_to = min(pe, overtime_from + bands["overtime_minutes"])
         overtime_segments = _overtime_segments(work_date, overtime_from, overtime_to)
         requires_confirmation = (status != "ok" or contract_kind in ("Άγνωστη σύμβαση", "Μη προσδιορισμένη")
                                  or break_in_work is None and break_minutes > 0
@@ -693,12 +668,7 @@ def build_weekly_report(
                 f"  · {item['work_date']}: {' · '.join(item['punches'])}"
                 for item in weekly_punch_details
             )
-            if contract_required_days and (weekly_punch_days or 0) < contract_required_days:
-                status_explanation.append(
-                    "Οι ημέρες με κάρτα είναι λιγότερες από τις ημέρες εβδομαδιαίας απασχόλησης, "
-                    "επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο."
-                )
-            elif replacement_candidates:
+            if replacement_candidates:
                 status_explanation.append("Δηλωμένες ημέρες εργασίας χωρίς χτύπημα που μπορούν να εξεταστούν για αντικατάσταση:")
                 status_explanation.extend(
                     f"  · {item['replacement_work_date']}: {item['replacement_declared']} "
@@ -706,10 +676,8 @@ def build_weekly_report(
                     f"πρόταση {item['proposed']}"
                     for item in exchange_options
                 )
-            elif contract_required_days and (weekly_punch_days or 0) >= contract_required_days:
-                status_explanation.append("Οι ημέρες με κάρτα καλύπτουν ή υπερβαίνουν τις ημέρες σύμβασης και δεν βρέθηκε δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα, επομένως η συγκεκριμένη ημέρα χαρακτηρίζεται Σύμφωνο.")
             else:
-                status_explanation.append("Δεν βρέθηκε δηλωμένη ημέρα εργασίας χωρίς χτύπημα ως υποψήφια αντικατάστασης.")
+                status_explanation.append("Δεν βρέθηκε δηλωμένη εργάσιμη ημέρα χωρίς χτύπημα· προτείνεται μεταβολή της συγκεκριμένης ημέρας σε εργασία.")
         daily.append({
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
@@ -717,7 +685,8 @@ def build_weekly_report(
             **contract_flags,
             "declared": declared_label, "punch_recorded": punch_recorded,
             "actual": actual_label, "proposed": proposed,
-            "proposal_basis": proposal_basis, "status": status, "reason": reason,
+            "proposed_schedule_type": "ΤΗΛ" if state == "Τηλεργασία" else None,
+            "proposal_basis": proposal_basis, "rule_id": rule_id, "status": status, "reason": reason,
             "status_explanation": status_explanation, "orphan_punches": orphan_details,
             "corrected_extra_punches": [{k: v for k, v in item.items() if k != "recorded"}
                                          for item in corrected_extra_punches],
@@ -750,23 +719,42 @@ def build_weekly_report(
             ),
         })
 
-    # If seven workdays were declared and one has no card, propose (never auto-apply) rest.
+    # Propose exactly the contractual surplus of declared workdays as rest, never auto-apply.
     by_employee: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in daily:
         by_employee[row["employee_afm"]].append(row)
-    for rows in by_employee.values():
+    for afm, rows in by_employee.items():
         declared_workdays = [r for r in rows if r["declared_minutes"] > 0]
-        if len(declared_workdays) == 7:
-            for row in declared_workdays:
-                if row["punch_count"] == 0:
-                    rest_reason = "Εβδομάδα 7 δηλωμένων ημερών χωρίς χτύπημα: πρόταση ρεπό με έγκριση"
-                    row.update(status="review", reason=rest_reason,
-                               proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", suggested_rest=True,
-                               requires_confirmation=True, confidence="Χαμηλή",
-                               status_explanation=["Αποτέλεσμα: Έλεγχος", rest_reason,
-                                                   "Δεν υπάρχει καμία εγγραφή χτυπήματος στην κάρτα.",
-                                                   "Πρόταση: ΑΝΑΠΑΥΣΗ/ΡΕΠΟ (μόνο με έγκριση).",
-                                                   "Βεβαιότητα: Χαμηλή.", "Χρειάζεται επιβεβαίωση πριν από οποιαδήποτε δήλωση."])
+        _, contract_days = _contract_kind(contracts_by_afm.get(afm))
+        surplus = max(0, len(declared_workdays) - int(contract_days or len(declared_workdays)))
+        missing = [r for r in declared_workdays if r["punch_count"] == 0]
+        for row in missing[:surplus]:
+            rest_reason = (
+                f"{len(declared_workdays)} δηλωμένες εργάσιμες έναντι {contract_days} ημερών σύμβασης: "
+                "πρόταση ρεπό με έγκριση"
+            )
+            row.update(status="review", reason=rest_reason, rule_id="SURPLUS_DECLARED_DAY_REST",
+                       proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", suggested_rest=True,
+                       requires_confirmation=True, confidence="Χαμηλή",
+                       status_explanation=["Αποτέλεσμα: Έλεγχος", rest_reason,
+                                           "Δεν υπάρχει καμία εγγραφή χτυπήματος στην κάρτα.",
+                                           "Πρόταση: ΑΝΑΠΑΥΣΗ/ΡΕΠΟ (μόνο με έγκριση).",
+                                           "Βεβαιότητα: Χαμηλή.", "Χρειάζεται επιβεβαίωση πριν από οποιαδήποτε δήλωση."])
+
+        # If non-work punches outnumber missing declared workdays, only the
+        # earliest rows up to the available replacements remain exchange reviews.
+        exchange_rows = sorted(
+            [r for r in rows if r.get("exchange_options")],
+            key=lambda r: datetime.strptime(r["work_date"], "%d/%m/%Y"),
+        )
+        available_replacements = len({
+            option["replacement_work_date"]
+            for row in exchange_rows for option in row.get("exchange_options") or []
+        })
+        for row in exchange_rows[available_replacements:]:
+            row.update(status="change", rule_id="NON_WORK_DAY_BECOMES_WORK",
+                       reason="Χτύπημα σε ημέρα μη εργασίας χωρίς διαθέσιμη επιπλέον ανταλλαγή",
+                       exchange_options=[], replacement_candidates=[])
 
     summaries = []
     for afm, rows in by_employee.items():

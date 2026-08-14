@@ -1071,6 +1071,55 @@ def record_ergani_submit(
     return None
 
 
+def _overtime_minutes_from_request_json(request_json: str | None) -> int:
+    """Extract the exact submitted WTOOvA intervals from the persisted request."""
+    try:
+        payload = json.loads(request_json or "{}")
+        analytics = payload["WTOS"]["WTO"][0]["Ergazomenoi"]["ErgazomenoiWTO"][0][
+            "ErgazomenosAnalytics"
+        ]["ErgazomenosWTOAnalytics"]
+    except (TypeError, KeyError, IndexError, json.JSONDecodeError):
+        return 0
+    total = 0
+    for item in analytics if isinstance(analytics, list) else []:
+        try:
+            start = datetime.strptime(str(item.get("f_from") or "").strip(), "%H:%M")
+            end = datetime.strptime(str(item.get("f_to") or "").strip(), "%H:%M")
+        except (TypeError, ValueError):
+            continue
+        minutes = int((end - start).total_seconds() // 60)
+        if minutes < 0:
+            minutes += 1440
+        total += minutes
+    return total
+
+
+def successful_overtime_minutes_for_year(*, store_id: int, employee_afm: str, year: int) -> int:
+    """Count latest successful WTOOvA submissions per day/segment for an employee."""
+    with cursor() as cur:
+        cur.execute("""
+            WITH ranked AS (
+                SELECT decl.request_json,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY s.day_id, s.segment_reference_date
+                           ORDER BY s.submitted_at DESC, s.id DESC
+                       ) AS rn
+                FROM dbo.karta_apologistic_submit s
+                JOIN dbo.karta_apologistic_day d ON d.id = s.day_id
+                LEFT JOIN dbo.karta_declaration decl ON decl.id = s.declaration_id
+                WHERE d.store_id = ? AND d.employee_afm = ?
+                  AND s.submission_code = ? AND s.success = 1
+                  AND s.segment_reference_date >= ? AND s.segment_reference_date < ?
+            )
+            SELECT request_json FROM ranked WHERE rn = 1
+        """, (
+            int(store_id), str(employee_afm).zfill(9), SUBMISSION_CODE_WTO_OV_A,
+            date(int(year), 1, 1), date(int(year) + 1, 1, 1),
+        ))
+        rows = cur.fetchall()
+    return sum(_overtime_minutes_from_request_json(row[0]) for row in rows)
+
+
 _EVENT_TYPE_ORDER = {"ergani_submit": 0, "proposal_edit": 1, "recalc": 2}
 
 

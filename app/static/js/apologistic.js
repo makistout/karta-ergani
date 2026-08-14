@@ -1005,12 +1005,24 @@ async function confirmSubmitModal() {
     }
     const protocols = [];
     for (const segmentDate of segmentDates) {
-      const res = await fetch(url, {
+      let submitBody = { ...baseBody, segment_date: segmentDate };
+      let res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...baseBody, segment_date: segmentDate }),
+        body: JSON.stringify(submitBody),
       });
-      const data = await res.json().catch(() => ({}));
+      let data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.requires_confirmation) {
+        const proceed = window.confirm(`${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`);
+        if (!proceed) return;
+        submitBody = { ...submitBody, confirm_annual_limit: true };
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(submitBody),
+        });
+        data = await res.json().catch(() => ({}));
+      }
       if (!res.ok || !data.success) {
         const prefix = segmentDates.length > 1
           ? `Αποτυχία για ${segmentDate}${protocols.length ? ` (${protocols.length}/${segmentDates.length} υποβλήθηκαν)` : ""}: `
