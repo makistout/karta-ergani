@@ -132,6 +132,10 @@
   (αρ. πρωτοκόλλου, ημ/νία υποβολής, τύπος, κατάσταση, εκπρόθεσμο, παράρτημα).
 - Date range picker όπως `/ui/work-log` · API `GET /api/protocols/list`.
 - Admin: `POST /api/protocols/sync` κατεβάζει από Ergani και τρέχει 1-1 απαγωγή.
+- Η client-side σελιδοποίηση χρησιμοποιεί το κοινό `Office.paginateSlice()` και
+  διαβάζει τις ορατές εγγραφές από `items`. Μη αναμενόμενη ή κενή συλλογή API
+  κανονικοποιείται σε κενό array, ώστε η οθόνη να μην αποτυγχάνει με JavaScript
+  `forEach` error.
 
 ## Excel Template Εβδομαδιαίου Ωραρίου
 

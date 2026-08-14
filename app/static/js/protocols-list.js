@@ -75,7 +75,8 @@ async function loadProtocols(cachedActive) {
 }
 
 function renderTable(rows, count, store, range) {
-  tableState = { rows, page: 1, count, store, range };
+  const safeRows = Array.isArray(rows) ? rows : [];
+  tableState = { rows: safeRows, page: 1, count: Number(count) || safeRows.length, store, range };
   renderTablePage();
 }
 
@@ -119,7 +120,7 @@ function renderTablePage() {
   t.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  pg.slice.forEach((row) => {
+  pg.items.forEach((row) => {
     const tr = document.createElement("tr");
     const cells = [
       row.protocol || "",
