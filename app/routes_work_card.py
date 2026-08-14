@@ -443,6 +443,56 @@ def _submit_work_card(
                 listener_job = None
                 queued = None
 
+            listener_aitiologia_retry = False
+            if (
+                queued
+                and listener_job
+                and str(listener_job.get("status")) == "failed"
+                and not aitiologia_raw
+                and _ergani_missing_aitiologia(
+                    listener_job.get("result_data")
+                    or {"error": listener_job.get("error_summary")}
+                )
+            ):
+                # The direct erganiOS route already retries this Ergani 400.
+                # Do the same through the selected listener: create a second,
+                # distinct job with the required delay reason and never fall
+                # back directly after the listener has handled the first job.
+                retry_payload = build_payload(RETRO_AITIOLOGIA_INTERNET)
+                retry_canonical = json.dumps(
+                    {"store_id": int(store_id), "payload": retry_payload},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                retry_idempotency_key = hashlib.sha256(
+                    retry_canonical.encode("utf-8")
+                ).hexdigest()
+                try:
+                    retry_queued = enqueue_job(
+                        store_id=int(store_id),
+                        idempotency_key=retry_idempotency_key,
+                        employee_afm=emp_afm,
+                        f_type=resolved_type,
+                        reference_date=ref_date,
+                        event_at=event_at_str,
+                        payload=retry_payload,
+                        ergani_api_base_url=str(api_base_url or Config.ERGANI_API_BASE_URL),
+                        fallback_seconds=timeout_seconds,
+                    )
+                    retry_job = wait_for_job(
+                        retry_queued["job_uuid"], int(store_id), timeout_seconds
+                    )
+                    queued = retry_queued
+                    listener_job = retry_job
+                    payload = retry_payload
+                    aitiologia_raw = RETRO_AITIOLOGIA_INTERNET
+                    listener_aitiologia_retry = True
+                except Exception:
+                    current_app.logger.exception(
+                        "Card-listener aitiologia retry dispatch failed"
+                    )
+
             if listener_job and listener_job.get("status") in {"succeeded", "failed", "needs_review"}:
                 job_status = str(listener_job.get("status"))
                 listener_ok = job_status == "succeeded"
@@ -497,6 +547,11 @@ def _submit_work_card(
                         "executor_instance": listener_job.get("executor_instance"),
                         "listener_job_uuid": queued["job_uuid"],
                         "listener_status": job_status,
+                        "aitiologia_retry": listener_aitiologia_retry,
+                        "aitiologia": aitiologia_raw,
+                        "ergani_http_status": listener_http_status,
+                        "ergani_response": listener_data,
+                        "error_message": listener_job.get("error_summary"),
                         "persist_error": persist_error,
                     },
                     client_ip=client_ip,
@@ -525,6 +580,7 @@ def _submit_work_card(
                     "error": listener_job.get("error_summary"),
                     "data": listener_data,
                     "submission_channel": "listener",
+                    "aitiologia_retry": listener_aitiologia_retry,
                 }), 200 if listener_ok else listener_http_status
 
             if queued:
