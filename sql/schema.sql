@@ -368,6 +368,8 @@ BEGIN
         employee_afm NVARCHAR(9) NULL,
         hour_from NVARCHAR(16) NULL,
         hour_to NVARCHAR(16) NULL,
+        protocol_from NVARCHAR(128) NULL,
+        protocol_to NVARCHAR(128) NULL,
         source_aa NVARCHAR(32) NULL,
         is_end_date_different BIT NULL,
         synced_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_work_log_synced DEFAULT (SYSDATETIMEOFFSET())

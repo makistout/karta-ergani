@@ -48,12 +48,18 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 - Επιπλέον τρέχει αυτόματα:
   - νυχτερινό `30ήμερο` sync πραγματικής για όλα τα καταστήματα
     (`scheduled_recent_work_log_sync`, προεπιλογή `03:00`)
+  - νυχτερινό sync πρωτοκόλλων Ergani + 1-1 απαγωγή για χθες
+    (`scheduled_nightly_protocol_sync`, προεπιλογή `03:00`, μετά το 30ήμερο πραγματικής)
   - ημερήσιο sync στοιχείων σύμβασης από Μητρώα
     (`scheduled_employment_contract_sync`, προεπιλογή `04:00`)
   - κυριακάτικο `90ήμερο` repair sync πραγματικής
     (`scheduled_weekly_repair_work_log_sync`, προεπιλογή `05:00`)
 - Αν λείπει ο πίνακας συμβάσεων: `python scripts/ensure_karta_employment_contract_table.py`
   ή `sql/alter_add_karta_employment_contract.sql`.
+- Αν λείπουν πρωτόκολλα Ergani / στήλες πραγματικής:
+  `python scripts/ensure_karta_ergani_protocol_table.py`,
+  `python scripts/ensure_work_log_protocol_columns.py`
+  ή τα αντίστοιχα `sql/alter_add_*.sql`.
 - Οι νέες φάσεις γράφουν ξεχωριστά runs στα sync logs και προστατεύονται με ημερήσιο /
   εβδομαδιαίο guard ώστε να εκτελούνται μία φορά ανά κατάστημα.
 - Sync logs από `/ui/sync-log`.

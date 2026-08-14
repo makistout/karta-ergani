@@ -94,6 +94,13 @@ class Config:
     KARTA_SCHEDULED_RECENT_WORK_LOG_TIME = (
         os.environ.get("KARTA_SCHEDULED_RECENT_WORK_LOG_TIME") or "03:00"
     ).strip() or "03:00"
+    KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_PROTOCOL_SYNC_TIME = (
+        os.environ.get("KARTA_SCHEDULED_PROTOCOL_SYNC_TIME") or "03:00"
+    ).strip() or "03:00"
     KARTA_SCHEDULED_WEEKLY_REPAIR_ENABLED = _env_flag(
         "KARTA_SCHEDULED_WEEKLY_REPAIR_ENABLED",
         default=True,

@@ -17,6 +17,7 @@ from app.http_helpers import json_or_text
 from app.karta_log import KartaLogger
 from app.portal_schedule_sync import iter_schedule_sync_events
 from app.portal_work_log_sync import iter_work_log_sync_events
+from app.portal_card_protocol_sync import iter_card_protocol_sync_events
 from app.repo_entities import (
     deactivate_stale_employments,
     upsert_employee,
@@ -27,7 +28,7 @@ from app.repo_entities import (
 from app import repo_store
 from app.work_card_payload import norm_afm
 
-STORE_SYNC_STEPS = 5
+STORE_SYNC_STEPS = 6
 
 
 def _step(ok: bool, detail: str = "", **extra: Any) -> dict[str, Any]:
@@ -66,6 +67,7 @@ def iter_store_sync_events(
         "employees": _step(False),
         "schedule": _step(False),
         "work_log": _step(False),
+        "card_protocol": _step(False),
     }
 
     log.info("Έναρξη συγχρονισμού καταστήματος", employer_afm=afm, branch_aa=aa)
@@ -279,6 +281,47 @@ def iter_store_sync_events(
         results["work_log"] = _step(False, detail, count=0)
         log.warning(detail)
 
+    # Πρωτόκολλα χτυπημάτων κάρτας — portal
+    msg = "Πρωτόκολλα χτυπημάτων (portal Ergani)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 6, "total": total}
+    proto_ctx = sched_ctx
+    if proto_ctx:
+        proto_result: dict[str, Any] | None = None
+        for ev in iter_card_protocol_sync_events(
+            proto_ctx, max_days=31, run_id=log.run_id
+        ):
+            ev_type = ev.get("event")
+            if ev_type == "progress" and ev.get("message"):
+                sub = ev["message"]
+                yield {
+                    "event": "progress",
+                    "message": f"Πρωτόκολλα: {sub}",
+                    "step": 6,
+                    "total": total,
+                }
+            elif ev_type == "done":
+                proto_result = ev.get("sync") or {}
+            elif ev_type == "error":
+                proto_result = {
+                    "success": False,
+                    "detail": ev.get("message") or "Αποτυχία sync πρωτοκόλλων",
+                    "count": 0,
+                }
+        if proto_result:
+            results["card_protocol"] = _step(
+                proto_result.get("success", False),
+                proto_result.get("detail", ""),
+                count=proto_result.get("count", 0),
+            )
+        else:
+            results["card_protocol"] = _step(False, "Διακόπηκε ο συγχρονισμός πρωτοκόλλων")
+            log.error("Διακόπηκε ο συγχρονισμός πρωτοκόλλων")
+    else:
+        detail = "Δεν βρέθηκε κατάστημα για portal πρωτοκόλλων"
+        results["card_protocol"] = _step(False, detail, count=0)
+        log.warning(detail)
+
     if store_id:
         try:
             repo_store.touch_last_sync(int(store_id))
@@ -295,6 +338,8 @@ def iter_store_sync_events(
         summary_parts.append(f"{results['schedule'].get('count', 0)} ωράριο")
     if results["work_log"].get("success"):
         summary_parts.append(f"{results['work_log'].get('count', 0)} πραγματική")
+    if results["card_protocol"].get("success"):
+        summary_parts.append(f"{results['card_protocol'].get('count', 0)} πρωτόκολλα")
     summary = "Ολοκληρώθηκε — " + ", ".join(summary_parts) if summary_parts else (
         "Ολοκληρώθηκε με προειδοποιήσεις" if ok_all else "Αποτυχία συγχρονισμού"
     )

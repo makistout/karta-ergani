@@ -51,6 +51,23 @@ def replace_work_log_for_day(
     with cursor() as cur:
         cur.execute(
             """
+            SELECT employee_afm, hour_from, hour_to, protocol_from, protocol_to
+            FROM dbo.karta_work_log
+            WHERE employer_afm = ? AND branch_aa = ? AND work_date = ?
+            """,
+            (afm, aa, wd),
+        )
+        preserved: dict[tuple[str | None, str, str], tuple[Any, Any]] = {}
+        for emp, hf, ht, pf, pt in cur.fetchall():
+            key = (
+                norm_afm(emp) if emp else None,
+                str(hf or "").strip(),
+                str(ht or "").strip(),
+            )
+            preserved[key] = (pf, pt)
+
+        cur.execute(
+            """
             DELETE FROM dbo.karta_work_log
             WHERE employer_afm = ? AND branch_aa = ? AND work_date = ?
             """,
@@ -59,22 +76,33 @@ def replace_work_log_for_day(
         n = 0
         for row in rows:
             e_afm = norm_afm(row.get("employee_afm") or "") if row.get("employee_afm") else None
+            hf = row.get("hour_from")
+            ht = row.get("hour_to")
+            key = (
+                e_afm,
+                str(hf or "").strip(),
+                str(ht or "").strip(),
+            )
+            pf, pt = preserved.get(key, (None, None))
             cur.execute(
                 """
                 INSERT INTO dbo.karta_work_log (
                     employer_afm, branch_aa, work_date, employee_afm,
-                    hour_from, hour_to, source_aa, is_end_date_different
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    hour_from, hour_to, source_aa, is_end_date_different,
+                    protocol_from, protocol_to
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     afm,
                     aa,
                     wd,
                     e_afm,
-                    row.get("hour_from"),
-                    row.get("hour_to"),
+                    hf,
+                    ht,
                     row.get("source_aa"),
                     row.get("is_end_date_different"),
+                    pf,
+                    pt,
                 ),
             )
             n += 1
@@ -96,6 +124,7 @@ def list_work_log_for_store(
             f"""
             SELECT TOP ({lim})
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
+                w.protocol_from, w.protocol_to,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(w.synced_at AS datetime2) AS synced_at,
@@ -224,6 +253,7 @@ def list_work_log_for_range(
             f"""
             SELECT TOP ({lim})
                 w.id, w.employee_afm, w.hour_from, w.hour_to, w.work_date,
+                w.protocol_from, w.protocol_to,
                 w.source_aa, w.is_end_date_different,
                 emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
                 CAST(w.synced_at AS datetime2) AS synced_at,

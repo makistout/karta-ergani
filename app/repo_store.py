@@ -444,6 +444,26 @@ def touch_work_log_sync(store_id: int) -> None:
         touch_last_sync(sid)
 
 
+def touch_protocol_sync(store_id: int) -> None:
+    sid = int(store_id)
+    with cursor() as cur:
+        try:
+            cur.execute(
+                """
+                UPDATE dbo.karta_store_config
+                SET protocol_last_sync_at = SYSDATETIMEOFFSET(),
+                    last_sync_at = SYSDATETIMEOFFSET(),
+                    updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                sid,
+            )
+        except pyodbc.Error as exc:
+            if "protocol_last_sync_at" not in str(exc):
+                raise
+            touch_last_sync(sid)
+
+
 def effective_schedule_sync_at(cfg: dict[str, Any]) -> Any:
     return cfg.get("schedule_last_sync_at") or cfg.get("last_sync_at")
 

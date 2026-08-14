@@ -41,6 +41,19 @@
 - `reference_date == σήμερα` → έλεγχος ώρας χτυπήματος έναντι ψηφιακού ωραρίου και `flex_arrival_minutes`
 - Η υλοποίηση είναι κοινή για live punch, προγενέστερη από UI και retro-hit από Telegram (`work_card_payload.py`, `routes_work_card.py`).
 
+## Ergani Protocol 1-1 Matching
+
+Τα πρωτόκολλα χτυπημάτων από portal Ergani (WorkCardSearch) αποθηκεύονται στο `karta_ergani_protocol`.
+Η σύνδεση με την πραγματική γίνεται **μόνο** όταν υπάρχει βέβαιη 1-1 αντιστοίχιση:
+
+- κλειδί: `(store_id, ημερολογιακή ημέρα, HH:MM)` από `submit_at` ↔ `hour_from` / `hour_to`,
+- overnight έξοδος: `hour_to` σε επόμενη ημερολογιακή ημέρα όταν `hour_to < hour_from`,
+- αν στην ίδια στιγμή υπάρχουν **>1 πρωτόκολλα** ή **>1** γραμμές πραγματικής → **κενό**
+  (δεν επιλέγουμε «το πρώτο» ή με ΑΦΜ — το portal δεν δίνει εργαζόμενο στο πρωτόκολλο).
+
+Αποτέλεσμα: `karta_work_log.protocol_from` / `protocol_to` (κύρια αποθήκευση) και, όπου
+υπάρχει δική μας δήλωση, συμπλήρωση `karta_declaration.protocol`.
+
 ## Canonical Public Homepage
 
 Για SEO και branded traffic, το marketing landing είναι στο **root** (`/`), όχι σε slug path.

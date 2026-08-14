@@ -152,14 +152,14 @@ function renderTablePage() {
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,
           "Λείπει ώρα εισόδου",
-          row.card_db_in || null
+          workLogProtocolMeta(row.card_db_in, row.protocol_from)
         ).html;
       } else if (i === colHourTo) {
         const pending = Office.workLogExitStillPending(row);
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,
           pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου",
-          row.card_db_out || null
+          workLogProtocolMeta(row.card_db_out, row.protocol_to)
         ).html;
       } else {
         td.textContent = txt;
@@ -181,6 +181,15 @@ function renderTablePage() {
       })
     );
   }
+}
+
+function workLogProtocolMeta(cardMeta, protocol) {
+  const p = String(protocol || "").trim();
+  if (cardMeta && typeof cardMeta === "object") {
+    if (p && !cardMeta.protocol) return { ...cardMeta, protocol: p };
+    return cardMeta;
+  }
+  return p ? { protocol: p } : null;
 }
 
 function appendWorkCardLinkCell(tr, row, range) {

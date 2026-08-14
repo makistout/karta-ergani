@@ -658,6 +658,10 @@ Object.assign(window.Office, {
 
   formatWorkLogTimeCell(value, title = "Λείπει ώρα", cardMeta = null) {
     const txt = String(value || "").trim();
+    const proto = String(cardMeta?.protocol || "").trim();
+    const protoHtml = proto
+      ? `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
+      : "";
     if (txt) {
       const corrected =
         cardMeta &&
@@ -665,7 +669,7 @@ Object.assign(window.Office, {
           String(cardMeta.corrected_previous_time || "").trim()) &&
         String(cardMeta.time || "").trim() === txt;
       if (!corrected) {
-        return { html: this.escapeHtml(txt), isMissing: false };
+        return { html: this.escapeHtml(txt) + protoHtml, isMissing: false };
       }
       const previous = cardMeta.previous_events
         .map((ev) => String(ev?.time || "").trim())
@@ -683,7 +687,8 @@ Object.assign(window.Office, {
           `<span class="work-log-time-corrected" title="${this.escapeHtml(hint)}">` +
           `${this.escapeHtml(txt)}` +
           `<span class="work-log-time-corrected-badge">διορθ.</span>` +
-          `</span>`,
+          `</span>` +
+          protoHtml,
         isMissing: false,
       };
     }

@@ -8,6 +8,10 @@
 
 - `app/portal_schedule_sync.py`: ψηφιακό ωράριο.
 - `app/portal_work_log_sync.py`: πραγματική απασχόληση.
+- `app/portal_card_protocol_sync.py`: πρωτόκολλα χτυπημάτων κάρτας (WorkCardSearch Excel).
+- `app/repo_ergani_protocol.py`: persist / upsert στο `karta_ergani_protocol`.
+- `app/protocol_deduction_match.py`: 1-1 απαγωγή πρωτοκόλλων → `karta_work_log.protocol_from/to`
+  (+ κενά `karta_declaration.protocol` όταν υπάρχει δική μας δήλωση).
 - `app/portal_employment_contract_sync.py`: στοιχεία σύμβασης από Μητρώα
   (`Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx`).
 - `app/portal_excel.py`: Excel export parsing.
@@ -22,6 +26,23 @@
   `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
 - Migration: `sql/alter_add_karta_employment_contract.sql` /
   `python scripts/ensure_karta_employment_contract_table.py`.
+
+## Πρωτόκολλα Χτυπημάτων (WorkCardSearch)
+
+- Persist σε `karta_ergani_protocol` (κατάλογος πρωτοκόλλων Ergani, ανεξάρτητα από δικές μας
+  υποβολές WRKCardSE).
+- Στήλη `protocol_last_sync_at` στο `karta_store_config`.
+- **1-1 απαγωγή** (`apply_protocol_sync`): αν `(store, ημέρα, HH:MM)` έχει **ακριβώς ένα**
+  πρωτόκολλο και **ακριβώς μία** ώρα πραγματικής, γράφει στο `karta_work_log.protocol_from`
+  ή `protocol_to` (μόνο κενά πεδία). Αλλιώς αφήνει κενό.
+- **Συγχρονισμός:**
+  - αρχικός store sync (βήμα 6, 31 ημέρες),
+  - περιοδικός `period_sync`,
+  - νυχτερινός `scheduled_nightly_protocol_sync` (~03:00, χθες, μετά 30ήμερο πραγματικής).
+- **Backfill:** `scripts/backfill_ergani_protocols.py`, `scripts/backfill_protocol_deduction_matches.py`.
+- **Migrations:** `sql/alter_add_karta_ergani_protocol.sql`, `sql/alter_add_work_log_protocol.sql`,
+  runners `ensure_karta_ergani_protocol_table.py`, `ensure_work_log_protocol_columns.py`.
+- **Ρύθμιση:** `KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED`, `KARTA_SCHEDULED_PROTOCOL_SYNC_TIME`.
 
 ## Pattern
 

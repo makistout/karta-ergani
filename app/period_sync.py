@@ -15,6 +15,7 @@ from app.http_helpers import json_or_text
 from app.karta_log import KartaLogger
 from app.portal_schedule_sync import iter_schedule_sync_events
 from app.portal_work_log_sync import iter_work_log_sync_events
+from app.portal_card_protocol_sync import iter_card_protocol_sync_events
 from app.repo_entities import (
     deactivate_stale_employments,
     upsert_employee,
@@ -25,7 +26,7 @@ from app.repo_entities import (
 from app.work_card_payload import norm_afm
 from config import Config
 
-PERIOD_SYNC_PHASES = 4
+PERIOD_SYNC_PHASES = 5
 
 
 def _full_week_ranges_within(from_iso: str, to_iso: str) -> list[tuple[datetime.date, datetime.date]]:
@@ -246,6 +247,7 @@ def iter_period_sync_events(
         "employees": {"success": False},
         "schedule": {"success": False},
         "work_log": {"success": False},
+        "card_protocol": {"success": False},
     }
 
     log.info(
@@ -376,10 +378,66 @@ def iter_period_sync_events(
     else:
         results["work_log"] = _merge_portal_results(work_log_parts, label="πραγματικής")
 
+    msg = "Πρωτόκολλα χτυπημάτων (portal Ergani)…"
+    log.info(msg)
+    yield {"event": "progress", "message": msg, "step": 4, "total": PERIOD_SYNC_PHASES}
+    protocol_parts: list[dict[str, Any]] = []
+    proto_failed = False
+    for index, (chunk_from, chunk_to) in enumerate(chunks, start=1):
+        log.info(
+            f"Πρωτόκολλα: chunk {index}/{len(chunks)} ({chunk_from} – {chunk_to})"
+        )
+        yield {
+            "event": "progress",
+            "message": f"Πρωτόκολλα: chunk {index}/{len(chunks)} ({chunk_from} – {chunk_to})…",
+            "step": 4,
+            "total": PERIOD_SYNC_PHASES,
+        }
+        chunk_result: dict[str, Any] | None = None
+        for ev in _forward_portal(
+            iter_card_protocol_sync_events(
+                ctx,
+                from_iso=chunk_from,
+                to_iso=chunk_to,
+                max_days=max_days,
+                run_id=run_id,
+            ),
+            "Πρωτόκολλα χτυπημάτων",
+            log,
+        ):
+            kind = ev.get("event")
+            if kind == "progress":
+                yield {**ev, "step": 4, "total": PERIOD_SYNC_PHASES}
+            elif kind == "done":
+                chunk_result = ev.get("sync") or {}
+                break
+            elif kind == "error":
+                chunk_result = {
+                    "success": False,
+                    "detail": ev.get("message") or "Αποτυχία πρωτοκόλλων",
+                }
+                break
+        if chunk_result:
+            protocol_parts.append(chunk_result)
+            if not chunk_result.get("success"):
+                proto_failed = True
+                break
+        else:
+            proto_failed = True
+            break
+    if proto_failed and not protocol_parts:
+        results["card_protocol"] = {
+            "success": False,
+            "detail": "Διακόπηκε ο συγχρονισμός πρωτοκόλλων",
+        }
+    else:
+        results["card_protocol"] = _merge_portal_results(protocol_parts, label="πρωτοκόλλων")
+
     ok = (
         results["employees"].get("success")
         and results["schedule"].get("success")
         and results["work_log"].get("success")
+        and results["card_protocol"].get("success")
     )
     post_sync_notifications_enqueued = False
     today_iso = datetime.today().strftime("%Y-%m-%d")
@@ -407,7 +465,7 @@ def iter_period_sync_events(
     yield {
         "event": "progress",
         "message": "Απολογιστικό: έλεγχος πλήρων εβδομάδων…",
-        "step": 4,
+        "step": 5,
         "total": PERIOD_SYNC_PHASES,
     }
     if not ok:
@@ -431,7 +489,7 @@ def iter_period_sync_events(
                     yield {
                         "event": "progress",
                         "message": f"Απολογιστικό: εβδομάδα {index}/{len(weeks)} ({week_label})…",
-                        "step": 4,
+                        "step": 5,
                         "total": PERIOD_SYNC_PHASES,
                     }
                     row = generate_store_week(cfg, week_from, week_to)
@@ -471,6 +529,11 @@ def iter_period_sync_events(
         parts.append(
             f"{results['work_log'].get('count', 0)} πραγματική "
             f"({results['work_log'].get('days_synced', 0)} ημέρες)"
+        )
+    if results["card_protocol"].get("success"):
+        parts.append(
+            f"{results['card_protocol'].get('count', 0)} πρωτόκολλα "
+            f"({results['card_protocol'].get('days_synced', 0)} chunks)"
         )
     if apologistic_weeks_saved or apologistic_weeks_skipped:
         parts.append(

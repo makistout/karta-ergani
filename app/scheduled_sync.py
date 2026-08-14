@@ -12,6 +12,7 @@ from app.ergani_env import store_api_context
 from app.karta_log import KartaLogger
 from app.portal_schedule_sync import sync_schedule_from_portal
 from app.portal_work_log_sync import sync_work_log_from_portal
+from app.portal_card_protocol_sync import sync_card_protocols_from_portal
 from app.work_card_payload import tz_athens
 from app import repo_store, repo_sync_log
 from app.scheduled_sync_notifications import (
@@ -23,6 +24,7 @@ from config import Config
 OPERATION = "scheduled_today_sync"
 OPERATION_FUTURE_SCHEDULE_SYNC = "scheduled_future_schedule_sync"
 OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
+OPERATION_NIGHTLY_PROTOCOL_SYNC = "scheduled_nightly_protocol_sync"
 OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
 OPERATION_EMPLOYMENT_CONTRACT_SYNC = "scheduled_employment_contract_sync"
 OPERATION_APOLOGISTIC_SNAPSHOT = "scheduled_apologistic_snapshot"
@@ -136,6 +138,23 @@ def _run_configured_auto_actions(
             "reason": recent_reason,
             "from_iso": recent_from or None,
             "to_iso": recent_to or None,
+        }
+
+    proto_should_run, proto_target, _proto_from, proto_to, proto_reason = (
+        should_run_nightly_protocol_sync(cfg)
+    )
+    if proto_should_run:
+        actions["nightly_protocol"] = run_nightly_protocol_sync_for_store(
+            cfg,
+            target_date_iso=proto_target,
+            protocol_to_iso=proto_to,
+        )
+    else:
+        actions["nightly_protocol"] = {
+            "skipped": True,
+            "reason": proto_reason,
+            "target_date": proto_target or None,
+            "protocol_to": proto_to or None,
         }
 
     apologistic_should_run, apologistic_reason = should_run_apologistic_snapshot(cfg)
@@ -312,6 +331,124 @@ def should_run_recent_work_log_sync(
     ):
         return False, from_iso, to_iso, "έχει ήδη εκτελεστεί σήμερα"
     return True, from_iso, to_iso, "έτοιμο"
+
+
+def should_run_nightly_protocol_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str, str, str, str]:
+    """Νυχτερινό sync πρωτοκόλλων + 1-1 απαγωγή για την προηγούμενη ημέρα (~03:00)."""
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED:
+        return False, "", "", "", "απενεργοποιημένο από ρύθμιση"
+    base_date = local_now.date().isoformat()
+    target_date = _add_iso_days(base_date, -1)
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_PROTOCOL_SYNC_TIME,
+        default="03:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, target_date, target_date, base_date, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, target_date, target_date, base_date, "λείπουν πίνακες sync log"
+    if _operation_run_exists(
+        OPERATION_NIGHTLY_PROTOCOL_SYNC,
+        int(cfg["id"]),
+        base_date,
+    ):
+        return False, target_date, target_date, base_date, "έχει ήδη εκτελεστεί σήμερα"
+    return True, target_date, target_date, base_date, "έτοιμο"
+
+
+def run_nightly_protocol_sync_for_store(
+    cfg: dict[str, Any],
+    *,
+    target_date_iso: str,
+    protocol_to_iso: str,
+) -> dict[str, Any]:
+    """Κατέβασμα πρωτοκόλλων Ergani + 1-1 απαγωγή για προηγούμενη ημέρα εργασίας."""
+    from app.protocol_deduction_match import apply_protocol_sync
+
+    ctx = store_api_context(cfg)
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    run_id = str(uuid.uuid4())
+    from_iso = str(target_date_iso).strip()[:10]
+    to_iso = str(protocol_to_iso).strip()[:10]
+    log = KartaLogger(
+        OPERATION_NIGHTLY_PROTOCOL_SYNC,
+        store_id=sid,
+        store_name=name,
+        run_id=run_id,
+        extra={
+            "employer_afm": ctx.get("employer_afm"),
+            "branch_aa": ctx.get("branch_aa"),
+            "target_date": from_iso,
+            "protocol_to": to_iso,
+        },
+    )
+    log.info(
+        f"Νυχτερινό sync πρωτοκόλλων για {from_iso} (download έως {to_iso})",
+        target_date=from_iso,
+    )
+    try:
+        card_protocol = sync_card_protocols_from_portal(
+            ctx,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            max_days=max(1, (datetime.strptime(to_iso, "%Y-%m-%d").date() - datetime.strptime(from_iso, "%Y-%m-%d").date()).days + 1),
+            run_id=run_id,
+        )
+        _log_portal_phase(log, "Πρωτόκολλα Ergani", card_protocol)
+        protocol_match = apply_protocol_sync(
+            sid,
+            str(ctx.get("employer_afm") or ""),
+            str(ctx.get("branch_aa") or "0"),
+            from_iso=from_iso,
+            to_iso=to_iso,
+        )
+        wl_upd = int(protocol_match.get("work_log_updated") or 0)
+        if wl_upd > 0 or int(protocol_match.get("declaration_updated") or 0) > 0:
+            log.info(protocol_match.get("detail") or "1-1 απαγωγή OK")
+        else:
+            log.info(
+                protocol_match.get("detail") or "1-1 απαγωγή: καμία ενημέρωση",
+                matched=protocol_match.get("matched"),
+            )
+        ok = bool(card_protocol.get("success"))
+        detail = (
+            f"πρωτόκολλα {card_protocol.get('count', 0)}, "
+            f"1-1 πραγματική {wl_upd}, δηλώσεις {protocol_match.get('declaration_updated', 0)}"
+        )
+        repo_sync_log.finish_run(
+            run_id,
+            status="done" if ok else "error",
+            message=detail,
+            result={
+                "success": ok,
+                "target_date": from_iso,
+                "card_protocol": card_protocol,
+                "protocol_match": protocol_match,
+            },
+        )
+        return {
+            "success": ok,
+            "target_date": from_iso,
+            "detail": detail,
+            "card_protocol": card_protocol,
+            "protocol_match": protocol_match,
+        }
+    except Exception as ex:
+        err = str(ex)
+        log.error(f"Σφάλμα νυχτερινού sync πρωτοκόλλων: {err}")
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=err,
+            result={"success": False, "target_date": from_iso, "error": err},
+        )
+        return {"success": False, "target_date": from_iso, "error": err}
 
 
 def should_run_weekly_repair_work_log_sync(
@@ -660,7 +797,10 @@ def _log_store_sync_timestamps(
     """Καταγραφή και επιστροφή τελευταίων timestamps από karta_store_config."""
     cfg = repo_store.get_store_config(store_id)
     if not cfg:
-        return {"schedule_last_sync_at": None, "work_log_last_sync_at": None}
+        return {
+            "schedule_last_sync_at": None,
+            "work_log_last_sync_at": None,
+        }
 
     sched_ts = _fmt_sync_ts(cfg.get("schedule_last_sync_at"))
     wl_ts = _fmt_sync_ts(cfg.get("work_log_last_sync_at"))

@@ -8,6 +8,28 @@
 
 ---
 
+## 2026-08-14 — Πρωτόκολλα Ergani: sync, 1-1 απαγωγή, πραγματική
+
+- **Νέος πίνακας** `karta_ergani_protocol`: κατάλογος πρωτοκόλλων χτυπημάτων από portal
+  (WorkCardSearch), ανεξάρτητα από δικές μας υποβολές.
+- **Στήλη** `protocol_last_sync_at` στο `karta_store_config`.
+- **Νέες στήλες** `protocol_from`, `protocol_to` στο `karta_work_log` — εμφάνιση πρωτοκόλλου
+  κάτω από Από/Έως στο `/ui/work-log`.
+- **1-1 απαγωγή** (`apply_protocol_sync`): σύγκριση `hour_from`/`hour_to` ↔ `submit_at`.
+  Γράφει στην πραγματική (κενό πεδίο μόνο) + κενά `karta_declaration.protocol`.
+  Πολλαπλά πρωτόκολλα ή πολλαπλές ώρες στην ίδια στιγμή → **κενό**.
+- **Συγχρονισμός πρωτοκόλλων**: αρχικός sync (βήμα 6, 31 ημέρες), περιοδικός (`period_sync`),
+  νυχτερινός `scheduled_nightly_protocol_sync` (~03:00, χθες, **μετά** 30ήμερο πραγματικής).
+- **Backfill** (2026-04-11 – 2026-08-14): ~40k πρωτόκολλα Ergani, ~14,5k ενημερώσεις
+  πραγματικής (~53% κάλυψη ωρών — το υπόλοιπο μη 1-1).
+- Scripts: `backfill_ergani_protocols.py`, `backfill_protocol_deduction_matches.py`,
+  `analyze_protocol_deduction_matches.py`.
+- Migrations: `sql/alter_add_karta_ergani_protocol.sql`, `sql/alter_add_work_log_protocol.sql`,
+  `scripts/ensure_karta_ergani_protocol_table.py`, `scripts/ensure_work_log_protocol_columns.py`.
+- Ρύθμιση: `KARTA_SCHEDULED_PROTOCOL_SYNC_*` (`.env.example`).
+
+---
+
 ## 2026-08-14 — Εργαζόμενοι: ενιαία εικονίδια, στήλες, tabs ενεργοί/ανενεργοί
 
 - **`/ui/employees`**: ενιαία action κουμπιά (`.employees-action-btn`) για στοιχεία
