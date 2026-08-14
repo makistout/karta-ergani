@@ -1,0 +1,27 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Πρωτόκολλα' %}
+{% set shell = "office" %}
+{% set active_nav = 'protocols' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> Πρωτόκολλα</h1>
+      <p class="page-desc sync-meta-line" id="protocolsSyncMeta">Κατάλογος πρωτοκόλλων χτυπημάτων από Ergani (WorkCardSearch).</p>
+      <div class="toolbar-dates card">
+        <div class="toolbar-dates-row">
+          <div id="protocolsDatePicker"></div>
+          {% if office_is_admin_role() %}
+          <button type="button" class="btn" id="btnSyncProtocols" disabled>
+            <i class="bi bi-arrow-repeat" aria-hidden="true"></i><span>Συγχρονισμός Ergani</span>
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card list-card">
+        <div id="protocolsWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
+      </div>
+      <div id="protocolsMsg" class="msg"></div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
+  <script src="/static/js/protocols-list.js?v=20260814proto1"></script>
+{% endblock %}

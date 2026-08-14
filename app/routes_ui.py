@@ -147,6 +147,11 @@ def ui_work_log_list():
     return render_template("ui/work-log-list.html")
 
 
+@ui_bp.get("/protocols")
+def ui_protocols_list():
+    return render_template("ui/protocols-list.html")
+
+
 @ui_bp.get("/work-log/history")
 def ui_work_log_history():
     return render_template("ui/work-log-history.html")

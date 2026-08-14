@@ -60,6 +60,8 @@
   - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
 - Ψηφιακό ωράριο: `schedule.view`, `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`, `schedule.submit_leave`, `schedule.export`
 - Πραγματική απασχόληση: `work_log.view`, `work_log.sync`, `work_log.export`
+- Πρωτόκολλα (`/ui/protocols`, `/api/protocols/*`): ίδια `work_log.view` / `work_log.sync`
+  (λίστα για όσους βλέπουν πραγματική· sync μόνο admin)
 - Ελλιπή χτυπήματα: `missing_cards.view`, `missing_cards.close_one`, `missing_cards.close_all`, `missing_cards.sync_refresh`
 - Ψηφιακή κάρτα: `work_card.view`, `work_card.submit_live`, `work_card.submit_retro`, `work_card.view_history`, `work_card.sync_refresh`
 - Συγχρονισμός: `sync.view`, `sync.run_store`, `sync.run_period`, `sync.run_all`, `sync.view_progress`
@@ -72,7 +74,7 @@
 
 Στο sidebar/menu οι επιλογές `Συγχρονισμός`, `Ειδοποιήσεις` και `Καταγραφές` κόβονται με βάση τον ρόλο, όχι μόνο με βάση granular permissions. Αυτό σημαίνει ότι `office`, `office_manager`, `viewer`, `store_viewer` και `notifications_manager` δεν τις βλέπουν ακόμη κι αν έχουν απομείνει explicit permissions όπως `sync.view`, `notifications.view` ή `logs.view` στο session/DB.
 
-Οι non-admin χρήστες δεν βλέπουν επιλογές συγχρονισμού σε `Εργαζόμενοι`, `Ψηφιακό ωράριο`, `Πραγματική απασχόληση`, `Ελλιπή χτυπήματα` ή στη global σελίδα `Συγχρονισμός`. Η μοναδική επιτρεπτή λειτουργία συγχρονισμού για non-admin είναι μέσα από τη σελίδα `Ψηφιακή κάρτα`, μέσω `work_card.sync_refresh` και του endpoint `/api/work-log/work-card-sync`.
+Οι non-admin χρήστες δεν βλέπουν επιλογές συγχρονισμού σε `Εργαζόμενοι`, `Ψηφιακό ωράριο`, `Πραγματική απασχόληση`, `Πρωτόκολλα`, `Ελλιπή χτυπήματα` ή στη global σελίδα `Συγχρονισμός`. Η μοναδική επιτρεπτή λειτουργία συγχρονισμού για non-admin είναι μέσα από τη σελίδα `Ψηφιακή κάρτα`, μέσω `work_card.sync_refresh` και του endpoint `/api/work-log/work-card-sync`.
 
 Για non-admin χρήστες, το `/api/work-log/work-card-sync` επιτρέπεται μόνο για τη σημερινή ημερομηνία. Παλιότερη ή μελλοντική ημερομηνία στην `Ψηφιακή κάρτα` φορτώνει μόνο τοπικά δεδομένα και δεν κάνει portal sync.
 

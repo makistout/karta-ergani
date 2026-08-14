@@ -249,8 +249,22 @@
 .work-card-punches-table .work-card-punch-col-date,
 .work-card-punches-table .work-card-punch-col-store,
 .work-card-punches-table .work-card-punch-col-action,
-.work-card-punches-table .work-card-punch-col-status {
+.work-card-punches-table .work-card-punch-col-status,
+.work-card-punches-table .work-card-punch-col-channel {
   white-space: nowrap;
+}
+
+.work-card-punches-table .work-card-punch-col-channel {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.work-card-punches-table .work-card-punch-channel--listener {
+  color: #0f766e;
+}
+
+.work-card-punches-table .work-card-punch-channel--erganios {
+  color: #334155;
 }
 
 .work-card-punches-table .work-card-punch-col-emp {

@@ -564,15 +564,36 @@ function workCardPunchSourceLabel(source) {
   if (s === "close_all") return "Κλείστε όλα";
   if (s === "telegram_retro") return "Telegram retro";
   if (s === "office_ui") return "Ψηφ. κάρτα";
+  if (s === "auto_close_prev_day") return "Αυτόματο κλείσιμο";
   return s || "—";
+}
+
+function workCardPunchChannelLabel(details) {
+  const d = details && typeof details === "object" ? details : {};
+  const channel = String(d.submission_channel || "").trim().toLowerCase();
+  const fallback = String(d.listener_fallback_reason || "").trim();
+  if (channel === "listener") return "listener";
+  if (channel === "erganios") {
+    if (fallback === "listener_timeout") return "erganiOS (timeout listener)";
+    if (fallback === "listener_offline") return "erganiOS (listener offline)";
+    return "erganiOS";
+  }
+  return "—";
 }
 
 function workCardPunchEmployeeText(row) {
   const d = row.details || {};
-  const name = String(d.employee_name || "").trim();
   const afm = String(d.employee_afm || row.entity_id || "").trim();
-  if (name && afm && name !== afm) return `${name} · ${afm}`;
-  return name || afm || "—";
+  let surname = String(d.eponymo || d.employee_last_name || "").trim();
+  if (!surname) {
+    const full = String(d.employee_name || "").trim();
+    if (full && full !== afm) {
+      const parts = full.split(/\s+/).filter(Boolean);
+      surname = parts.length > 1 ? parts[parts.length - 1] : parts[0] || "";
+    }
+  }
+  if (surname && afm && surname !== afm) return `${surname} · ${afm}`;
+  return surname || afm || "—";
 }
 
 function workCardPunchErganiResponseText(parsed) {
@@ -692,6 +713,7 @@ function renderWorkCardPunches(rows, hasMore) {
   [
     "Ώρα",
     "Πηγή",
+    "Κανάλι",
     "Εργαζόμενος",
     "Ημ/νία",
     "Ενέργεια",
@@ -721,6 +743,17 @@ function renderWorkCardPunches(rows, hasMore) {
     tdSource.className = "work-card-punch-col-source";
     tdSource.textContent = workCardPunchSourceLabel(d.source);
     tr.appendChild(tdSource);
+
+    const tdChannel = document.createElement("td");
+    tdChannel.className = "work-card-punch-col-channel";
+    const channel = workCardPunchChannelLabel(d);
+    tdChannel.textContent = channel;
+    if (channel.startsWith("listener")) {
+      tdChannel.classList.add("work-card-punch-channel--listener");
+    } else if (channel.startsWith("erganiOS")) {
+      tdChannel.classList.add("work-card-punch-channel--erganios");
+    }
+    tr.appendChild(tdChannel);
 
     const tdEmp = document.createElement("td");
     tdEmp.className = "work-card-punch-col-emp";

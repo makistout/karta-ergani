@@ -44,6 +44,7 @@
 - **Migrations:** `sql/alter_add_karta_ergani_protocol.sql`, `sql/alter_add_work_log_protocol.sql`,
   runners `ensure_karta_ergani_protocol_table.py`, `ensure_work_log_protocol_columns.py`.
 - **Ρύθμιση:** `KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED`, `KARTA_SCHEDULED_PROTOCOL_SYNC_TIME`.
+- **UI:** `/ui/protocols` (λίστα καταλόγου + admin sync) · API `/api/protocols/list|sync`.
 
 ## Pattern
 

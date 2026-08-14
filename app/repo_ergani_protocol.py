@@ -184,6 +184,62 @@ def upsert_protocol_rows(
     return {"inserted": inserted, "updated": updated, "total": inserted + updated}
 
 
+def list_protocols_for_store_range(
+    store_id: int,
+    from_iso: str,
+    to_iso: str,
+    *,
+    limit: int = 10000,
+) -> list[dict[str, Any]]:
+    """Πρωτόκολλα καταστήματος για ημερολογιακό διάστημα submit_at (YYYY-MM-DD)."""
+    sid = int(store_id)
+    start = str(from_iso or "").strip()[:10]
+    end = str(to_iso or "").strip()[:10]
+    if not start:
+        return []
+    if not end:
+        end = start
+    if end < start:
+        start, end = end, start
+    lim = max(1, min(int(limit), 20000))
+    sql = f"""
+        SELECT TOP ({lim})
+            p.id,
+            p.store_id,
+            p.employer_afm,
+            p.branch_aa,
+            p.submission_code,
+            p.protocol,
+            CAST(p.submit_at AS datetime2) AS submit_at,
+            p.submit_date_text,
+            p.submission_status,
+            p.declaration_type,
+            p.overdue,
+            p.source,
+            p.declaration_id,
+            CAST(p.synced_at AS datetime2) AS synced_at
+        FROM dbo.karta_ergani_protocol p
+        WHERE p.store_id = ?
+          AND p.submit_at IS NOT NULL
+          AND CAST(p.submit_at AS date) >= ?
+          AND CAST(p.submit_at AS date) <= ?
+        ORDER BY p.submit_at DESC, p.id DESC
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql, (sid, start, end))
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    for row in rows:
+        for key in ("submit_at", "synced_at"):
+            val = row.get(key)
+            if hasattr(val, "isoformat"):
+                row[key] = val.isoformat()
+        overdue = row.get("overdue")
+        if overdue is not None:
+            row["overdue"] = bool(overdue)
+    return rows
+
+
 def earliest_store_activity_date(
     store_id: int,
     employer_afm: str,

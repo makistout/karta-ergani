@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-08-14 — UI Πρωτόκολλα (κατάλογος Ergani)
+
+- Νέα σελίδα `/ui/protocols` στο μενού **Πρωτόκολλα** (μετά την πραγματική).
+- Λίστα όπως WorkCardSearch: αρ. πρωτοκόλλου, ημ/νία υποβολής, τύπος, κατάσταση,
+  εκπρόθεσμο, παράρτημα — με date range picker όπως η πραγματική.
+- API: `GET /api/protocols/list`, `POST /api/protocols/sync` (+ async status).
+- Δικαιώματα: `work_log.view` / `work_log.sync` (sync μόνο admin).
+
+---
+
+## 2026-08-14 — Καταγραφές χτυπημάτων: κανάλι listener / erganiOS
+
+- Στο tab **Χτυπήματα κάρτας** εμφανίζεται στήλη **Κανάλι**: `listener` ή `erganiOS`
+  (και fallback αν ο listener ήταν offline/timeout).
+
+---
+
 ## 2026-08-14 — Πρωτόκολλα: δικά μας χτυπήματα πρώτα, μετά 1-1 στα υπόλοιπα
 
 - Τα δικά μας `karta_declaration.protocol` γράφονται στο `karta_work_log.protocol_from/to`.

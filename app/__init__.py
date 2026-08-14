@@ -6,6 +6,7 @@ from app.routes_schedule import schedule_bp
 from app.routes_schedule_import import schedule_import_bp
 from app.routes_schedule_day_form import schedule_day_form_bp
 from app.routes_work_log import work_log_bp
+from app.routes_protocols import protocols_bp
 from app.routes_dashboard import dashboard_bp
 from app.routes_ergani import ergani_bp
 from app.routes_local import local_bp
@@ -63,6 +64,7 @@ def create_app() -> Flask:
     app.register_blueprint(schedule_import_bp)
     app.register_blueprint(schedule_day_form_bp)
     app.register_blueprint(work_log_bp)
+    app.register_blueprint(protocols_bp)
     app.register_blueprint(monthly_status_bp)
     app.register_blueprint(apologistic_bp)
     app.register_blueprint(wto_apologistic_bp)

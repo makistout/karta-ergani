@@ -34,6 +34,7 @@
   (`Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx`)· μόνο admin για sync.
 - `/ui/schedule`: ψηφιακό ωράριο (quick dates: Χθες, Σήμερα, Αύριο, Μεθαύριο).
 - `/ui/work-log`: πραγματική απασχόληση (quick dates: Χθες, Σήμερα, Αύριο, Μεθαύριο).
+- `/ui/protocols`: κατάλογος πρωτοκόλλων Ergani (WorkCardSearch) με date range picker.
 - `/ui/missing-cards`: ελλιπή χτυπήματα.
 - `/ui/work-card`: υποβολή ψηφιακής κάρτας.
 - `/ui/sync`: χειροκίνητος συγχρονισμός.
@@ -121,6 +122,13 @@
   πρωτόκολλο. Αν μείνουν πολλαπλά άγνωστα, μένουν κενά.
 - Νυχτερινό sync πρωτοκόλλων (`scheduled_nightly_protocol_sync`, ~03:00): κατέβασμα χθες +
   1-1 απαγωγή, μετά το 30ήμερο sync πραγματικής. Βλ. `docs/ERGANI_PORTAL_SYNC.md`.
+
+## Πρωτόκολλα (`/ui/protocols`)
+
+- Κατάλογος γραμμών από `karta_ergani_protocol` όπως το portal WorkCardSearch
+  (αρ. πρωτοκόλλου, ημ/νία υποβολής, τύπος, κατάσταση, εκπρόθεσμο, παράρτημα).
+- Date range picker όπως `/ui/work-log` · API `GET /api/protocols/list`.
+- Admin: `POST /api/protocols/sync` κατεβάζει από Ergani και τρέχει 1-1 απαγωγή.
 
 ## Excel Template Εβδομαδιαίου Ωραρίου
 
@@ -229,6 +237,8 @@
 - `/ui/sync-log`: τα tabs **Ενέργειες**, **Απεσταλμένες**, **Χτυπήματα**, **Αλλαγές ωραρίου**,
   **Συνδέσεις** φορτώνουν μόνο μία σελίδα (20 γραμμές) με keyset `before_id` — χωρίς
   `COUNT(*)` σε όλο το ιστορικό. UI: προηγούμενη/επόμενη (`has_more`).
+  Στο **Χτυπήματα κάρτας** η στήλη **Κανάλι** δείχνει `listener` ή `erganiOS`
+  (και fallback αν ο listener ήταν offline/timeout).
 - `/ui/sync-log`: το tab **Απεσταλμένες ειδοποιήσεις** δείχνει τις post-sync αποστολές
   Telegram/Email ανά κατάστημα, λήπτη, εργαζόμενο, κανάλι και τύπο ειδοποίησης
   (φίλτρο `JSON_VALUE(fields_json,'$.event') = today_notification_send`).
