@@ -38,9 +38,10 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 - Απαιτούνται `GEMINI_API_KEY`, `GEMINI_MODEL` και
   `TELEGRAM_ASSISTANT_ENABLED=1`.
 - Μόνο ενεργά `telegram_chat_id` ληπτών γίνονται δεκτά.
-- Αναμενόμενη ροή task:
-  `awaiting_confirmation` → `awaiting_pin` → `confirmed_dry_run`.
-- `ΟΧΙ` οδηγεί σε `cancelled`. Πέντε λάθος PIN οδηγούν σε `pin_locked`.
+- Αναμενόμενη ροή task: `awaiting_pin` → `confirmed_dry_run`.
+- Δεν υπάρχει βήμα `ΝΑΙ/ΟΧΙ`: τετραψήφιο μήνυμα θεωρείται PIN για το πιο
+  πρόσφατο pending task, ενώ άλλο κείμενο θεωρείται νέα εντολή.
+- Πέντε λάθος PIN οδηγούν σε `pin_locked`.
 - Το PIN πρέπει να εμφανίζεται ως `[REDACTED_PIN]` στο inbound message/raw JSON
   και να μην υπάρχει σε task events.
 - Το `execution_enabled` πρέπει να παραμένει `0`. Η κατάσταση

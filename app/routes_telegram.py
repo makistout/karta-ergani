@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import copy
-import unicodedata
 
 from flask import Blueprint, jsonify, request
 
@@ -37,11 +36,6 @@ from app.today_alert_service import (
 
 telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
 logger = logging.getLogger(__name__)
-
-
-def _normalized_answer(value: str) -> str:
-    normalized = unicodedata.normalize("NFD", str(value or "").strip().casefold())
-    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
 def _audit_notification_open(action: str, *, token: str | None, ok: bool, error: str | None = None) -> None:
@@ -136,7 +130,6 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         create_task,
         mark_inbound,
         reply_context,
-        transition_task,
         verify_and_confirm_task_pin,
     )
     from app.telegram_assistant_service import parse_command, validate_and_describe
@@ -156,16 +149,15 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
     one_store = {int(row["store_id"]) for row in contexts}
     recipient_id = int(contexts[0]["recipient_id"]) if len(contexts) == 1 else None
     store_id = next(iter(one_store)) if len(one_store) == 1 else None
-    answer_value = _normalized_answer(text)
     conversation = None
-    if reply_message_id is not None:
-        conversation = conversation_task(chat_id, int(reply_message_id))
-    elif answer_value in {"ναι", "yes", "οχι", "no"} or is_valid_notify_pin(text):
-        conversation = conversation_task(chat_id)
+    if is_valid_notify_pin(text):
+        conversation = conversation_task(
+            chat_id, int(reply_message_id) if reply_message_id is not None else None,
+        )
 
     stored_text = text
     stored_update = update
-    if conversation and conversation.get("task_status") == "awaiting_pin":
+    if conversation:
         stored_text = "[REDACTED_PIN]"
         stored_update = copy.deepcopy(update)
         if isinstance(stored_update.get("message"), dict):
@@ -189,70 +181,29 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
 
     if conversation:
         task_id = int(conversation["id"])
-        task_status = str(conversation.get("task_status") or "")
-        if answer_value in {"οχι", "no"}:
-            changed = transition_task(
-                task_id, expected_status=task_status, new_status="cancelled",
-                event_type="cancelled_by_recipient",
-            )
-            mark_inbound(inbound_id, "conversation")
-            if changed:
-                _reply_chat(chat_id, f"Η εντολή #{task_id} ακυρώθηκε. Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ.")
-                return jsonify({"ok": True, "assistant": "cancelled"})
-            _reply_chat(chat_id, f"Η εντολή #{task_id} έχει ήδη αλλάξει κατάσταση.")
-            return jsonify({"ok": True, "assistant": "state_changed"})
-        if task_status == "awaiting_confirmation":
-            if answer_value not in {"ναι", "yes"}:
-                mark_inbound(inbound_id, "conversation")
-                _reply_chat(chat_id, f"Για την εντολή #{task_id} απαντήστε ΝΑΙ ή ΟΧΙ.")
-                return jsonify({"ok": True, "assistant": "awaiting_confirmation"})
-            changed = transition_task(
-                task_id, expected_status="awaiting_confirmation", new_status="awaiting_pin",
-                event_type="recipient_accepted",
-            )
-            mark_inbound(inbound_id, "conversation")
-            if not changed:
-                _reply_chat(chat_id, f"Η εντολή #{task_id} έχει ήδη αλλάξει κατάσταση.")
-                return jsonify({"ok": True, "assistant": "state_changed"})
+        try:
+            pin_result, task = verify_and_confirm_task_pin(task_id, chat_id=chat_id, pin=text)
+        except Exception:
+            logger.exception("Telegram assistant PIN verification failed task_id=%s", task_id)
+            mark_inbound(inbound_id, "failed", "PIN verification failed")
+            _reply_chat(chat_id, "Δεν μπόρεσα να επαληθεύσω τον PIN. Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ.")
+            return jsonify({"ok": True, "assistant": "pin_verification_failed"})
+        mark_inbound(inbound_id, "conversation")
+        if pin_result == "confirmed":
+            proposed = str((task or {}).get("proposed_action_text") or conversation.get("proposed_action_text") or "—")
             _reply_chat(
                 chat_id,
-                f"Εντολή #{task_id}: δώστε τον προσωπικό 4ψήφιο PIN σας.",
-                context={
-                    "notification_type": "assistant_pin",
-                    "notification_reference_id": str(task_id),
-                    "recipient_id": conversation.get("recipient_id"),
-                    "store_id": conversation.get("store_id"),
-                },
+                f"Ο PIN είναι σωστός. Η εντολή #{task_id} επιβεβαιώθηκε και ΘΑ εκτελεστεί όταν ενεργοποιηθεί η υπηρεσία:\n{proposed}\n\nΔεν έγινε ακόμη καμία αποστολή στο ΕΡΓΑΝΗ.",
             )
-            return jsonify({"ok": True, "assistant": "awaiting_pin"})
-        if task_status == "awaiting_pin":
-            if not is_valid_notify_pin(text):
-                mark_inbound(inbound_id, "conversation")
-                _reply_chat(chat_id, "Ο PIN πρέπει να είναι ακριβώς 4 αριθμητικά ψηφία. Δοκιμάστε ξανά ή απαντήστε ΟΧΙ.")
-                return jsonify({"ok": True, "assistant": "awaiting_pin"})
-            try:
-                pin_result, task = verify_and_confirm_task_pin(task_id, chat_id=chat_id, pin=text)
-            except Exception:
-                logger.exception("Telegram assistant PIN verification failed task_id=%s", task_id)
-                mark_inbound(inbound_id, "failed", "PIN verification failed")
-                _reply_chat(chat_id, "Δεν μπόρεσα να επαληθεύσω τον PIN. Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ.")
-                return jsonify({"ok": True, "assistant": "pin_verification_failed"})
-            mark_inbound(inbound_id, "conversation")
-            if pin_result == "confirmed":
-                proposed = str((task or {}).get("proposed_action_text") or conversation.get("proposed_action_text") or "—")
-                _reply_chat(
-                    chat_id,
-                    f"Ο PIN είναι σωστός. Η εντολή #{task_id} επιβεβαιώθηκε και ΘΑ εκτελεστεί όταν ενεργοποιηθεί η υπηρεσία:\n{proposed}\n\nΔεν έγινε ακόμη καμία αποστολή στο ΕΡΓΑΝΗ.",
-                )
-                return jsonify({"ok": True, "assistant": "confirmed_dry_run"})
-            if pin_result == "locked":
-                _reply_chat(chat_id, f"Η εντολή #{task_id} κλειδώθηκε λόγω πολλών λανθασμένων προσπαθειών PIN.")
-                return jsonify({"ok": True, "assistant": "pin_locked"})
-            if pin_result == "not_configured":
-                _reply_chat(chat_id, "Δεν έχει οριστεί προσωπικός PIN για αυτόν τον λήπτη. Η εντολή δεν επιβεβαιώθηκε.")
-                return jsonify({"ok": True, "assistant": "pin_not_configured"})
-            _reply_chat(chat_id, "Λάθος PIN. Δοκιμάστε ξανά ή απαντήστε ΟΧΙ.")
-            return jsonify({"ok": True, "assistant": "awaiting_pin"})
+            return jsonify({"ok": True, "assistant": "confirmed_dry_run"})
+        if pin_result == "locked":
+            _reply_chat(chat_id, f"Η εντολή #{task_id} κλειδώθηκε λόγω πολλών λανθασμένων προσπαθειών PIN.")
+            return jsonify({"ok": True, "assistant": "pin_locked"})
+        if pin_result == "not_configured":
+            _reply_chat(chat_id, "Δεν έχει οριστεί προσωπικός PIN για αυτόν τον λήπτη. Η εντολή δεν επιβεβαιώθηκε.")
+            return jsonify({"ok": True, "assistant": "pin_not_configured"})
+        _reply_chat(chat_id, "Λάθος PIN. Δοκιμάστε ξανά ή στείλτε ξανά την εντολή.")
+        return jsonify({"ok": True, "assistant": "awaiting_pin"})
 
     try:
         reply_ctx = reply_context(chat_id, int(reply_message_id)) if reply_message_id is not None else None
@@ -271,7 +222,7 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             (int(c["recipient_id"]) for c in contexts if int(c["store_id"]) == selected_store),
             recipient_id,
         )
-        task_status = "awaiting_confirmation" if status == "draft" else status
+        task_status = "awaiting_pin" if status == "draft" else status
         task_id = create_task(
             inbound_id=inbound_id,
             recipient_id=selected_recipient,
@@ -286,14 +237,15 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         if status == "draft":
             answer = (
                 f"Εντολή #{task_id}:\n{proposed}\n\n"
-                "Είστε σύμφωνοι; Απαντήστε ΝΑΙ ή ΟΧΙ.\n"
+                "Εάν είστε σύμφωνοι, στείλτε τον προσωπικό 4ψήφιο PIN σας για επιβεβαίωση. "
+                "Διαφορετικά, στείλτε ξανά την εντολή.\n"
                 "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
             )
         else:
             problems = "\n".join(f"• {item}" for item in validation.get("errors") or [])
             answer = f"Η εντολή #{task_id} χρειάζεται διευκρίνιση:\n{problems}\n\nΔεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
         _reply_chat(chat_id, answer, context={
-            "notification_type": "assistant_confirmation" if status == "draft" else "assistant_clarification",
+            "notification_type": "assistant_pin" if status == "draft" else "assistant_clarification",
             "notification_reference_id": str(task_id),
             "recipient_id": selected_recipient,
             "store_id": parsed.get("store_id"),

@@ -15,7 +15,7 @@
 - Telegram replies από ενεργούς λήπτες αναλύονται προαιρετικά από Gemini και
   αποθηκεύονται ως dry-run assistant tasks χωρίς αποστολή στο ΕΡΓΑΝΗ. Μία
   εντολή υποστηρίζει πολλούς εργαζομένους και σχετικό χρόνο· η επιβεβαίωση
-  συνεχίζει deterministic με `ΝΑΙ/ΟΧΙ`, προσωπικό PIN και τελική κατάσταση
+  γίνεται deterministic απευθείας με προσωπικό PIN και τελική κατάσταση
   `confirmed_dry_run`. Κάθε επιτυχημένο Gemini request καταγράφει model,
   διάρκεια και αναλυτικό token usage στο assistant task
   (`docs/TELEGRAM_ASSISTANT.md`).

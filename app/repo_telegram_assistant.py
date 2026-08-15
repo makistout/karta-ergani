@@ -181,8 +181,15 @@ def verify_and_confirm_task_pin(task_id: int, *, chat_id: str, pin: str) -> tupl
         if not rows:
             return "not_found", None
         task = rows[0]
-        if task.get("task_status") != "awaiting_pin":
+        task_status = str(task.get("task_status") or "")
+        if task_status not in {"awaiting_pin", "awaiting_confirmation"}:
             return "invalid_state", task
+        if task_status == "awaiting_confirmation":
+            # Backward compatibility for tasks created before the direct-PIN flow.
+            cur.execute(
+                "UPDATE dbo.karta_assistant_task SET task_status=N'awaiting_pin', updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                (int(task_id),),
+            )
         if not str(task.get("notify_pin_hash") or "").strip() and not str(task.get("notify_pin") or "").strip():
             return "not_configured", task
         cur.execute(
