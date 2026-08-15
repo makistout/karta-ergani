@@ -12,6 +12,9 @@
 - αναφορά ελλείψεων κάρτας,
 - υποβολή χτυπήματος κάρτας, WTODaily, WTOWeek και leave,
 - Telegram/Email ειδοποιήσεις με PIN και δημόσιους συνδέσμους.
+- Telegram replies από ενεργούς λήπτες αναλύονται προαιρετικά από Gemini και
+  αποθηκεύονται ως dry-run assistant tasks χωρίς αποστολή στο ΕΡΓΑΝΗ
+  (`docs/TELEGRAM_ASSISTANT.md`).
 
 ## Κύριες Ροές
 

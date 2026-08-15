@@ -22,7 +22,13 @@ def _bot_token() -> str:
     return token
 
 
-def send_telegram_message(chat_id: str, text: str, *, parse_mode: str | None = None) -> dict[str, Any]:
+def send_telegram_message(
+    chat_id: str,
+    text: str,
+    *,
+    parse_mode: str | None = None,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     token = _bot_token()
     cid = str(chat_id or "").strip()
     if not cid:
@@ -39,6 +45,21 @@ def send_telegram_message(chat_id: str, text: str, *, parse_mode: str | None = N
     if not resp.ok or not data.get("ok"):
         desc = data.get("description") if isinstance(data, dict) else resp.text
         raise RuntimeError(desc or f"Telegram HTTP {resp.status_code}")
+    result = data.get("result") if isinstance(data, dict) else None
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if message_id is not None:
+        try:
+            from app.repo_telegram_assistant import record_outbound_message
+
+            record_outbound_message(
+                chat_id=cid,
+                telegram_message_id=int(message_id),
+                text=str(text),
+                context=context,
+            )
+        except Exception:
+            # Sending must not fail if the additive assistant migration is pending.
+            pass
     return data
 
 

@@ -71,10 +71,10 @@ def _audit_notification_open(action: str, *, token: str | None, ok: bool, error:
     )
 
 
-def _reply_chat(chat_id: str, text: str) -> None:
+def _reply_chat(chat_id: str, text: str, *, context: dict | None = None) -> None:
     """Ξ‘Ο€Ξ¬Ξ½Ο„Ξ·ΟƒΞ· ΟƒΟ„ΞΏΞ½ Ο‡ΟΞ®ΟƒΟ„Ξ· β€” Ο€Ξ¬Ξ½Ο„Ξ± Ξ±ΞΈΟΟΟ…Ξ²Ξ± ΟƒΞµ ΟƒΟ†Ξ¬Ξ»ΞΌΞ± (Ο„ΞΏ webhook Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΟ€ΞΉΟƒΟ„ΟΞ­Ο†ΞµΞΉ 200)."""
     try:
-        send_telegram_message(str(chat_id), text)
+        send_telegram_message(str(chat_id), text, context=context)
     except TelegramNotConfigured:
         logger.warning("Telegram webhook: bot token not configured")
     except Exception:
@@ -89,8 +89,11 @@ def telegram_webhook():
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
     text = str(message.get("text") or "").strip()
-    if not chat_id or not text.startswith("/start"):
+    if not chat_id or not text:
         return jsonify({"ok": True})
+
+    if not text.startswith("/start"):
+        return _handle_assistant_message(update, message, str(chat_id), text)
 
     parts = text.split()
     if len(parts) < 2:
@@ -115,6 +118,95 @@ def telegram_webhook():
             "Ξ ΟΞΏΟƒΞΈΞ­ΟƒΟ„Ξµ Ο€ΟΟΟ„Ξ± ΟΞ½ΞΏΞΌΞ± ΞΊΞ±ΞΉ Ξ±ΟΞΉΞΈΞΌΟ ΟƒΟ„Ξ·Ξ½ ΞµΟ€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ± ΞΊΞ±Ο„Ξ±ΟƒΟ„Ξ®ΞΌΞ±Ο„ΞΏΟ‚.",
         )
     return jsonify({"ok": True, "linked": linked})
+
+
+def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: str):
+    """Store and parse authorized commands. Phase 1 never executes them."""
+    from app.repo_telegram_assistant import (
+        authorized_contexts,
+        create_inbound_message,
+        create_task,
+        mark_inbound,
+        reply_context,
+    )
+    from app.telegram_assistant_service import parse_command, validate_and_describe
+
+    contexts = authorized_contexts(chat_id)
+    if not contexts:
+        # Deliberately silent: unknown Telegram users are neither stored nor answered.
+        return jsonify({"ok": True})
+
+    update_id = update.get("update_id")
+    message_id = message.get("message_id")
+    reply_message = message.get("reply_to_message") or {}
+    reply_message_id = reply_message.get("message_id")
+    if update_id is None:
+        return jsonify({"ok": True})
+
+    one_store = {int(row["store_id"]) for row in contexts}
+    recipient_id = int(contexts[0]["recipient_id"]) if len(contexts) == 1 else None
+    store_id = next(iter(one_store)) if len(one_store) == 1 else None
+    inbound_id, created = create_inbound_message(
+        update_id=int(update_id),
+        message_id=int(message_id) if message_id is not None else None,
+        reply_to_message_id=int(reply_message_id) if reply_message_id is not None else None,
+        chat_id=chat_id,
+        recipient_id=recipient_id,
+        store_id=store_id,
+        text=text,
+        raw_payload=update,
+    )
+    if not created:
+        return jsonify({"ok": True, "duplicate": True})
+    if not Config.TELEGRAM_ASSISTANT_ENABLED:
+        mark_inbound(inbound_id, "disabled")
+        return jsonify({"ok": True, "assistant": "disabled"})
+
+    try:
+        reply_ctx = reply_context(chat_id, int(reply_message_id)) if reply_message_id is not None else None
+        reply_ctx = dict(reply_ctx or {})
+        replied_text = str(reply_message.get("text") or reply_message.get("caption") or "").strip()
+        if replied_text:
+            reply_ctx.setdefault("message_text", replied_text[:4096])
+        parsed, employees = parse_command(text=text, contexts=contexts, reply_context=reply_ctx)
+        status, validation, proposed = validate_and_describe(
+            parsed, contexts=contexts, employees=employees,
+        )
+        selected_store = parsed.get("store_id")
+        selected_recipient = next(
+            (int(c["recipient_id"]) for c in contexts if int(c["store_id"]) == selected_store),
+            recipient_id,
+        )
+        task_id = create_task(
+            inbound_id=inbound_id,
+            recipient_id=selected_recipient,
+            store_id=int(selected_store) if selected_store in one_store else store_id,
+            parsed=parsed,
+            status=status,
+            validation=validation,
+            proposed_action=proposed,
+        )
+        mark_inbound(inbound_id, "parsed")
+        if status == "draft":
+            answer = (
+                f"Εντολή #{task_id} που ΘΑ εκτελεστεί όταν ενεργοποιηθεί η υπηρεσία:\n"
+                f"{proposed}\n\nΔεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
+            )
+        else:
+            problems = "\n".join(f"• {item}" for item in validation.get("errors") or [])
+            answer = f"Η εντολή #{task_id} χρειάζεται διευκρίνιση:\n{problems}\n\nΔεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
+        _reply_chat(chat_id, answer, context={
+            "notification_type": "assistant_dry_run",
+            "notification_reference_id": str(task_id),
+            "recipient_id": selected_recipient,
+            "store_id": parsed.get("store_id"),
+            "employee_afm": parsed.get("employee_afm"),
+        })
+    except Exception as ex:
+        logger.exception("Telegram assistant parsing failed")
+        mark_inbound(inbound_id, "failed", str(ex))
+        _reply_chat(chat_id, "Δεν μπόρεσα να αναλύσω την εντολή. Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ.")
+    return jsonify({"ok": True})
 
 
 @telegram_bp.post("/test/<int:store_id>")
@@ -430,4 +522,3 @@ def telegram_retro_hit_submit():
         correction_mode=correction_mode,
     )
     return jsonify(result), status
-

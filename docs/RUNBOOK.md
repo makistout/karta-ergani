@@ -31,6 +31,8 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 
 Τα SQL migrations ζουν στο `sql/` και οι runners στο `scripts/`.
 
+- Telegram assistant: `python scripts/run_migration_telegram_assistant.py`.
+
 Πριν από production run:
 
 - επιβεβαίωσε `.env`,
