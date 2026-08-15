@@ -13,8 +13,10 @@
 - υποβολή χτυπήματος κάρτας, WTODaily, WTOWeek και leave,
 - Telegram/Email ειδοποιήσεις με PIN και δημόσιους συνδέσμους.
 - Telegram replies από ενεργούς λήπτες αναλύονται προαιρετικά από Gemini και
-  αποθηκεύονται ως dry-run assistant tasks χωρίς αποστολή στο ΕΡΓΑΝΗ
-  (`docs/TELEGRAM_ASSISTANT.md`).
+  αποθηκεύονται ως dry-run assistant tasks χωρίς αποστολή στο ΕΡΓΑΝΗ. Μία
+  εντολή υποστηρίζει πολλούς εργαζομένους και σχετικό χρόνο· η επιβεβαίωση
+  συνεχίζει deterministic με `ΝΑΙ/ΟΧΙ`, προσωπικό PIN και τελική κατάσταση
+  `confirmed_dry_run` (`docs/TELEGRAM_ASSISTANT.md`).
 
 ## Κύριες Ροές
 

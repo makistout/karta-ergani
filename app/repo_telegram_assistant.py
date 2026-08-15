@@ -6,7 +6,10 @@ import json
 from typing import Any
 
 from app.db import cursor
+from app.notify_pin import verify_notify_pin_for_recipient
 from app.row_util import rows_to_dicts
+
+_MAX_PIN_ATTEMPTS = 5
 
 
 def _json(value: Any) -> str:
@@ -96,6 +99,139 @@ def reply_context(chat_id: str, message_id: int | None) -> dict[str, Any] | None
     return row
 
 
+def conversation_task(chat_id: str, reply_message_id: int | None = None) -> dict[str, Any] | None:
+    """Resolve a pending task from a bot reply, or the latest pending chat task."""
+    params: tuple[Any, ...]
+    reply_filter = ""
+    if reply_message_id is not None:
+        reply_filter = """
+            AND t.id = TRY_CONVERT(bigint, o.notification_reference_id)
+            AND o.chat_id = i.chat_id
+            AND o.telegram_message_id = ?
+            AND o.notification_type IN (N'assistant_confirmation', N'assistant_pin')
+        """
+        params = (str(chat_id), int(reply_message_id))
+    else:
+        params = (str(chat_id),)
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP (1) t.id, t.recipient_id, t.store_id, t.task_status,
+                   t.proposed_action_text, t.payload_json
+            FROM dbo.karta_assistant_task t
+            JOIN dbo.karta_telegram_inbound_message i ON i.id = t.inbound_message_id
+            {'JOIN dbo.karta_telegram_outbound_message o ON 1=1' if reply_message_id is not None else ''}
+            WHERE i.chat_id = ?
+              AND t.task_status IN (N'awaiting_confirmation', N'awaiting_pin')
+              {reply_filter}
+            ORDER BY t.created_at DESC, t.id DESC
+            """,
+            params,
+        )
+        rows = rows_to_dicts(cur)
+    if not rows:
+        return None
+    row = rows[0]
+    try:
+        row["payload"] = json.loads(row.get("payload_json") or "{}")
+    except (TypeError, ValueError):
+        row["payload"] = {}
+    return row
+
+
+def transition_task(
+    task_id: int, *, expected_status: str, new_status: str, event_type: str,
+) -> bool:
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_assistant_task
+            SET task_status=?, updated_at=SYSDATETIMEOFFSET()
+            WHERE id=? AND task_status=? AND execution_enabled=0
+            """,
+            (new_status[:32], int(task_id), expected_status[:32]),
+        )
+        cur.execute("SELECT @@ROWCOUNT")
+        changed = int(cur.fetchone()[0]) == 1
+        if changed:
+            cur.execute(
+                "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, ?, N'{}')",
+                (int(task_id), event_type[:64]),
+            )
+        return changed
+
+
+def verify_and_confirm_task_pin(task_id: int, *, chat_id: str, pin: str) -> tuple[str, dict[str, Any] | None]:
+    """Verify the recipient PIN without persisting it; lock after repeated failures."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) t.id, t.task_status, t.store_id, t.proposed_action_text,
+                   r.mobile, r.notify_pin_hash, r.notify_pin
+            FROM dbo.karta_assistant_task t WITH (UPDLOCK, HOLDLOCK)
+            JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
+            JOIN dbo.karta_store_notify_recipient r ON r.id=t.recipient_id
+            WHERE t.id=? AND i.chat_id=? AND r.active=1
+              AND LTRIM(RTRIM(ISNULL(r.telegram_chat_id, N'')))=i.chat_id
+              AND t.execution_enabled=0
+            """,
+            (int(task_id), str(chat_id)),
+        )
+        rows = rows_to_dicts(cur)
+        if not rows:
+            return "not_found", None
+        task = rows[0]
+        if task.get("task_status") != "awaiting_pin":
+            return "invalid_state", task
+        if not str(task.get("notify_pin_hash") or "").strip() and not str(task.get("notify_pin") or "").strip():
+            return "not_configured", task
+        cur.execute(
+            "SELECT COUNT(*) FROM dbo.karta_assistant_task_event WHERE task_id=? AND event_type=N'pin_failed'",
+            (int(task_id),),
+        )
+        attempts = int(cur.fetchone()[0])
+        if attempts >= _MAX_PIN_ATTEMPTS:
+            cur.execute(
+                "UPDATE dbo.karta_assistant_task SET task_status=N'pin_locked', updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                (int(task_id),),
+            )
+            return "locked", task
+        valid = verify_notify_pin_for_recipient(
+            store_id=int(task["store_id"]),
+            mobile=task.get("mobile"),
+            pin=pin,
+            pin_hash=task.get("notify_pin_hash"),
+            pin_plain=task.get("notify_pin"),
+        )
+        if not valid:
+            attempts += 1
+            cur.execute(
+                "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'pin_failed', ?)",
+                (int(task_id), _json({"attempt": attempts})),
+            )
+            if attempts >= _MAX_PIN_ATTEMPTS:
+                cur.execute(
+                    "UPDATE dbo.karta_assistant_task SET task_status=N'pin_locked', updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                    (int(task_id),),
+                )
+                return "locked", task
+            return "invalid", task
+        cur.execute(
+            """
+            UPDATE dbo.karta_assistant_task
+            SET task_status=N'confirmed_dry_run', confirmed_at=SYSDATETIMEOFFSET(),
+                updated_at=SYSDATETIMEOFFSET()
+            WHERE id=? AND task_status=N'awaiting_pin' AND execution_enabled=0
+            """,
+            (int(task_id),),
+        )
+        cur.execute(
+            "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'pin_verified_dry_run', N'{}')",
+            (int(task_id),),
+        )
+        return "confirmed", task
+
+
 def record_outbound_message(
     *, chat_id: str, telegram_message_id: int, text: str,
     context: dict[str, Any] | None = None,
@@ -141,6 +277,11 @@ def create_task(
             confidence = max(0.0, min(float(confidence), 1.0))
         except (TypeError, ValueError):
             confidence = None
+        employee_afms = parsed.get("employee_afms")
+        if not isinstance(employee_afms, list):
+            employee_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
+        employee_afms = [str(value or "").strip() for value in employee_afms if str(value or "").strip()]
+        employee_afm = employee_afms[0] if len(employee_afms) == 1 else None
         cur.execute(
             """
             INSERT INTO dbo.karta_assistant_task
@@ -153,7 +294,7 @@ def create_task(
             (
                 int(inbound_id), recipient_id, store_id,
                 str(parsed.get("intent") or "unknown")[:64], status,
-                str(parsed.get("employee_afm") or "")[:16] or None,
+                employee_afm[:16] if employee_afm else None,
                 str(parsed.get("date") or "")[:10] or None,
                 _json(parsed), _json(parsed), confidence, _json(validation), proposed_action[:2000],
             ),

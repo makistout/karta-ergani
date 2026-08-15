@@ -40,6 +40,8 @@ _SCHEMA = {
     "properties": {
         "intent": {"type": "string", "enum": sorted(ALLOWED_INTENTS)},
         "store_id": {"type": ["integer", "null"]},
+        "employee_afms": {"type": "array", "items": {"type": "string"}},
+        "employee_references": {"type": "array", "items": {"type": "string"}},
         "employee_afm": {"type": ["string", "null"]},
         "employee_reference": {"type": ["string", "null"]},
         "date": {"type": ["string", "null"]},
@@ -50,7 +52,7 @@ _SCHEMA = {
         "confidence": {"type": "number"},
         "clarification_question": {"type": ["string", "null"]},
     },
-    "required": ["intent", "confidence"],
+    "required": ["intent", "employee_afms", "employee_references", "confidence"],
 }
 
 
@@ -104,9 +106,12 @@ def parse_command(
     prompt = {
         "role": "Μετατροπή ελληνικού μηνύματος σε δομημένη draft εντολή εργασίας.",
         "rules": [
-            "Επίλεξε μόνο store_id και employee_afm που υπάρχουν στους δοσμένους καταλόγους.",
+            "Επίλεξε μόνο store_id και ΑΦΜ που υπάρχουν στους δοσμένους καταλόγους.",
+            "Βάλε ΟΛΟΥΣ τους εργαζομένους που ζητά ο χρήστης στα employee_afms και employee_references, με ίδια σειρά.",
+            "Για έναν εργαζόμενο πάλι χρησιμοποίησε employee_afms με ένα στοιχείο. Μην συγχωνεύεις πολλαπλά ονόματα.",
+            "Αν έστω ένα ζητούμενο όνομα δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
             "Το τώρα σημαίνει την τρέχουσα ώρα Europe/Athens.",
-            "Για πριν/στις ΧΧ:ΧΧ χρησιμοποίησε retro intent.",
+            "Για πριν/στις ΧΧ:ΧΧ ή σχετικό χρόνο όπως '10 λεπτά πριν' χρησιμοποίησε retro intent και υπολόγισε ακριβή ώρα HH:MM από το now.",
             "Για αλλαγή ωραρίου δώσε hour_from και hour_to.",
             "Για ρεπό χρησιμοποίησε rest_day. Για άδεια χρησιμοποίησε leave.",
             "Αν κάτι είναι ασαφές επέστρεψε unknown και σύντομη clarification_question στα ελληνικά.",
@@ -160,10 +165,25 @@ def validate_and_describe(
     else:
         parsed["store_id"] = store_id
 
-    afm = str(parsed.get("employee_afm") or "").strip()
-    match = next((e for e in employees if e["store_id"] == store_id and e["afm"] == afm), None)
-    if intent != "unknown" and not match:
-        errors.append("Δεν προσδιορίστηκε μοναδικός εργαζόμενος του καταστήματος")
+    raw_afms = parsed.get("employee_afms")
+    if not isinstance(raw_afms, list):
+        raw_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
+    afms: list[str] = []
+    for value in raw_afms:
+        afm = str(value or "").strip()
+        if afm and afm not in afms:
+            afms.append(afm)
+    parsed["employee_afms"] = afms
+    # Keep the legacy scalar only for single-person tasks and DB/query compatibility.
+    parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
+
+    matches = [
+        employee for afm in afms
+        for employee in employees
+        if employee["store_id"] == store_id and employee["afm"] == afm
+    ]
+    if intent != "unknown" and (not afms or len(matches) != len(afms)):
+        errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
     if intent != "unknown" and not _is_iso_date(date):
@@ -183,7 +203,13 @@ def validate_and_describe(
 
     validation = {"valid": not errors, "errors": errors, "execution_enabled": False}
     status = "draft" if not errors else "needs_clarification"
-    name = str(match.get("name") if match else parsed.get("employee_reference") or afm or "εργαζόμενος")
+    if matches:
+        names = ", ".join(str(match.get("name") or match.get("afm") or "εργαζόμενος") for match in matches)
+    else:
+        references = parsed.get("employee_references")
+        if not isinstance(references, list):
+            references = [parsed.get("employee_reference")] if parsed.get("employee_reference") else []
+        names = ", ".join(str(value).strip() for value in references if str(value).strip()) or "εργαζόμενος"
     store_name = next((str(c.get("store_name") or c["store_id"]) for c in contexts if int(c["store_id"]) == store_id), "—")
     labels = {
         "card_check_in_now": "Άνοιγμα κάρτας τώρα",
@@ -195,5 +221,5 @@ def validate_and_describe(
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
         "unknown": "Μη αναγνωρισμένη εντολή",
     }
-    proposed = f"{labels[intent]} · {name} · {date or '—'} · {store_name}"
+    proposed = f"{labels[intent]} · {names} · {date or '—'} · {store_name}"
     return status, validation, proposed

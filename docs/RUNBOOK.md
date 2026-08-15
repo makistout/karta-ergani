@@ -33,6 +33,24 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 
 - Telegram assistant: `python scripts/run_migration_telegram_assistant.py`.
 
+### Telegram/Gemini assistant dry-run
+
+- Απαιτούνται `GEMINI_API_KEY`, `GEMINI_MODEL` και
+  `TELEGRAM_ASSISTANT_ENABLED=1`.
+- Μόνο ενεργά `telegram_chat_id` ληπτών γίνονται δεκτά.
+- Αναμενόμενη ροή task:
+  `awaiting_confirmation` → `awaiting_pin` → `confirmed_dry_run`.
+- `ΟΧΙ` οδηγεί σε `cancelled`. Πέντε λάθος PIN οδηγούν σε `pin_locked`.
+- Το PIN πρέπει να εμφανίζεται ως `[REDACTED_PIN]` στο inbound message/raw JSON
+  και να μην υπάρχει σε task events.
+- Το `execution_enabled` πρέπει να παραμένει `0`. Η κατάσταση
+  `confirmed_dry_run` δεν σημαίνει υποβολή στο ΕΡΓΑΝΗ.
+- Σχετικός έλεγχος:
+
+```bash
+.venv/bin/python -m pytest -q tests/test_telegram_assistant.py
+```
+
 Πριν από production run:
 
 - επιβεβαίωσε `.env`,
