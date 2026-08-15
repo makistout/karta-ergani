@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -94,7 +95,7 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
 
 def parse_command(
     *, text: str, contexts: list[dict[str, Any]], reply_context: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     if not Config.GEMINI_API_KEY:
         raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY")
     now = datetime.now(ZoneInfo("Europe/Athens"))
@@ -123,6 +124,7 @@ def parse_command(
         "allowed_stores": stores,
         "allowed_employees": employees,
     }
+    started_at = time.monotonic()
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent",
         headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
@@ -136,9 +138,19 @@ def parse_command(
         },
         timeout=20,
     )
+    duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
     if not response.ok:
         raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:500]}")
-    return _extract_json(response.json()), employees
+    response_data = response.json()
+    usage_metadata = response_data.get("usageMetadata") or {}
+    if not isinstance(usage_metadata, dict):
+        usage_metadata = {}
+    llm_metadata = {
+        "model": str(response_data.get("modelVersion") or Config.GEMINI_MODEL)[:128],
+        "duration_ms": duration_ms,
+        "usage_metadata": usage_metadata,
+    }
+    return _extract_json(response_data), employees, llm_metadata
 
 
 def validate_and_describe(

@@ -262,7 +262,7 @@ def record_outbound_message(
 def create_task(
     *, inbound_id: int, recipient_id: int | None, store_id: int | None,
     parsed: dict[str, Any], status: str, validation: dict[str, Any],
-    proposed_action: str,
+    proposed_action: str, llm_metadata: dict[str, Any] | None = None,
 ) -> int:
     with cursor() as cur:
         cur.execute(
@@ -282,14 +282,29 @@ def create_task(
             employee_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
         employee_afms = [str(value or "").strip() for value in employee_afms if str(value or "").strip()]
         employee_afm = employee_afms[0] if len(employee_afms) == 1 else None
+        metadata = llm_metadata or {}
+        usage = metadata.get("usage_metadata")
+        if not isinstance(usage, dict):
+            usage = {}
+
+        def _usage_int(name: str) -> int | None:
+            try:
+                return max(0, int(usage[name])) if usage.get(name) is not None else None
+            except (TypeError, ValueError):
+                return None
+
         cur.execute(
             """
             INSERT INTO dbo.karta_assistant_task
                 (inbound_message_id, recipient_id, store_id, intent, task_status,
                  employee_afm, work_date, payload_json, llm_response_json, confidence,
-                 validation_json, proposed_action_text, execution_enabled)
+                 validation_json, proposed_action_text, execution_enabled,
+                 gemini_model, prompt_token_count, candidates_token_count,
+                 total_token_count, cached_content_token_count, thoughts_token_count,
+                 tool_use_prompt_token_count, llm_duration_ms, usage_metadata_json)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, TRY_CONVERT(date, ?), ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, TRY_CONVERT(date, ?), ?, ?, ?, ?, ?, 0,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(inbound_id), recipient_id, store_id,
@@ -297,11 +312,16 @@ def create_task(
                 employee_afm[:16] if employee_afm else None,
                 str(parsed.get("date") or "")[:10] or None,
                 _json(parsed), _json(parsed), confidence, _json(validation), proposed_action[:2000],
+                str(metadata.get("model") or "")[:128] or None,
+                _usage_int("promptTokenCount"), _usage_int("candidatesTokenCount"),
+                _usage_int("totalTokenCount"), _usage_int("cachedContentTokenCount"),
+                _usage_int("thoughtsTokenCount"), _usage_int("toolUsePromptTokenCount"),
+                max(0, int(metadata.get("duration_ms") or 0)), _json(usage),
             ),
         )
         task_id = int(cur.fetchone()[0])
         cur.execute(
             "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'parsed_dry_run', ?)",
-            (task_id, _json({"status": status, "validation": validation})),
+            (task_id, _json({"status": status, "validation": validation, "llm": metadata})),
         )
         return task_id

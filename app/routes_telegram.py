@@ -260,7 +260,9 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         replied_text = str(reply_message.get("text") or reply_message.get("caption") or "").strip()
         if replied_text:
             reply_ctx.setdefault("message_text", replied_text[:4096])
-        parsed, employees = parse_command(text=text, contexts=contexts, reply_context=reply_ctx)
+        parsed, employees, llm_metadata = parse_command(
+            text=text, contexts=contexts, reply_context=reply_ctx,
+        )
         status, validation, proposed = validate_and_describe(
             parsed, contexts=contexts, employees=employees,
         )
@@ -278,6 +280,7 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             status=task_status,
             validation=validation,
             proposed_action=proposed,
+            llm_metadata=llm_metadata,
         )
         mark_inbound(inbound_id, "parsed")
         if status == "draft":

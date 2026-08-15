@@ -21,6 +21,8 @@
   ΑΦΜ και υποστήριξη σχετικού χρόνου όπως «10 λεπτά πριν».
 - Προστέθηκε συνομιλιακή επιβεβαίωση `ΝΑΙ/ΟΧΙ` και προσωπικός PIN πριν από την
   τελική κατάσταση `confirmed_dry_run`, με redaction και κλείδωμα προσπαθειών.
+- Κάθε επιτυχημένο Gemini request αποθηκεύει model, διάρκεια, αναλυτικά token
+  counts και το πλήρες `usageMetadata` JSON στο assistant task.
 - Νέοι πίνακες inbound/outbound Telegram, assistant tasks και append-only task events.
 
 ## 2026-08-14 — Καταγραφές χτυπημάτων: ΑΦΜ και hover εργαζομένου

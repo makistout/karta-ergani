@@ -1,8 +1,10 @@
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
 from app.routes_telegram import telegram_bp
+from app.repo_telegram_assistant import create_task
 from app.telegram_assistant_service import validate_and_describe
 
 
@@ -33,18 +35,28 @@ def test_authorized_message_creates_dry_run_task_only():
         "employee_afm": "111222333", "date": "2026-08-15", "confidence": 0.99,
     }
     employees = [{"store_id": 4, "afm": "111222333", "name": "ΔΟΚΙΜΗ ΧΡΗΣΤΗΣ"}]
+    llm_metadata = {
+        "model": "gemini-flash-latest",
+        "duration_ms": 321,
+        "usage_metadata": {
+            "promptTokenCount": 100,
+            "candidatesTokenCount": 20,
+            "totalTokenCount": 120,
+        },
+    }
     with patch("app.repo_telegram_assistant.authorized_contexts", return_value=contexts), \
          patch("app.repo_telegram_assistant.create_inbound_message", return_value=(31, True)), \
          patch("app.repo_telegram_assistant.reply_context", return_value=None), \
          patch("app.repo_telegram_assistant.create_task", return_value=41) as create_task, \
          patch("app.repo_telegram_assistant.mark_inbound") as mark, \
-         patch("app.telegram_assistant_service.parse_command", return_value=(parsed, employees)), \
+         patch("app.telegram_assistant_service.parse_command", return_value=(parsed, employees, llm_metadata)), \
          patch("app.routes_telegram._reply_chat") as reply, \
          patch("app.routes_telegram.Config.TELEGRAM_ASSISTANT_ENABLED", True):
         response = _app().test_client().post("/api/telegram/webhook", json=payload)
     assert response.status_code == 200
     assert create_task.call_args.kwargs["status"] == "awaiting_confirmation"
     assert create_task.call_args.kwargs["validation"]["execution_enabled"] is False
+    assert create_task.call_args.kwargs["llm_metadata"] == llm_metadata
     assert "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ" in reply.call_args.args[1]
     assert "Είστε σύμφωνοι; Απαντήστε ΝΑΙ ή ΟΧΙ" in reply.call_args.args[1]
     assert reply.call_args.kwargs["context"]["notification_type"] == "assistant_confirmation"
@@ -231,3 +243,45 @@ def test_impossible_calendar_date_needs_clarification():
     assert status == "needs_clarification"
     assert validation["valid"] is False
     assert "Δεν προσδιορίστηκε έγκυρη ημερομηνία" in validation["errors"]
+
+
+def test_task_persists_gemini_usage_metadata():
+    cur = MagicMock()
+    cur.fetchone.side_effect = [None, (77,)]
+
+    @contextmanager
+    def fake_cursor():
+        yield cur
+
+    metadata = {
+        "model": "gemini-2.5-flash",
+        "duration_ms": 456,
+        "usage_metadata": {
+            "promptTokenCount": 100,
+            "candidatesTokenCount": 20,
+            "totalTokenCount": 125,
+            "cachedContentTokenCount": 5,
+            "thoughtsTokenCount": 5,
+            "toolUsePromptTokenCount": 0,
+            "futureMetric": 9,
+        },
+    }
+    with patch("app.repo_telegram_assistant.cursor", fake_cursor):
+        task_id = create_task(
+            inbound_id=31, recipient_id=7, store_id=4,
+            parsed={
+                "intent": "rest_day", "employee_afms": ["111222333"],
+                "date": "2026-08-15", "confidence": 0.95,
+            },
+            status="awaiting_confirmation",
+            validation={"valid": True, "execution_enabled": False},
+            proposed_action="Δήλωση ρεπό",
+            llm_metadata=metadata,
+        )
+    assert task_id == 77
+    insert_sql, insert_params = cur.execute.call_args_list[1].args
+    assert insert_sql.count("?") == len(insert_params)
+    assert insert_params[-9:-1] == (
+        "gemini-2.5-flash", 100, 20, 125, 5, 5, 0, 456,
+    )
+    assert '"futureMetric": 9' in insert_params[-1]

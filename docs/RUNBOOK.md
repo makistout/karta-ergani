@@ -45,6 +45,12 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
   και να μην υπάρχει σε task events.
 - Το `execution_enabled` πρέπει να παραμένει `0`. Η κατάσταση
   `confirmed_dry_run` δεν σημαίνει υποβολή στο ΕΡΓΑΝΗ.
+- Μετά από Gemini parsing, έλεγξε στο `karta_assistant_task` τα
+  `prompt_token_count`, `candidates_token_count`, `total_token_count`,
+  `cached_content_token_count`, `thoughts_token_count`,
+  `tool_use_prompt_token_count`, `gemini_model`, `llm_duration_ms` και
+  `usage_metadata_json`. Τα πεδία μπορεί να είναι `NULL` όταν το Gemini δεν
+  επιστρέφει το αντίστοιχο metric· το πλήρες JSON διατηρεί τυχόν νεότερα πεδία.
 - Σχετικός έλεγχος:
 
 ```bash

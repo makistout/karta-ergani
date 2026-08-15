@@ -62,6 +62,15 @@ BEGIN
         work_date DATE NULL,
         payload_json NVARCHAR(MAX) NOT NULL,
         llm_response_json NVARCHAR(MAX) NULL,
+        gemini_model NVARCHAR(128) NULL,
+        prompt_token_count INT NULL,
+        candidates_token_count INT NULL,
+        total_token_count INT NULL,
+        cached_content_token_count INT NULL,
+        thoughts_token_count INT NULL,
+        tool_use_prompt_token_count INT NULL,
+        llm_duration_ms INT NULL,
+        usage_metadata_json NVARCHAR(MAX) NULL,
         confidence DECIMAL(5,4) NULL,
         validation_json NVARCHAR(MAX) NULL,
         proposed_action_text NVARCHAR(2000) NULL,
@@ -79,6 +88,29 @@ BEGIN
     );
     CREATE INDEX IX_karta_assistant_task_status ON dbo.karta_assistant_task(task_status, created_at DESC);
     CREATE INDEX IX_karta_assistant_task_store ON dbo.karta_assistant_task(store_id, created_at DESC);
+END
+GO
+
+IF OBJECT_ID(N'dbo.karta_assistant_task', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'gemini_model') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD gemini_model NVARCHAR(128) NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'prompt_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD prompt_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'candidates_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD candidates_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'total_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD total_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'cached_content_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD cached_content_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'thoughts_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD thoughts_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'tool_use_prompt_token_count') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD tool_use_prompt_token_count INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'llm_duration_ms') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD llm_duration_ms INT NULL;
+    IF COL_LENGTH(N'dbo.karta_assistant_task', N'usage_metadata_json') IS NULL
+        ALTER TABLE dbo.karta_assistant_task ADD usage_metadata_json NVARCHAR(MAX) NULL;
 END
 GO
 

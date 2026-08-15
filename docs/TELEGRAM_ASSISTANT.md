@@ -57,6 +57,9 @@ context και το κείμενο του αρχικού Telegram μηνύματ
 - `karta_assistant_task`: δομημένη πρόθεση, validation, περιγραφή ενέργειας και
   κατάσταση συνομιλίας (`awaiting_confirmation`, `awaiting_pin`,
   `confirmed_dry_run`, `cancelled`, `pin_locked` ή `needs_clarification`).
+  Για κάθε επιτυχημένο Gemini request αποθηκεύει επίσης model, διάρκεια και
+  token usage (`prompt`, `candidates`, `total`, `cached content`, `thoughts`,
+  `tool-use prompt`) μαζί με το πλήρες `usageMetadata` JSON.
 - `karta_assistant_task_event`: append-only ιστορικό task.
 
 Migration:
@@ -88,5 +91,8 @@ TELEGRAM_ASSISTANT_ENABLED=1
   `execution_enabled=0`.
 - Η επαλήθευση PIN συνδέει task, αρχικό inbound chat και ενεργό λήπτη πριν από
   οποιαδήποτε αλλαγή κατάστασης.
+- Τα token counts προέρχονται από το `usageMetadata` της ίδιας της απόκρισης
+  Gemini· δεν υπολογίζονται προσεγγιστικά από τον server. Η τιμολόγηση δεν
+  αποθηκεύεται, επειδή μεταβάλλεται ανεξάρτητα από τα ιστορικά usage δεδομένα.
 - Τα σφάλματα Gemini αποθηκεύονται στο inbound message, χωρίς να εκτελείται
   fallback ενέργεια.
