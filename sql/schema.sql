@@ -36,6 +36,7 @@ BEGIN
         auto_close_prev_day_time NVARCHAR(5) NOT NULL CONSTRAINT DF_karta_store_auto_close_prev_day_time DEFAULT (N'00:30'),
         auto_close_prev_day_last_run_date NVARCHAR(10) NULL,
         sunday_rest_transfer_enabled BIT NOT NULL CONSTRAINT DF_karta_store_sunday_rest_transfer_enabled DEFAULT (0),
+        uneven_distribution_enabled BIT NOT NULL CONSTRAINT DF_karta_store_uneven_distribution_enabled DEFAULT (0),
         card_submission_mode NVARCHAR(16) NOT NULL CONSTRAINT DF_karta_store_card_submission_mode DEFAULT (N'erganios'),
         listener_offline_seconds INT NOT NULL CONSTRAINT DF_karta_store_listener_offline_seconds DEFAULT (60),
         CONSTRAINT CK_karta_store_card_submission_mode CHECK (card_submission_mode IN (N'erganios', N'listener')),

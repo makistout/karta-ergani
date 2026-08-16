@@ -12,6 +12,7 @@ _action_settings_cols: bool | None = None
 _notify_grace_col: bool | None = None
 _fixed_exit_col: bool | None = None
 _sunday_rest_transfer_col: bool | None = None
+_uneven_distribution_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -106,6 +107,22 @@ def sunday_rest_transfer_column_available() -> bool:
     except Exception:
         _sunday_rest_transfer_col = False
     return _sunday_rest_transfer_col
+
+
+def uneven_distribution_column_available() -> bool:
+    global _uneven_distribution_col
+    if _uneven_distribution_col is True:
+        return _uneven_distribution_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'uneven_distribution_enabled')"
+            )
+            row = cur.fetchone()
+            _uneven_distribution_col = row is not None and row[0] is not None
+    except Exception:
+        _uneven_distribution_col = False
+    return _uneven_distribution_col
 
 
 def get_sunday_rest_transfer_enabled(store_id: int) -> bool:
@@ -481,6 +498,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             "auto_close_fixed_exit_time": None,
             "notify_grace_minutes": 15,
             "sunday_rest_transfer_enabled": False,
+            "uneven_distribution_enabled": False,
             "db_setup": "sql/alter_add_store_action_settings.sql",
         }
     with cursor(commit=False) as cur:
@@ -499,6 +517,11 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             if sunday_rest_transfer_column_available()
             else ", CAST(0 AS int) AS sunday_rest_transfer_enabled"
         )
+        uneven_sql = (
+            ", CAST(uneven_distribution_enabled AS int) AS uneven_distribution_enabled"
+            if uneven_distribution_column_available()
+            else ", CAST(0 AS int) AS uneven_distribution_enabled"
+        )
         cur.execute(
             f"""
             SELECT
@@ -508,6 +531,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
                 {fixed_sql}
                 {grace_sql}
                 {rest_sql}
+                {uneven_sql}
             FROM dbo.karta_store_config
             WHERE id = ?
             """,
@@ -533,6 +557,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         ),
         "notify_grace_minutes": grace,
         "sunday_rest_transfer_enabled": bool(int(data.get("sunday_rest_transfer_enabled") or 0)),
+        "uneven_distribution_enabled": bool(int(data.get("uneven_distribution_enabled") or 0)),
     }
     if not notify_grace_column_available():
         out["db_setup_notify_grace"] = "sql/alter_add_store_notify_grace_minutes.sql"
@@ -540,6 +565,8 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         out["db_setup_fixed_exit"] = "sql/alter_add_auto_close_fixed_exit_time.sql"
     if not sunday_rest_transfer_column_available():
         out["db_setup_sunday_rest_transfer"] = "sql/alter_add_store_sunday_rest_transfer.sql"
+    if not uneven_distribution_column_available():
+        out["db_setup_uneven_distribution"] = "sql/alter_add_store_uneven_distribution.sql"
     return out
 
 
@@ -551,6 +578,7 @@ def save_action_settings(
     auto_close_fixed_exit_time: str | None = None,
     notify_grace_minutes: int | None = None,
     sunday_rest_transfer_enabled: bool | None = None,
+    uneven_distribution_enabled: bool | None = None,
 ) -> dict[str, Any]:
     if not action_settings_columns_available():
         raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
@@ -561,6 +589,7 @@ def save_action_settings(
     fixed_s = normalize_optional_auto_close_time(auto_close_fixed_exit_time)
     grace = normalize_notify_grace_minutes(notify_grace_minutes)
     rest_enabled = bool(sunday_rest_transfer_enabled)
+    uneven_enabled = bool(uneven_distribution_enabled)
     sets = [
         "auto_close_prev_day_enabled = ?",
         "auto_close_prev_day_time = ?",
@@ -576,6 +605,9 @@ def save_action_settings(
     if sunday_rest_transfer_column_available():
         sets.insert(-1, "sunday_rest_transfer_enabled = ?")
         params.append(1 if rest_enabled else 0)
+    if uneven_distribution_column_available():
+        sets.insert(-1, "uneven_distribution_enabled = ?")
+        params.append(1 if uneven_enabled else 0)
     params.append(int(store_id))
     with cursor() as cur:
         cur.execute(

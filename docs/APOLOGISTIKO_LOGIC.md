@@ -127,6 +127,19 @@ Default είναι ανενεργό· χωρίς ενεργοποίηση δεν
 `KARTA_SCHEDULED_APOLOGISTIC_TIME=03:00`. Backfill:
 `python scripts/backfill_apologistic.py --from YYYY-MM-DD`.
 
+### Επιθυμία ανισομερούς κατανομής ανά κατάστημα
+
+Στη σελίδα `/ui/stores/notify`, στην ενότητα «Απολογιστικό», υπάρχει η επιλογή
+«Επιθυμώ ανισομερή κατανομή». Αποθηκεύεται ανά κατάστημα στο
+`karta_store_config.uneven_distribution_enabled` και έχει προεπιλογή `0`
+(`ΟΧΙ`) για όλα τα υπάρχοντα και νέα καταστήματα. Προς το παρόν αποτελεί
+αποθηκευμένη επιχειρησιακή επιλογή για μελλοντική χρήση στους κανόνες
+απολογιστικού, ωρομέτρησης και συναφών υπολογισμών· δεν αλλάζει μόνη της τον
+τρέχοντα υπολογισμό.
+
+Migration: `sql/alter_add_store_uneven_distribution.sql` ή
+`PYTHONPATH=. .venv/bin/python scripts/run_migration_store_uneven_distribution.py`.
+
 ## 1. Πεδίο επεξεργασίας και πηγές
 
 Η ανάλυση γίνεται ανά επιχείρηση, εργαζόμενο, ημερολογιακή ημέρα και πλήρη
