@@ -374,6 +374,8 @@
       { id: "yesterday", label: "Χθες" },
       { id: "last7", label: "7 ημέρες" },
       { id: "last30", label: "30 ημέρες" },
+      { id: "previousWeek", label: "Προηγ. εβδομάδα" },
+      { id: "previousMonth", label: "Προηγ. μήνας" },
     ];
     const quickLabels = opts.quickLabels || {};
     const quickIds =
@@ -452,6 +454,16 @@
       } else if (id === "last30") {
         end = today;
         start = addDays(end, -29);
+      } else if (id === "previousWeek") {
+        const todayDate = parseIso(today);
+        const daysFromMonday = (todayDate.getDay() + 6) % 7;
+        end = addDays(today, -daysFromMonday - 1);
+        start = addDays(end, -6);
+      } else if (id === "previousMonth") {
+        const todayDate = parseIso(today);
+        const firstCurrent = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+        end = toIso(new Date(firstCurrent.getFullYear(), firstCurrent.getMonth(), 0));
+        start = toIso(new Date(firstCurrent.getFullYear(), firstCurrent.getMonth() - 1, 1));
       }
       syncRangeFields();
       highlightQuick(id);

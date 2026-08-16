@@ -367,6 +367,36 @@ def list_employee_days(*, store_id: int, employee_afm: str,
         return rows
 
 
+def list_store_days(*, store_id: int, date_from: date, date_to: date) -> list[dict[str, Any]]:
+    """Effective retrospective rows for all employees in a calendar range."""
+    with cursor(commit=False) as cur:
+        cur.execute("""
+            SELECT d.id, d.work_date, d.effective_json, r.id, r.week_from, r.week_to,
+                   r.status, r.calculation_version,
+                   CAST(r.completed_at AS datetime2) AS completed_at
+            FROM dbo.karta_apologistic_day d
+            INNER JOIN dbo.karta_apologistic_run r ON r.id=d.run_id
+            WHERE r.store_id=? AND d.work_date BETWEEN ? AND ?
+              AND r.status IN (N'draft', N'approved', N'locked')
+            ORDER BY d.work_date, d.employee_afm
+        """, (int(store_id), date_from, date_to))
+        rows: list[dict[str, Any]] = []
+        for record in cur.fetchall():
+            try:
+                item = json.loads(record[2])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            item.update({
+                "source": "snapshot", "finalized": True,
+                "day_id": int(record[0]), "run_id": int(record[3]),
+                "week_from": record[4].isoformat(), "week_to": record[5].isoformat(),
+                "run_status": str(record[6]), "calculation_version": str(record[7]),
+                "completed_at": record[8].isoformat() if record[8] else None,
+            })
+            rows.append(item)
+        return rows
+
+
 def enrich_employee_month_days(
     *,
     store_id: int,

@@ -47,6 +47,41 @@ def test_missing_past_snapshot_does_not_calculate_on_the_fly(monkeypatch):
     assert "αποθηκευμένο" in response.get_json()["error"]
 
 
+def test_month_returns_saved_rows_and_all_intersecting_weeks(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
+    monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
+    monkeypatch.setattr(routes_apologistic, "list_store_days", lambda **kwargs: [{
+        "employee_afm": "123456789", "work_date": "01/07/2026",
+        "week_from": "2026-06-29", "week_to": "2026-07-05", "status": "ok",
+    }])
+    monkeypatch.setattr(routes_apologistic, "enrich_employee_month_days", lambda **kwargs: None)
+    response = _app().test_client().get("/api/apologistic/month?year=2026&month=7")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["employees"] == ["123456789"]
+    assert body["work_dates"] == ["01/07/2026"]
+    assert body["weeks"][0] == {
+        "from": "2026-06-29", "to": "2026-07-05",
+        "visible_from": "2026-07-01", "visible_to": "2026-07-05", "available": True,
+    }
+    assert body["weeks"][-1]["from"] == "2026-07-27"
+    assert body["weeks"][-1]["visible_to"] == "2026-07-31"
+
+
+def test_range_returns_only_requested_saved_dates(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
+    monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
+    captured = {}
+    monkeypatch.setattr(routes_apologistic, "list_store_days", lambda **kwargs: captured.update(kwargs) or [])
+    monkeypatch.setattr(routes_apologistic, "enrich_employee_month_days", lambda **kwargs: None)
+    response = _app().test_client().get("/api/apologistic/range?from=2026-07-10&to=2026-07-22")
+    assert response.status_code == 200
+    assert captured["date_from"] == date(2026, 7, 10)
+    assert captured["date_to"] == date(2026, 7, 22)
+
+
 def test_accept_review_returns_change_from_review(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(

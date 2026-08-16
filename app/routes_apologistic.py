@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, Response, jsonify, request, session
 
@@ -18,7 +19,8 @@ from app.http_helpers import resolve_active_store
 from app.office_auth import SESSION_USER
 from app.repo_apologistic import (
     apply_exchange, accept_all_review, accept_review, load_report, record_ergani_submit,
-    successful_overtime_minutes_for_year, tables_available, update_proposed,
+    enrich_employee_month_days, list_store_days, successful_overtime_minutes_for_year,
+    tables_available, update_proposed,
 )
 from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_submit_result
 from app.wto_submit import parse_submit_response
@@ -28,6 +30,85 @@ from app.work_card_payload import WorkCardPayloadError
 
 
 apologistic_bp = Blueprint("apologistic", __name__, url_prefix="/api/apologistic")
+
+
+def _saved_range_response(ctx: dict, date_from: date, date_to: date):
+    days = list_store_days(store_id=int(ctx["id"]), date_from=date_from, date_to=date_to)
+    enrich_employee_month_days(
+        store_id=int(ctx["id"]), employer_afm=str(ctx["employer_afm"]),
+        branch_aa=str(ctx.get("branch_aa") or "0"), days=days,
+    )
+    employees = sorted({str(row.get("employee_afm") or "") for row in days if row.get("employee_afm")})
+    work_dates = sorted({str(row.get("work_date") or "") for row in days}, key=lambda value: datetime.strptime(value, "%d/%m/%Y"))
+    return {
+        "store": {"id": ctx["id"], "name": ctx["name"], "employer_afm": ctx["employer_afm"],
+                  "branch_aa": ctx["branch_aa"]},
+        "from": date_from.isoformat(), "to": date_to.isoformat(), "work_dates": work_dates,
+        "employees": employees, "days": days,
+        "legal_notice": "Ελεγκτικό προσχέδιο από αποθηκευμένα αποτελέσματα. Οι εγγραφές «Έλεγχος» δεν αποτελούν αυτόματη δήλωση.",
+    }
+
+
+@apologistic_bp.get("/range")
+def apologistic_range():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    try:
+        date_from = datetime.strptime(str(request.args.get("from") or "")[:10], "%Y-%m-%d").date()
+        date_to = datetime.strptime(str(request.args.get("to") or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Μη έγκυρο διάστημα"}), 400
+    if date_to < date_from:
+        return jsonify({"error": "Η ημερομηνία λήξης πρέπει να είναι μετά την έναρξη"}), 400
+    if (date_to - date_from).days > 366:
+        return jsonify({"error": "Το διάστημα δεν μπορεί να υπερβαίνει το ένα έτος"}), 400
+    _, latest_completed_to = previous_week()
+    if date_to > latest_completed_to:
+        return jsonify({"error": "Το διάστημα μπορεί να φτάνει έως την τελευταία ολοκληρωμένη εβδομάδα"}), 400
+    if not tables_available():
+        return jsonify({"error": "Δεν έχουν εγκατασταθεί οι πίνακες απολογιστικού"}), 503
+    return jsonify(_saved_range_response(ctx, date_from, date_to))
+
+
+@apologistic_bp.get("/month")
+def apologistic_month():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    today = date.today()
+    try:
+        year = int(request.args.get("year") or today.year)
+        month = int(request.args.get("month") or today.month)
+        month_from = date(year, month, 1)
+        month_to = date(year, month, monthrange(year, month)[1])
+    except (TypeError, ValueError):
+        return jsonify({"error": "Μη έγκυρος μήνας"}), 400
+    if month_from > date(today.year, today.month, 1):
+        return jsonify({"error": "Οι επόμενοι μήνες δεν είναι διαθέσιμοι στο απολογιστικό"}), 400
+    if not tables_available():
+        return jsonify({"error": "Δεν έχουν εγκατασταθεί οι πίνακες απολογιστικού"}), 503
+
+    payload = _saved_range_response(ctx, month_from, month_to)
+    days = payload["days"]
+    first_monday = month_from - timedelta(days=month_from.weekday())
+    latest_completed, _ = previous_week()
+    weeks = []
+    cursor_week = first_monday
+    saved_weeks = {str(row.get("week_from") or "")[:10] for row in days}
+    while cursor_week <= month_to:
+        week_to = cursor_week + timedelta(days=6)
+        weeks.append({
+            "from": cursor_week.isoformat(), "to": week_to.isoformat(),
+            "visible_from": max(cursor_week, month_from).isoformat(),
+            "visible_to": min(week_to, month_to).isoformat(),
+            "available": cursor_week <= latest_completed and cursor_week.isoformat() in saved_weeks,
+        })
+        cursor_week += timedelta(days=7)
+    return jsonify({**payload,
+        "year": year, "month": month, "from": month_from.isoformat(), "to": month_to.isoformat(),
+        "weeks": weeks,
+    })
 
 
 @apologistic_bp.get("/week")

@@ -3,10 +3,16 @@ const EMP_DAY_NAMES = ["Κυρ", "Δευ", "Τρι", "Τετ", "Πεμ", "Παρ
 const apologisticToolbar = document.querySelector(".apologistic-toolbar");
 const viewMode = apologisticToolbar?.dataset.viewMode || "week";
 const isEmployeeMonthView = () => viewMode === "employee-month";
+let periodMode = "week";
+const isStoreMonthView = () => !isEmployeeMonthView() && periodMode === "month";
+const isStoreRangeView = () => !isEmployeeMonthView() && periodMode === "range";
 const monthPageQuery = new URLSearchParams(location.search);
 
 let weekStart = previousMonday();
 const latestCompletedWeekStart = new Date(weekStart);
+let rangeStart = new Date(weekStart);
+let rangeEnd = addDays(weekStart, 6);
+let apologisticRangeDatePicker = null;
 let monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let reportState = { rows: [], store: null, filter: "all", selectedDate: "", dates: [], employee: null };
 let openExplanationId = null;
@@ -22,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (isEmployeeMonthView()) {
     initEmployeeMonthNavigation();
   } else {
+    initStorePeriodNavigation();
     document.getElementById("weekPrev").onclick = () => moveWeek(-7);
     document.getElementById("weekNext").onclick = () => moveWeek(7);
   }
@@ -143,6 +150,121 @@ function initEmployeeMonthNavigation() {
   document.getElementById("monthNext")?.addEventListener("click", () => changeEmployeeMonth(1));
 }
 
+function initStorePeriodNavigation() {
+  const select = document.getElementById("apologisticMonthSelect");
+  const now = new Date();
+  if (select) {
+    for (let offset = 0; offset < 60; offset += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      const option = document.createElement("option");
+      option.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      option.textContent = `${EMP_MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => {
+      const [year, month] = select.value.split("-").map(Number);
+      monthStart = new Date(year, month - 1, 1);
+      loadReport();
+    });
+  }
+  document.getElementById("apologisticModeMonth")?.addEventListener("click", () => switchStorePeriod("month"));
+  document.getElementById("apologisticModeWeek")?.addEventListener("click", () => switchStorePeriod("week"));
+  document.getElementById("apologisticModeRange")?.addEventListener("click", () => switchStorePeriod("range"));
+  document.getElementById("apologisticMonthPrev")?.addEventListener("click", () => moveStoreMonth(-1));
+  document.getElementById("apologisticMonthNext")?.addEventListener("click", () => moveStoreMonth(1));
+  document.getElementById("apologisticRangeApply")?.addEventListener("click", applyStoreRange);
+  apologisticRangeDatePicker = Office.createDatePicker({
+    mountId: "apologisticRangeDatePicker",
+    mode: "range",
+    layout: "inline",
+    autoApply: false,
+    maxDate: iso(addDays(latestCompletedWeekStart, 6)),
+    quickPresets: ["previousWeek", "previousMonth"],
+  });
+  apologisticRangeDatePicker?.setRange(iso(rangeStart), iso(rangeEnd));
+  syncStorePeriodUi();
+}
+
+function switchStorePeriod(mode) {
+  if (mode === periodMode) return;
+  periodMode = mode;
+  if (mode === "month") monthStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), 1);
+  resetPeriodResults();
+  syncStorePeriodUi();
+  loadReport();
+}
+
+function resetPeriodResults() {
+  reportState = {
+    rows: [], store: reportState.store, filter: "all", selectedDate: "", dates: [],
+    employee: null, employeeCount: 0,
+  };
+  renderSummary({ days: [], employees: [] });
+  syncDaySelectionUi();
+}
+
+function applyStoreRange() {
+  const selectedRange = apologisticRangeDatePicker?.getRange() || {};
+  const from = selectedRange.start || "";
+  const to = selectedRange.end || "";
+  if (!from || !to) return Office.showMsg("apologisticSubmitMsg", "Συμπληρώστε ημερομηνία από και έως.", false);
+  rangeStart = new Date(`${from}T12:00:00`);
+  rangeEnd = new Date(`${to}T12:00:00`);
+  if (rangeEnd < rangeStart) return Office.showMsg("apologisticSubmitMsg", "Η ημερομηνία λήξης πρέπει να είναι μετά την έναρξη.", false);
+  loadReport();
+}
+
+function moveStoreMonth(delta) {
+  const candidate = new Date(monthStart.getFullYear(), monthStart.getMonth() + delta, 1);
+  const current = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  if (candidate > current) return;
+  monthStart = candidate;
+  loadReport();
+}
+
+function syncStorePeriodUi() {
+  const monthMode = isStoreMonthView();
+  const rangeMode = isStoreRangeView();
+  document.getElementById("apologisticModeMonth")?.classList.toggle("is-active", monthMode);
+  document.getElementById("apologisticModeWeek")?.classList.toggle("is-active", !monthMode && !rangeMode);
+  document.getElementById("apologisticModeRange")?.classList.toggle("is-active", rangeMode);
+  document.getElementById("apologisticModeMonth")?.setAttribute("aria-selected", monthMode ? "true" : "false");
+  document.getElementById("apologisticModeWeek")?.setAttribute("aria-selected", (!monthMode && !rangeMode) ? "true" : "false");
+  document.getElementById("apologisticModeRange")?.setAttribute("aria-selected", rangeMode ? "true" : "false");
+  document.getElementById("apologisticWeekControls")?.classList.toggle("hidden", monthMode || rangeMode);
+  document.getElementById("apologisticDayTabs")?.classList.toggle("hidden", monthMode || rangeMode);
+  document.getElementById("apologisticMonthControls")?.classList.toggle("hidden", !monthMode);
+  document.getElementById("apologisticMonthWeeks")?.classList.toggle("hidden", !monthMode);
+  document.getElementById("apologisticRangeControls")?.classList.toggle("hidden", !rangeMode);
+  const select = document.getElementById("apologisticMonthSelect");
+  if (select) select.value = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}`;
+  const next = document.getElementById("apologisticMonthNext");
+  if (next) next.disabled = monthStart.getFullYear() === new Date().getFullYear() && monthStart.getMonth() === new Date().getMonth();
+  if (rangeMode) apologisticRangeDatePicker?.setRange(iso(rangeStart), iso(rangeEnd));
+  const allButton = document.getElementById("apologisticAllDays");
+  if (allButton) {
+    const periodLabel = monthMode ? "του μήνα" : rangeMode ? "του διαστήματος" : "της εβδομάδας";
+    allButton.title = `Εμφάνιση όλων των αποτελεσμάτων ${periodLabel}`;
+  }
+}
+
+function renderStoreMonthWeeks(weeks) {
+  const mount = document.getElementById("apologisticMonthWeeks");
+  if (!mount) return;
+  mount.innerHTML = (weeks || []).map((week, index) => {
+    const from = new Date(`${week.visible_from || week.from}T12:00:00`);
+    const to = new Date(`${week.visible_to || week.to}T12:00:00`);
+    return `<button type="button" class="apologistic-month-week" data-week-from="${attr(week.from)}" ${week.available ? "" : "disabled"}>` +
+      `Εβδ. ${index + 1} · ${from.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit" })}–${to.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit" })}</button>`;
+  }).join("");
+  mount.querySelectorAll("[data-week-from]").forEach((button) => button.addEventListener("click", () => {
+    weekStart = new Date(`${button.dataset.weekFrom}T12:00:00`);
+    periodMode = "week";
+    syncStorePeriodUi();
+    loadReport();
+  }));
+}
+
 function changeEmployeeMonth(delta) {
   const candidate = new Date(monthStart.getFullYear(), monthStart.getMonth() + delta, 1);
   const current = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -190,7 +312,8 @@ function weekdayLabelForDate(workDate) {
 }
 
 function bulkPeriodLabel() {
-  return isEmployeeMonthView() ? "Μαζική Καταχώρηση μήνα" : "Μαζική Καταχώρηση εβδομάδας";
+  if (isEmployeeMonthView() || isStoreMonthView()) return "Μαζική Καταχώρηση μήνα";
+  return isStoreRangeView() ? "Μαζική Καταχώρηση διαστήματος" : "Μαζική Καταχώρηση εβδομάδας";
 }
 
 function initExplanationModal() {
@@ -431,13 +554,17 @@ function refreshSummaryCounts() {
 }
 
 function isAllDaysSelected() {
-  return isEmployeeMonthView() || !reportState.selectedDate;
+  return isEmployeeMonthView() || isStoreMonthView() || isStoreRangeView() || !reportState.selectedDate;
 }
 
 function selectAllDays() {
   reportState.selectedDate = "";
+  reportState.filter = "all";
   syncDaySelectionUi();
   renderVisibleRows();
+  syncFilterButtons();
+  updateBulkWeekBar();
+  updateAcceptAllBar();
 }
 
 function syncDaySelectionUi() {
@@ -481,6 +608,8 @@ function reportPeriodLabel() {
     if (!isAllDaysSelected()) return reportState.selectedDate;
     return `${EMP_MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()} · όλος ο μήνας`;
   }
+  if (isStoreMonthView()) return `${EMP_MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()} · όλος ο μήνας`;
+  if (isStoreRangeView()) return `${rangeStart.toLocaleDateString("el-GR")}–${rangeEnd.toLocaleDateString("el-GR")}`;
   if (!isAllDaysSelected()) return reportState.selectedDate;
   const dates = reportState.dates || [];
   if (!dates.length) return "όλη η εβδομάδα";
@@ -726,11 +855,7 @@ function openBulkWeekPreview() {
   closeExplanation();
   const scheduleCount = items.filter((item) => item.kind === "schedule").length;
   const overtimeCount = items.filter((item) => item.kind === "overtime").length;
-  const weekLabel = (() => {
-    const dates = reportState.dates || [];
-    if (!dates.length) return "όλη η εβδομάδα";
-    return `${dates[0].slice(0, 5)}–${dates[dates.length - 1].slice(0, 5)} · όλη η εβδομάδα`;
-  })();
+  const weekLabel = reportPeriodLabel();
   if (meta) {
     meta.textContent =
       `${reportState.store?.name || "Κατάστημα"} · ${weekLabel} · ` +
@@ -1727,7 +1852,11 @@ function downloadApologisticExcel(button) {
   const dataRows = rows.map((row) => buildApologisticExportRow(row, showDateColumn));
   const filename = isEmployeeMonthView()
     ? `monthly_${employeeMonthAfm()}_${monthStart.getFullYear()}${String(monthStart.getMonth() + 1).padStart(2, "0")}.xls`
-    : `apologistic_${iso(weekStart).replace(/-/g, "")}.xls`;
+    : isStoreMonthView()
+      ? `apologistic_month_${monthStart.getFullYear()}${String(monthStart.getMonth() + 1).padStart(2, "0")}.xls`
+      : isStoreRangeView()
+        ? `apologistic_${iso(rangeStart).replace(/-/g, "")}_${iso(rangeEnd).replace(/-/g, "")}.xls`
+        : `apologistic_${iso(weekStart).replace(/-/g, "")}.xls`;
   if (button) Office.setButtonLoading(button, true);
   try {
     const blob = buildApologisticExcelBlob(metaParts.join(" · "), headers, dataRows);
@@ -1782,7 +1911,57 @@ function overtimeCell(row) {
 
 async function loadReport() {
   if (isEmployeeMonthView()) return loadEmployeeMonthReport();
+  if (isStoreMonthView()) return loadStoreMonthReport();
+  if (isStoreRangeView()) return loadStoreRangeReport();
   return loadWeekReport();
+}
+
+async function loadStoreRangeReport() {
+  const wrap = document.getElementById("apologisticWrap");
+  syncStorePeriodUi();
+  closeBulkWeekModal();
+  Office.showTableLoading(wrap);
+  closeExplanation();
+  const qs = new URLSearchParams({ from: iso(rangeStart), to: iso(rangeEnd) });
+  const res = await fetch(`/api/apologistic/range?${qs}`, { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
+  reportState = {
+    rows: data.days || [], store: data.store, filter: "all", dates: data.work_dates || [],
+    selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+  };
+  renderSummary(data);
+  renderVisibleRows();
+  document.getElementById("apologisticNotice").textContent = data.legal_notice || "";
+}
+
+async function loadStoreMonthReport() {
+  const wrap = document.getElementById("apologisticWrap");
+  syncStorePeriodUi();
+  closeBulkWeekModal();
+  Office.showTableLoading(wrap);
+  closeExplanation();
+  const qs = new URLSearchParams({ year: String(monthStart.getFullYear()), month: String(monthStart.getMonth() + 1) });
+  const res = await fetch(`/api/apologistic/month?${qs}`, { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
+  const monthFrom = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+  const monthTo = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const days = (data.days || []).filter((row) => {
+    const parts = String(row.work_date || "").split("/").map(Number);
+    if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return false;
+    const workDate = new Date(parts[2], parts[1] - 1, parts[0]);
+    return workDate >= monthFrom && workDate <= monthTo;
+  });
+  reportState = {
+    rows: days, store: data.store, filter: "all",
+    dates: (data.work_dates || []).filter((value) => days.some((row) => row.work_date === value)),
+    selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+  };
+  renderStoreMonthWeeks(data.weeks || []);
+  renderSummary({ ...data, days });
+  renderVisibleRows();
+  document.getElementById("apologisticNotice").textContent = data.legal_notice || "";
 }
 
 async function loadWeekReport() {

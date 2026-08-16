@@ -8,13 +8,21 @@
 
 {% block content %}
 
-  <h1 class="page-title"><i class="bi bi-clipboard-data" aria-hidden="true"></i> Απολογιστικό εβδομάδας</h1>
+  <h1 class="page-title"><i class="bi bi-clipboard-data" aria-hidden="true"></i> Απολογιστικό ωραρίου</h1>
 
-  <p class="page-desc">Σύγκριση δηλωμένου ωραρίου, πραγματικής απασχόλησης και σύμβασης για την προηγούμενη ολοκληρωμένη εβδομάδα.</p>
+  <p class="page-desc" id="apologisticPageDesc">Σύγκριση δηλωμένου ωραρίου, πραγματικής απασχόλησης και σύμβασης.</p>
+
+  <div class="apologistic-period-tabs" role="tablist" aria-label="Διάστημα απολογιστικού">
+    <button type="button" class="apologistic-period-tab" id="apologisticModeMonth" role="tab" aria-selected="false">Ανά μήνα</button>
+    <button type="button" class="apologistic-period-tab is-active" id="apologisticModeWeek" role="tab" aria-selected="true">Ανά εβδομάδα</button>
+    <button type="button" class="apologistic-period-tab" id="apologisticModeRange" role="tab" aria-selected="false">Ανά διάστημα</button>
+  </div>
 
   <div class="toolbar-dates card apologistic-toolbar" data-can-submit="{{ '1' if office_has_permission('schedule.submit_daily') else '0' }}">
 
-    <div class="toolbar-dates-row">
+    <div class="apologistic-toolbar-primary">
+
+    <div class="toolbar-dates-row" id="apologisticWeekControls">
 
       <button type="button" class="btn btn-secondary" id="weekPrev"><i class="bi bi-chevron-left"></i></button>
 
@@ -22,9 +30,26 @@
 
       <button type="button" class="btn btn-secondary" id="weekNext"><i class="bi bi-chevron-right"></i></button>
 
-      <button type="button" class="btn btn-secondary apologistic-all-days-btn is-active" id="apologisticAllDays" aria-pressed="true" title="Εμφάνιση όλων των αποτελεσμάτων της εβδομάδας">ΟΛΑ</button>
+    </div>
+
+    <div class="toolbar-dates-row hidden" id="apologisticMonthControls">
+      <button type="button" class="btn btn-secondary" id="apologisticMonthPrev"><i class="bi bi-chevron-left"></i></button>
+      <select id="apologisticMonthSelect" class="field-input apologistic-month-select" aria-label="Επιλογή μήνα"></select>
+      <button type="button" class="btn btn-secondary" id="apologisticMonthNext"><i class="bi bi-chevron-right"></i></button>
+    </div>
+
+    <div class="toolbar-dates-row hidden" id="apologisticRangeControls">
+      <div id="apologisticRangeDatePicker"></div>
+      <button type="button" class="btn btn-primary" id="apologisticRangeApply"><i class="bi bi-search"></i> Προβολή</button>
+    </div>
+
+    <div class="apologistic-all-results-row">
+      <button type="button" class="btn btn-secondary apologistic-all-days-btn is-active" id="apologisticAllDays" aria-pressed="true" title="Εμφάνιση όλων των αποτελεσμάτων του επιλεγμένου διαστήματος">ΟΛΑ</button>
+    </div>
 
     </div>
+
+    <div id="apologisticMonthWeeks" class="apologistic-month-weeks hidden" aria-label="Εβδομάδες μήνα"></div>
 
     <div id="apologisticDayTabs" class="apologistic-day-tabs" aria-label="Ημέρες εβδομάδας"></div>
 
@@ -246,7 +271,7 @@
 
 {% block scripts %}
 
-  <script src="/static/js/apologistic.js?v=20260813overtime1"></script>
+  <script src="/static/js/office-date-picker.js?v=20260816apologistic1"></script>
+  <script src="/static/js/apologistic.js?v=20260816range5"></script>
 
 {% endblock %}
-
