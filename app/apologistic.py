@@ -319,21 +319,24 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
-    """Use an exact uniform 8:00/6:40 declaration; otherwise use the contract."""
-    declared_by_date: dict[str, int] = defaultdict(int)
-    for row in schedule_rows:
-        duration = _minutes(row.get("hour_from"), row.get("hour_to"))
-        if duration is not None and duration > 0:
-            declared_by_date[str(row.get("work_date") or "")] += duration
-
-    durations = list(declared_by_date.values())
-    if durations and all(duration == 480 for duration in durations):
-        return 5, "Δηλωμένο ωράριο ακριβώς 8:00"
-    if durations and all(duration == 400 for duration in durations):
-        return 6, "Δηλωμένο ωράριο ακριβώς 6:40"
+    """The employee's five/six-day system always comes from the contract."""
+    del schedule_rows
     if contract_weekly_days in (5, 6):
         return contract_weekly_days, "Σύμβαση εργαζομένου"
-    return None, "Μη προσδιορισμένη βάση"
+    return None, "Μη προσδιορισμένο στη σύμβαση"
+
+
+def _daily_overtime_basis(
+    declared_minutes: int, contract_weekly_days: int | None,
+) -> tuple[int | None, str]:
+    """Resolve only the day's overtime bands; never the contractual weekly system."""
+    if declared_minutes == 480:
+        return 5, "Δηλωμένο ωράριο ημέρας ακριβώς 8:00"
+    if declared_minutes == 400:
+        return 6, "Δηλωμένο ωράριο ημέρας ακριβώς 6:40"
+    if contract_weekly_days in (5, 6):
+        return contract_weekly_days, "Σύμβαση εργαζομένου"
+    return None, "Μη προσδιορισμένη ημερήσια βάση"
 
 
 def _break_context(
@@ -475,6 +478,17 @@ def build_weekly_report(
         )
         contract_flags = _contract_flags(contract)
         declared_minutes = sum(_minutes(s.get("hour_from"), s.get("hour_to")) or 0 for s in work_slots)
+        daily_overtime_days, daily_overtime_basis_source = _daily_overtime_basis(
+            declared_minutes, _contract_weekly_days
+        )
+        if contract_kind == "Μερική":
+            daily_overtime_days = None
+            daily_overtime_basis_source = "Δεν εφαρμόζεται στη μερική απασχόληση"
+        classification_days = (
+            daily_overtime_days
+            if contract_kind in ("Πλήρης", "Εκ περιτροπής")
+            else weekly_days
+        )
         actual_minutes = sum(_minutes(m.get("from"), m.get("to")) or 0 for m in matched) if matched else None
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
         declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "—")
@@ -495,7 +509,7 @@ def build_weekly_report(
         pe = _minute_of_day(last.get("to"), after=ps) if last and ps is not None else None
         start_difference = ps - ds if ps is not None and ds is not None else None
         end_difference = pe - de if pe is not None and de is not None else None
-        bands = _classify_extra(contract_kind, weekly_days, effective_actual or 0, declared_minutes)
+        bands = _classify_extra(contract_kind, classification_days, effective_actual or 0, declared_minutes)
         if contract_flags["work_arrangement"]:
             bands["classification_warning"] = "Διευθέτηση χρόνου εργασίας: απαιτείται έλεγχος περιόδου αναφοράς και ορίου 10 ωρών"
         elif contract_flags["uneven_distribution"]:
@@ -542,7 +556,7 @@ def build_weekly_report(
                 if first_start is not None and first_end is not None and second_start is not None:
                     decision = split_schedule_decision(
                         contract_kind=contract_kind,
-                        daily_base=contract_daily_base_minutes(contract_kind, weekly_days),
+                        daily_base=contract_daily_base_minutes(contract_kind, classification_days),
                         first_start=first_start,
                         first_end=first_end,
                         second_start=second_start,
@@ -556,7 +570,7 @@ def build_weekly_report(
         else:
             decision = normal_schedule_decision(
                 contract_kind=contract_kind,
-                weekly_days=weekly_days,
+                weekly_days=(classification_days if contract_kind in ("Πλήρης", "Εκ περιτροπής") else weekly_days),
                 day_state=state,
                 declared_label=declared_label,
                 declared_minutes=declared_minutes,
@@ -609,18 +623,30 @@ def build_weekly_report(
                 status, rule_id = "change", "NON_WORK_DAY_BECOMES_WORK"
                 reason = f"Χτύπημα σε {state} χωρίς διαθέσιμη ημέρα ανταλλαγής"
 
+        max_span = 780 if _contract_weekly_days == 5 else 720 if _contract_weekly_days == 6 else None
+        exceeds_daily_span = bool(
+            max_span is not None and actual_minutes is not None and actual_minutes > max_span
+        )
+        if exceeds_daily_span:
+            status = "review"
+            rule_id = "MAX_DAILY_SPAN_REVIEW"
+            reason = (
+                f"Το διάστημα χτυπήματος υπερβαίνει το όριο {max_span // 60} ωρών· "
+                "η πρόταση υπολογίστηκε με τους κανονικούς κανόνες και απαιτεί έλεγχο"
+            )
+
         overtime_from = overtime_to = None
         if bands["overtime_minutes"] and ps is not None and pe is not None:
-            contract_base = contract_daily_base_minutes(contract_kind, weekly_days)
+            contract_base = contract_daily_base_minutes(contract_kind, classification_days)
             if len(work_slots) > 1 and " · " in proposed:
                 last_part = proposed.split(" · ")[-1]
                 proposed_second_start, proposed_second_end = last_part.split("–", 1)
                 second_anchor = _minute_of_day(proposed_second_start, after=ps)
                 proposed_end = _minute_of_day(proposed_second_end, after=second_anchor)
-                overwork_window = 60 if contract_kind == "Πλήρης" and weekly_days == 5 else 80 if contract_kind == "Πλήρης" and weekly_days == 6 else 0
+                overwork_window = 60 if contract_kind == "Πλήρης" and classification_days == 5 else 80 if contract_kind == "Πλήρης" and classification_days == 6 else 0
                 overtime_from = (proposed_end + overwork_window) if proposed_end is not None else None
             else:
-                threshold = 540 if contract_kind == "Πλήρης" and weekly_days == 5 else 480 if contract_kind == "Πλήρης" and weekly_days == 6 else (contract_base or declared_minutes)
+                threshold = 540 if contract_kind == "Πλήρης" and classification_days == 5 else 480 if contract_kind == "Πλήρης" and classification_days == 6 else (contract_base or declared_minutes)
                 overtime_from = ps + outside_break + threshold
             if overtime_from is not None:
                 overtime_to = min(pe, overtime_from + bands["overtime_minutes"])
@@ -647,6 +673,15 @@ def build_weekly_report(
             single_schedule=len(work_slots) == 1, overtime_segments=overtime_segments,
             corrected_extra_punches=corrected_extra_punches,
         )
+        if contract_kind != "Μερική":
+            basis_label = (
+                _hm(contract_daily_base_minutes(contract_kind, daily_overtime_days))
+                if daily_overtime_days in (5, 6)
+                else "μη προσδιορισμένη"
+            )
+            status_explanation.append(
+                f"Ημερήσια βάση υπερωρίας: {basis_label} ({daily_overtime_basis_source})."
+            )
         if special_non_work_punch:
             status_explanation.extend([
                 f"Εβδομαδιαίος έλεγχος: μετρήθηκαν {weekly_punch_days} διαφορετικές ημέρες με χτύπημα κάρτας.",
@@ -671,6 +706,9 @@ def build_weekly_report(
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
             "weekly_days_source": weekly_days_source,
+            "daily_overtime_basis_days": daily_overtime_days,
+            "daily_overtime_basis_minutes": contract_daily_base_minutes(contract_kind, daily_overtime_days),
+            "daily_overtime_basis_source": daily_overtime_basis_source,
             **contract_flags,
             "declared": declared_label, "punch_recorded": punch_recorded,
             "actual": actual_label, "proposed": proposed,

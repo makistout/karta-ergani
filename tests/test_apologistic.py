@@ -48,7 +48,7 @@ def test_schedule_without_punch_is_ok_and_does_not_infer_actual_work():
     assert row["requires_confirmation"] is False
 
 
-def test_exact_eight_hour_declaration_overrides_six_day_contract():
+def test_exact_eight_hour_declaration_changes_daily_basis_not_six_day_contract():
     schedules, punches = [], []
     for index in range(5):
         day = f"{3 + index:02d}/08/2026"
@@ -58,13 +58,15 @@ def test_exact_eight_hour_declaration_overrides_six_day_contract():
 
     rows = build_weekly_report(schedules, punches, [contract(flex=0, days="6")])["days"]
     friday = next(row for row in rows if row["work_date"] == "07/08/2026")
-    assert friday["weekly_days"] == 5
-    assert friday["weekly_days_source"] == "Δηλωμένο ωράριο ακριβώς 8:00"
+    assert friday["weekly_days"] == 6
+    assert friday["weekly_days_source"] == "Σύμβαση εργαζομένου"
+    assert friday["daily_overtime_basis_days"] == 5
+    assert friday["daily_overtime_basis_source"] == "Δηλωμένο ωράριο ημέρας ακριβώς 8:00"
     assert friday["overwork_minutes"] == 30
     assert friday["overtime_minutes"] == 0
 
 
-def test_exact_six_forty_declaration_overrides_five_day_contract():
+def test_exact_six_forty_declaration_changes_daily_basis_not_five_day_contract():
     schedules, punches = [], []
     for index in range(6):
         day = f"{3 + index:02d}/08/2026"
@@ -74,8 +76,10 @@ def test_exact_six_forty_declaration_overrides_five_day_contract():
 
     rows = build_weekly_report(schedules, punches, [contract(flex=0, days="5")])["days"]
     saturday = next(row for row in rows if row["work_date"] == "08/08/2026")
-    assert saturday["weekly_days"] == 6
-    assert saturday["weekly_days_source"] == "Δηλωμένο ωράριο ακριβώς 6:40"
+    assert saturday["weekly_days"] == 5
+    assert saturday["weekly_days_source"] == "Σύμβαση εργαζομένου"
+    assert saturday["daily_overtime_basis_days"] == 6
+    assert saturday["daily_overtime_basis_source"] == "Δηλωμένο ωράριο ημέρας ακριβώς 6:40"
     assert saturday["overwork_minutes"] == 80
     assert saturday["overtime_minutes"] == 30
 
@@ -88,6 +92,8 @@ def test_non_standard_declared_duration_falls_back_to_contract():
     )["days"][0]
     assert row["weekly_days"] == 5
     assert row["weekly_days_source"] == "Σύμβαση εργαζομένου"
+    assert row["daily_overtime_basis_days"] == 5
+    assert row["daily_overtime_basis_source"] == "Σύμβαση εργαζομένου"
 
 
 def test_mixed_exact_durations_fall_back_to_contract():
@@ -98,6 +104,9 @@ def test_mixed_exact_durations_fall_back_to_contract():
     rows = build_weekly_report(schedules, [], [contract(flex=0, days="6")])["days"]
     assert {row["weekly_days"] for row in rows} == {6}
     assert {row["weekly_days_source"] for row in rows} == {"Σύμβαση εργαζομένου"}
+    by_date = {row["work_date"]: row for row in rows}
+    assert by_date["03/08/2026"]["daily_overtime_basis_days"] == 5
+    assert by_date["04/08/2026"]["daily_overtime_basis_days"] == 6
 
 
 def test_non_split_uses_longest_complete_interval():

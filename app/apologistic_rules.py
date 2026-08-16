@@ -20,7 +20,7 @@ class RuleDecision:
 
 
 def contract_daily_base_minutes(contract_kind: str, weekly_days: int | None) -> int | None:
-    """Return the full contractual daily reference, never the shorter day declaration."""
+    """Return the applicable full-day reference for the selected 5/6-day basis."""
     if weekly_days == 5:
         return 480
     if weekly_days == 6:
@@ -122,9 +122,6 @@ def normal_schedule_decision(
         return RuleDecision("review", "Δεν προκύπτουν ασφαλή χρονικά όρια από το χτύπημα", actual_label, "Χειροκίνητος έλεγχος", "INVALID_PUNCH_REVIEW")
     if raw_overnight and not declared_overnight and declared_minutes:
         return RuleDecision("review", "Η έξοδος προηγείται της εισόδου χωρίς δηλωμένο νυχτερινό ωράριο", actual_label, "Έλεγχος σειράς χτυπημάτων", "UNDECLARED_OVERNIGHT_REVIEW")
-    max_span = 780 if weekly_days == 5 else 720 if weekly_days == 6 else None
-    if max_span is not None and actual_minutes > max_span:
-        return RuleDecision("review", f"Το διάστημα χτυπήματος υπερβαίνει το όριο {max_span // 60} ωρών", actual_label, "Όριο ημερήσιου διαστήματος", "MAX_DAILY_SPAN_REVIEW")
     cap = base or declared_minutes
     if unpredictable:
         duration = min(effective_actual or actual_minutes, cap) if cap else (effective_actual or actual_minutes)

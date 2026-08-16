@@ -115,6 +115,21 @@ def test_daily_span_limit_for_five_day_contract_goes_to_review():
     row = one([sched()], [punch("06:00", "19:01")], contract(days="5"))
     assert row["status"] == "review"
     assert row["rule_id"] == "MAX_DAILY_SPAN_REVIEW"
+    assert row["proposed"] == "06:00–14:00"
+    assert "η πρόταση υπολογίστηκε" in row["reason"]
+
+
+def test_rotating_exact_six_forty_uses_daily_six_day_basis_under_five_day_contract():
+    row = one(
+        [sched(start="09:00", end="15:40")],
+        [punch("09:00", "18:00")],
+        contract(kind="ΕΚ ΠΕΡΙΤΡΟΠΗΣ ΑΠΑΣΧΟΛΗΣΗ", days="5"),
+    )
+    assert row["weekly_days"] == 5
+    assert row["daily_overtime_basis_days"] == 6
+    assert row["overwork_minutes"] == 0
+    assert row["overtime_minutes"] == 140
+    assert row["overtime_from"] == "15:40"
 
 
 def test_non_declared_overnight_goes_to_review():
