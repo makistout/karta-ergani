@@ -169,8 +169,7 @@ def test_multiple_punches_choose_longest_valid_real_span_for_general_checks_only
     assert row["overtime_worked_minutes"] == 1319
     assert row["overtime_minutes"] == 240
     assert row["overtime_segments"] == [
-        {"date": "03/08/2026", "from": "21:01", "to": "00:00", "minutes": 179},
-        {"date": "04/08/2026", "from": "00:00", "to": "01:01", "minutes": 61},
+        {"date": "03/08/2026", "from": "21:01", "to": "01:01", "minutes": 240},
     ]
 
 
@@ -187,6 +186,38 @@ def test_reversed_exit_outside_daily_limit_does_not_participate_in_maximum_span(
     assert row["overtime_worked_minutes"] == 1319
     assert row["overtime_minutes"] == 240
     assert row["unlawful_overtime_minutes"] == 539
+
+
+def test_overtime_submission_date_is_the_date_on_which_overtime_starts():
+    common_schedule = [sched(day="18/08/2026", start="18:00", end="02:00")]
+    common_contract = contract(days="5", flex=0, break_minutes=0, break_in_work=1)
+
+    starts_next_day = one(
+        common_schedule,
+        [punch("18:00", "04:00", day="18/08/2026", is_end_date_different=True)],
+        common_contract,
+    )
+    assert starts_next_day["overtime_segments"] == [
+        {"date": "19/08/2026", "from": "03:00", "to": "04:00", "minutes": 60}
+    ]
+
+    starts_at_midnight = one(
+        [sched(day="18/08/2026", start="15:00", end="23:00")],
+        [punch("15:00", "01:00", day="18/08/2026", is_end_date_different=True)],
+        common_contract,
+    )
+    assert starts_at_midnight["overtime_segments"] == [
+        {"date": "19/08/2026", "from": "00:00", "to": "01:00", "minutes": 60}
+    ]
+
+    crosses_midnight = one(
+        [sched(day="18/08/2026", start="14:00", end="22:00")],
+        [punch("14:00", "01:00", day="18/08/2026", is_end_date_different=True)],
+        common_contract,
+    )
+    assert crosses_midnight["overtime_segments"] == [
+        {"date": "18/08/2026", "from": "23:00", "to": "01:00", "minutes": 120}
+    ]
 
 
 def test_telework_with_punch_keeps_category_and_applies_change():

@@ -517,21 +517,22 @@ def _proposed_normal_slot(
 
 
 def _overtime_segments(work_date: str, start: int | None, end: int | None) -> list[dict[str, Any]]:
-    """Split overtime by calendar day because each part is submitted on the day it occurs."""
+    """Assign the whole overtime interval to the date on which overtime starts.
+
+    The interval may itself cross midnight (for example 23:00–01:00).  It is
+    not split, because the submission date is determined by its starting
+    instant rather than by every calendar day touched by the interval.
+    """
     if start is None or end is None or end <= start:
         return []
     base = datetime.strptime(work_date, "%d/%m/%Y").date()
-    segments: list[dict[str, Any]] = []
-    cursor = start
-    while cursor < end:
-        day_index = cursor // 1440
-        boundary = (day_index + 1) * 1440
-        segment_end = min(end, boundary)
-        segment_date = base + timedelta(days=day_index)
-        segments.append({"date": segment_date.strftime("%d/%m/%Y"), "from": _hm(cursor),
-                         "to": _hm(segment_end), "minutes": segment_end - cursor})
-        cursor = segment_end
-    return segments
+    segment_date = base + timedelta(days=start // 1440)
+    return [{
+        "date": segment_date.strftime("%d/%m/%Y"),
+        "from": _hm(start),
+        "to": _hm(end),
+        "minutes": end - start,
+    }]
 
 
 def build_weekly_report(
