@@ -16,7 +16,7 @@ from app.repo_schedule import list_schedule_for_range
 from app.repo_store import get_sunday_rest_transfer_enabled
 from app.repo_work_log import list_work_log_for_range, normalize_overnight_work_log_rows
 
-CALCULATION_VERSION = "2026-08-16.rules-v4"
+CALCULATION_VERSION = "2026-08-16.rules-v6"
 
 
 def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -> dict[str, Any]:

@@ -6,9 +6,11 @@ def sched(day="03/08/2026", start="09:00", end="17:00", shift="ΕΡΓΑΣΙΑ"):
             "hour_to": end, "shift_type": shift, "eponymo": "ΔΟΚΙΜΗ", "onoma": "Α"}
 
 
-def punch(start="09:00", end="17:00", day="03/08/2026"):
-    return {"employee_afm": "012345678", "work_date": day, "hour_from": start,
-            "hour_to": end, "eponymo": "ΔΟΚΙΜΗ", "onoma": "Α"}
+def punch(start="09:00", end="17:00", day="03/08/2026", **extra):
+    value = {"employee_afm": "012345678", "work_date": day, "hour_from": start,
+             "hour_to": end, "eponymo": "ΔΟΚΙΜΗ", "onoma": "Α"}
+    value.update(extra)
+    return value
 
 
 def contract(kind="ΠΛΗΡΗΣ ΑΠΑΣΧΟΛΗΣΗ", days="5", flex=0, **extra):
@@ -132,10 +134,53 @@ def test_rotating_exact_six_forty_uses_daily_six_day_basis_under_five_day_contra
     assert row["overtime_from"] == "15:40"
 
 
-def test_non_declared_overnight_goes_to_review():
+def test_clock_wrap_within_daily_limit_is_treated_as_real_overnight():
     row = one([sched()], [punch("22:00", "06:00")], contract())
-    assert row["status"] == "review"
-    assert row["rule_id"] == "UNDECLARED_OVERNIGHT_REVIEW"
+    assert row["actual"] == "22:00–06:00"
+    assert row["actual_minutes"] == 480
+    assert row["rule_id"] != "UNDECLARED_OVERNIGHT_REVIEW"
+
+
+def test_explicit_next_day_exit_is_not_treated_as_reversed_punch_order():
+    row = one(
+        [sched(start="13:00", end="21:00")],
+        [punch("17:26", "01:00", is_end_date_different=True)],
+        contract(flex=120),
+    )
+    assert row["status"] == "change"
+    assert row["rule_id"] == "LATE_SHORT_BACKWARD"
+    assert row["proposed"] == "17:00–01:00"
+    assert row["punch_recorded"] == "17:26–01:00*"
+
+
+def test_multiple_punches_choose_longest_valid_real_span_for_overtime():
+    row = one(
+        [sched(start="12:00", end="20:00")],
+        [
+            punch("12:01", "10:00"),  # 21:59: exceeds the five-day limit; invalid.
+            punch("12:01", "20:30"),
+            punch("21:00", "00:14", is_end_date_different=True),
+        ],
+        contract(days="5", flex=0),
+    )
+    assert row["punch_recorded"].endswith("21:00–00:14*")
+    assert row["actual"] == "12:01–00:14"
+    assert row["actual_minutes"] == 733
+    assert row["overtime_minutes"] == 193
+    assert row["overtime_segments"] == [
+        {"date": "03/08/2026", "from": "21:01", "to": "00:00", "minutes": 179},
+        {"date": "04/08/2026", "from": "00:00", "to": "00:14", "minutes": 14},
+    ]
+
+
+def test_reversed_exit_outside_daily_limit_does_not_participate_in_maximum_span():
+    row = one(
+        [sched(start="12:00", end="20:00")],
+        [punch("12:01", "10:00"), punch("12:05", "20:30")],
+        contract(days="5", flex=0),
+    )
+    assert row["actual"] == "12:01–20:30"
+    assert row["actual_minutes"] == 509
 
 
 def test_telework_with_punch_keeps_category_and_applies_change():

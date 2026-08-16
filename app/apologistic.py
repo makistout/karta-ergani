@@ -54,6 +54,74 @@ def _minutes(start: Any, end: Any) -> int | None:
     return b - a if a is not None and b is not None else None
 
 
+def _is_explicit_next_day(punch: dict[str, Any]) -> bool:
+    return punch.get("is_end_date_different") in (True, 1, "1", "true", "True")
+
+
+def _valid_punch_interval(
+    punch: dict[str, Any], *, max_inferred_overnight_minutes: int | None,
+) -> tuple[int, int] | None:
+    """Return a real positive card interval, preserving explicit calendar-day data.
+
+    A smaller exit clock is moved to the next day only when Ergani marks it as
+    such or when the resulting overnight span fits the applicable daily limit.
+    """
+    start = _minute_of_day(punch.get("hour_from"))
+    end = _minute_of_day(punch.get("hour_to"))
+    if start is None or end is None:
+        return None
+    if _is_explicit_next_day(punch):
+        end += 1440
+    elif end < start:
+        inferred_end = end + 1440
+        if max_inferred_overnight_minutes is None or inferred_end - start > max_inferred_overnight_minutes:
+            return None
+        end = inferred_end
+    if end <= start:
+        return None
+    return start, end
+
+
+def _maximum_valid_punch_span(
+    punches: list[dict[str, Any]], *, max_inferred_overnight_minutes: int | None,
+) -> tuple[int, int, dict[str, Any], dict[str, Any]] | None:
+    """Choose the longest valid start→later-end span across all card rows."""
+    candidates: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = []
+    starts = [(_minute_of_day(p.get("hour_from")), p) for p in punches if _clock(p.get("hour_from"))]
+    for actual_start, first_punch in starts:
+        if actual_start is None:
+            continue
+        for last_punch in punches:
+            # A second opening without a closing is corrected to a zero-length
+            # row, so that opening may still close the overall envelope.
+            has_end = bool(_clock(last_punch.get("hour_to")))
+            if has_end and _clock(last_punch.get("hour_from")) and _valid_punch_interval(
+                last_punch,
+                max_inferred_overnight_minutes=max_inferred_overnight_minutes,
+            ) is None:
+                # An exit that makes its own recorded row invalid cannot be
+                # reused to manufacture a different, longer cross-row span.
+                continue
+            raw_end = last_punch.get("hour_to") if has_end else (
+                last_punch.get("hour_from") if _clock(last_punch.get("hour_from")) else None
+            )
+            end_clock = _minute_of_day(raw_end)
+            if end_clock is None:
+                continue
+            if has_end and _is_explicit_next_day(last_punch):
+                actual_end = end_clock + 1440
+            elif end_clock > actual_start:
+                actual_end = end_clock
+            else:
+                actual_end = end_clock + 1440
+                if (max_inferred_overnight_minutes is None
+                        or actual_end - actual_start > max_inferred_overnight_minutes):
+                    continue
+            if actual_end > actual_start:
+                candidates.append((actual_start, actual_end, first_punch, last_punch))
+    return max(candidates, key=lambda item: item[1] - item[0]) if candidates else None
+
+
 def _hm(total: int) -> str:
     total %= 1440
     return f"{total // 60:02d}:{total % 60:02d}"
@@ -70,7 +138,8 @@ def _format_recorded_punch(punch: dict[str, Any]) -> str:
     if not start and not end:
         return "—"
     if start and end:
-        return f"{start}–{end}"
+        next_day = _is_explicit_next_day(punch)
+        return f"{start}–{end}{'*' if next_day else ''}"
     if start:
         return f"{start}–"
     return f"–{end}"
@@ -127,7 +196,7 @@ def _build_status_explanation(
 
     if punch_count > matched_parts and matched_parts and single_schedule:
         lines.append(
-            f"Υπάρχουν {punch_count} εγγραφές σε μη σπαστό ωράριο· για τη διάρκεια χρησιμοποιήθηκε όλο το διάστημα από την πρώτη είσοδο έως την τελευταία έξοδο ({actual_label})."
+            f"Υπάρχουν {punch_count} εγγραφές σε μη σπαστό ωράριο· χρησιμοποιήθηκε το μεγαλύτερο έγκυρο πραγματικό διάστημα από έναρξη έως μεταγενέστερη λήξη ({actual_label}). Η ένδειξη * σημαίνει ρητά λήξη την επόμενη ημερολογιακή ημέρα."
         )
     elif punch_count > matched_parts and matched_parts:
         lines.append(
@@ -241,41 +310,58 @@ def _distance(punch: dict[str, Any], slot: dict[str, Any]) -> int:
 
 
 def _match_punches(
-    punches: list[dict[str, Any]], slots: list[dict[str, Any]]
+    punches: list[dict[str, Any]], slots: list[dict[str, Any]],
+    *, max_inferred_overnight_minutes: int | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Match one card row per declared part; missing boundaries use declared ones."""
     declared = _working_slots(slots)
     if not declared:
-        complete = [p for p in punches if _minutes(p.get("hour_from"), p.get("hour_to")) is not None]
-        selected = max(complete, key=lambda p: _minutes(p.get("hour_from"), p.get("hour_to")) or 0) if complete else (punches[0] if punches else None)
-        if not selected:
+        selected_span = _maximum_valid_punch_span(
+            punches, max_inferred_overnight_minutes=max_inferred_overnight_minutes
+        )
+        if not selected_span:
+            if len(punches) == 1:
+                selected = punches[0]
+                boundary = (
+                    selected.get("hour_from") if _clock(selected.get("hour_from"))
+                    else selected.get("hour_to") if _clock(selected.get("hour_to")) else None
+                )
+                if boundary:
+                    return [{"from": boundary, "to": boundary,
+                             "inferred_from": not bool(_clock(selected.get("hour_from"))),
+                             "inferred_to": not bool(_clock(selected.get("hour_to"))),
+                             "punch": selected}], []
             return [], []
-        start = selected.get("hour_from") if _clock(selected.get("hour_from")) else selected.get("hour_to")
-        end = selected.get("hour_to") if _clock(selected.get("hour_to")) else selected.get("hour_from")
-        return [{"from": start, "to": end,
-                 "inferred_from": not bool(_clock(selected.get("hour_from"))),
-                 "inferred_to": not bool(_clock(selected.get("hour_to"))),
-                 "punch": selected}], []
+        start, end, first_punch, last_punch = selected_span
+        return [{"from": _hm(start), "to": _hm(end),
+                 "inferred_from": False, "inferred_to": False,
+                 "punch": first_punch, "last_punch": last_punch,
+                 "extra_punches": [p for p in punches if p is not first_punch],
+                 "envelope_from_multiple": len(punches) > 1}], []
 
     if len(declared) == 1 and punches:
         slot = declared[0]
-        complete = [p for p in punches if _minutes(p.get("hour_from"), p.get("hour_to")) is not None]
+        complete = [p for p in punches if _valid_punch_interval(
+            p, max_inferred_overnight_minutes=max_inferred_overnight_minutes
+        ) is not None]
         if complete and len(punches) > 1:
-            starts = [(_minute_of_day(p.get("hour_from")), p) for p in punches if _clock(p.get("hour_from"))]
-            actual_start, first_punch = min(starts, key=lambda item: item[0])
-            boundaries: list[tuple[int, dict[str, Any]]] = []
-            for item in punches:
-                value = item.get("hour_to") if _clock(item.get("hour_to")) else item.get("hour_from")
-                minute = _minute_of_day(value, after=actual_start)
-                if minute is not None:
-                    boundaries.append((minute, item))
-            actual_end, last_punch = max(boundaries, key=lambda item: item[0])
+            selected_span = _maximum_valid_punch_span(
+                punches, max_inferred_overnight_minutes=max_inferred_overnight_minutes
+            )
+            if not selected_span:
+                return [], list(punches)
+            actual_start, actual_end, first_punch, last_punch = selected_span
             return [{"from": _hm(actual_start), "to": _hm(actual_end),
                      "inferred_from": False, "inferred_to": False,
                      "punch": first_punch, "slot": slot,
                      "extra_punches": [p for p in punches if p is not first_punch],
                      "envelope_from_multiple": True, "last_punch": last_punch}], []
         pick = complete[0] if complete else min(punches, key=lambda p: _distance(p, slot))
+        if (_clock(pick.get("hour_from")) and _clock(pick.get("hour_to"))
+                and _valid_punch_interval(
+                    pick, max_inferred_overnight_minutes=max_inferred_overnight_minutes
+                ) is None):
+            return [], list(punches)
         actual_from = pick.get("hour_from") if _clock(pick.get("hour_from")) else slot.get("hour_from")
         actual_to = pick.get("hour_to") if _clock(pick.get("hour_to")) else slot.get("hour_to")
         return [{"from": actual_from, "to": actual_to,
@@ -457,7 +543,15 @@ def build_weekly_report(
     for afm, work_date in sorted(set(schedules) | set(punches), key=lambda k: (datetime.strptime(k[1], "%d/%m/%Y"), names.get(k[0], ("", "")), k[0])):
         slots, day_punches = schedules.get((afm, work_date), []), punches.get((afm, work_date), [])
         work_slots = _working_slots(slots)
-        matched, orphan_punches = _match_punches(day_punches, slots)
+        contract = contracts_by_afm.get(afm)
+        contract_kind, _contract_weekly_days = _contract_kind(contract)
+        max_inferred_overnight_minutes = (
+            780 if _contract_weekly_days == 5 else 720 if _contract_weekly_days == 6 else None
+        )
+        matched, orphan_punches = _match_punches(
+            day_punches, slots,
+            max_inferred_overnight_minutes=max_inferred_overnight_minutes,
+        )
         fully_missing = bool(work_slots and not day_punches)
         if fully_missing:
             # A declaration without any card record is not evidence of actual work.
@@ -471,8 +565,6 @@ def build_weekly_report(
                 boundary = extra_from or extra_to
                 corrected_extra_punches.append({"recorded": extra, "from": boundary, "to": boundary,
                                                 "corrected": f"{boundary}–{boundary}"})
-        contract = contracts_by_afm.get(afm)
-        contract_kind, _contract_weekly_days = _contract_kind(contract)
         weekly_days, weekly_days_source = weekly_system_by_afm.get(
             afm, (_contract_weekly_days, "Τρέχουσα σύμβαση")
         )
@@ -537,12 +629,9 @@ def build_weekly_report(
         )
         missing_start = bool(len(day_punches) == 1 and not _clock(day_punches[0].get("hour_from")) and _clock(day_punches[0].get("hour_to")))
         missing_end = bool(len(day_punches) == 1 and _clock(day_punches[0].get("hour_from")) and not _clock(day_punches[0].get("hour_to")))
-        raw_overnight = bool(
-            len(day_punches) == 1
-            and _minute_of_day(day_punches[0].get("hour_from")) is not None
-            and _minute_of_day(day_punches[0].get("hour_to")) is not None
-            and (_minute_of_day(day_punches[0].get("hour_to")) or 0) < (_minute_of_day(day_punches[0].get("hour_from")) or 0)
-        )
+        # A clock wrap is accepted when explicitly marked (*) or when it forms
+        # a positive overnight interval within the contractual daily limit.
+        raw_overnight = False
         declared_overnight = bool(
             work_slots and _minute_of_day(work_slots[-1].get("hour_to")) is not None
             and _minute_of_day(work_slots[0].get("hour_from")) is not None

@@ -361,7 +361,7 @@ def test_multiple_complete_non_split_punches_use_full_envelope():
     assert row["punch_recorded"] == "09:02–17:03\n19:23–20:30"
     assert row["actual"] == "09:02–20:30"
     assert row["orphan_punch_count"] == 0
-    assert any("πρώτη είσοδο έως την τελευταία έξοδο" in line for line in row["status_explanation"])
+    assert any("μεγαλύτερο έγκυρο πραγματικό διάστημα" in line for line in row["status_explanation"])
 
 
 def test_second_open_without_close_becomes_final_close_for_full_envelope():

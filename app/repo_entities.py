@@ -177,6 +177,73 @@ def upsert_employee_by_afm(
         )
 
 
+def list_unlinked_activity_employees(
+    employer_afm: str, branch_aa: str
+) -> list[dict[str, Any]]:
+    """Εργαζόμενοι με ωράριο/χτύπημα αλλά χωρίς σύνδεση στο συγκεκριμένο σημείο."""
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            WITH activity AS (
+                SELECT employee_afm, COUNT_BIG(*) AS schedule_count, CAST(0 AS bigint) AS work_log_count
+                FROM dbo.karta_schedule
+                WHERE employer_afm=? AND branch_aa=? AND employee_afm IS NOT NULL
+                GROUP BY employee_afm
+                UNION ALL
+                SELECT employee_afm, CAST(0 AS bigint), COUNT_BIG(*)
+                FROM dbo.karta_work_log
+                WHERE employer_afm=? AND branch_aa=? AND employee_afm IS NOT NULL
+                GROUP BY employee_afm
+            ), totals AS (
+                SELECT employee_afm, SUM(schedule_count) schedule_count, SUM(work_log_count) work_log_count
+                FROM activity GROUP BY employee_afm
+            )
+            SELECT emp.afm, emp.eponymo, emp.onoma, totals.schedule_count, totals.work_log_count
+            FROM totals
+            INNER JOIN dbo.karta_employee emp ON emp.afm=totals.employee_afm
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM dbo.karta_employment e
+                INNER JOIN dbo.karta_employer em ON em.id=e.employer_id
+                LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+                WHERE e.employee_id=emp.id AND em.afm=? AND p.code_aa=?
+            )
+            ORDER BY emp.eponymo, emp.onoma, emp.afm
+            """,
+            (afm, aa, afm, aa, afm, aa),
+        )
+        return rows_to_dicts(cur)
+
+
+def link_employee_to_store(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    eponymo: str | None,
+    onoma: str | None,
+    *,
+    flex_arrival_minutes: int | None = None,
+) -> bool:
+    """Δημιουργεί/ενεργοποιεί σύνδεση μόνο για επιβεβαιωμένο εργαζόμενο Μητρώου."""
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor() as cur:
+        employer_id = upsert_employer(cur, afm)
+        if not employer_id:
+            return False
+        part_id = upsert_parartima(cur, employer_id, aa)
+        employee_id = upsert_employee(
+            cur, employee_afm, eponymo, onoma,
+            flex_arrival_minutes=flex_arrival_minutes,
+        )
+        if not employee_id:
+            return False
+        upsert_employment(cur, employer_id, employee_id, part_id)
+        return True
+
+
 def flex_arrival_map_for_employer(
     employer_afm: str,
     branch_aa: str | None = None,

@@ -160,9 +160,7 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
   meta.textContent = `${rows.length} εργαζόμενοι (${employeesState.filter === "inactive" ? "ανενεργοί" : "ενεργοί"})`;
   fragment.appendChild(meta);
 
-  const openPunchesHeader = openPunchesMonthLabel
-    ? `Ανοιχτά (${openPunchesMonthLabel})`
-    : "Ανοιχτά χτυπήματα";
+  const openPunchesHeader = "Ανοιχτά";
   const t = document.createElement("table");
   t.className = "data employees-list-table";
   const hr = document.createElement("tr");
@@ -194,7 +192,11 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
       th.setAttribute("aria-label", "Πραγματική απασχόληση");
     } else if (h.startsWith("Ανοιχτά")) {
       th.className = "col-open-punches";
-      th.textContent = h;
+      th.innerHTML = `<span>${Office.escapeHtml(h)}</span>` +
+        (openPunchesMonthLabel ? `<small>${Office.escapeHtml(openPunchesMonthLabel)}</small>` : "");
+      th.title = openPunchesMonthLabel
+        ? `Ανοιχτά χτυπήματα ${openPunchesMonthLabel}`
+        : "Ανοιχτά χτυπήματα";
     } else if (h === "Κατάσταση") {
       th.className = "col-status";
       th.textContent = h;

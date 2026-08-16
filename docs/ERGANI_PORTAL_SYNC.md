@@ -21,7 +21,12 @@
 ## Στοιχεία Σύμβασης (Μητρώα)
 
 - Persist σε `karta_employment_contract` (append-only snapshots).
-- Scope: ενεργοί εργαζόμενοι ∩ ΑΦΜ στο `karta_schedule` του καταστήματος.
+- Scope: ενεργοί εργαζόμενοι ∩ ΑΦΜ στο `karta_schedule` του καταστήματος, μαζί
+  με ΑΦΜ που έχουν αποθηκευμένο ωράριο ή πραγματική απασχόληση αλλά δεν έχουν
+  ακόμη σύνδεση `karta_employment` με το κατάστημα. Η ορφανή δραστηριότητα
+  συνδέεται και ενεργοποιείται μόνο αφού το ΑΦΜ επιβεβαιωθεί στο τρέχον Μητρώο
+  Ergani και ανακτηθούν επιτυχώς τα στοιχεία σύμβασης. Μη τρέχοντα ΑΦΜ δεν
+  συνδέονται αυτόματα.
 - Ημερήσιο scheduled: `scheduled_employment_contract_sync` (default `04:00`,
   `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
 - Migration: `sql/alter_add_karta_employment_contract.sql` /

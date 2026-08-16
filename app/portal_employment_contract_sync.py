@@ -27,7 +27,12 @@ from app.portal_schedule_sync import (
     _portal_base,
 )
 from app.repo_employment_contract import insert_if_changed
-from app.repo_entities import list_employees_for_employer, upsert_employee_by_afm
+from app.repo_entities import (
+    link_employee_to_store,
+    list_employees_for_employer,
+    list_unlinked_activity_employees,
+    upsert_employee_by_afm,
+)
 from app.repo_schedule import list_schedule_employee_afms
 from app.work_card_payload import norm_afm
 
@@ -156,8 +161,14 @@ def iter_employment_contract_sync_events(
         for e in list_employees_for_employer(employer_afm, branch_aa, active_only=True)
     }
     active_afms.discard("")
-    # Ενεργό προσωπικό που εμφανίζεται στο ψηφιακό ωράριο (όχι ιστορικό Μητρώου).
-    target_afms = schedule_afms & active_afms if active_afms else schedule_afms
+    unlinked_rows = list_unlinked_activity_employees(employer_afm, branch_aa)
+    unlinked_afms = {
+        norm_afm(row.get("afm") or "") for row in unlinked_rows
+    }
+    unlinked_afms.discard("")
+    # Κανονικοί στόχοι + ορφανές δραστηριότητες. Η σύνδεση των ορφανών γίνεται
+    # μόνο αν το ΑΦΜ επιβεβαιωθεί από την αναζήτηση τρέχοντος προσωπικού Μητρώου.
+    target_afms = (schedule_afms & active_afms if active_afms else schedule_afms) | unlinked_afms
     log.info(
         "Έναρξη συγχρονισμού στοιχείων σύμβασης",
         portal_base=portal_base,
@@ -166,6 +177,7 @@ def iter_employment_contract_sync_events(
         schedule_employees=len(schedule_afms),
         active_employees=len(active_afms),
         target_employees=len(target_afms),
+        unlinked_activity_employees=len(unlinked_afms),
     )
     yield {
         "event": "progress",
@@ -227,6 +239,7 @@ def iter_employment_contract_sync_events(
     inserted = 0
     unchanged = 0
     errors: list[str] = []
+    linked = 0
 
     yield {
         "event": "progress",
@@ -263,6 +276,16 @@ def iter_employment_contract_sync_events(
                 row.get("onoma"),
                 flex_arrival_minutes=flex,
             )
+            if afm in unlinked_afms and link_employee_to_store(
+                employer_afm,
+                branch_aa,
+                afm,
+                row.get("eponymo"),
+                row.get("onoma"),
+                flex_arrival_minutes=flex,
+            ):
+                linked += 1
+                log.info("Συνδέθηκε ορφανή δραστηριότητα με το κατάστημα", employee_afm=afm)
         except Exception as ex:  # noqa: BLE001 — συνέχεια με επόμενο εργαζόμενο
             err = f"{afm}: {ex}"
             errors.append(err)
@@ -274,6 +297,7 @@ def iter_employment_contract_sync_events(
         f" ({total} ενεργοί ∩ ωράριο ∩ Μητρώο"
         f", {len(target_afms)} στόχος"
         f", {len(all_ids)} στο Μητρώο)"
+        + (f" — {linked} νέες συνδέσεις" if linked else "")
         + (f" — {len(errors)} αποτυχίες" if errors else "")
     )
     result = {
@@ -286,6 +310,8 @@ def iter_employment_contract_sync_events(
         "schedule_employees": len(schedule_afms),
         "active_employees": len(active_afms),
         "registry_employees": len(all_ids),
+        "unlinked_activity_employees": len(unlinked_afms),
+        "linked_employees": linked,
         "skipped_not_in_target": len(all_ids) - total,
         "errors": errors[:30],
         "logs": log.tail(100),
