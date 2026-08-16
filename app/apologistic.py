@@ -319,32 +319,21 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
-    """Use the contract as the legal 5/6-day reference; declarations cannot override it."""
-    if contract_weekly_days in (5, 6):
-        return contract_weekly_days, "Σύμβαση εργαζομένου"
+    """Use an exact uniform 8:00/6:40 declaration; otherwise use the contract."""
     declared_by_date: dict[str, int] = defaultdict(int)
     for row in schedule_rows:
         duration = _minutes(row.get("hour_from"), row.get("hour_to"))
         if duration is not None and duration > 0:
             declared_by_date[str(row.get("work_date") or "")] += duration
 
-    declared_days = len(declared_by_date)
-    if declared_days >= 6:
-        return 6, "Δηλωμένο πρόγραμμα εβδομάδας"
-    if declared_days == 5:
-        return 5, "Δηλωμένο πρόγραμμα εβδομάδας"
-
-    # Leave/holiday weeks may contain fewer working declarations. In that case
-    # the declared daily duration is stronger evidence than the stale contract field.
     durations = list(declared_by_date.values())
-    if durations:
-        five_day_score = sum(abs(duration - 480) for duration in durations)
-        six_day_score = sum(abs(duration - 400) for duration in durations)
-        if five_day_score < six_day_score:
-            return 5, "Δηλωμένη ημερήσια διάρκεια εβδομάδας"
-        if six_day_score < five_day_score:
-            return 6, "Δηλωμένη ημερήσια διάρκεια εβδομάδας"
-    return contract_weekly_days, "Τρέχουσα σύμβαση"
+    if durations and all(duration == 480 for duration in durations):
+        return 5, "Δηλωμένο ωράριο ακριβώς 8:00"
+    if durations and all(duration == 400 for duration in durations):
+        return 6, "Δηλωμένο ωράριο ακριβώς 6:40"
+    if contract_weekly_days in (5, 6):
+        return contract_weekly_days, "Σύμβαση εργαζομένου"
+    return None, "Μη προσδιορισμένη βάση"
 
 
 def _break_context(
