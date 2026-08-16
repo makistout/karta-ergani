@@ -122,6 +122,54 @@ def _maximum_valid_punch_span(
     return max(candidates, key=lambda item: item[1] - item[0]) if candidates else None
 
 
+def _overtime_interval_before_general_validation(
+    punches: list[dict[str, Any]], slots: list[dict[str, Any]], matched: list[dict[str, Any]],
+) -> tuple[int | None, int | None]:
+    """Preserve the established overtime clock envelope.
+
+    The stricter valid-pair selection belongs to the general card checks.  It
+    must not silently redefine the duration used by the existing overtime
+    rules.
+    """
+    declared = _working_slots(slots)
+    if not declared:
+        complete = [p for p in punches if _minutes(p.get("hour_from"), p.get("hour_to")) is not None]
+        if complete:
+            selected = max(
+                complete,
+                key=lambda p: _minutes(p.get("hour_from"), p.get("hour_to")) or 0,
+            )
+            start = _minute_of_day(selected.get("hour_from"))
+            end = _minute_of_day(selected.get("hour_to"), after=start) if start is not None else None
+            return start, end
+    elif len(declared) == 1 and punches:
+        complete = [p for p in punches if _minutes(p.get("hour_from"), p.get("hour_to")) is not None]
+        if complete and len(punches) > 1:
+            starts = [_minute_of_day(p.get("hour_from")) for p in punches if _clock(p.get("hour_from"))]
+            starts = [value for value in starts if value is not None]
+            if starts:
+                start = min(starts)
+                ends = []
+                for item in punches:
+                    value = item.get("hour_to") if _clock(item.get("hour_to")) else item.get("hour_from")
+                    minute = _minute_of_day(value, after=start)
+                    if minute is not None:
+                        ends.append(minute)
+                if ends:
+                    return start, max(ends)
+        elif complete:
+            selected = complete[0]
+            start = _minute_of_day(selected.get("hour_from"))
+            end = _minute_of_day(selected.get("hour_to"), after=start) if start is not None else None
+            return start, end
+
+    first = matched[0] if matched else None
+    last = matched[-1] if matched else None
+    start = _minute_of_day(first.get("from")) if first else None
+    end = _minute_of_day(last.get("to"), after=start) if last and start is not None else None
+    return start, end
+
+
 def _hm(total: int) -> str:
     total %= 1440
     return f"{total // 60:02d}:{total % 60:02d}"
@@ -599,9 +647,20 @@ def build_weekly_report(
         de = _minute_of_day(work_slots[-1].get("hour_to"), after=ds) if work_slots and ds is not None else None
         ps = _minute_of_day(first.get("from")) if first else None
         pe = _minute_of_day(last.get("to"), after=ps) if last and ps is not None else None
+        overtime_ps, overtime_pe = _overtime_interval_before_general_validation(
+            day_punches, slots, matched
+        )
+        overtime_actual_minutes = (
+            overtime_pe - overtime_ps
+            if overtime_ps is not None and overtime_pe is not None and overtime_pe > overtime_ps
+            else 0
+        )
+        overtime_effective_actual = max(0, overtime_actual_minutes - outside_break)
         start_difference = ps - ds if ps is not None and ds is not None else None
         end_difference = pe - de if pe is not None and de is not None else None
-        bands = _classify_extra(contract_kind, classification_days, effective_actual or 0, declared_minutes)
+        bands = _classify_extra(
+            contract_kind, classification_days, overtime_effective_actual, declared_minutes
+        )
         if contract_flags["work_arrangement"]:
             bands["classification_warning"] = "Διευθέτηση χρόνου εργασίας: απαιτείται έλεγχος περιόδου αναφοράς και ορίου 10 ωρών"
         elif contract_flags["uneven_distribution"]:
@@ -725,20 +784,20 @@ def build_weekly_report(
             )
 
         overtime_from = overtime_to = None
-        if bands["overtime_minutes"] and ps is not None and pe is not None:
+        if bands["overtime_minutes"] and overtime_ps is not None and overtime_pe is not None:
             contract_base = contract_daily_base_minutes(contract_kind, classification_days)
             if len(work_slots) > 1 and " · " in proposed:
                 last_part = proposed.split(" · ")[-1]
                 proposed_second_start, proposed_second_end = last_part.split("–", 1)
-                second_anchor = _minute_of_day(proposed_second_start, after=ps)
+                second_anchor = _minute_of_day(proposed_second_start, after=overtime_ps)
                 proposed_end = _minute_of_day(proposed_second_end, after=second_anchor)
                 overwork_window = 60 if contract_kind == "Πλήρης" and classification_days == 5 else 80 if contract_kind == "Πλήρης" and classification_days == 6 else 0
                 overtime_from = (proposed_end + overwork_window) if proposed_end is not None else None
             else:
                 threshold = 540 if contract_kind == "Πλήρης" and classification_days == 5 else 480 if contract_kind == "Πλήρης" and classification_days == 6 else (contract_base or declared_minutes)
-                overtime_from = ps + outside_break + threshold
+                overtime_from = overtime_ps + outside_break + threshold
             if overtime_from is not None:
-                overtime_to = min(pe, overtime_from + bands["overtime_minutes"])
+                overtime_to = min(overtime_pe, overtime_from + bands["overtime_minutes"])
         overtime_segments = _overtime_segments(work_date, overtime_from, overtime_to)
         requires_confirmation = (status != "ok" or contract_kind in ("Άγνωστη σύμβαση", "Μη προσδιορισμένη")
                                  or break_in_work is None and break_minutes > 0
@@ -807,6 +866,7 @@ def build_weekly_report(
             "corrected_extra_punches": [{k: v for k, v in item.items() if k != "recorded"}
                                          for item in corrected_extra_punches],
             "declared_minutes": declared_minutes, "actual_minutes": actual_minutes,
+            "overtime_worked_minutes": overtime_actual_minutes,
             "effective_actual_minutes": effective_actual, "extra_minutes": max(0, net_difference or 0),
             "punch_count": len(day_punches), "matched_parts": len(matched), "orphan_punch_count": len(orphan_punches),
             "day_state": state, "punch_completeness": "Τεκμαρτό" if inferred else ("Πλήρες" if matched else "Χωρίς χτύπημα"),

@@ -153,7 +153,7 @@ def test_explicit_next_day_exit_is_not_treated_as_reversed_punch_order():
     assert row["punch_recorded"] == "17:26–01:00*"
 
 
-def test_multiple_punches_choose_longest_valid_real_span_for_overtime():
+def test_multiple_punches_choose_longest_valid_real_span_for_general_checks_only():
     row = one(
         [sched(start="12:00", end="20:00")],
         [
@@ -166,10 +166,11 @@ def test_multiple_punches_choose_longest_valid_real_span_for_overtime():
     assert row["punch_recorded"].endswith("21:00–00:14*")
     assert row["actual"] == "12:01–00:14"
     assert row["actual_minutes"] == 733
-    assert row["overtime_minutes"] == 193
+    assert row["overtime_worked_minutes"] == 1319
+    assert row["overtime_minutes"] == 240
     assert row["overtime_segments"] == [
         {"date": "03/08/2026", "from": "21:01", "to": "00:00", "minutes": 179},
-        {"date": "04/08/2026", "from": "00:00", "to": "00:14", "minutes": 14},
+        {"date": "04/08/2026", "from": "00:00", "to": "01:01", "minutes": 61},
     ]
 
 
@@ -181,6 +182,11 @@ def test_reversed_exit_outside_daily_limit_does_not_participate_in_maximum_span(
     )
     assert row["actual"] == "12:01–20:30"
     assert row["actual_minutes"] == 509
+    # The stricter pairing is a general validation rule only. Overtime keeps
+    # the established outer-envelope calculation used before rules-v6.
+    assert row["overtime_worked_minutes"] == 1319
+    assert row["overtime_minutes"] == 240
+    assert row["unlawful_overtime_minutes"] == 539
 
 
 def test_telework_with_punch_keeps_category_and_applies_change():
