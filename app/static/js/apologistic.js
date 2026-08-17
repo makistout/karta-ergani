@@ -14,7 +14,7 @@ let rangeStart = new Date(weekStart);
 let rangeEnd = addDays(weekStart, 6);
 let apologisticRangeDatePicker = null;
 let monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-let reportState = { rows: [], store: null, filter: "all", selectedDate: "", dates: [], employee: null };
+let reportState = { rows: [], store: null, filter: "all", selectedDate: "", dates: [], employee: null, employeeSearch: "" };
 let openExplanationId = null;
 let openEmployeeAfm = null;
 let proposalEditRow = null;
@@ -33,6 +33,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("weekNext").onclick = () => moveWeek(7);
   }
   document.getElementById("apologisticAllDays")?.addEventListener("click", () => selectAllDays());
+  document.getElementById("apologisticEmployeeSearch")?.addEventListener("input", (event) => {
+    reportState.employeeSearch = String(event.target.value || "");
+    renderVisibleRows();
+  });
   initExplanationModal();
   initEmployeeModal();
   initProposalModal();
@@ -205,9 +209,10 @@ function switchStorePeriod(mode) {
 }
 
 function resetPeriodResults() {
+  const employeeSearch = reportState.employeeSearch || "";
   reportState = {
     rows: [], store: reportState.store, filter: "all", selectedDate: "", dates: [],
-    employee: null, employeeCount: 0,
+    employee: null, employeeCount: 0, employeeSearch,
   };
   renderSummary({ days: [], employees: [] });
   syncDaySelectionUi();
@@ -319,6 +324,33 @@ function weekdayLabelForDate(workDate) {
   if (parts.length !== 3) return "—";
   const date = new Date(parts[2], parts[1] - 1, parts[0]);
   return EMP_DAY_NAMES[date.getDay()] || "—";
+}
+
+function workDateValue(raw) {
+  const [day, month, year] = String(raw || "").split("/").map(Number);
+  if (![day, month, year].every(Number.isFinite)) return Number.MAX_SAFE_INTEGER;
+  return new Date(year, month - 1, day).getTime();
+}
+
+function compareWorkDates(left, right) {
+  return workDateValue(left) - workDateValue(right);
+}
+
+function normalizedEmployeeSearch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("el-GR")
+    .trim();
+}
+
+function exchangeSourceDeclared(value) {
+  const declared = String(value || "").trim();
+  return declared && declared !== "—" ? declared : "ΜΗ ΔΗΛΩΜΕΝΗ ΕΡΓΑΣΙΑ";
+}
+
+function currentEmployeeSearch() {
+  return String(document.getElementById("apologisticEmployeeSearch")?.value || reportState.employeeSearch || "");
 }
 
 function bulkPeriodLabel() {
@@ -602,9 +634,15 @@ function visibleReportRows() {
   } else if (!isEmployeeMonthView()) {
     rows = rows.filter(isRowFinalized);
   }
+  const employeeSearch = normalizedEmployeeSearch(reportState.employeeSearch);
+  if (employeeSearch && !isEmployeeMonthView()) {
+    rows = rows.filter((row) => normalizedEmployeeSearch(
+      `${row.eponymo || ""} ${row.onoma || ""} ${row.onoma || ""} ${row.eponymo || ""}`
+    ).includes(employeeSearch));
+  }
   if (isAllDaysSelected()) {
     rows.sort((left, right) => {
-      const dateCmp = String(left.work_date || "").localeCompare(String(right.work_date || ""), "el");
+      const dateCmp = compareWorkDates(left.work_date, right.work_date);
       if (dateCmp) return dateCmp;
       if (isEmployeeMonthView()) return 0;
       return String(left.eponymo || "").localeCompare(String(right.eponymo || ""), "el");
@@ -760,21 +798,18 @@ async function acceptAllReview() {
     let unresolvedExchangeTotal = 0;
     const changedKeys = new Set();
     const usedReplacementDays = new Set();
-    const randomizedExchangeRows = exchangeRows
-      .map((row) => ({ row, order: Math.random() }))
-      .sort((left, right) =>
-        (left.row.exchange_options || []).length - (right.row.exchange_options || []).length
-        || left.order - right.order
-      )
-      .map((item) => item.row);
-    for (const row of randomizedExchangeRows) {
+    const chronologicalExchangeRows = exchangeRows.slice().sort((left, right) =>
+      compareWorkDates(left.work_date, right.work_date)
+      || String(left.eponymo || "").localeCompare(String(right.eponymo || ""), "el")
+      || (left.exchange_options || []).length - (right.exchange_options || []).length
+    );
+    for (const row of chronologicalExchangeRows) {
       const available = (row.exchange_options || []).filter((option) =>
         !usedReplacementDays.has(`${row.employee_afm}|${option.replacement_work_date}`)
       );
-      const candidates = available
-        .map((option) => ({ option, order: Math.random() }))
-        .sort((left, right) => left.order - right.order)
-        .map((item) => item.option);
+      const candidates = available.slice().sort((left, right) =>
+        compareWorkDates(left.replacement_work_date, right.replacement_work_date)
+      );
       let applied = false;
       for (const option of candidates) {
         const result = await submitExchangeChoice(row, option.replacement_work_date);
@@ -1562,7 +1597,7 @@ function employeeWeekHistoryHtml(employeeAfm, highlightWorkDate) {
       `<td>${attr(String(item.work_date || "").slice(0, 5))}</td>` +
       `<td>${attr(compactDayState(item.day_state))}</td>` +
       `<td>${attr(compactScheduleLabel(item.declared))}</td>` +
-      `<td class="apologistic-week-punch">${formatPunchCell(punch)}${item.overnight ? "*" : ""}</td>` +
+      `<td class="apologistic-week-punch">${formatPunchCell(punch)}${overnightMarker(punch, item.overnight)}</td>` +
       `<td><span class="status-badge apologistic-status--${attr(item.status)}">${statusShortLabel(item.status, item)}</span></td>` +
       `</tr>`;
   }).join("");
@@ -1792,6 +1827,10 @@ function formatPunchPlain(value) {
   return raw.split("\n").map((line) => formatPunchLine(line)).join(" · ");
 }
 
+function overnightMarker(value, overnight) {
+  return overnight && !String(value || "").includes("*") ? "*" : "";
+}
+
 function overtimePlain(row) {
   const segments = row.overtime_segments || [];
   if (!segments.length) return "—";
@@ -1835,7 +1874,7 @@ function buildApologisticExportRow(row, showDateColumn) {
     `${row.eponymo || ""} ${row.onoma || ""}`.trim(),
     compactDayState(row.day_state),
     compactScheduleLabel(row.declared),
-    `${formatPunchPlain(punchRecorded)}${row.overnight ? "*" : ""}`,
+    `${formatPunchPlain(punchRecorded)}${overnightMarker(punchRecorded, row.overnight)}`,
     mins(row.declared_minutes),
     mins(row.actual_minutes),
     signedMins(row.start_difference_minutes),
@@ -1937,7 +1976,7 @@ function compactScheduleLabel(value) {
     const match = raw.match(/^(.{0,60}?άδεια)/i);
     return match ? match[1].trim() : "Άδεια";
   }
-  if (upper.includes("ΑΝΑΠΑΥΣ") || upper.includes("ΡΕΠΟ")) return "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ";
+  if (upper.includes("ΑΝΑΠΑΥΣ") || upper.includes("ΡΕΠΟ")) return "ΡΕΠΟ";
   if (upper.includes("ΜΗ ΕΡΓΑΣΙΑ")) return "ΜΗ ΕΡΓΑΣΙΑ";
   if (upper.includes("ΤΗΛΕΡΓΑΣ") || upper.startsWith("ΤΗΛ ")) {
     const match = raw.match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
@@ -1975,6 +2014,7 @@ async function loadStoreRangeReport() {
   reportState = {
     rows: data.days || [], store: data.store, filter: "all", dates: data.work_dates || [],
     selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+    employeeSearch: currentEmployeeSearch(),
   };
   renderSummary(data);
   renderVisibleRows();
@@ -2003,6 +2043,7 @@ async function loadStoreMonthReport() {
     rows: days, store: data.store, filter: "all",
     dates: (data.work_dates || []).filter((value) => days.some((row) => row.work_date === value)),
     selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+    employeeSearch: currentEmployeeSearch(),
   };
   renderStoreMonthWeeks(data.weeks || []);
   renderSummary({ ...data, days });
@@ -2028,6 +2069,7 @@ async function loadWeekReport() {
     dates: data.work_dates || [], selectedDate: "",
     employeeCount: (data.employees || []).length,
     employee: null,
+    employeeSearch: currentEmployeeSearch(),
   };
   renderSummary(data);
   if (!isEmployeeMonthView()) {
@@ -2065,6 +2107,7 @@ async function loadEmployeeMonthReport() {
     selectedDate: "",
     employee: data.employee || null,
     employeeCount: 1,
+    employeeSearch: "",
   };
   const desc = document.getElementById("employeeMonthDesc");
   if (desc) {
@@ -2232,7 +2275,7 @@ function renderRows(rows, store) {
         `</div></td>`) +
       `<td title="${attr(contractTip)}">${attr(compactDayState(row.day_state))}</td>` +
       `<td title="${attr(declaredTip)}">${attr(compactScheduleLabel(row.declared))}</td>` +
-      `<td class="apologistic-punch-cell" title="${attr(punchTip)}">${formatPunchCell(punchRecorded)}${row.overnight ? "*" : ""}</td>` +
+      `<td class="apologistic-punch-cell" title="${attr(punchTip)}">${formatPunchCell(punchRecorded)}${overnightMarker(punchRecorded, row.overnight)}</td>` +
       `<td title="Δηλωμένη διάρκεια">${mins(row.declared_minutes)}</td><td title="Πραγματική διάρκεια${row.actual && row.actual !== punchRecorded ? ` (τεκμαίρεται: ${row.actual})` : ""}">${mins(row.actual_minutes)}</td>` +
       `<td title="Διαφορά πραγματικής από δηλωμένη έναρξη" class="${diffClass(row.start_difference_minutes)}">${signedMins(row.start_difference_minutes)}</td>` +
       `<td title="Διαφορά πραγματικής από δηλωμένη λήξη" class="${diffClass(row.end_difference_minutes)}">${signedMins(row.end_difference_minutes)}</td>` +
@@ -2250,10 +2293,13 @@ function renderRows(rows, store) {
     if ((row.exchange_options || []).length) {
       html += `<tr class="apologistic-replacement-row"><td colspan="${tableCols}"><div class="apologistic-replacement-options">` +
         `<span class="apologistic-exchange-title"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> Επιλογές ανταλλαγής</span>` +
-        row.exchange_options.map((item) => `<button type="button" class="apologistic-exchange-card" ` +
+        row.exchange_options.slice().sort((left, right) =>
+          compareWorkDates(left.replacement_work_date, right.replacement_work_date)
+        ).map((item) => `<button type="button" class="apologistic-exchange-card" ` +
           `data-employee-afm="${attr(row.employee_afm)}" data-rest-work-date="${attr(item.rest_work_date)}" ` +
           `data-replacement-work-date="${attr(item.replacement_work_date)}" title="Εφαρμογή ανταλλαγής και δημιουργία δύο μεταβολών Μ*">` +
-          `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong><span>${attr(item.replacement_declared)}</span></div>` +
+          `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong>` +
+          `<span>${attr(exchangeSourceDeclared(item.replacement_declared))} → <b>ΡΕΠΟ</b></span></div>` +
           `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(item.rest_punch)} → <b>${attr(item.proposed)}</b></span></div>` +
         `</button>`).join("") +

@@ -1,5 +1,4 @@
 const EMP_MONTH_NAMES = ["Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος", "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος"];
-const EMP_DAY_NAMES = ["Κυρ", "Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ"];
 let selectedMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 const query = new URLSearchParams(location.search);
 const employeeAfm = (query.get("afm") || "").trim();
@@ -85,11 +84,10 @@ function renderMonth(data) {
     `<div class="employee-month-stat err"><span>Για έλεγχο</span><strong>${reviews}</strong></div>`;
   const table = document.createElement("table");
   table.className = "data employee-month-table";
-  table.innerHTML = "<thead><tr><th>Ημέρα</th><th>Ημερομηνία</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Διάρκεια</th><th>Διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Ημερομηνία</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Διάρκεια</th><th>Διαφορά</th><th>Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th></tr></thead>";
   const body = document.createElement("tbody");
   rows.forEach((row) => {
-    const [day, month, year] = row.work_date.split("/").map(Number);
-    const date = new Date(year, month - 1, day);
+    const shortDate = String(row.work_date || "").split("/").slice(0, 2).join("/") || "—";
     const tr = document.createElement("tr");
     if (!row.finalized) tr.className = row.source === "future" ? "employee-month-future" : "employee-month-pending";
     const statusLabels = { ok: "Σύμφωνο", change: "Μεταβολή", review: "Για έλεγχο" };
@@ -102,10 +100,10 @@ function renderMonth(data) {
           : "Δεν έχει υπολογιστεί";
     const overtime = Array.isArray(row.overtime_segments) && row.overtime_segments.length
       ? row.overtime_segments.map((item) => `${item.from}–${item.to}`).join(", ") : "—";
-    [EMP_DAY_NAMES[date.getDay()], row.work_date, value(row, "declared"), value(row, "punch_recorded"), duration(row), minutesText(row.net_difference_minutes), overtime, value(row, "proposed"), result].forEach((text, index) => {
+    [shortDate, value(row, "declared"), value(row, "punch_recorded"), duration(row), minutesText(row.net_difference_minutes), overtime, value(row, "proposed"), result].forEach((text, index) => {
       const td = document.createElement("td");
       td.textContent = String(text);
-      if (index === 8 && row.finalized) td.className = `employee-month-result status-${row.status || ""}`;
+      if (index === 7 && row.finalized) td.className = `employee-month-result status-${row.status || ""}`;
       tr.appendChild(td);
     });
     body.appendChild(tr);

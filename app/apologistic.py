@@ -200,6 +200,64 @@ def _format_recorded_punches(punches: list[dict[str, Any]]) -> str:
     return "\n".join(_format_recorded_punch(p) for p in punches)
 
 
+def _partition_punches_covered_by_previous_overnight(
+    punches: dict[tuple[str, str], list[dict[str, Any]]],
+) -> tuple[
+    dict[tuple[str, str], list[dict[str, Any]]],
+    dict[tuple[str, str], list[dict[str, Any]]],
+]:
+    """Remove next-calendar-day punches still covered by the previous explicit `*` shift.
+
+    A new explicit overnight row such as 17:29–00:28* must stay on its own
+    work date even though its exit clock is earlier than the previous cutoff.
+    Only rows whose available same-day boundaries are all before that cutoff
+    are attributed to the previous work date.
+    """
+    excluded_from_current: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    attributed_to_previous: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for key in list(punches):
+        afm, work_date = key
+        try:
+            current_date = datetime.strptime(work_date, "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        previous_date = (current_date - timedelta(days=1)).strftime("%d/%m/%Y")
+        previous_key = (afm, previous_date)
+        previous_rows = punches.get(previous_key, [])
+        cutoffs = [
+            _minute_of_day(item.get("hour_to"))
+            for item in previous_rows
+            if _is_explicit_next_day(item) and _clock(item.get("hour_to"))
+        ]
+        cutoff = max((value for value in cutoffs if value is not None), default=None)
+        if cutoff is None:
+            continue
+
+        retained: list[dict[str, Any]] = []
+        for item in punches.get(key, []):
+            boundaries = [
+                value for value in (
+                    _minute_of_day(item.get("hour_from")),
+                    _minute_of_day(item.get("hour_to")),
+                ) if value is not None
+            ]
+            covered = bool(
+                boundaries
+                and not _is_explicit_next_day(item)
+                and max(boundaries) < cutoff
+            )
+            if covered:
+                excluded_from_current[key].append(item)
+                attributed_to_previous[previous_key].append(item)
+            else:
+                retained.append(item)
+        if retained:
+            punches[key] = retained
+        else:
+            punches.pop(key, None)
+    return excluded_from_current, attributed_to_previous
+
+
 def _format_matched_label(matched: list[dict[str, Any]]) -> str:
     if not matched:
         return "—"
@@ -322,6 +380,10 @@ def _schedule_text(slots: list[dict[str, Any]]) -> str:
 
 
 def _day_state(slots: list[dict[str, Any]]) -> str:
+    # A report row with no schedule slots exists only because a punch was found.
+    # For retrospective exchange purposes, treat that undeclared day as rest.
+    if not slots:
+        return "Ρεπό"
     text = _schedule_text(slots)
     if "ΤΗΛΕΡΓΑΣ" in text:
         return "Τηλεργασία"
@@ -552,6 +614,10 @@ def build_weekly_report(
             target[(afm, str(row.get("work_date") or ""))].append(row)
             names[afm] = (str(row.get("eponymo") or ""), str(row.get("onoma") or ""))
 
+    excluded_by_previous_overnight, carried_into_previous = (
+        _partition_punches_covered_by_previous_overnight(punches)
+    )
+
     schedules_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in schedule_rows:
         schedules_by_afm[str(row.get("employee_afm") or "").zfill(9)].append(row)
@@ -593,6 +659,8 @@ def build_weekly_report(
     daily: list[dict[str, Any]] = []
     for afm, work_date in sorted(set(schedules) | set(punches), key=lambda k: (datetime.strptime(k[1], "%d/%m/%Y"), names.get(k[0], ("", "")), k[0])):
         slots, day_punches = schedules.get((afm, work_date), []), punches.get((afm, work_date), [])
+        excluded_overnight_punches = excluded_by_previous_overnight.get((afm, work_date), [])
+        carried_overnight_punches = carried_into_previous.get((afm, work_date), [])
         work_slots = _working_slots(slots)
         contract = contracts_by_afm.get(afm)
         contract_kind, _contract_weekly_days = _contract_kind(contract)
@@ -634,7 +702,7 @@ def build_weekly_report(
         )
         actual_minutes = sum(_minutes(m.get("from"), m.get("to")) or 0 for m in matched) if matched else None
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
-        declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "—")
+        declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")
         punch_recorded = _format_recorded_punches(day_punches)
         actual_label = _format_matched_label(matched)
         flex = int((contract or {}).get("flex_arrival_minutes") or (work_slots[0].get("flex_arrival_minutes") if work_slots else 0) or 0)
@@ -679,7 +747,10 @@ def build_weekly_report(
         weekly_punch_details: list[dict[str, Any]] = []
         weekly_punch_days: int | None = None
         contract_required_days: int | None = _contract_weekly_days
-        special_non_work_punch = bool(matched and state in ("Μη εργασία", "Ρεπό") and day_punches)
+        special_non_work_punch = bool(
+            matched and state in ("Μη εργασία", "Ρεπό") and day_punches
+            and (bool(slots) or not inferred)
+        )
         parsed_work_date = datetime.strptime(work_date, "%d/%m/%Y").date()
         compensatory_rest_due = bool(
             sunday_rest_transfer_enabled
@@ -824,6 +895,21 @@ def build_weekly_report(
             single_schedule=len(work_slots) == 1, overtime_segments=overtime_segments,
             corrected_extra_punches=corrected_extra_punches,
         )
+        if excluded_overnight_punches:
+            previous_date = (
+                datetime.strptime(work_date, "%d/%m/%Y").date() - timedelta(days=1)
+            ).strftime("%d/%m/%Y")
+            status_explanation.append(
+                f"Δεν συμμετείχαν στο κύριο χτύπημα της ημέρας {len(excluded_overnight_punches)} "
+                f"εγγραφές πριν από τη λήξη της διανυκτερεύουσας βάρδιας της {previous_date}: "
+                + " · ".join(_format_recorded_punch(item) for item in excluded_overnight_punches)
+            )
+        if carried_overnight_punches:
+            status_explanation.append(
+                "Πρόσθετα χτυπήματα της επόμενης ημερολογιακής ημέρας που αποδόθηκαν "
+                "στην παρούσα διανυκτερεύουσα βάρδια: "
+                + " · ".join(_format_recorded_punch(item) for item in carried_overnight_punches)
+            )
         if contract_kind != "Μερική":
             basis_label = (
                 _hm(contract_daily_base_minutes(contract_kind, daily_overtime_days))
@@ -868,6 +954,18 @@ def build_weekly_report(
             "proposed_schedule_type": "ΤΗΛ" if state == "Τηλεργασία" else None,
             "proposal_basis": proposal_basis, "rule_id": rule_id, "status": status, "reason": reason,
             "status_explanation": status_explanation, "orphan_punches": orphan_details,
+            "excluded_by_previous_overnight": [
+                {"from": _format_recorded_boundary(item.get("hour_from")) or None,
+                 "to": _format_recorded_boundary(item.get("hour_to")) or None,
+                 "label": _format_recorded_punch(item)}
+                for item in excluded_overnight_punches
+            ],
+            "carried_overnight_punches": [
+                {"from": _format_recorded_boundary(item.get("hour_from")) or None,
+                 "to": _format_recorded_boundary(item.get("hour_to")) or None,
+                 "label": _format_recorded_punch(item)}
+                for item in carried_overnight_punches
+            ],
             "corrected_extra_punches": [{k: v for k, v in item.items() if k != "recorded"}
                                          for item in corrected_extra_punches],
             "declared_minutes": declared_minutes, "actual_minutes": actual_minutes,

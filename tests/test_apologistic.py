@@ -32,11 +32,12 @@ def test_flexible_arrival_needs_no_change():
     assert result["counts"]["ok"] == 1
 
 
-def test_punch_without_schedule_is_review_not_automatic_work():
+def test_punch_without_schedule_is_rest_to_work_change():
     result = build_weekly_report([], [punch()], [contract()])
     row = result["days"][0]
-    assert row["status"] == "review"
+    assert row["status"] == "change"
     assert row["proposed"] == "09:10–17:10"
+    assert row["rule_id"] == "NON_WORK_DAY_BECOMES_WORK"
 
 
 def test_schedule_without_punch_is_ok_and_does_not_infer_actual_work():
@@ -139,6 +140,46 @@ def test_rest_with_punch_becomes_work_change_when_no_exchange_exists():
     assert row["rule_id"] == "NON_WORK_DAY_BECOMES_WORK"
     assert row["weekly_punch_days"] == 1
     assert row["contract_required_days"] == 5
+
+
+def test_punch_without_any_declared_schedule_is_treated_as_rest():
+    result = build_weekly_report([], [punch()], [contract()])
+    row = result["days"][0]
+    assert row["day_state"] == "Ρεπό"
+    assert row["declared"] == "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+    assert row["status"] == "change"
+    assert row["rule_id"] == "NON_WORK_DAY_BECOMES_WORK"
+
+
+def test_next_day_punch_before_previous_explicit_overnight_end_is_excluded():
+    schedules = [
+        sched(day="15/08/2026", start="17:30", end="01:30"),
+        sched(day="16/08/2026", start="17:30", end="01:30"),
+    ]
+    previous = punch(day="15/08/2026", start="17:19", end="01:15")
+    previous["is_end_date_different"] = 1
+    covered_by_previous = punch(day="16/08/2026", start="00:38", end="00:39")
+    current = punch(day="16/08/2026", start="17:29", end="00:28")
+    current["is_end_date_different"] = 1
+
+    rows = build_weekly_report(
+        schedules,
+        [previous, covered_by_previous, current],
+        [contract(flex=0)],
+    )["days"]
+
+    previous_row = next(row for row in rows if row["work_date"] == "15/08/2026")
+    current_row = next(row for row in rows if row["work_date"] == "16/08/2026")
+    assert current_row["punch_recorded"] == "17:29–00:28*"
+    assert current_row["actual"] == "17:29–00:28"
+    assert current_row["actual_minutes"] == 419
+    assert current_row["punch_count"] == 1
+    assert current_row["excluded_by_previous_overnight"] == [
+        {"from": "00:38", "to": "00:39", "label": "00:38–00:39"}
+    ]
+    assert previous_row["carried_overnight_punches"] == [
+        {"from": "00:38", "to": "00:39", "label": "00:38–00:39"}
+    ]
 
 
 def test_rest_punch_becomes_change_when_no_missing_declared_day_exists():

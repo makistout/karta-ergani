@@ -967,6 +967,10 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-kpi--review.is-active { border-color:var(--err); }
 .apologistic-kpi--ok.is-active { border-color:#2d8a52; }
 .apologistic-kpi--submitted.is-active { border-color:#2563eb; }
+.apologistic-all-results-row { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+.apologistic-employee-search { position:relative; display:block; width:min(100%,320px); }
+.apologistic-employee-search .bi { position:absolute; left:.72rem; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
+.apologistic-employee-search .field-input { width:100%; padding-left:2.15rem; }
 .apologistic-table td { vertical-align:top; }
 .apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
 .apologistic-table th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; line-height:1; }
