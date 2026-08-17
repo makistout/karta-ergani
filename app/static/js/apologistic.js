@@ -2213,7 +2213,7 @@ function renderRows(rows, store) {
   for (const row of rows) {
     if (isEmployeeMonthView() && !isRowFinalized(row)) {
       html += `<tr class="apologistic-row--pending${row.source === "future" ? " employee-month-future" : ""}">` +
-        `<td title="${attr(row.work_date || "")}"><strong>${attr(weekdayLabelForDate(row.work_date))}</strong> ${attr(row.work_date || "")}</td>` +
+        `<td title="${attr(weekdayLabelForDate(row.work_date))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>` +
         `<td colspan="${tableCols - 1}" class="employee-month-pending-label">${attr(pendingRowLabel(row))}</td></tr>`;
       continue;
     }
@@ -2245,7 +2245,7 @@ function renderRows(rows, store) {
     ].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
       (showDateColumn
-        ? `<td title="${attr(row.work_date || "")}"><strong>${attr(isEmployeeMonthView() ? weekdayLabelForDate(row.work_date) : String(row.work_date || "").slice(0, 5))}</strong>${isEmployeeMonthView() ? ` ${attr(row.work_date || "")}` : ""}</td>`
+        ? `<td title="${attr(isEmployeeMonthView() ? weekdayLabelForDate(row.work_date) : (row.work_date || ""))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>`
         : "") +
       (hideEmployeeColumn ? "" :
         `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης · Πέρασμα για εβδομαδιαίο ιστορικό`)}">` +
@@ -2283,7 +2283,7 @@ function renderRows(rows, store) {
           `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong>` +
           `<span>${attr(exchangeSourceDeclared(item.replacement_declared))} → <b>ΡΕΠΟ</b></span></div>` +
           `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
-          `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(item.rest_punch)} → <b>${attr(item.proposed)}</b></span></div>` +
+          `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα ${attr(item.rest_punch)} σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(exchangeSourceDeclared(row.declared))} → <b>${attr(item.proposed)}</b></span></div>` +
         `</button>`).join("") +
         `</div></td></tr>`;
     }
