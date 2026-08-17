@@ -1390,14 +1390,15 @@ function renderResultBadge(row) {
         `data-employee-afm="${attr(row.employee_afm)}" data-group-id="${attr(unevenGroup.group_id)}" ` +
         `title="Έγκριση ολόκληρης της ομάδας ανισομερούς κατανομής">${statusShortLabel(row.status, row)}</button>`;
     }
-    if ((row.exchange_options || []).length) {
-      return `<span class="status-badge apologistic-status--review" title="Επιλέξτε πρώτα μία από τις διαθέσιμες ανταλλαγές">${statusShortLabel(row.status, row)}</span>`;
-    }
     const key = `${row.employee_afm}|${row.work_date}`;
     const pending = acceptReviewPending.has(key);
+    const hasExchangeOptions = (row.exchange_options || []).length > 0;
+    const actionTitle = hasExchangeOptions
+      ? "Κλικ: αποδοχή της πρότασης ως Μ* χωρίς ανταλλαγή"
+      : "Κλικ: OK με την πρόταση";
     return `<button type="button" class="status-badge apologistic-status--review apologistic-accept-review-btn${pending ? " is-pending" : ""}" ` +
       `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
-      `title="${attr(pending ? "Αποθήκευση…" : "Κλικ: OK με την πρόταση")}"${pending ? " disabled" : ""}>${statusShortLabel(row.status, row)}</button>`;
+      `title="${attr(pending ? "Αποθήκευση…" : actionTitle)}"${pending ? " disabled" : ""}>${statusShortLabel(row.status, row)}</button>`;
   }
   return `<span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status, row)}</span>`;
 }
