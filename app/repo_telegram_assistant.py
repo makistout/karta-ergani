@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from app.db import cursor
@@ -18,11 +19,19 @@ def _json(value: Any) -> str:
 
 def authorized_contexts(chat_id: str) -> list[dict[str, Any]]:
     """Only active recipients already linked to this Telegram chat are authorized."""
+    from app.repo_store import ai_agent_column_available
+
+    ai_select = (
+        "CAST(s.ai_agent_enabled AS int) AS ai_agent_enabled"
+        if ai_agent_column_available()
+        else "CAST(0 AS int) AS ai_agent_enabled"
+    )
     with cursor(commit=False) as cur:
         cur.execute(
-            """
+            f"""
             SELECT r.id AS recipient_id, r.name AS recipient_name, r.mobile,
-                   r.store_id, s.name AS store_name, s.employer_afm, s.branch_aa
+                   r.store_id, s.name AS store_name, s.employer_afm, s.branch_aa,
+                   {ai_select}
             FROM dbo.karta_store_notify_recipient r
             JOIN dbo.karta_store_config s ON s.id = r.store_id
             WHERE r.active = 1 AND LTRIM(RTRIM(ISNULL(r.telegram_chat_id, N''))) = ?
@@ -61,6 +70,113 @@ def create_inbound_message(
             ),
         )
         return int(cur.fetchone()[0]), True
+
+
+def create_ui_inbound_message(
+    *, office_user: str, store_id: int, text: str, raw_payload: dict[str, Any] | None = None,
+) -> int:
+    """Persist a UI message in the same canonical inbound stream as Telegram."""
+    update_id = -int(time.time_ns() // 1000)
+    chat_id = f"ui:{office_user}:{int(store_id)}"[:64]
+    with cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO dbo.karta_telegram_inbound_message
+                (telegram_update_id, chat_id, store_id, message_text, raw_payload_json,
+                 channel, office_user)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, N'ui', ?)
+            """,
+            (update_id, chat_id, int(store_id), str(text)[:4096],
+             _json(raw_payload or {}), str(office_user)[:128]),
+        )
+        return int(cur.fetchone()[0])
+
+
+def record_ui_outbound_message(
+    *, office_user: str, store_id: int, text: str, context: dict[str, Any] | None = None,
+) -> int:
+    message_id = -int(time.time_ns() // 1000)
+    ctx = context or {}
+    with cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO dbo.karta_telegram_outbound_message
+                (telegram_message_id, chat_id, store_id, employee_afm,
+                 notification_type, notification_reference_id, message_text,
+                 context_json, channel, office_user)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, N'ui', ?)
+            """,
+            (message_id, f"ui:{office_user}:{int(store_id)}"[:64], int(store_id),
+             str(ctx.get("employee_afm") or "")[:16] or None,
+             str(ctx.get("notification_type") or "assistant_reply")[:64],
+             str(ctx.get("notification_reference_id") or "")[:128] or None,
+             str(text)[:4096], _json(ctx), str(office_user)[:128]),
+        )
+        return int(cur.fetchone()[0])
+
+
+def list_conversation_history(*, store_id: int, office_user: str, limit: int = 100) -> list[dict[str, Any]]:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (?) * FROM (
+                SELECT i.id, N'in' AS direction, ISNULL(i.channel, N'telegram') AS channel,
+                       i.message_text, CAST(i.received_at AS datetime2) AS created_at,
+                       CONVERT(char(5), CAST(i.received_at AS datetime2), 108) AS created_time,
+                       t.id AS task_id, t.task_status, t.proposed_action_text
+                FROM dbo.karta_telegram_inbound_message i
+                LEFT JOIN dbo.karta_assistant_task t ON t.inbound_message_id=i.id
+                WHERE i.store_id=? AND (
+                    ISNULL(i.channel, N'telegram')=N'telegram' OR i.office_user=?
+                )
+                UNION ALL
+                SELECT o.id, N'out', ISNULL(o.channel, N'telegram'), o.message_text,
+                       CAST(o.sent_at AS datetime2),
+                       CONVERT(char(5), CAST(o.sent_at AS datetime2), 108),
+                       TRY_CONVERT(bigint, o.notification_reference_id),
+                       t.task_status, t.proposed_action_text
+                FROM dbo.karta_telegram_outbound_message o
+                LEFT JOIN dbo.karta_assistant_task t
+                  ON t.id=TRY_CONVERT(bigint, o.notification_reference_id)
+                WHERE o.store_id=? AND (
+                    ISNULL(o.channel, N'telegram')=N'telegram' OR o.office_user=?
+                )
+            ) messages
+            ORDER BY created_at DESC, id DESC
+            """,
+            (max(1, min(int(limit), 200)), int(store_id), str(office_user),
+             int(store_id), str(office_user)),
+        )
+        rows = rows_to_dicts(cur)
+    rows.reverse()
+    return rows
+
+
+def confirm_ui_task(*, task_id: int, store_id: int, office_user: str) -> dict[str, Any] | None:
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE t SET task_status=N'executing', execution_enabled=1,
+                         confirmed_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            OUTPUT INSERTED.id, INSERTED.store_id, INSERTED.task_status,
+                   INSERTED.proposed_action_text, INSERTED.payload_json
+            FROM dbo.karta_assistant_task t
+            JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
+            WHERE t.id=? AND t.store_id=? AND t.task_status=N'awaiting_ui_confirmation'
+              AND i.channel=N'ui' AND i.office_user=?
+            """,
+            (int(task_id), int(store_id), str(office_user)),
+        )
+        rows = rows_to_dicts(cur)
+        if not rows:
+            return None
+        cur.execute(
+            "INSERT INTO dbo.karta_assistant_task_event(task_id,event_type,event_json) VALUES (?,N'ui_execution_started',?)",
+            (int(task_id), _json({"office_user": office_user})),
+        )
+        return rows[0]
 
 
 def mark_inbound(inbound_id: int, status: str, error: str | None = None) -> None:
@@ -167,13 +283,14 @@ def verify_and_confirm_task_pin(task_id: int, *, chat_id: str, pin: str) -> tupl
         cur.execute(
             """
             SELECT TOP (1) t.id, t.task_status, t.store_id, t.proposed_action_text,
+                   t.payload_json,
                    r.mobile, r.notify_pin_hash, r.notify_pin
             FROM dbo.karta_assistant_task t WITH (UPDLOCK, HOLDLOCK)
             JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
             JOIN dbo.karta_store_notify_recipient r ON r.id=t.recipient_id
             WHERE t.id=? AND i.chat_id=? AND r.active=1
               AND LTRIM(RTRIM(ISNULL(r.telegram_chat_id, N'')))=i.chat_id
-              AND t.execution_enabled=0
+              AND t.execution_enabled IN (0, 1)
             """,
             (int(task_id), str(chat_id)),
         )
@@ -226,17 +343,31 @@ def verify_and_confirm_task_pin(task_id: int, *, chat_id: str, pin: str) -> tupl
         cur.execute(
             """
             UPDATE dbo.karta_assistant_task
-            SET task_status=N'confirmed_dry_run', confirmed_at=SYSDATETIMEOFFSET(),
-                updated_at=SYSDATETIMEOFFSET()
-            WHERE id=? AND task_status=N'awaiting_pin' AND execution_enabled=0
+            SET task_status=N'executing', execution_enabled=1,
+                confirmed_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            WHERE id=? AND task_status=N'awaiting_pin'
             """,
             (int(task_id),),
         )
         cur.execute(
-            "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'pin_verified_dry_run', N'{}')",
+            "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'pin_execution_started', N'{}')",
             (int(task_id),),
         )
         return "confirmed", task
+
+
+def finish_task_execution(task_id: int, *, success: bool, result: dict[str, Any]) -> None:
+    status = "completed" if success else "failed"
+    event_type = "execution_completed" if success else "execution_failed"
+    with cursor() as cur:
+        cur.execute(
+            "UPDATE dbo.karta_assistant_task SET task_status=?, updated_at=SYSDATETIMEOFFSET() WHERE id=? AND task_status=N'executing'",
+            (status, int(task_id)),
+        )
+        cur.execute(
+            "INSERT INTO dbo.karta_assistant_task_event(task_id,event_type,event_json) VALUES (?,?,?)",
+            (int(task_id), event_type, _json(result)),
+        )
 
 
 def record_outbound_message(
@@ -310,7 +441,7 @@ def create_task(
                  total_token_count, cached_content_token_count, thoughts_token_count,
                  tool_use_prompt_token_count, llm_duration_ms, usage_metadata_json)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, TRY_CONVERT(date, ?), ?, ?, ?, ?, ?, 0,
+            VALUES (?, ?, ?, ?, ?, ?, TRY_CONVERT(date, ?), ?, ?, ?, ?, ?, 1,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -328,7 +459,7 @@ def create_task(
         )
         task_id = int(cur.fetchone()[0])
         cur.execute(
-            "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'parsed_dry_run', ?)",
+            "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'parsed', ?)",
             (task_id, _json({"status": status, "validation": validation, "llm": metadata})),
         )
         return task_id

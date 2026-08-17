@@ -66,10 +66,12 @@ class Config:
 
     TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
-    GEMINI_MODEL = (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest").strip()
+    GEMINI_MODEL = (os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash-lite").strip()
+    GEMINI_FALLBACK_MODEL = (
+        os.environ.get("GEMINI_FALLBACK_MODEL") or "gemini-3.5-flash"
+    ).strip()
     TELEGRAM_ASSISTANT_ENABLED = _env_flag("TELEGRAM_ASSISTANT_ENABLED", default=False)
-    # Phase 1 is intentionally non-executing. There is no code path to Ergani.
-    TELEGRAM_ASSISTANT_EXECUTION_ENABLED = False
+    AI_AGENT_CONTACT_PHONE = (os.environ.get("AI_AGENT_CONTACT_PHONE") or "ΧΧΧΧΧΧΧ").strip()
 
     SMTP_HOST = (os.environ.get("SMTP_HOST") or "").strip()
     SMTP_PORT = int((os.environ.get("SMTP_PORT") or "587").strip() or "587")

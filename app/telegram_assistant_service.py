@@ -19,11 +19,16 @@ ALLOWED_INTENTS = {
     "card_check_out_now",
     "card_check_in_retro",
     "card_check_out_retro",
+    "card_check_in_schedule",
+    "card_check_out_schedule",
     "schedule_change",
     "rest_day",
     "leave",
     "unknown",
 }
+
+_GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
+_GEMINI_FALLBACK_ATTEMPTS = 2
 
 
 def _is_iso_date(value: str) -> bool:
@@ -36,7 +41,7 @@ def _is_iso_date(value: str) -> bool:
         return False
     return True
 
-_SCHEMA = {
+_COMMAND_SCHEMA = {
     "type": "object",
     "properties": {
         "intent": {"type": "string", "enum": sorted(ALLOWED_INTENTS)},
@@ -54,6 +59,14 @@ _SCHEMA = {
         "clarification_question": {"type": ["string", "null"]},
     },
     "required": ["intent", "employee_afms", "employee_references", "confidence"],
+}
+
+_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "commands": {"type": "array", "items": _COMMAND_SCHEMA},
+    },
+    "required": ["commands"],
 }
 
 
@@ -90,6 +103,12 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
     parsed = json.loads(text)
     if not isinstance(parsed, dict):
         raise ValueError("Το Gemini δεν επέστρεψε JSON object")
+    commands = parsed.get("commands")
+    if isinstance(commands, list):
+        valid_commands = [command for command in commands if isinstance(command, dict)]
+        if len(valid_commands) == 1:
+            return valid_commands[0]
+        parsed["commands"] = valid_commands
     return parsed
 
 
@@ -110,9 +129,12 @@ def parse_command(
             "Επίλεξε μόνο store_id και ΑΦΜ που υπάρχουν στους δοσμένους καταλόγους.",
             "Βάλε ΟΛΟΥΣ τους εργαζομένους που ζητά ο χρήστης στα employee_afms και employee_references, με ίδια σειρά.",
             "Για έναν εργαζόμενο πάλι χρησιμοποίησε employee_afms με ένα στοιχείο. Μην συγχωνεύεις πολλαπλά ονόματα.",
+            "Επέστρεψε μία εγγραφή στο commands για κάθε διαφορετική ενέργεια/ημερομηνία/ώρα. Επιτρέπονται πολλές διαφορετικές εντολές και πολλοί εργαζόμενοι στο ίδιο μήνυμα.",
+            "Αν πολλοί εργαζόμενοι έχουν ακριβώς την ίδια ενέργεια, ημερομηνία και ώρα, μπορούν να βρίσκονται μαζί στην ίδια εγγραφή commands.",
             "Αν έστω ένα ζητούμενο όνομα δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
             "Το τώρα σημαίνει την τρέχουσα ώρα Europe/Athens.",
             "Για πριν/στις ΧΧ:ΧΧ ή σχετικό χρόνο όπως '10 λεπτά πριν' χρησιμοποίησε retro intent και υπολόγισε ακριβή ώρα HH:MM από το now.",
+            "Για άνοιγμα ή κλείσιμο κάρτας 'βάσει ωραρίου/προγράμματος' χρησιμοποίησε αντίστοιχα card_check_in_schedule ή card_check_out_schedule. Μην επινοήσεις ώρα.",
             "Για αλλαγή ωραρίου δώσε hour_from και hour_to.",
             "Για ρεπό χρησιμοποίησε rest_day. Για άδεια χρησιμοποίησε leave.",
             "Αν κάτι είναι ασαφές επέστρεψε unknown και σύντομη clarification_question στα ελληνικά.",
@@ -125,20 +147,48 @@ def parse_command(
         "allowed_employees": employees,
     }
     started_at = time.monotonic()
-    response = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent",
-        headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
-        json={
+    request_body = {
             "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
             "generationConfig": {
                 "temperature": 0,
                 "responseMimeType": "application/json",
                 "responseJsonSchema": _SCHEMA,
             },
-        },
-        timeout=20,
-    )
+        }
+    models = [Config.GEMINI_MODEL]
+    fallback_model = str(Config.GEMINI_FALLBACK_MODEL or "").strip()
+    if fallback_model and fallback_model not in models:
+        models.append(fallback_model)
+    response = None
+    last_network_error: requests.RequestException | None = None
+    used_model = models[0]
+    for model_index, model in enumerate(models):
+        attempts = 1 if model_index == 0 and len(models) > 1 else _GEMINI_FALLBACK_ATTEMPTS
+        for attempt in range(attempts):
+            used_model = model
+            try:
+                response = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
+                    json=request_body,
+                    timeout=(3.05, 10),
+                )
+            except requests.RequestException as exc:
+                last_network_error = exc
+                response = None
+                if attempt < attempts - 1:
+                    time.sleep(0.5)
+                continue
+            if response.ok or response.status_code not in _GEMINI_RETRY_STATUSES:
+                break
+            if attempt < attempts - 1:
+                time.sleep(0.5)
+        if response is not None and (response.ok or response.status_code not in _GEMINI_RETRY_STATUSES):
+            break
     duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
+    if response is None:
+        detail = str(last_network_error or "χωρίς απόκριση")
+        raise RuntimeError(f"Gemini network error μετά από model failover: {detail[:300]}")
     if not response.ok:
         raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:500]}")
     response_data = response.json()
@@ -146,14 +196,14 @@ def parse_command(
     if not isinstance(usage_metadata, dict):
         usage_metadata = {}
     llm_metadata = {
-        "model": str(response_data.get("modelVersion") or Config.GEMINI_MODEL)[:128],
+        "model": str(response_data.get("modelVersion") or used_model)[:128],
         "duration_ms": duration_ms,
         "usage_metadata": usage_metadata,
     }
     return _extract_json(response_data), employees, llm_metadata
 
 
-def validate_and_describe(
+def _validate_single_command(
     parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
 ) -> tuple[str, dict[str, Any], str]:
     errors: list[str] = []
@@ -213,6 +263,31 @@ def validate_and_describe(
     if intent == "unknown":
         errors.append(str(parsed.get("clarification_question") or "Δεν αναγνωρίστηκε υποστηριζόμενη εντολή"))
 
+    schedule_times: dict[str, str] = {}
+    if intent in {"card_check_in_schedule", "card_check_out_schedule"} and store_id in allowed_store_ids and _is_iso_date(date):
+        from app.date_util import format_date_for_ergani
+        from app.repo_schedule import list_schedule_for_store
+
+        store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+        schedule_rows = list_schedule_for_store(
+            str(store_context.get("employer_afm") or ""),
+            str(store_context.get("branch_aa") or "0"),
+            format_date_for_ergani(date),
+        )
+        field = "hour_from" if intent == "card_check_in_schedule" else "hour_to"
+        for match in matches:
+            afm = str(match.get("afm") or "")
+            values = [
+                str(row.get(field) or "").strip()[:5]
+                for row in schedule_rows if str(row.get("employee_afm") or "").strip() == afm
+            ]
+            values = [value for value in values if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)]
+            if values:
+                schedule_times[afm] = min(values) if field == "hour_from" else max(values)
+            else:
+                errors.append(f"Δεν βρέθηκε ώρα {'έναρξης' if field == 'hour_from' else 'λήξης'} στο ωράριο για {match.get('name') or afm}")
+        parsed["resolved_schedule_times"] = schedule_times
+
     validation = {"valid": not errors, "errors": errors, "execution_enabled": False}
     status = "draft" if not errors else "needs_clarification"
     if matches:
@@ -222,16 +297,61 @@ def validate_and_describe(
         if not isinstance(references, list):
             references = [parsed.get("employee_reference")] if parsed.get("employee_reference") else []
         names = ", ".join(str(value).strip() for value in references if str(value).strip()) or "εργαζόμενος"
-    store_name = next((str(c.get("store_name") or c["store_id"]) for c in contexts if int(c["store_id"]) == store_id), "—")
+    try:
+        display_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        display_date = date or "—"
     labels = {
         "card_check_in_now": "Άνοιγμα κάρτας τώρα",
         "card_check_out_now": "Κλείσιμο κάρτας τώρα",
         "card_check_in_retro": f"Άνοιγμα κάρτας στις {time_value}",
         "card_check_out_retro": f"Κλείσιμο κάρτας στις {time_value}",
+        "card_check_in_schedule": "Άνοιγμα κάρτας",
+        "card_check_out_schedule": "Κλείσιμο κάρτας",
         "schedule_change": f"Αλλαγή ωραρίου σε {parsed.get('hour_from') or '—'}–{parsed.get('hour_to') or '—'}",
         "rest_day": "Δήλωση ρεπό",
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
         "unknown": "Μη αναγνωρισμένη εντολή",
     }
-    proposed = f"{labels[intent]} · {names} · {date or '—'} · {store_name}"
+    if intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
+        proposed = "\n".join(
+            f"{match.get('name') or match.get('afm')} · {display_date} · {labels[intent]} {schedule_times.get(str(match.get('afm') or ''), '—')}"
+            for match in matches
+        )
+    else:
+        proposed = f"{names} · {display_date} · {labels[intent]}"
     return status, validation, proposed
+
+
+def validate_and_describe(
+    parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any], str]:
+    commands = parsed.get("commands")
+    if not isinstance(commands, list):
+        return _validate_single_command(parsed, contexts=contexts, employees=employees)
+
+    normalized = [command for command in commands if isinstance(command, dict)]
+    if not normalized:
+        validation = {"valid": False, "errors": ["Δεν αναγνωρίστηκε καμία εντολή"], "execution_enabled": False}
+        return "needs_clarification", validation, "Μη αναγνωρισμένη εντολή"
+
+    proposed_lines: list[str] = []
+    errors: list[str] = []
+    store_ids: set[int] = set()
+    all_valid = True
+    for index, command in enumerate(normalized, start=1):
+        status, validation, proposed = _validate_single_command(
+            command, contexts=contexts, employees=employees,
+        )
+        proposed_lines.extend(line for line in proposed.splitlines() if line.strip())
+        if status != "draft":
+            all_valid = False
+            errors.extend(f"Εντολή {index}: {error}" for error in validation.get("errors") or [])
+        if command.get("store_id") is not None:
+            store_ids.add(int(command["store_id"]))
+
+    parsed["commands"] = normalized
+    if len(store_ids) == 1:
+        parsed["store_id"] = next(iter(store_ids))
+    validation = {"valid": all_valid, "errors": errors, "execution_enabled": all_valid}
+    return ("draft" if all_valid else "needs_clarification"), validation, "\n".join(proposed_lines)

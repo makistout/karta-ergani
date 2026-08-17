@@ -38,6 +38,14 @@ telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
 logger = logging.getLogger(__name__)
 
 
+def _ai_agent_disabled_message() -> str:
+    phone = Config.AI_AGENT_CONTACT_PHONE or "ΧΧΧΧΧΧΧ"
+    return (
+        "Ο ΑΙ agent δεν είναι ενεργοποιημένος. "
+        f"Καλέστε {phone} για να ενημερωθείτε για το κόστος ενεργοποίησης του."
+    )
+
+
 def _audit_notification_open(action: str, *, token: str | None, ok: bool, error: str | None = None) -> None:
     actor = None
     if token:
@@ -72,10 +80,13 @@ def _audit_notification_open(action: str, *, token: str | None, ok: bool, error:
     )
 
 
-def _reply_chat(chat_id: str, text: str, *, context: dict | None = None) -> None:
+def _reply_chat(
+    chat_id: str, text: str, *, context: dict | None = None,
+    reply_markup: dict | None = None,
+) -> None:
     """Ξ‘Ο€Ξ¬Ξ½Ο„Ξ·ΟƒΞ· ΟƒΟ„ΞΏΞ½ Ο‡ΟΞ®ΟƒΟ„Ξ· β€” Ο€Ξ¬Ξ½Ο„Ξ± Ξ±ΞΈΟΟΟ…Ξ²Ξ± ΟƒΞµ ΟƒΟ†Ξ¬Ξ»ΞΌΞ± (Ο„ΞΏ webhook Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΟ€ΞΉΟƒΟ„ΟΞ­Ο†ΞµΞΉ 200)."""
     try:
-        send_telegram_message(str(chat_id), text, context=context)
+        send_telegram_message(str(chat_id), text, context=context, reply_markup=reply_markup)
     except TelegramNotConfigured:
         logger.warning("Telegram webhook: bot token not configured")
     except Exception:
@@ -86,6 +97,9 @@ def _reply_chat(chat_id: str, text: str, *, context: dict | None = None) -> None
 def telegram_webhook():
     """Ξ Ξ»Ξ®Ο€Ο„Ξ·Ο‚ ΟƒΟ„Ξ­Ξ»Ξ½ΞµΞΉ: /start 6912345678 β†’ ΟƒΟΞ½Ξ΄ΞµΟƒΞ· chat_id ΞΌΞµ ΞΊΞΉΞ½Ξ·Ο„Ο ΟƒΟ„Ξ· Ξ²Ξ¬ΟƒΞ·."""
     update = request.get_json(silent=True) or {}
+    callback = update.get("callback_query") or {}
+    if callback:
+        return _handle_assistant_callback(callback)
     message = update.get("message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
@@ -121,6 +135,27 @@ def telegram_webhook():
     return jsonify({"ok": True, "linked": linked})
 
 
+def _handle_assistant_callback(callback: dict):
+    data = str(callback.get("data") or "")
+    message = callback.get("message") or {}
+    chat_id = str(((message.get("chat") or {}).get("id") or "")).strip()
+    if not chat_id or not data.startswith("assistant_confirm:"):
+        return jsonify({"ok": True})
+    try:
+        task_id = int(data.split(":", 1)[1])
+    except (TypeError, ValueError):
+        return jsonify({"ok": True})
+    from app.repo_telegram_assistant import authorized_contexts, conversation_task
+    if not authorized_contexts(chat_id):
+        return jsonify({"ok": True})
+    task = conversation_task(chat_id)
+    if not task or int(task.get("id") or 0) != task_id:
+        _reply_chat(chat_id, "Η εντολή δεν είναι πλέον διαθέσιμη για επιβεβαίωση.")
+        return jsonify({"ok": True, "assistant": "confirmation_unavailable"})
+    _reply_chat(chat_id, "Στείλτε τον προσωπικό 4ψήφιο PIN σας.")
+    return jsonify({"ok": True, "assistant": "awaiting_pin"})
+
+
 def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: str):
     """Store and parse authorized commands. Phase 1 never executes them."""
     from app.repo_telegram_assistant import (
@@ -132,12 +167,22 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         reply_context,
         verify_and_confirm_task_pin,
     )
-    from app.telegram_assistant_service import parse_command, validate_and_describe
 
     contexts = authorized_contexts(chat_id)
     if not contexts:
         # Deliberately silent: unknown Telegram users are neither stored nor answered.
         return jsonify({"ok": True})
+
+    # Only stores with an active subscription may reach parsing, PIN handling,
+    # task creation, or any other AI-assisted Telegram response.
+    enabled_contexts = [
+        row for row in contexts
+        if bool(int(row.get("ai_agent_enabled", 1) or 0))
+    ]
+    if not enabled_contexts:
+        _reply_chat(chat_id, _ai_agent_disabled_message())
+        return jsonify({"ok": True, "assistant": "store_disabled"})
+    contexts = enabled_contexts
 
     update_id = update.get("update_id")
     message_id = message.get("message_id")
@@ -190,12 +235,16 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             return jsonify({"ok": True, "assistant": "pin_verification_failed"})
         mark_inbound(inbound_id, "conversation")
         if pin_result == "confirmed":
-            proposed = str((task or {}).get("proposed_action_text") or conversation.get("proposed_action_text") or "—")
-            _reply_chat(
-                chat_id,
-                f"Ο PIN είναι σωστός. Η εντολή #{task_id} επιβεβαιώθηκε και ΘΑ εκτελεστεί όταν ενεργοποιηθεί η υπηρεσία:\n{proposed}\n\nΔεν έγινε ακόμη καμία αποστολή στο ΕΡΓΑΝΗ.",
+            from app.assistant_execution_service import execute_confirmed_task, execution_answer
+            _reply_chat(chat_id, "Εκτέλεση εντολών. Παρακαλώ περιμένετε...")
+            result = execute_confirmed_task(task or conversation, source="assistant_telegram")
+            _reply_chat(chat_id, execution_answer(task_id, result))
+            record_audit_event(
+                action="assistant.execute", success=bool(result.get("success")),
+                entity_type="assistant_task", entity_id=str(task_id),
+                details={"channel": "telegram", "store_id": conversation.get("store_id"), "result": result},
             )
-            return jsonify({"ok": True, "assistant": "confirmed_dry_run"})
+            return jsonify({"ok": True, "assistant": "completed" if result.get("success") else "failed"})
         if pin_result == "locked":
             _reply_chat(chat_id, f"Η εντολή #{task_id} κλειδώθηκε λόγω πολλών λανθασμένων προσπαθειών PIN.")
             return jsonify({"ok": True, "assistant": "pin_locked"})
@@ -211,39 +260,21 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         replied_text = str(reply_message.get("text") or reply_message.get("caption") or "").strip()
         if replied_text:
             reply_ctx.setdefault("message_text", replied_text[:4096])
-        parsed, employees, llm_metadata = parse_command(
-            text=text, contexts=contexts, reply_context=reply_ctx,
+        from app.assistant_conversation_service import process_assistant_command
+        result = process_assistant_command(
+            text=text, contexts=contexts, inbound_id=inbound_id,
+            recipient_id=recipient_id, store_id=store_id,
+            reply_context=reply_ctx, confirmation_mode="pin",
         )
-        status, validation, proposed = validate_and_describe(
-            parsed, contexts=contexts, employees=employees,
+        task_id = result["task_id"]
+        status = result["status"]
+        answer = result["answer"]
+        parsed = result["parsed"]
+        selected_recipient = result["recipient_id"]
+        reply_markup = (
+            {"inline_keyboard": [[{"text": "Επιβεβαίωση", "callback_data": f"assistant_confirm:{task_id}"}]]}
+            if status == "draft" else None
         )
-        selected_store = parsed.get("store_id")
-        selected_recipient = next(
-            (int(c["recipient_id"]) for c in contexts if int(c["store_id"]) == selected_store),
-            recipient_id,
-        )
-        task_status = "awaiting_pin" if status == "draft" else status
-        task_id = create_task(
-            inbound_id=inbound_id,
-            recipient_id=selected_recipient,
-            store_id=int(selected_store) if selected_store in one_store else store_id,
-            parsed=parsed,
-            status=task_status,
-            validation=validation,
-            proposed_action=proposed,
-            llm_metadata=llm_metadata,
-        )
-        mark_inbound(inbound_id, "parsed")
-        if status == "draft":
-            answer = (
-                f"Εντολή #{task_id}:\n{proposed}\n\n"
-                "Εάν είστε σύμφωνοι, στείλτε τον προσωπικό 4ψήφιο PIN σας για επιβεβαίωση. "
-                "Διαφορετικά, στείλτε ξανά την εντολή.\n"
-                "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
-            )
-        else:
-            problems = "\n".join(f"• {item}" for item in validation.get("errors") or [])
-            answer = f"Η εντολή #{task_id} χρειάζεται διευκρίνιση:\n{problems}\n\nΔεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
         _reply_chat(chat_id, answer, context={
             "notification_type": "assistant_pin" if status == "draft" else "assistant_clarification",
             "notification_reference_id": str(task_id),
@@ -251,7 +282,11 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             "store_id": parsed.get("store_id"),
             "employee_afm": parsed.get("employee_afm"),
             "employee_afms": parsed.get("employee_afms") or [],
-        })
+        }, reply_markup=reply_markup)
+        record_audit_event(
+            action="assistant.message", success=True, entity_type="assistant_task",
+            entity_id=str(task_id), details={"channel": "telegram", "store_id": parsed.get("store_id")},
+        )
     except Exception as ex:
         logger.exception("Telegram assistant parsing failed")
         mark_inbound(inbound_id, "failed", str(ex))

@@ -108,6 +108,7 @@ def save_store_action_settings(store_id: int):
             notify_grace_minutes=grace,
             sunday_rest_transfer_enabled=bool(data.get("sunday_rest_transfer_enabled")),
             uneven_distribution_enabled=bool(data.get("uneven_distribution_enabled")),
+            ai_agent_enabled=bool(data.get("ai_agent_enabled")),
         )
     except RuntimeError as ex:
         return jsonify({"error": str(ex), "db_setup": "sql/alter_add_store_action_settings.sql"}), 503

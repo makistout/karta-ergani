@@ -13,6 +13,7 @@ _notify_grace_col: bool | None = None
 _fixed_exit_col: bool | None = None
 _sunday_rest_transfer_col: bool | None = None
 _uneven_distribution_col: bool | None = None
+_ai_agent_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -123,6 +124,23 @@ def uneven_distribution_column_available() -> bool:
     except Exception:
         _uneven_distribution_col = False
     return _uneven_distribution_col
+
+
+def ai_agent_column_available() -> bool:
+    """True when the per-store AI Agent feature flag has been migrated."""
+    global _ai_agent_col
+    if _ai_agent_col is True:
+        return _ai_agent_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute(
+                "SELECT COL_LENGTH(N'dbo.karta_store_config', N'ai_agent_enabled')"
+            )
+            row = cur.fetchone()
+            _ai_agent_col = row is not None and row[0] is not None
+    except Exception:
+        _ai_agent_col = False
+    return _ai_agent_col
 
 
 def get_sunday_rest_transfer_enabled(store_id: int) -> bool:
@@ -499,6 +517,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             "notify_grace_minutes": 15,
             "sunday_rest_transfer_enabled": False,
             "uneven_distribution_enabled": False,
+            "ai_agent_enabled": False,
             "db_setup": "sql/alter_add_store_action_settings.sql",
         }
     with cursor(commit=False) as cur:
@@ -522,6 +541,11 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
             if uneven_distribution_column_available()
             else ", CAST(0 AS int) AS uneven_distribution_enabled"
         )
+        ai_agent_sql = (
+            ", CAST(ai_agent_enabled AS int) AS ai_agent_enabled"
+            if ai_agent_column_available()
+            else ", CAST(0 AS int) AS ai_agent_enabled"
+        )
         cur.execute(
             f"""
             SELECT
@@ -532,6 +556,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
                 {grace_sql}
                 {rest_sql}
                 {uneven_sql}
+                {ai_agent_sql}
             FROM dbo.karta_store_config
             WHERE id = ?
             """,
@@ -558,6 +583,7 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         "notify_grace_minutes": grace,
         "sunday_rest_transfer_enabled": bool(int(data.get("sunday_rest_transfer_enabled") or 0)),
         "uneven_distribution_enabled": bool(int(data.get("uneven_distribution_enabled") or 0)),
+        "ai_agent_enabled": bool(int(data.get("ai_agent_enabled") or 0)),
     }
     if not notify_grace_column_available():
         out["db_setup_notify_grace"] = "sql/alter_add_store_notify_grace_minutes.sql"
@@ -567,6 +593,8 @@ def get_action_settings(store_id: int) -> dict[str, Any]:
         out["db_setup_sunday_rest_transfer"] = "sql/alter_add_store_sunday_rest_transfer.sql"
     if not uneven_distribution_column_available():
         out["db_setup_uneven_distribution"] = "sql/alter_add_store_uneven_distribution.sql"
+    if not ai_agent_column_available():
+        out["db_setup_ai_agent"] = "sql/alter_add_store_ai_agent.sql"
     return out
 
 
@@ -579,6 +607,7 @@ def save_action_settings(
     notify_grace_minutes: int | None = None,
     sunday_rest_transfer_enabled: bool | None = None,
     uneven_distribution_enabled: bool | None = None,
+    ai_agent_enabled: bool | None = None,
 ) -> dict[str, Any]:
     if not action_settings_columns_available():
         raise RuntimeError("Λείπει migration: sql/alter_add_store_action_settings.sql")
@@ -590,6 +619,7 @@ def save_action_settings(
     grace = normalize_notify_grace_minutes(notify_grace_minutes)
     rest_enabled = bool(sunday_rest_transfer_enabled)
     uneven_enabled = bool(uneven_distribution_enabled)
+    ai_enabled = bool(ai_agent_enabled)
     sets = [
         "auto_close_prev_day_enabled = ?",
         "auto_close_prev_day_time = ?",
@@ -608,6 +638,9 @@ def save_action_settings(
     if uneven_distribution_column_available():
         sets.insert(-1, "uneven_distribution_enabled = ?")
         params.append(1 if uneven_enabled else 0)
+    if ai_agent_column_available():
+        sets.insert(-1, "ai_agent_enabled = ?")
+        params.append(1 if ai_enabled else 0)
     params.append(int(store_id))
     with cursor() as cur:
         cur.execute(

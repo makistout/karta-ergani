@@ -171,6 +171,8 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("POST", "/api/employees/contract/sync", "employees.sync"),
     RouteRule("GET", "/api/employees/contract/sync/status/*", "employees.view"),
     RouteRule("GET", "/api/store/list", "stores.view"),
+    RouteRule("GET", "/api/assistant/*", "stores.view"),
+    RouteRule("POST", "/api/assistant/*", "stores.view"),
     RouteRule("GET", "/api/store/active", "stores.view"),
     RouteRule("GET", "/api/store/select/status/*", "stores.view"),
     RouteRule("GET", "/api/store/*/notify-recipients", "notifications.view"),

@@ -35,6 +35,7 @@ let actionSettings = {
   notify_grace_minutes: 15,
   sunday_rest_transfer_enabled: false,
   uneven_distribution_enabled: false,
+  ai_agent_enabled: false,
 };
 let cardListenerSettings = { card_submission_mode: "erganios", listener_offline_seconds: 60, device: null };
 
@@ -533,6 +534,7 @@ function renderActionSettings() {
   const grace = document.getElementById("notifyGraceMinutes");
   const sundayRest = document.getElementById("sundayRestTransferEnabled");
   const unevenDistribution = document.getElementById("unevenDistributionEnabled");
+  const aiAgent = document.getElementById("aiAgentEnabled");
   if (enabled) enabled.checked = Boolean(actionSettings.auto_close_prev_day_enabled);
   if (time) time.value = normalizeActionTime(actionSettings.auto_close_prev_day_time);
   if (fixed) fixed.value = actionSettings.auto_close_fixed_exit_time || "";
@@ -540,6 +542,7 @@ function renderActionSettings() {
   if (grace) grace.value = String(normalizeNotifyGraceMinutes(actionSettings.notify_grace_minutes));
   if (sundayRest) sundayRest.checked = Boolean(actionSettings.sunday_rest_transfer_enabled);
   if (unevenDistribution) unevenDistribution.checked = Boolean(actionSettings.uneven_distribution_enabled);
+  if (aiAgent) aiAgent.checked = Boolean(actionSettings.ai_agent_enabled);
 }
 
 function collectActionSettingsFromDom() {
@@ -550,6 +553,7 @@ function collectActionSettingsFromDom() {
     notify_grace_minutes: normalizeNotifyGraceMinutes(document.getElementById("notifyGraceMinutes")?.value),
     sunday_rest_transfer_enabled: Boolean(document.getElementById("sundayRestTransferEnabled")?.checked),
     uneven_distribution_enabled: Boolean(document.getElementById("unevenDistributionEnabled")?.checked),
+    ai_agent_enabled: Boolean(document.getElementById("aiAgentEnabled")?.checked),
   };
 }
 
@@ -585,6 +589,9 @@ function initActionSettingsButtons() {
     actionSettings.uneven_distribution_enabled = Boolean(
       document.getElementById("unevenDistributionEnabled")?.checked
     );
+  });
+  document.getElementById("aiAgentEnabled")?.addEventListener("change", () => {
+    actionSettings.ai_agent_enabled = Boolean(document.getElementById("aiAgentEnabled")?.checked);
   });
 }
 
@@ -850,6 +857,7 @@ async function loadActionSettings(storeId) {
         notify_grace_minutes: 15,
         sunday_rest_transfer_enabled: false,
         uneven_distribution_enabled: false,
+        ai_agent_enabled: false,
       };
       renderActionSettings();
       return;
@@ -862,6 +870,7 @@ async function loadActionSettings(storeId) {
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
       sunday_rest_transfer_enabled: asNotifyFlag(data.settings?.sunday_rest_transfer_enabled, false),
       uneven_distribution_enabled: asNotifyFlag(data.settings?.uneven_distribution_enabled, false),
+      ai_agent_enabled: asNotifyFlag(data.settings?.ai_agent_enabled, false),
     };
     renderActionSettings();
   } catch (e) {
@@ -900,6 +909,7 @@ async function saveActionSettings(options = {}) {
       notify_grace_minutes: normalizeNotifyGraceMinutes(data.settings?.notify_grace_minutes),
       sunday_rest_transfer_enabled: asNotifyFlag(data.settings?.sunday_rest_transfer_enabled, false),
       uneven_distribution_enabled: asNotifyFlag(data.settings?.uneven_distribution_enabled, false),
+      ai_agent_enabled: asNotifyFlag(data.settings?.ai_agent_enabled, false),
     };
     renderActionSettings();
     Office.showMsg("stepMsg", options.successMessage || "Οι ενέργειες αποθηκεύτηκαν.", true);

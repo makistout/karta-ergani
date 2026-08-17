@@ -27,6 +27,7 @@ def send_telegram_message(
     text: str,
     *,
     parse_mode: str | None = None,
+    reply_markup: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     token = _bot_token()
@@ -36,6 +37,8 @@ def send_telegram_message(
     body: dict[str, Any] = {"chat_id": cid, "text": str(text)[:4096]}
     if parse_mode:
         body["parse_mode"] = parse_mode
+    if reply_markup:
+        body["reply_markup"] = reply_markup
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json=body,

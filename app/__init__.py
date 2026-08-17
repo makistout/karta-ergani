@@ -30,6 +30,7 @@ from app.routes_users import users_bp
 from app.routes_apologistic import apologistic_bp
 from app.routes_wto_apologistic import wto_apologistic_bp
 from app.routes_card_listener import card_listener_bp
+from app.routes_assistant import assistant_bp
 
 
 def create_app() -> Flask:
@@ -69,6 +70,7 @@ def create_app() -> Flask:
     app.register_blueprint(apologistic_bp)
     app.register_blueprint(wto_apologistic_bp)
     app.register_blueprint(telegram_bp)
+    app.register_blueprint(assistant_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ui_bp)
     register_ui_redirects(app)

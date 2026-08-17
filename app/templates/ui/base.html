@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/office.css?v=20260810listenerrowactions1">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260817aichat4">
   {% block extra_head %}{% endblock %}
 </head>
 <body{% if body_class %} class="{{ body_class }}"{% endif %}>
@@ -19,6 +19,20 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+  <button type="button" id="aiChatToggle" class="ai-chat-toggle" aria-label="Άνοιγμα AI Agent" title="AI Agent">
+    <i class="bi bi-stars" aria-hidden="true"></i>
+  </button>
+  <aside id="aiChatPanel" class="ai-chat-panel" aria-label="AI Agent" aria-hidden="true">
+    <header class="ai-chat-head">
+      <div><strong>AI Agent</strong><small id="aiChatStore">Ενεργό κατάστημα</small></div>
+      <button type="button" id="aiChatClose" aria-label="Κλείσιμο"><i class="bi bi-x-lg"></i></button>
+    </header>
+    <div id="aiChatMessages" class="ai-chat-messages" aria-live="polite"></div>
+    <form id="aiChatForm" class="ai-chat-form">
+      <textarea id="aiChatInput" rows="2" maxlength="4096" placeholder="Γράψτε μήνυμα ή εντολή…"></textarea>
+      <button type="submit" class="btn" aria-label="Αποστολή"><i class="bi bi-send-fill"></i></button>
+    </form>
+  </aside>
   {% else %}
   {% block public_content %}{% endblock %}
   {% endif %}
@@ -36,6 +50,7 @@
   <script src="/static/js/office-work-log.js?v=20260810listener-progress"></script>
   <script src="/static/js/office-auth.js?v=20260803forgotfix"></script>
   <script src="/static/js/office-boot.js?v=20260813scrolltop1"></script>
+  {% if shell == "office" %}<script src="/static/js/assistant-chat.js?v=20260817identity5"></script>{% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

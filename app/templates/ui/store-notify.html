@@ -64,6 +64,18 @@
             </div>
           </div>
           <div class="settings-action-block">
+            <label class="settings-action-row" for="aiAgentEnabled">
+              <input id="aiAgentEnabled" type="checkbox">
+              <span>
+                <strong>AI Agent</strong>
+                <small>
+                  Επιτρέπει τις απαντήσεις και τη χρήση του AI Agent μέσω Telegram chat.
+                  Η προεπιλογή είναι ανενεργό.
+                </small>
+              </span>
+            </label>
+          </div>
+          <div class="settings-action-block">
             <label class="settings-action-row" for="autoClosePrevDayEnabled">
               <input id="autoClosePrevDayEnabled" type="checkbox">
               <span>
@@ -248,5 +260,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260816uneven1"></script>
+  <script src="/static/js/store-notify.js?v=20260817aiagent1"></script>
 {% endblock %}

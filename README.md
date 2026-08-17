@@ -19,6 +19,7 @@ python run.py
 - [Runbook](docs/RUNBOOK.md): καθημερινές ενέργειες λειτουργίας/ελέγχου.
 - [Ergani portal sync](docs/ERGANI_PORTAL_SYNC.md): portal parsing, Excel/grid fallback και sync ροές.
 - [Τοπικός listener κάρτας](docs/CARD_LISTENER.md): pairing, store isolation, IP audit, Windows Service και rollout status.
+- [AI Agent](docs/TELEGRAM_ASSISTANT.md): ενιαίο UI/Telegram chat, Gemini parsing, εκτέλεση και πρωτόκολλα.
 - [Deployment](docs/DEPLOYMENT.md): IIS/production σημειώσεις και ρυθμίσεις.
 - [Decisions](docs/DECISIONS.md): τεχνικές αποφάσεις που πρέπει να μείνουν ορατές.
 - [Changelog](CHANGELOG.md): ιστορικό αλλαγών, νέα πρώτα.
