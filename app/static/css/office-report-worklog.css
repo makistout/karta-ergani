@@ -1104,6 +1104,10 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .15rem; margin-left:.1rem; vertical-align:middle; line-height:1; flex-shrink:0; }
 .apologistic-info-btn:focus { outline:0; box-shadow:none; }
 .apologistic-info-btn:hover, .apologistic-info-btn[aria-expanded="true"] { color:var(--accent); }
+.apologistic-restore-review-btn { border:0; background:transparent; color:#b7791f; cursor:pointer; padding:.1rem .15rem; margin-left:.1rem; vertical-align:middle; line-height:1; flex-shrink:0; }
+.apologistic-restore-review-btn:hover { color:#8a570f; }
+.apologistic-restore-review-btn:focus { outline:0; box-shadow:none; }
+.apologistic-restore-review-btn:disabled { opacity:.45; cursor:wait; }
 .office-modal-panel.apologistic-info-modal-panel { width:min(92vw,760px); max-height:min(88vh,680px); }
 .apologistic-info-modal-body { overflow:auto; flex:1 1 auto; min-height:0; margin-bottom:.75rem; }
 .apologistic-info-list { margin:0; padding-left:1.1rem; font-size:.78rem; line-height:1.45; color:var(--text); }

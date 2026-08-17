@@ -20,6 +20,7 @@ let openEmployeeAfm = null;
 let proposalEditRow = null;
 let submitModalState = null;
 let acceptReviewPending = new Set();
+let restoreReviewPending = new Set();
 let exchangePending = new Set();
 const canSubmitErgani = apologisticToolbar?.dataset.canSubmit === "1";
 
@@ -106,6 +107,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (overtimeSubmitButton) {
       event.stopPropagation();
       openSubmitModal("overtime", overtimeSubmitButton.dataset.employeeAfm || "", overtimeSubmitButton.dataset.workDate || "");
+      return;
+    }
+    const restoreButton = event.target.closest(".apologistic-restore-review-btn");
+    if (restoreButton) {
+      event.stopPropagation();
+      restoreReviewRow(
+        restoreButton.dataset.employeeAfm || "",
+        restoreButton.dataset.workDate || "",
+        restoreButton,
+      );
       return;
     }
     const button = event.target.closest(".apologistic-info-btn");
@@ -1452,6 +1463,43 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
   }
 }
 
+async function restoreReviewRow(employeeAfm, workDate, button) {
+  const key = `${employeeAfm}|${workDate}`;
+  if (restoreReviewPending.has(key)) return;
+  const row = reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate);
+  if (!row || !changeFromReview(row)) return;
+  const linked = row.exchange_pair?.paired_work_date || row.uneven_distribution_group?.group_id;
+  const detail = linked
+    ? " Θα επανέλθουν μαζί και όλες οι συνδεδεμένες ημέρες της ίδιας μεταβολής."
+    : "";
+  if (!window.confirm(`Να διαγραφεί η μεταβολή και να επανέλθει η αρχική κατάσταση Ε;${detail}`)) return;
+  restoreReviewPending.add(key);
+  if (button) button.disabled = true;
+  try {
+    const res = await fetch("/api/apologistic/restore-review", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ week_from: weekFromForRow(row), employee_afm: employeeAfm, work_date: workDate }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    for (const restored of data.rows || []) {
+      const index = reportState.rows.findIndex((item) =>
+        item.employee_afm === restored.employee_afm && item.work_date === restored.work_date
+      );
+      if (index >= 0) reportState.rows[index] = { ...restored };
+    }
+    refreshSummaryCounts();
+    renderVisibleRows();
+    Office.showMsg("apologisticSubmitMsg", `Επαναφέρθηκαν ${data.changed || 1} εγγραφές στην αρχική τους κατάσταση.`, true);
+  } catch (error) {
+    Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
+  } finally {
+    restoreReviewPending.delete(key);
+    if (button) button.disabled = false;
+  }
+}
+
 async function submitExchangeChoice(row, replacementWorkDate) {
   try {
     const res = await fetch("/api/apologistic/exchange", {
@@ -2269,6 +2317,7 @@ function renderRows(rows, store) {
       `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></button>` +
       `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status, row))}">${renderResultBadge(row)}` +
+      (changeFromReview(row) ? `<button type="button" class="apologistic-restore-review-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" aria-label="Επαναφορά στην αρχική κατάσταση Ε" title="Διαγραφή μεταβολής και επαναφορά σε Ε"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></button>` : "") +
       `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td>` +
       (canSubmitErgani ? `<td class="apologistic-ergani-cell">${renderErganiActions(row)}</td>` : "") +
       `</tr>`;

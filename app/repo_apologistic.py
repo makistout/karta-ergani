@@ -607,6 +607,106 @@ def accept_review(*, store_id: int, week_from: date, employee_afm: str,
     }
 
 
+def restore_review_change(*, store_id: int, week_from: date, employee_afm: str,
+                          work_date: date, changed_by: str | None) -> dict[str, Any]:
+    """Remove an E→M* override and restore the original generated row(s)."""
+    with cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT d.id, d.work_date, d.generated_json, d.effective_json,
+                   r.id, r.status, r.effective_report_json
+            FROM dbo.karta_apologistic_day d WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.karta_apologistic_run r ON r.id=d.run_id
+            WHERE r.store_id=? AND r.week_from=? AND d.employee_afm=? AND d.work_date=?
+        """, (int(store_id), week_from, employee_afm, work_date))
+        selected = cur.fetchone()
+        if not selected:
+            raise LookupError("Δεν βρέθηκε αποθηκευμένο ημερήσιο αποτέλεσμα")
+        if str(selected[5]) == "locked":
+            raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
+
+        selected_effective = json.loads(selected[3])
+        if str(selected_effective.get("status") or "") != "change" or not selected_effective.get("change_from_review"):
+            raise ValueError("Η εγγραφή δεν είναι μεταβολή που προήλθε από Έλεγχο")
+
+        run_id = int(selected[4])
+        exchange_id = str((selected_effective.get("exchange_pair") or {}).get("id") or "")
+        uneven_group_id = str((selected_effective.get("uneven_distribution_group") or {}).get("group_id") or "")
+        if exchange_id:
+            cur.execute("""
+                SELECT id, work_date, generated_json, effective_json
+                FROM dbo.karta_apologistic_day WITH (UPDLOCK, HOLDLOCK)
+                WHERE run_id=? AND employee_afm=?
+                  AND JSON_VALUE(effective_json, '$.exchange_pair.id')=?
+            """, (run_id, employee_afm, exchange_id))
+            affected = list(cur.fetchall())
+        elif uneven_group_id:
+            cur.execute("""
+                SELECT id, work_date, generated_json, effective_json
+                FROM dbo.karta_apologistic_day WITH (UPDLOCK, HOLDLOCK)
+                WHERE run_id=? AND employee_afm=?
+                  AND JSON_VALUE(effective_json, '$.uneven_distribution_group.group_id')=?
+            """, (run_id, employee_afm, uneven_group_id))
+            affected = list(cur.fetchall())
+        else:
+            affected = [(selected[0], selected[1], selected[2], selected[3])]
+        if not affected:
+            raise LookupError("Δεν βρέθηκαν οι συνδεδεμένες εγγραφές προς επαναφορά")
+
+        day_ids = [int(row[0]) for row in affected]
+        placeholders = ",".join("?" for _ in day_ids)
+        cur.execute(
+            f"SELECT TOP (1) 1 FROM dbo.karta_apologistic_submit WHERE success=1 AND day_id IN ({placeholders})",
+            tuple(day_ids),
+        )
+        if cur.fetchone():
+            raise PermissionError("Δεν επιτρέπεται επαναφορά μετά από επιτυχημένη υποβολή στο ΕΡΓΑΝΗ")
+
+        report = json.loads(selected[6])
+        restored_by_date: dict[str, dict[str, Any]] = {}
+        for row in affected:
+            day_id = int(row[0])
+            row_date = row[1].date() if isinstance(row[1], datetime) else row[1]
+            row_label = row_date.strftime("%d/%m/%Y")
+            generated = json.loads(row[2])
+            old_effective = json.loads(row[3])
+            cur.execute("""
+                UPDATE dbo.karta_apologistic_day
+                SET override_json=NULL, effective_json=?,
+                    override_reason=N'Επαναφορά μεταβολής στην αρχική κατάσταση',
+                    updated_by=?, override_updated_at=SYSDATETIMEOFFSET(),
+                    updated_at=SYSDATETIMEOFFSET()
+                WHERE id=?
+            """, (_json(generated), changed_by, day_id))
+            cur.execute("""
+                INSERT dbo.karta_apologistic_change(day_id, field_name, old_value, new_value, changed_by)
+                VALUES (?, N'restore_review', ?, ?, ?)
+            """, (day_id, str(old_effective.get("status") or ""),
+                  str(generated.get("status") or ""), changed_by))
+            restored_by_date[row_label] = generated
+
+        restored_rows: list[dict[str, Any]] = []
+        for item in report.get("days") or []:
+            if str(item.get("employee_afm") or "") != employee_afm:
+                continue
+            restored = restored_by_date.get(str(item.get("work_date") or ""))
+            if restored is not None:
+                item.clear()
+                item.update(restored)
+                restored_rows.append(item)
+        if isinstance(report.get("counts"), dict):
+            counts = report["counts"]
+            for status in ("ok", "change", "review"):
+                counts[status] = sum(
+                    1 for item in report.get("days") or []
+                    if str(item.get("status") or "") == status
+                )
+        cur.execute(
+            "UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+            (_json(report), run_id),
+        )
+    return {"changed": len(restored_rows), "rows": restored_rows, "counts": report.get("counts")}
+
+
 def accept_uneven_distribution_group(
     *, store_id: int, week_from: date, employee_afm: str,
     group_id: str, changed_by: str | None,

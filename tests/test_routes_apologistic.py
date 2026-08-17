@@ -109,6 +109,34 @@ def test_accept_review_returns_change_from_review(monkeypatch):
     assert body["status"] == "change"
 
 
+def test_restore_review_returns_original_rows(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    captured = {}
+
+    def fake_restore(**kwargs):
+        captured.update(kwargs)
+        return {
+            "changed": 1,
+            "rows": [{
+                "employee_afm": "123456789", "work_date": "13/08/2026",
+                "status": "review", "proposed": "09:58–17:58",
+            }],
+            "counts": {"review": 1, "change": 0, "ok": 0},
+        }
+
+    monkeypatch.setattr(routes_apologistic, "restore_review_change", fake_restore)
+    client = _app().test_client()
+    response = client.put("/api/apologistic/restore-review", json={
+        "week_from": "2026-08-10",
+        "employee_afm": "123456789",
+        "work_date": "13/08/2026",
+    })
+
+    assert response.status_code == 200
+    assert response.json["rows"][0]["status"] == "review"
+    assert captured["work_date"] == date(2026, 8, 13)
+
+
 def test_exchange_returns_both_changed_rows(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     captured = {}
