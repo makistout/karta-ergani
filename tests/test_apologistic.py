@@ -151,14 +151,14 @@ def test_punch_without_any_declared_schedule_is_treated_as_rest():
     assert row["rule_id"] == "NON_WORK_DAY_BECOMES_WORK"
 
 
-def test_next_day_punch_before_previous_explicit_overnight_end_is_excluded():
+def test_next_day_punch_within_two_hours_after_starred_end_extends_previous_day():
     schedules = [
         sched(day="15/08/2026", start="17:30", end="01:30"),
         sched(day="16/08/2026", start="17:30", end="01:30"),
     ]
     previous = punch(day="15/08/2026", start="17:19", end="01:15")
     previous["is_end_date_different"] = 1
-    covered_by_previous = punch(day="16/08/2026", start="00:38", end="00:39")
+    covered_by_previous = punch(day="16/08/2026", start="01:38", end="01:39")
     current = punch(day="16/08/2026", start="17:29", end="00:28")
     current["is_end_date_different"] = 1
 
@@ -175,11 +175,77 @@ def test_next_day_punch_before_previous_explicit_overnight_end_is_excluded():
     assert current_row["actual_minutes"] == 419
     assert current_row["punch_count"] == 1
     assert current_row["excluded_by_previous_overnight"] == [
-        {"from": "00:38", "to": "00:39", "label": "00:38–00:39"}
+        {"from": "01:38", "to": "01:39", "label": "01:38–01:39"}
     ]
     assert previous_row["carried_overnight_punches"] == [
-        {"from": "00:38", "to": "00:39", "label": "00:38–00:39"}
+        {"from": "01:38", "to": "01:39", "label": "01:38–01:39"}
     ]
+    assert previous_row["actual"] == "17:19–01:39"
+
+
+def test_pissakis_continuation_updates_previous_and_leaves_main_shift_on_new_day():
+    schedules = [
+        sched(day="15/08/2026", start="16:00", end="00:00"),
+        sched(day="16/08/2026", start="16:00", end="00:00"),
+    ]
+    previous = punch(day="15/08/2026", start="15:26", end="00:24")
+    previous["is_end_date_different"] = 1
+    continuation = punch(day="16/08/2026", start="00:55", end="01:00")
+    main_shift = punch(day="16/08/2026", start="16:46", end="23:58")
+
+    rows = build_weekly_report(
+        schedules, [previous, continuation, main_shift], [contract(flex=0)]
+    )["days"]
+    previous_row = next(row for row in rows if row["work_date"] == "15/08/2026")
+    current_row = next(row for row in rows if row["work_date"] == "16/08/2026")
+
+    assert previous_row["actual"] == "15:26–01:00"
+    assert previous_row["actual_minutes"] == 574
+    assert previous_row["carried_overnight_punches"] == [
+        {"from": "00:55", "to": "01:00", "label": "00:55–01:00"}
+    ]
+    assert current_row["punch_recorded"] == "16:46–23:58"
+    assert current_row["actual"] == "16:46–23:58"
+    assert current_row["punch_count"] == 1
+    assert current_row["proposed"] == "16:46–00:46"
+    assert current_row["rule_id"] != "POSSIBLE_SPLIT_REVIEW"
+
+
+def test_two_complete_pairs_with_three_hour_gap_are_possible_split_review():
+    row = build_weekly_report(
+        [sched(start="09:00", end="17:00")],
+        [punch("09:00", "12:00"), punch("15:00", "20:00")],
+        [contract(flex=0)],
+    )["days"][0]
+
+    assert row["status"] == "review"
+    assert row["rule_id"] == "POSSIBLE_SPLIT_REVIEW"
+    assert row["reason"] == "ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ"
+    assert row["actual"] == "09:00–12:00 · 15:00–20:00"
+    assert row["actual_minutes"] == 480
+    assert row["proposed"] == "09:00–12:00 · 15:00–20:00"
+
+
+def test_pair_after_two_hour_carry_window_stays_on_new_day_and_can_be_possible_split():
+    schedules = [
+        sched(day="15/08/2026", start="16:00", end="00:00"),
+        sched(day="16/08/2026", start="16:00", end="00:00"),
+    ]
+    previous = punch(day="15/08/2026", start="15:26", end="00:24")
+    previous["is_end_date_different"] = 1
+    outside_window = punch(day="16/08/2026", start="02:25", end="02:30")
+    main_shift = punch(day="16/08/2026", start="16:46", end="23:58")
+
+    rows = build_weekly_report(
+        schedules, [previous, outside_window, main_shift], [contract(flex=0)]
+    )["days"]
+    previous_row = next(row for row in rows if row["work_date"] == "15/08/2026")
+    current_row = next(row for row in rows if row["work_date"] == "16/08/2026")
+
+    assert previous_row["actual"] == "15:26–00:24"
+    assert previous_row["carried_overnight_punches"] == []
+    assert current_row["rule_id"] == "POSSIBLE_SPLIT_REVIEW"
+    assert current_row["reason"] == "ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ"
 
 
 def test_rest_punch_becomes_change_when_no_missing_declared_day_exists():

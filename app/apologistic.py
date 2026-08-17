@@ -202,20 +202,27 @@ def _format_recorded_punches(punches: list[dict[str, Any]]) -> str:
 
 def _partition_punches_covered_by_previous_overnight(
     punches: dict[tuple[str, str], list[dict[str, Any]]],
+    schedules: dict[tuple[str, str], list[dict[str, Any]]],
 ) -> tuple[
     dict[tuple[str, str], list[dict[str, Any]]],
     dict[tuple[str, str], list[dict[str, Any]]],
 ]:
-    """Remove next-calendar-day punches still covered by the previous explicit `*` shift.
+    """Move a short continuation after an explicit ``*`` back to its work day.
 
-    A new explicit overnight row such as 17:29–00:28* must stay on its own
-    work date even though its exit clock is earlier than the previous cutoff.
-    Only rows whose available same-day boundaries are all before that cutoff
-    are attributed to the previous work date.
+    A complete pair that starts after the starred ending and finishes within
+    the following two hours belongs to the previous work date, provided the
+    declared/main shift of the new day has not started.  The row is added to
+    the previous day's punches so its final ending is actually recalculated.
     """
     excluded_from_current: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     attributed_to_previous: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for key in list(punches):
+    def key_date(key: tuple[str, str]) -> date:
+        try:
+            return datetime.strptime(key[1], "%d/%m/%Y").date()
+        except ValueError:
+            return date.max
+
+    for key in sorted(list(punches), key=key_date):
         afm, work_date = key
         try:
             current_date = datetime.strptime(work_date, "%d/%m/%Y").date()
@@ -224,31 +231,52 @@ def _partition_punches_covered_by_previous_overnight(
         previous_date = (current_date - timedelta(days=1)).strftime("%d/%m/%Y")
         previous_key = (afm, previous_date)
         previous_rows = punches.get(previous_key, [])
-        cutoffs = [
-            _minute_of_day(item.get("hour_to"))
-            for item in previous_rows
+        starred_rows = [
+            (index, _minute_of_day(item.get("hour_to")))
+            for index, item in enumerate(previous_rows)
             if _is_explicit_next_day(item) and _clock(item.get("hour_to"))
         ]
-        cutoff = max((value for value in cutoffs if value is not None), default=None)
+        valid_starred_rows = [item for item in starred_rows if item[1] is not None]
+        cutoff = max((value for _, value in valid_starred_rows), default=None)
         if cutoff is None:
             continue
+        target_previous_index = next(
+            index for index, value in valid_starred_rows if value == cutoff
+        )
+
+        declared_starts = [
+            _minute_of_day(item.get("hour_from"))
+            for item in _working_slots(schedules.get(key, []))
+            if _clock(item.get("hour_from"))
+        ]
+        new_shift_start = min(
+            (value for value in declared_starts if value is not None),
+            default=None,
+        )
 
         retained: list[dict[str, Any]] = []
+        latest_carried_end = cutoff
         for item in punches.get(key, []):
-            boundaries = [
-                value for value in (
-                    _minute_of_day(item.get("hour_from")),
-                    _minute_of_day(item.get("hour_to")),
-                ) if value is not None
-            ]
+            start = _minute_of_day(item.get("hour_from"))
+            end = _minute_of_day(item.get("hour_to"), after=start) if start is not None else None
             covered = bool(
-                boundaries
+                start is not None
+                and end is not None
                 and not _is_explicit_next_day(item)
-                and max(boundaries) < cutoff
+                and cutoff < start <= cutoff + 120
+                and end <= cutoff + 120
+                and (new_shift_start is None or start < new_shift_start)
             )
             if covered:
                 excluded_from_current[key].append(item)
                 attributed_to_previous[previous_key].append(item)
+                if end > latest_carried_end:
+                    latest_carried_end = end
+                    previous_rows[target_previous_index] = {
+                        **previous_rows[target_previous_index],
+                        "hour_to": _hm(end),
+                        "is_end_date_different": 1,
+                    }
             else:
                 retained.append(item)
         if retained:
@@ -256,6 +284,41 @@ def _partition_punches_covered_by_previous_overnight(
         else:
             punches.pop(key, None)
     return excluded_from_current, attributed_to_previous
+
+
+def _possible_undeclared_split_parts(
+    punches: list[dict[str, Any]],
+    work_slots: list[dict[str, Any]],
+    *,
+    max_inferred_overnight_minutes: int | None,
+) -> list[dict[str, Any]]:
+    """Return two actual pairs that require review as a possible split shift."""
+    if len(work_slots) != 1 or len(punches) != 2:
+        return []
+    intervals: list[tuple[int, int, dict[str, Any]]] = []
+    for punch in punches:
+        # A starred row plus a short next-calendar-day continuation has already
+        # been assigned to one overnight work period; it is not a same-day split.
+        if _is_explicit_next_day(punch):
+            return []
+        interval = _valid_punch_interval(
+            punch,
+            max_inferred_overnight_minutes=max_inferred_overnight_minutes,
+        )
+        if interval is None:
+            return []
+        intervals.append((interval[0], interval[1], punch))
+    intervals.sort(key=lambda item: item[0])
+    first, second = intervals
+    if second[0] - first[1] < 180:
+        return []
+    return [
+        {
+            "from": _hm(start), "to": _hm(end),
+            "inferred_from": False, "inferred_to": False, "punch": punch,
+        }
+        for start, end, punch in intervals
+    ]
 
 
 def _format_matched_label(matched: list[dict[str, Any]]) -> str:
@@ -615,7 +678,7 @@ def build_weekly_report(
             names[afm] = (str(row.get("eponymo") or ""), str(row.get("onoma") or ""))
 
     excluded_by_previous_overnight, carried_into_previous = (
-        _partition_punches_covered_by_previous_overnight(punches)
+        _partition_punches_covered_by_previous_overnight(punches, schedules)
     )
 
     schedules_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -671,6 +734,13 @@ def build_weekly_report(
             day_punches, slots,
             max_inferred_overnight_minutes=max_inferred_overnight_minutes,
         )
+        possible_split_parts = _possible_undeclared_split_parts(
+            day_punches,
+            work_slots,
+            max_inferred_overnight_minutes=max_inferred_overnight_minutes,
+        )
+        if possible_split_parts:
+            matched, orphan_punches = possible_split_parts, []
         fully_missing = bool(work_slots and not day_punches)
         if fully_missing:
             # A declaration without any card record is not evidence of actual work.
@@ -770,7 +840,34 @@ def build_weekly_report(
             and _minute_of_day(work_slots[0].get("hour_from")) is not None
             and (_minute_of_day(work_slots[-1].get("hour_to")) or 0) < (_minute_of_day(work_slots[0].get("hour_from")) or 0)
         )
-        if len(work_slots) > 1:
+        if possible_split_parts:
+            first_start = _minute_of_day(possible_split_parts[0].get("from"))
+            first_end = _minute_of_day(possible_split_parts[0].get("to"), after=first_start)
+            second_start = _minute_of_day(possible_split_parts[1].get("from"), after=first_end)
+            split_decision = (
+                split_schedule_decision(
+                    contract_kind=contract_kind,
+                    daily_base=contract_daily_base_minutes(contract_kind, classification_days),
+                    first_start=first_start,
+                    first_end=first_end,
+                    second_start=second_start,
+                    outside_break=outside_break,
+                    hm=_hm,
+                )
+                if first_start is not None and first_end is not None and second_start is not None
+                else RuleDecision("review", "Μη έγκυρα όρια πιθανού σπαστού", "", "Χειροκίνητος έλεγχος", "POSSIBLE_SPLIT_INVALID_BOUNDARIES")
+            )
+            decision = RuleDecision(
+                "review",
+                "ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ",
+                split_decision.proposed,
+                (
+                    f"{split_decision.proposal_basis} · απαιτείται επιβεβαίωση"
+                    if split_decision.proposal_basis else "Εφαρμογή κανόνων σπαστού μετά από επιβεβαίωση"
+                ),
+                "POSSIBLE_SPLIT_REVIEW",
+            )
+        elif len(work_slots) > 1:
             if len(matched) >= 2 and not inferred and not orphan_punches:
                 first_start = _minute_of_day(matched[0].get("from"))
                 first_end = _minute_of_day(matched[0].get("to"), after=first_start)
@@ -812,6 +909,20 @@ def build_weekly_report(
                 raw_overnight=raw_overnight,
                 declared_overnight=declared_overnight,
                 hm=_hm,
+            )
+        if (
+            excluded_overnight_punches
+            and len(work_slots) == 1
+            and ps is not None
+            and declared_minutes > 0
+            and not possible_split_parts
+        ):
+            decision = RuleDecision(
+                "change",
+                "Μετά τη μεταφορά της συνέχειας στην προηγούμενη ημέρα, η νέα βάρδια υπολογίστηκε από την πραγματική έναρξη",
+                f"{_hm(ps)}–{_hm(ps + declared_minutes)}",
+                "Πραγματική έναρξη κύριας βάρδιας και δηλωμένη διάρκεια",
+                "POST_CARRY_MAIN_SHIFT",
             )
         status, reason, proposed, proposal_basis, rule_id = (
             decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
@@ -860,7 +971,7 @@ def build_weekly_report(
         overtime_from = overtime_to = None
         if bands["overtime_minutes"] and overtime_ps is not None and overtime_pe is not None:
             contract_base = contract_daily_base_minutes(contract_kind, classification_days)
-            if len(work_slots) > 1 and " · " in proposed:
+            if (len(work_slots) > 1 or possible_split_parts) and " · " in proposed:
                 last_part = proposed.split(" · ")[-1]
                 proposed_second_start, proposed_second_end = last_part.split("–", 1)
                 second_anchor = _minute_of_day(proposed_second_start, after=overtime_ps)
@@ -892,7 +1003,8 @@ def build_weekly_report(
             break_minutes=break_minutes, break_in_work=break_in_work,
             classification_warning=bands.get("classification_warning") or "",
             flex=flex, punch_count=len(day_punches), matched_parts=len(matched),
-            single_schedule=len(work_slots) == 1, overtime_segments=overtime_segments,
+            single_schedule=len(work_slots) == 1 and not possible_split_parts,
+            overtime_segments=overtime_segments,
             corrected_extra_punches=corrected_extra_punches,
         )
         if excluded_overnight_punches:
