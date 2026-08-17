@@ -173,6 +173,66 @@ def test_multiple_punches_choose_longest_valid_real_span_for_general_checks_only
     ]
 
 
+def test_uneven_distribution_five_day_balances_group_from_actual_start():
+    schedules = [
+        sched(day="03/08/2026", start="10:00", end="16:00"),
+        sched(day="04/08/2026", start="09:00", end="18:00"),
+        sched(day="05/08/2026", start="09:00", end="18:00"),
+        sched(day="06/08/2026", start="09:00", end="17:00"),
+        sched(day="07/08/2026", start="09:00", end="17:00"),
+    ]
+    punches = [
+        punch(day="03/08/2026", start="09:57", end="18:10"),
+        *[punch(day=f"{day:02d}/08/2026", start="09:00", end="18:00" if day < 6 else "17:00")
+          for day in range(4, 8)],
+    ]
+    report = build_weekly_report(
+        schedules, punches, [contract(days="5")], uneven_distribution_enabled=True,
+    )
+    rows = {row["work_date"]: row for row in report["days"]}
+    assert rows["03/08/2026"]["proposed"] == "09:57–17:57"
+    assert rows["04/08/2026"]["proposed"] == "09:00–17:00"
+    assert rows["05/08/2026"]["proposed"] == "09:00–17:00"
+    groups = [rows[day]["uneven_distribution_group"] for day in ("03/08/2026", "04/08/2026", "05/08/2026")]
+    assert len({group["group_id"] for group in groups}) == 1
+    assert all(row["status"] == "review" for row in rows.values() if row.get("uneven_distribution_group"))
+    assert groups[0]["balance_minutes"] == 0
+    disabled = build_weekly_report(schedules, punches, [contract(days="5")])
+    assert not any(row.get("uneven_distribution_group") for row in disabled["days"])
+
+
+def test_uneven_distribution_six_day_uses_six_forty_base():
+    schedules = [
+        sched(day="03/08/2026", start="08:00", end="13:00"),
+        sched(day="04/08/2026", start="08:00", end="15:20"),
+        sched(day="05/08/2026", start="08:00", end="15:40"),
+        *[sched(day=f"{day:02d}/08/2026", start="08:00", end="14:40") for day in range(6, 9)],
+    ]
+    punches = [punch(day="03/08/2026", start="07:55", end="14:40")]
+    report = build_weekly_report(
+        schedules, punches, [contract(days="6")], uneven_distribution_enabled=True,
+    )
+    rows = {row["work_date"]: row for row in report["days"]}
+    assert rows["03/08/2026"]["proposed"] == "07:55–14:35"
+    assert rows["04/08/2026"]["proposed"] == "08:00–14:40"
+    assert rows["05/08/2026"]["proposed"] == "08:00–14:40"
+
+
+def test_uneven_distribution_requires_exact_forty_hours_and_full_coverage():
+    schedules = [
+        sched(day="03/08/2026", start="10:00", end="15:00"),
+        sched(day="04/08/2026", start="09:00", end="18:00"),
+        sched(day="05/08/2026", start="09:00", end="18:00"),
+        sched(day="06/08/2026", start="09:00", end="17:00"),
+        sched(day="07/08/2026", start="09:00", end="17:00"),
+    ]
+    report = build_weekly_report(
+        schedules, [punch(day="03/08/2026", start="10:00", end="18:30")],
+        [contract(days="5")], uneven_distribution_enabled=True,
+    )
+    assert not any(row.get("uneven_distribution_group") for row in report["days"])
+
+
 def test_reversed_exit_outside_daily_limit_does_not_participate_in_maximum_span():
     row = one(
         [sched(start="12:00", end="20:00")],

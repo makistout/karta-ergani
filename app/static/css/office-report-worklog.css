@@ -1068,6 +1068,7 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-exchange-card { display:grid; grid-template-columns:minmax(120px,1fr) auto minmax(145px,1.15fr); align-items:center; gap:.45rem; min-width:min(100%,390px); padding:.4rem .5rem; border:1px solid var(--border); border-radius:.65rem; background:var(--surface); color:inherit; font:inherit; text-align:inherit; box-shadow:0 2px 8px rgba(20,32,45,.06); cursor:pointer; }
 .apologistic-exchange-card:hover,.apologistic-exchange-card:focus-visible { border-color:var(--accent); box-shadow:0 3px 12px rgba(20,32,45,.12); outline:0; }
 .apologistic-exchange-card.is-pending { opacity:.6; cursor:wait; }
+.apologistic-uneven-member { min-width:min(100%,220px); padding:.4rem .5rem; border:1px solid var(--border); border-radius:.65rem; background:var(--surface); box-shadow:0 2px 8px rgba(20,32,45,.06); }
 .apologistic-exchange-side { display:flex; min-width:0; flex-direction:column; gap:.08rem; }
 .apologistic-exchange-side small { color:var(--muted); font-size:9px; }
 .apologistic-exchange-side strong { color:var(--text); font-size:10px; }

@@ -13,6 +13,7 @@ from typing import Any
 
 from app.apologistic_rules import (
     RuleDecision,
+    allocate_uneven_distribution,
     classify_extra_minutes,
     contract_daily_base_minutes,
     normal_schedule_decision,
@@ -539,6 +540,7 @@ def build_weekly_report(
     schedule_rows: list[dict[str, Any]], work_rows: list[dict[str, Any]], contracts: list[dict[str, Any]],
     *,
     sunday_rest_transfer_enabled: bool = False,
+    uneven_distribution_enabled: bool = False,
 ) -> dict[str, Any]:
     schedules: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     punches: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -855,6 +857,8 @@ def build_weekly_report(
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
             "weekly_days_source": weekly_days_source,
+            "actual_start_minutes": ps,
+            "declared_start_minutes": ds,
             "daily_overtime_basis_days": daily_overtime_days,
             "daily_overtime_basis_minutes": contract_daily_base_minutes(contract_kind, daily_overtime_days),
             "daily_overtime_basis_source": daily_overtime_basis_source,
@@ -932,6 +936,62 @@ def build_weekly_report(
             row.update(status="change", rule_id="NON_WORK_DAY_BECOMES_WORK",
                        reason="Χτύπημα σε ημέρα μη εργασίας χωρίς διαθέσιμη επιπλέον ανταλλαγή",
                        exchange_options=[], replacement_candidates=[])
+
+        if uneven_distribution_enabled:
+            contract_kind, distribution_days = _contract_kind(contracts_by_afm.get(afm))
+            plans = (allocate_uneven_distribution(
+                employee_afm=afm, rows=rows, weekly_days=distribution_days,
+            ) if contract_kind == "Πλήρης" else [])
+            for plan in plans:
+                members = []
+                for member in rows:
+                    member_date = str(member.get("work_date") or "")
+                    if member_date not in plan["member_deltas"]:
+                        continue
+                    delta = int(plan["member_deltas"][member_date])
+                    before = int(member.get("declared_minutes") or 0)
+                    after = before + delta
+                    start = member.get("actual_start_minutes") if delta > 0 else member.get("declared_start_minutes")
+                    if start is None:
+                        members = []
+                        break
+                    members.append({
+                        "work_date": member_date,
+                        "declared": member.get("declared"),
+                        "proposed": f"{_hm(int(start))}–{_hm(int(start) + after)}",
+                        "before_minutes": before,
+                        "after_minutes": after,
+                        "delta_minutes": delta,
+                        "role": "target" if delta > 0 else "donor",
+                    })
+                if len(members) != len(plan["member_deltas"]):
+                    continue
+                by_date = {item["work_date"]: item for item in members}
+                for member in rows:
+                    detail = by_date.get(str(member.get("work_date") or ""))
+                    if not detail:
+                        continue
+                    member.update(
+                        status="review",
+                        rule_id=("UNEVEN_DISTRIBUTION_TARGET_REVIEW" if detail["delta_minutes"] > 0
+                                 else "UNEVEN_DISTRIBUTION_DONOR_REVIEW"),
+                        reason="Πρόταση ισοσκελισμένης ανισομερούς κατανομής εβδομάδας",
+                        proposed=detail["proposed"],
+                        proposal_basis="Πραγματική έναρξη και εβδομαδιαία εξισορρόπηση 40:00",
+                        requires_confirmation=True,
+                        confidence="Μέση",
+                        uneven_distribution_group={**plan, "role": detail["role"],
+                                                   "delta_minutes": detail["delta_minutes"],
+                                                   "members": members},
+                        status_explanation=[
+                            "Αποτέλεσμα: Έλεγχος",
+                            "Πρόταση ανισομερούς κατανομής με ακριβές εβδομαδιαίο ισοζύγιο.",
+                            f"Δηλωμένο εβδομαδιαίο σύνολο πριν: {_hm(plan['weekly_before_minutes'])}.",
+                            f"Δηλωμένο εβδομαδιαίο σύνολο μετά: {_hm(plan['weekly_after_minutes'])}.",
+                            f"Μεταβολή ημέρας: {detail['delta_minutes']:+d} λεπτά.",
+                            "Η ομάδα πρέπει να εγκριθεί ολόκληρη πριν από οποιαδήποτε δήλωση.",
+                        ],
+                    )
 
     summaries = []
     for afm, rows in by_employee.items():

@@ -546,6 +546,8 @@ def accept_review(*, store_id: int, week_from: date, employee_afm: str,
         day_id, run_id = int(row[0]), int(row[3])
         override = json.loads(row[1]) if row[1] else {}
         effective = json.loads(row[2])
+        if (effective.get("uneven_distribution_group") or {}).get("group_id"):
+            raise ValueError("Η ανισομερής κατανομή πρέπει να εγκριθεί ως ενιαία ομάδα")
         old_status = str(effective.get("status") or "")
         if old_status == "change" and effective.get("change_from_review"):
             return {
@@ -594,6 +596,91 @@ def accept_review(*, store_id: int, week_from: date, employee_afm: str,
         "proposed": effective.get("proposed"),
         "counts": report.get("counts"),
     }
+
+
+def accept_uneven_distribution_group(
+    *, store_id: int, week_from: date, employee_afm: str,
+    group_id: str, changed_by: str | None,
+) -> dict[str, Any]:
+    """Approve every member of one balanced distribution in one transaction."""
+    group_id = str(group_id or "").strip()
+    if not group_id.startswith("UD-"):
+        raise ValueError("Μη έγκυρη ομάδα ανισομερούς κατανομής")
+    reason = "Εγκρίθηκε ολόκληρη η ομάδα ανισομερούς κατανομής"
+    with cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT r.id, r.status, r.effective_report_json
+            FROM dbo.karta_apologistic_run r WITH (UPDLOCK, HOLDLOCK)
+            WHERE r.store_id=? AND r.week_from=?
+        """, (int(store_id), week_from))
+        run_row = cur.fetchone()
+        if not run_row:
+            raise LookupError("Δεν βρέθηκε αποθηκευμένο απολογιστικό")
+        if str(run_row[1]) == "locked":
+            raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
+        run_id = int(run_row[0])
+        report = json.loads(run_row[2])
+        report_members = [
+            item for item in report.get("days") or []
+            if str(item.get("employee_afm") or "") == employee_afm
+            and str((item.get("uneven_distribution_group") or {}).get("group_id") or "") == group_id
+        ]
+        if not report_members:
+            raise LookupError("Δεν βρέθηκε η ομάδα ανισομερούς κατανομής")
+        group = report_members[0].get("uneven_distribution_group") or {}
+        if int(group.get("balance_minutes") or 0) != 0:
+            raise ValueError("Η ομάδα δεν έχει μηδενικό ισοζύγιο")
+        expected_dates = {str(item.get("work_date") or "") for item in group.get("members") or []}
+        actual_dates = {str(item.get("work_date") or "") for item in report_members}
+        if not expected_dates or actual_dates != expected_dates:
+            raise ValueError("Η ομάδα ανισομερούς κατανομής είναι ελλιπής")
+
+        changed = 0
+        for item in report_members:
+            work_date_str = str(item.get("work_date") or "")
+            work_date = datetime.strptime(work_date_str, "%d/%m/%Y").date()
+            cur.execute("""
+                SELECT d.id, d.override_json, d.effective_json
+                FROM dbo.karta_apologistic_day d WITH (UPDLOCK, HOLDLOCK)
+                WHERE d.run_id=? AND d.employee_afm=? AND d.work_date=?
+            """, (run_id, employee_afm, work_date))
+            day_row = cur.fetchone()
+            if not day_row:
+                raise LookupError(f"Λείπει η ημέρα {work_date_str} από την ομάδα")
+            day_id = int(day_row[0])
+            override = json.loads(day_row[1]) if day_row[1] else {}
+            effective = json.loads(day_row[2])
+            persisted_group = effective.get("uneven_distribution_group") or {}
+            if str(persisted_group.get("group_id") or "") != group_id:
+                raise ValueError("Η αποθηκευμένη ομάδα δεν συμφωνεί με την πρόταση")
+            old_status = str(effective.get("status") or "")
+            if old_status == "change" and effective.get("change_from_review"):
+                continue
+            if old_status != "review":
+                raise ValueError(f"Η ημέρα {work_date_str} δεν βρίσκεται σε κατάσταση Έλεγχος")
+            override.update({"status": "change", "change_from_review": True})
+            effective.update({"status": "change", "change_from_review": True, "reason": reason})
+            item.update({"status": "change", "change_from_review": True, "reason": reason})
+            cur.execute("""
+                UPDATE dbo.karta_apologistic_day SET override_json=?, effective_json=?,
+                    override_reason=N'Έγκριση ομάδας ανισομερούς κατανομής', updated_by=?,
+                    override_updated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+                WHERE id=?
+            """, (_json(override), _json(effective), changed_by, day_id))
+            cur.execute("""
+                INSERT dbo.karta_apologistic_change(day_id, field_name, old_value, new_value, changed_by)
+                VALUES (?, N'uneven_distribution_group', ?, ?, ?)
+            """, (day_id, old_status, "change", changed_by))
+            changed += 1
+        if changed and isinstance(report.get("counts"), dict):
+            report["counts"]["review"] = max(0, int(report["counts"].get("review") or 0) - changed)
+            report["counts"]["change"] = int(report["counts"].get("change") or 0) + changed
+        if changed:
+            cur.execute(
+                "UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                (_json(report), run_id),
+            )
+    return {"changed": changed, "group_id": group_id, "counts": report.get("counts"), "days": report_members}
 
 
 def apply_exchange(*, store_id: int, week_from: date, employee_afm: str,
@@ -722,6 +809,24 @@ def accept_all_review(*, store_id: int, week_from: date,
             raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
         run_id = int(run_row[0])
         report = json.loads(run_row[2])
+
+        requested = {
+            (str(item.get("employee_afm") or "").strip(), str(item.get("work_date") or "").strip())
+            for item in items if isinstance(item, dict)
+        }
+        requested_groups = {
+            (str(day.get("employee_afm") or ""), str(group.get("group_id") or ""))
+            for day in report.get("days") or []
+            for group in [day.get("uneven_distribution_group") or {}]
+            if (str(day.get("employee_afm") or ""), str(day.get("work_date") or "")) in requested
+            and str(group.get("group_id") or "").startswith("UD-")
+        }
+        for day in report.get("days") or []:
+            key = (str(day.get("employee_afm") or ""), str(day.get("work_date") or ""))
+            group_id = str((day.get("uneven_distribution_group") or {}).get("group_id") or "")
+            if (key[0], group_id) in requested_groups:
+                requested.add(key)
+        items = [{"employee_afm": afm, "work_date": work_date} for afm, work_date in sorted(requested)]
 
         for raw in items:
             employee_afm = str(raw.get("employee_afm") or "").strip()

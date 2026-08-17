@@ -7,6 +7,8 @@ Every decision is derived from the current schedule, card and contract facts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from hashlib import sha256
 from typing import Any, Callable
 
 
@@ -17,6 +19,72 @@ class RuleDecision:
     proposed: str
     proposal_basis: str
     rule_id: str
+
+
+def allocate_uneven_distribution(
+    *, employee_afm: str, rows: list[dict[str, Any]], weekly_days: int | None,
+) -> list[dict[str, Any]]:
+    """Return a balanced 40-hour redistribution plan, or no plan."""
+    base = contract_daily_base_minutes("Πλήρης", weekly_days)
+    if base is None or sum(int(row.get("declared_minutes") or 0) for row in rows) != 2400:
+        return []
+
+    def eligible(row: dict[str, Any]) -> bool:
+        return (
+            str(row.get("contract_kind") or "") == "Πλήρης"
+            and int(row.get("weekly_days") or 0) == weekly_days
+            and str(row.get("day_state") or "") == "Εργασία"
+            and int(row.get("orphan_punch_count") or 0) == 0
+            and " · " not in str(row.get("declared") or "")
+        )
+
+    deficits = [row for row in rows if eligible(row)
+                and 0 < int(row.get("declared_minutes") or 0) < base
+                and int(row.get("effective_actual_minutes") or 0) >= base
+                and int(row.get("punch_count") or 0) > 0
+                and row.get("actual_start_minutes") is not None]
+    donors = [row for row in rows if eligible(row)
+              and int(row.get("declared_minutes") or 0) > base
+              and row.get("declared_start_minutes") is not None]
+    required = sum(base - int(row["declared_minutes"]) for row in deficits)
+    available = sum(int(row["declared_minutes"]) - base for row in donors)
+    if not deficits or not donors or available < required:
+        return []
+
+    date_key = lambda row: datetime.strptime(str(row.get("work_date") or ""), "%d/%m/%Y")
+    deficits.sort(key=date_key)
+    donors.sort(key=date_key)
+    remaining = {str(row["work_date"]): int(row["declared_minutes"]) - base for row in donors}
+    member_deltas: dict[str, int] = {}
+    transfers: list[dict[str, Any]] = []
+    for target in deficits:
+        target_date = str(target["work_date"])
+        need = base - int(target["declared_minutes"])
+        member_deltas[target_date] = need
+        for donor in donors:
+            donor_date = str(donor["work_date"])
+            take = min(need, remaining[donor_date])
+            if take <= 0:
+                continue
+            remaining[donor_date] -= take
+            member_deltas[donor_date] = member_deltas.get(donor_date, 0) - take
+            transfers.append({"from_work_date": donor_date, "to_work_date": target_date, "minutes": take})
+            need -= take
+            if need == 0:
+                break
+        if need:
+            return []
+
+    seed = employee_afm + "|" + "|".join(f"{day}:{delta}" for day, delta in sorted(member_deltas.items()))
+    return [{
+        "group_id": "UD-" + sha256(seed.encode("utf-8")).hexdigest()[:16],
+        "base_minutes": base,
+        "weekly_before_minutes": 2400,
+        "weekly_after_minutes": 2400,
+        "balance_minutes": sum(member_deltas.values()),
+        "member_deltas": member_deltas,
+        "transfers": transfers,
+    }]
 
 
 def contract_daily_base_minutes(contract_kind: str, weekly_days: int | None) -> int | None:

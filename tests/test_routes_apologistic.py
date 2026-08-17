@@ -168,6 +168,32 @@ def test_accept_all_review_returns_changed_count(monkeypatch):
     assert response.get_json()["changed"] == 2
 
 
+def test_accept_uneven_distribution_group_route(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    captured = {}
+    monkeypatch.setattr(
+        routes_apologistic, "accept_uneven_distribution_group",
+        lambda **kwargs: captured.update(kwargs) or {
+            "changed": 3, "group_id": kwargs["group_id"], "days": [],
+            "counts": {"review": 0, "change": 3},
+        },
+    )
+    app = _app()
+    app.secret_key = "test"
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["office_user"] = "tester"
+    response = client.put("/api/apologistic/uneven-distribution/accept", json={
+        "week_from": "2026-08-03", "employee_afm": "123456789",
+        "group_id": "UD-1234567890abcdef",
+    })
+    assert response.status_code == 200
+    assert response.get_json()["changed"] == 3
+    assert captured["store_id"] == 12
+    assert captured["week_from"] == date(2026, 8, 3)
+    assert captured["changed_by"] == "tester"
+
+
 def test_export_returns_xlsx(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)

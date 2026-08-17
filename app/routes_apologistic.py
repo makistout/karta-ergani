@@ -18,7 +18,8 @@ from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
 from app.office_auth import SESSION_USER
 from app.repo_apologistic import (
-    apply_exchange, accept_all_review, accept_review, load_report, record_ergani_submit,
+    apply_exchange, accept_all_review, accept_review, accept_uneven_distribution_group,
+    load_report, record_ergani_submit,
     enrich_employee_month_days, list_store_days, successful_overtime_minutes_for_year,
     tables_available, update_proposed,
 )
@@ -216,6 +217,29 @@ def apologistic_apply_exchange():
         result = apply_exchange(
             store_id=int(ctx["id"]), week_from=week_from, employee_afm=employee_afm,
             rest_work_date=rest_work_date, replacement_work_date=replacement_work_date,
+            changed_by=str(session.get(SESSION_USER) or "").strip() or None,
+        )
+    except (ValueError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"success": True, **result})
+
+
+@apologistic_bp.put("/uneven-distribution/accept")
+def apologistic_accept_uneven_distribution():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+        employee_afm = str(body.get("employee_afm") or "").strip()
+        if len(employee_afm) != 9 or not employee_afm.isdigit():
+            raise ValueError("Μη έγκυρο ΑΦΜ εργαζομένου")
+        result = accept_uneven_distribution_group(
+            store_id=int(ctx["id"]), week_from=week_from, employee_afm=employee_afm,
+            group_id=str(body.get("group_id") or ""),
             changed_by=str(session.get(SESSION_USER) or "").strip() or None,
         )
     except (ValueError, LookupError) as exc:

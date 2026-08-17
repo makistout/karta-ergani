@@ -48,6 +48,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     hideEmployeeWeekOverlay();
   });
   document.addEventListener("click", (event) => {
+    const unevenButton = event.target.closest(".apologistic-uneven-accept-btn");
+    if (unevenButton) {
+      event.stopPropagation();
+      acceptUnevenDistribution(
+        unevenButton.dataset.employeeAfm || "",
+        unevenButton.dataset.groupId || "",
+        unevenButton,
+      );
+      return;
+    }
     const exchangeButton = event.target.closest(".apologistic-exchange-card");
     if (exchangeButton) {
       event.stopPropagation();
@@ -1350,6 +1360,12 @@ function statusShortLabel(status, row) {
 function renderResultBadge(row) {
   const title = statusLabel(row.status, row);
   if (row.status === "review") {
+    const unevenGroup = row.uneven_distribution_group;
+    if (unevenGroup?.group_id) {
+      return `<button type="button" class="status-badge apologistic-status--review apologistic-uneven-accept-btn" ` +
+        `data-employee-afm="${attr(row.employee_afm)}" data-group-id="${attr(unevenGroup.group_id)}" ` +
+        `title="Έγκριση ολόκληρης της ομάδας ανισομερούς κατανομής">${statusShortLabel(row.status, row)}</button>`;
+    }
     if ((row.exchange_options || []).length) {
       return `<span class="status-badge apologistic-status--review" title="Επιλέξτε πρώτα μία από τις διαθέσιμες ανταλλαγές">${statusShortLabel(row.status, row)}</span>`;
     }
@@ -1360,6 +1376,36 @@ function renderResultBadge(row) {
       `title="${attr(pending ? "Αποθήκευση…" : "Κλικ: OK με την πρόταση")}"${pending ? " disabled" : ""}>${statusShortLabel(row.status, row)}</button>`;
   }
   return `<span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status, row)}</span>`;
+}
+
+async function acceptUnevenDistribution(employeeAfm, groupId, button) {
+  const rows = reportState.rows.filter((row) =>
+    row.employee_afm === employeeAfm && row.uneven_distribution_group?.group_id === groupId
+  );
+  if (!rows.length || rows.some((row) => row.status !== "review")) return;
+  if (button) button.disabled = true;
+  try {
+    const res = await fetch("/api/apologistic/uneven-distribution/accept", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ week_from: weekFromForRow(rows[0]), employee_afm: employeeAfm, group_id: groupId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    for (const updated of data.days || []) {
+      const row = reportState.rows.find((item) =>
+        item.employee_afm === updated.employee_afm && item.work_date === updated.work_date
+      );
+      if (row) Object.assign(row, updated);
+    }
+    refreshSummaryCounts();
+    renderVisibleRows();
+    Office.showMsg("apologisticSubmitMsg", `Εγκρίθηκαν ${data.changed || 0} ημέρες της ανισομερούς κατανομής.`, true);
+  } catch (error) {
+    Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function acceptReviewRow(employeeAfm, workDate, button) {
@@ -2211,6 +2257,17 @@ function renderRows(rows, store) {
           `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(item.rest_punch)} → <b>${attr(item.proposed)}</b></span></div>` +
         `</button>`).join("") +
+        `</div></td></tr>`;
+    }
+    const uneven = row.uneven_distribution_group;
+    if (uneven?.group_id && uneven.role === "target") {
+      html += `<tr class="apologistic-replacement-row"><td colspan="${tableCols}"><div class="apologistic-replacement-options">` +
+        `<span class="apologistic-exchange-title"><i class="bi bi-distribute-horizontal" aria-hidden="true"></i> Ανισομερής κατανομή · 40:00 → 40:00</span>` +
+        (uneven.members || []).map((item) =>
+          `<div class="apologistic-uneven-member"><div class="apologistic-exchange-side"><small>${item.role === "target" ? "Συμπλήρωση" : "Αφαίρεση"}</small>` +
+          `<strong>${attr(item.work_date)}</strong><span>${attr(item.declared)} → <b>${attr(item.proposed)}</b> (${signedMins(item.delta_minutes)})</span></div></div>`
+        ).join("") +
+        `<button type="button" class="btn primary apologistic-uneven-accept-btn" data-employee-afm="${attr(row.employee_afm)}" data-group-id="${attr(uneven.group_id)}">Έγκριση ολόκληρης ομάδας</button>` +
         `</div></td></tr>`;
     }
   }
