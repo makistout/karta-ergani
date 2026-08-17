@@ -944,6 +944,9 @@ def build_weekly_report(
                     "rest_punch": actual_label,
                     "replacement_work_date": item["work_date"],
                     "replacement_declared": item["declared"],
+                    "replacement_proposed": (
+                        "ΜΗ ΕΡΓΑΣΙΑ" if state == "Μη εργασία" else "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+                    ),
                     "contract_duration_minutes": item["declared_minutes"],
                     "proposed": f"{_hm(ps)}–{_hm(ps + item['declared_minutes'])}",
                 } for item in replacement_candidates if item.get("declared_minutes")]

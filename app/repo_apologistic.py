@@ -55,6 +55,15 @@ def normalize_proposed_value(proposed: str) -> str:
     )
 
 
+def _exchange_replacement_state(source: dict[str, Any]) -> tuple[str, str]:
+    """Preserve the exact non-work state moved to the replacement work day."""
+    declared = str(source.get("declared") or "").strip().upper()
+    day_state = str(source.get("day_state") or "").strip().upper()
+    if "ΜΗ ΕΡΓΑΣΙΑ" in declared or "ΜΗ ΕΡΓΑΣΙΑ" in day_state:
+        return "ΜΗ ΕΡΓΑΣΙΑ", "Μη εργασία"
+    return "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "Ρεπό"
+
+
 def tables_available() -> bool:
     try:
         with cursor(commit=False) as cur:
@@ -735,7 +744,7 @@ def apply_exchange(*, store_id: int, week_from: date, employee_afm: str,
             raise ValueError("Η ημέρα αντικατάστασης έχει ήδη χρησιμοποιηθεί σε άλλη ανταλλαγή")
 
         source_proposed = normalize_proposed_value(str(option.get("proposed") or ""))
-        target_proposed = "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+        target_proposed, target_day_state = _exchange_replacement_state(source)
         pair_id = f"{employee_afm}:{rest_label}:{replacement_label}"
         source_pair = {"id": pair_id, "role": "work", "paired_work_date": replacement_label}
         target_pair = {"id": pair_id, "role": "rest", "paired_work_date": rest_label}
@@ -748,11 +757,11 @@ def apply_exchange(*, store_id: int, week_from: date, employee_afm: str,
                        "day_state": "Εργασία", "reason": reason, "exchange_pair": source_pair,
                        "exchange_options": [], "replacement_candidates": []})
         target.update({"proposed": target_proposed, "status": "change", "change_from_review": True,
-                       "day_state": "Ρεπό", "reason": reason, "exchange_pair": target_pair})
+                       "day_state": target_day_state, "reason": reason, "exchange_pair": target_pair})
         source_override.update({"proposed": source_proposed, "status": "change", "change_from_review": True,
                                 "day_state": "Εργασία", "exchange_pair": source_pair})
         target_override.update({"proposed": target_proposed, "status": "change", "change_from_review": True,
-                                "day_state": "Ρεπό", "exchange_pair": target_pair})
+                                "day_state": target_day_state, "exchange_pair": target_pair})
 
         updates = ((source_row, source_override, source, source_old_status, source_proposed),
                    (target_row, target_override, target, target_old_status, target_proposed))

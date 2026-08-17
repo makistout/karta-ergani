@@ -1,7 +1,11 @@
 from datetime import date
 import json
 
-from app.repo_apologistic import _overtime_minutes_from_request_json, _submit_entry_from_row
+from app.repo_apologistic import (
+    _exchange_replacement_state,
+    _overtime_minutes_from_request_json,
+    _submit_entry_from_row,
+)
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A
 
 
@@ -11,6 +15,18 @@ def test_submit_entry_marks_proposal_mismatch():
         proposed="09:00–17:00",
     )
     assert entry["matches_proposal"] is False
+
+
+def test_exchange_preserves_non_work_state_for_replacement_day():
+    assert _exchange_replacement_state({
+        "declared": "ΜΗ ΕΡΓΑΣΙΑ", "day_state": "Μη εργασία",
+    }) == ("ΜΗ ΕΡΓΑΣΙΑ", "Μη εργασία")
+
+
+def test_exchange_preserves_rest_state_for_replacement_day():
+    assert _exchange_replacement_state({
+        "declared": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "day_state": "Ρεπό",
+    }) == ("ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "Ρεπό")
 
 
 def test_submit_entry_marks_proposal_match():

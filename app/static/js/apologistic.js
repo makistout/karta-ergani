@@ -2281,7 +2281,7 @@ function renderRows(rows, store) {
           `data-employee-afm="${attr(row.employee_afm)}" data-rest-work-date="${attr(item.rest_work_date)}" ` +
           `data-replacement-work-date="${attr(item.replacement_work_date)}" title="Εφαρμογή ανταλλαγής και δημιουργία δύο μεταβολών Μ*">` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--source"><small>Ωράριο χωρίς χτύπημα</small><strong>${attr(item.replacement_work_date)}</strong>` +
-          `<span>${attr(exchangeSourceDeclared(item.replacement_declared))} → <b>ΡΕΠΟ</b></span></div>` +
+          `<span>${attr(exchangeSourceDeclared(item.replacement_declared))} → <b>${attr(item.replacement_proposed || (String(row.declared || "").toLocaleUpperCase("el-GR").includes("ΜΗ ΕΡΓΑΣΙΑ") ? "ΜΗ ΕΡΓΑΣΙΑ" : "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"))}</b></span></div>` +
           `<div class="apologistic-exchange-arrow"><i class="bi bi-arrow-left-right" aria-hidden="true"></i><small>${mins(item.contract_duration_minutes)}</small></div>` +
           `<div class="apologistic-exchange-side apologistic-exchange-side--target"><small>Χτύπημα ${attr(item.rest_punch)} σε ${attr(row.day_state)}</small><strong>${attr(item.rest_work_date)}</strong><span>${attr(exchangeSourceDeclared(row.declared))} → <b>${attr(item.proposed)}</b></span></div>` +
         `</button>`).join("") +

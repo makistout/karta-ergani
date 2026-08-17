@@ -301,6 +301,7 @@ def test_five_day_rest_punch_with_missing_declared_day_requires_exchange_review(
     assert review_rows[0]["contract_required_days"] == 5
     assert [item["work_date"] for item in review_rows[0]["replacement_candidates"]] == ["08/08/2026"]
     assert review_rows[0]["exchange_options"][0]["replacement_work_date"] == "08/08/2026"
+    assert review_rows[0]["exchange_options"][0]["replacement_proposed"] == "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
     assert review_rows[0]["exchange_options"][0]["contract_duration_minutes"] == 480
     assert "επιλογή ανταλλαγής" in review_rows[0]["reason"]
     assert len([row for row in rest_rows if row["rule_id"] == "NON_WORK_DAY_BECOMES_WORK"]) == 1
@@ -358,6 +359,7 @@ def test_rest_punch_requires_exchange_when_a_declared_workday_is_missing():
     assert row["contract_required_days"] == 5
     assert [item["work_date"] for item in row["replacement_candidates"]] == ["04/08/2026"]
     assert row["rule_id"] == "REST_WORK_EXCHANGE_REVIEW"
+    assert row["exchange_options"][0]["replacement_proposed"] == "ΜΗ ΕΡΓΑΣΙΑ"
 
 
 def test_full_five_day_work_on_rest_becomes_change():
