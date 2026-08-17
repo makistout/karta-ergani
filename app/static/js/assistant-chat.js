@@ -91,7 +91,7 @@
       executing.remove();
       btn.disabled = false;
       btn.textContent = "Επιβεβαίωση";
-      alert(error.message || "Αποτυχία επιβεβαίωσης");
+      await Office.alert(error.message || "Αποτυχία επιβεβαίωσης", { title: "Σφάλμα επιβεβαίωσης" });
     }
   }
 

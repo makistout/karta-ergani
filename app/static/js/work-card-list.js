@@ -644,9 +644,10 @@ async function submitCard(eventName, options = {}) {
     }
     if (res.status === 409 && data.correction_available && !correctionMode) {
       progress.stop();
-      const go = window.confirm(
+      const go = await Office.confirm(
         `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
-        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα."
+        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα.",
+        { title: "Διορθωτικό χτύπημα", confirmText: "Συνέχεια" }
       );
       if (go) {
         setSubmitButtonsDisabled(false);

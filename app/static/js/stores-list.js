@@ -227,7 +227,7 @@ async function editStore(id) {
 }
 
 async function deleteStore(id) {
-  if (!confirm("Διαγραφή καταστήματος;")) return;
+  if (!await Office.confirm("Να διαγραφεί οριστικά το κατάστημα;", { title: "Διαγραφή καταστήματος", confirmText: "Διαγραφή", danger: true })) return;
   try {
     const res = await fetch(`/api/store/${id}`, { method: "DELETE" });
     if (res.ok) {

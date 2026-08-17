@@ -1,5 +1,6 @@
 const EMP_MONTH_NAMES = ["Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος", "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος"];
 const EMP_DAY_NAMES = ["Κυρ", "Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ"];
+const EMP_DAY_NAMES_FULL = ["Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο"];
 const apologisticToolbar = document.querySelector(".apologistic-toolbar");
 const viewMode = apologisticToolbar?.dataset.viewMode || "week";
 const isEmployeeMonthView = () => viewMode === "employee-month";
@@ -329,6 +330,13 @@ function weekdayLabelForDate(workDate) {
   if (parts.length !== 3) return "—";
   const date = new Date(parts[2], parts[1] - 1, parts[0]);
   return EMP_DAY_NAMES[date.getDay()] || "—";
+}
+
+function employeeMonthDateTip(workDate) {
+  const parts = String(workDate || "").split("/").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return "—";
+  const date = new Date(parts[2], parts[1] - 1, parts[0]);
+  return `${EMP_DAY_NAMES_FULL[date.getDay()] || "Ημέρα"} ${parts[0]}/${parts[1]}`;
 }
 
 function workDateValue(raw) {
@@ -1172,7 +1180,7 @@ async function confirmSubmitModal() {
       });
       let data = await res.json().catch(() => ({}));
       if (res.status === 409 && data.requires_confirmation) {
-        const proceed = window.confirm(`${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`);
+        const proceed = await Office.confirm(`${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`, { title: "Επιβεβαίωση υποβολής", confirmText: "Συνέχεια" });
         if (!proceed) return;
         submitBody = { ...submitBody, confirm_annual_limit: true };
         res = await fetch(url, {
@@ -1473,7 +1481,7 @@ async function restoreReviewRow(employeeAfm, workDate, button) {
   const detail = linked
     ? " Θα επανέλθουν μαζί και όλες οι συνδεδεμένες ημέρες της ίδιας μεταβολής."
     : "";
-  if (!window.confirm(`Να διαγραφεί η μεταβολή και να επανέλθει η αρχική κατάσταση Ε;${detail}`)) return;
+  if (!await Office.confirm(`Να διαγραφεί η Μεταβολή και να επανέλθει η αρχική κατάσταση Ελέγχου;${detail}`, { title: "Επαναφορά μεταβολής", confirmText: "Επαναφορά", danger: true })) return;
   restoreReviewPending.add(key);
   if (button) button.disabled = true;
   try {
@@ -2262,7 +2270,7 @@ function renderRows(rows, store) {
   for (const row of rows) {
     if (isEmployeeMonthView() && !isRowFinalized(row)) {
       html += `<tr class="apologistic-row--pending${row.source === "future" ? " employee-month-future" : ""}">` +
-        `<td title="${attr(weekdayLabelForDate(row.work_date))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>` +
+        `<td title="${attr(employeeMonthDateTip(row.work_date))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>` +
         `<td colspan="${tableCols - 1}" class="employee-month-pending-label">${attr(pendingRowLabel(row))}</td></tr>`;
       continue;
     }
@@ -2294,7 +2302,7 @@ function renderRows(rows, store) {
     ].filter(Boolean).join(" · ");
     html += `<tr class="apologistic-row--${row.status}">` +
       (showDateColumn
-        ? `<td title="${attr(isEmployeeMonthView() ? weekdayLabelForDate(row.work_date) : (row.work_date || ""))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>`
+        ? `<td title="${attr(isEmployeeMonthView() ? employeeMonthDateTip(row.work_date) : (row.work_date || ""))}"><strong>${attr(String(row.work_date || "").slice(0, 5))}</strong></td>`
         : "") +
       (hideEmployeeColumn ? "" :
         `<td title="${attr(`ΑΦΜ: ${row.employee_afm} · Κλικ για στοιχεία σύμβασης · Πέρασμα για εβδομαδιαίο ιστορικό`)}">` +

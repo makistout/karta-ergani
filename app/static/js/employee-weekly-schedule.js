@@ -251,7 +251,7 @@ async function submitWeekly() {
     return;
   }
   const fullName = `${selectedEmployee.eponymo || ""} ${selectedEmployee.onoma || ""}`.trim();
-  if (!window.confirm(`Να υποβληθεί το σταθερό εβδομαδιαίο ωράριο για ${fullName};`)) return;
+  if (!await Office.confirm(`Να υποβληθεί το σταθερό εβδομαδιαίο ωράριο για ${fullName};`, { title: "Υποβολή εβδομαδιαίου ωραρίου", confirmText: "Υποβολή" })) return;
 
   const button = document.getElementById("btnSubmitWeekly");
   Office.setButtonLoading(button, true);

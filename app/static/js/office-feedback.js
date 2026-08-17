@@ -1,7 +1,93 @@
+const OFFICE_MSG_DISMISS_MS = 4000;
+
+function scheduleOfficeMsgDismiss(el) {
+  if (!el || !el.classList.contains("show") || el.classList.contains("loading") || el.classList.contains("sync-panel")) return;
+  window.clearTimeout(el._officeMsgDismissTimer);
+  el._officeMsgDismissTimer = window.setTimeout(() => {
+    el.classList.remove("show", "ok", "err");
+    el.innerHTML = "";
+    el._officeMsgDismissTimer = null;
+  }, OFFICE_MSG_DISMISS_MS);
+}
+
+function officeDialog({ title, message, confirmText, cancelText, alertOnly = false, danger = false }) {
+  let modal = document.getElementById("officeConfirmModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "officeConfirmModal";
+    modal.className = "office-confirm-modal hidden";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "officeConfirmTitle");
+    modal.setAttribute("aria-describedby", "officeConfirmMessage");
+    modal.innerHTML =
+      '<div class="office-confirm-backdrop" data-office-dialog-cancel></div>' +
+      '<div class="office-confirm-panel">' +
+        '<div class="office-confirm-icon"><i class="bi" aria-hidden="true"></i></div>' +
+        '<div class="office-confirm-content"><h2 id="officeConfirmTitle"></h2>' +
+        '<p id="officeConfirmMessage"></p></div>' +
+        '<div class="office-confirm-actions">' +
+          '<button type="button" class="btn btn-secondary" data-office-dialog-cancel>Ακύρωση</button>' +
+          '<button type="button" class="btn btn-primary" data-office-dialog-confirm>Επιβεβαίωση</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  }
+
+  if (typeof modal._officeDialogResolve === "function") modal._officeDialogResolve(false);
+  const previousFocus = document.activeElement;
+  const titleEl = modal.querySelector("#officeConfirmTitle");
+  const messageEl = modal.querySelector("#officeConfirmMessage");
+  const icon = modal.querySelector(".office-confirm-icon .bi");
+  const cancelButton = modal.querySelector("[data-office-dialog-cancel].btn");
+  const confirmButton = modal.querySelector("[data-office-dialog-confirm]");
+  titleEl.textContent = title || (alertOnly ? "Ενημέρωση" : "Επιβεβαίωση");
+  messageEl.textContent = String(message || "");
+  cancelButton.textContent = cancelText || "Ακύρωση";
+  confirmButton.textContent = confirmText || (alertOnly ? "Κλείσιμο" : "Επιβεβαίωση");
+  cancelButton.hidden = alertOnly;
+  confirmButton.classList.toggle("btn-danger", Boolean(danger));
+  icon.className = `bi ${alertOnly ? "bi-info-circle-fill" : danger ? "bi-exclamation-triangle-fill" : "bi-question-circle-fill"}`;
+  modal.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    const finish = (accepted) => {
+      if (modal.classList.contains("hidden")) return;
+      modal.classList.add("hidden");
+      modal.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKeydown);
+      modal._officeDialogResolve = null;
+      previousFocus?.focus?.();
+      resolve(accepted);
+    };
+    const onClick = (event) => {
+      if (event.target.closest("[data-office-dialog-confirm]")) finish(true);
+      else if (event.target.closest("[data-office-dialog-cancel]")) finish(false);
+    };
+    const onKeydown = (event) => {
+      if (event.key === "Escape") finish(false);
+      if (event.key === "Enter") finish(true);
+    };
+    modal._officeDialogResolve = finish;
+    modal.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKeydown);
+    window.setTimeout(() => confirmButton.focus(), 0);
+  });
+}
+
 Object.assign(window.Office, {
+  confirm(message, options = {}) {
+    return officeDialog({ ...options, message, alertOnly: false });
+  },
+
+  alert(message, options = {}) {
+    return officeDialog({ ...options, message, alertOnly: true });
+  },
+
   showMsg(elId, text, ok) {
     const el = document.getElementById(elId);
     if (!el) return;
+    window.clearTimeout(el._officeMsgDismissTimer);
     if (!String(text || "").trim()) {
       el.innerHTML = "";
       el.className = "msg";
@@ -10,11 +96,13 @@ Object.assign(window.Office, {
     const ic = ok ? "check-circle-fill" : "exclamation-triangle-fill";
     el.innerHTML = `${this.icon(ic)} <span>${this.formatMultilineHtml(text)}</span>`;
     el.className = "msg show " + (ok ? "ok" : "err");
+    scheduleOfficeMsgDismiss(el);
   },
 
   showLoading(elId, text, step, total, logLines) {
     const el = document.getElementById(elId);
     if (!el) return;
+    window.clearTimeout(el._officeMsgDismissTimer);
     let progressHtml = "";
     const tot = Number(total) || 0;
     const stp = Number(step) || 0;
@@ -128,4 +216,15 @@ Object.assign(window.Office, {
       }
     }
   },
+});
+
+// Καλύπτει και παλαιότερες σελίδες που αλλάζουν απευθείας τις classes του msg.
+const officeMsgObserver = new MutationObserver((mutations) => {
+  mutations.forEach((mutation) => scheduleOfficeMsgDismiss(mutation.target));
+});
+document.querySelectorAll(".msg.show").forEach(scheduleOfficeMsgDismiss);
+officeMsgObserver.observe(document.body, {
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["class"],
 });

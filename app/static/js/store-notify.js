@@ -368,7 +368,7 @@ function renderListenerDevices(devices) {
 
 async function revokeListenerDevice(device) {
   const label = device.device_name || device.device_id || "listener";
-  if (!confirm(`Να ανακληθεί ο listener «${label}»; Το Device ID και το token του θα σταματήσουν αμέσως να λειτουργούν.`)) return;
+  if (!await Office.confirm(`Να ανακληθεί ο listener «${label}»; Το Device ID και το token του θα σταματήσουν αμέσως να λειτουργούν.`, { title: "Ανάκληση listener", confirmText: "Ανάκληση", danger: true })) return;
   const res = await fetch(`/api/store/${currentStoreId}/card-listener/devices/${encodeURIComponent(device.device_id)}/revoke`, {
     method: "POST", credentials: "same-origin",
   });
@@ -380,7 +380,7 @@ async function revokeListenerDevice(device) {
 
 async function deleteOfflineListenerDevice(device) {
   const label = device.device_name || device.device_id || "listener";
-  if (!confirm(`Να διαγραφεί ο offline listener «${label}»; Το Device ID και το token του θα ακυρωθούν οριστικά.`)) return;
+  if (!await Office.confirm(`Να διαγραφεί ο offline listener «${label}»; Το Device ID και το token του θα ακυρωθούν οριστικά.`, { title: "Διαγραφή listener", confirmText: "Διαγραφή", danger: true })) return;
   const res = await fetch(`/api/store/${currentStoreId}/card-listener/devices/${encodeURIComponent(device.device_id)}`, {
     method: "DELETE", credentials: "same-origin",
   });

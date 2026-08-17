@@ -855,8 +855,9 @@ async function loadUserActivity(reset) {
 async function deleteUser(userId, btn) {
   const user = (usersState.users || []).find((u) => Number(u.id) === Number(userId));
   const name = user?.username || `#${userId}`;
-  if (!window.confirm(
-    `Οριστική διαγραφή του χρήστη «${name}»;\n\nΘα διαγραφούν ρόλος, δικαιώματα, πρόσβαση σε καταστήματα και όλες οι καταγεγραμμένες ενέργειές του.`
+  if (!await Office.confirm(
+    `Οριστική διαγραφή του χρήστη «${name}»;\n\nΘα διαγραφούν ρόλος, δικαιώματα, πρόσβαση σε καταστήματα και όλες οι καταγεγραμμένες ενέργειές του.`,
+    { title: "Διαγραφή χρήστη", confirmText: "Διαγραφή", danger: true }
   )) {
     return;
   }

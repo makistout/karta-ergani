@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/office.css?v=20260817aichat4">
+  <link rel="stylesheet" href="/static/css/office.css?v=20260817dialog2">
   {% block extra_head %}{% endblock %}
 </head>
 <body{% if body_class %} class="{{ body_class }}"{% endif %}>
@@ -42,7 +42,7 @@
   <script src="/static/js/office-common.js?v=20260624split2"></script>
   <script src="/static/js/office-chrome.js?v=20260813scrolltop1"></script>
   <script src="/static/js/office-store.js?v=20260624split2"></script>
-  <script src="/static/js/office-feedback.js?v=20260710msgfix"></script>
+  <script src="/static/js/office-feedback.js?v=20260817dialog1"></script>
   <script src="/static/js/office-table.js?v=20260727keyset"></script>
   <script src="/static/js/office-sync.js?v=20260706statusurl"></script>
   <script src="/static/js/office-format.js?v=20260729punchjitter"></script>
@@ -50,7 +50,7 @@
   <script src="/static/js/office-work-log.js?v=20260810listener-progress"></script>
   <script src="/static/js/office-auth.js?v=20260803forgotfix"></script>
   <script src="/static/js/office-boot.js?v=20260813scrolltop1"></script>
-  {% if shell == "office" %}<script src="/static/js/assistant-chat.js?v=20260817identity5"></script>{% endif %}
+  {% if shell == "office" %}<script src="/static/js/assistant-chat.js?v=20260817dialog1"></script>{% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

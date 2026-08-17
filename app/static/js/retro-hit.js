@@ -127,9 +127,10 @@ async function submitRetro(eventName, options = {}) {
     progress.stop();
     if (res.status === 409 && data.correction_available && !correctionMode) {
       progress.stop();
-      const go = window.confirm(
+      const go = await Office.confirm(
         `${Office.normalizeMultilineText(data.error || "������� ��� ����������.")}\n\n` +
-        "�� ����������, �� ������ ���������� �������."
+        "�� ����������, �� ������ ���������� �������.",
+        { title: "Διορθωτικό χτύπημα", confirmText: "Συνέχεια" }
       );
       if (go) {
         await submitRetro(eventName, { correctionMode: true });
