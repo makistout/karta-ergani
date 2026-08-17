@@ -32,7 +32,7 @@ def mondays_from(start: date, end: date) -> list[date]:
 
 def main() -> int:
     start = date(2026, 6, 1)
-    end = date(2026, 8, 31)
+    end = date.today() - timedelta(days=1)
     weeks = mondays_from(start, end)
     stores = list_store_configs()
 

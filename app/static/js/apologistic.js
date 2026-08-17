@@ -32,7 +32,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("weekPrev").onclick = () => moveWeek(-7);
     document.getElementById("weekNext").onclick = () => moveWeek(7);
   }
-  document.getElementById("apologisticAllDays")?.addEventListener("click", () => selectAllDays());
   document.getElementById("apologisticEmployeeSearch")?.addEventListener("input", (event) => {
     reportState.employeeSearch = String(event.target.value || "");
     renderVisibleRows();
@@ -256,11 +255,6 @@ function syncStorePeriodUi() {
   const next = document.getElementById("apologisticMonthNext");
   if (next) next.disabled = monthStart.getFullYear() === new Date().getFullYear() && monthStart.getMonth() === new Date().getMonth();
   if (rangeMode) apologisticRangeDatePicker?.setRange(iso(rangeStart), iso(rangeEnd));
-  const allButton = document.getElementById("apologisticAllDays");
-  if (allButton) {
-    const periodLabel = monthMode ? "του μήνα" : rangeMode ? "του διαστήματος" : "της εβδομάδας";
-    allButton.title = `Εμφάνιση όλων των αποτελεσμάτων ${periodLabel}`;
-  }
 }
 
 function renderStoreMonthWeeks(weeks) {
@@ -599,23 +593,7 @@ function isAllDaysSelected() {
   return isEmployeeMonthView() || isStoreMonthView() || isStoreRangeView() || !reportState.selectedDate;
 }
 
-function selectAllDays() {
-  reportState.selectedDate = "";
-  reportState.filter = "all";
-  syncDaySelectionUi();
-  renderVisibleRows();
-  syncFilterButtons();
-  updateBulkWeekBar();
-  updateAcceptAllBar();
-}
-
 function syncDaySelectionUi() {
-  const allBtn = document.getElementById("apologisticAllDays");
-  if (allBtn) {
-    const active = isAllDaysSelected();
-    allBtn.classList.toggle("is-active", active);
-    allBtn.setAttribute("aria-pressed", active ? "true" : "false");
-  }
   document.querySelectorAll(".apologistic-day-tab").forEach((button) => {
     const active = button.dataset.workDate === reportState.selectedDate;
     button.classList.toggle("is-active", active);
@@ -2150,6 +2128,10 @@ function renderSummary(data) {
 }
 function applyReportFilter(requested) {
   reportState.filter = requested !== "all" && reportState.filter === requested ? "all" : requested;
+  if (reportState.filter === "all") {
+    reportState.selectedDate = "";
+    syncDaySelectionUi();
+  }
   renderVisibleRows();
   syncFilterButtons();
   updateBulkWeekBar();
