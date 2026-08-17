@@ -123,6 +123,16 @@ def test_overtime_submit_group_requires_segment_date_for_multi_day():
     assert segments[0]["hour_from"] == "00:00"
 
 
+def test_overtime_submit_group_rejects_review_status():
+    row = {
+        "status": "review",
+        "work_date": "28/07/2026",
+        "overtime_segments": [{"date": "28/07/2026", "from": "22:00", "to": "23:00"}],
+    }
+    with pytest.raises(WorkCardPayloadError, match="Έλεγχο"):
+        overtime_submit_group_from_row(row)
+
+
 def test_overtime_segments_from_row_fallback_fields():
     row = {
         "work_date": "28/07/2026",

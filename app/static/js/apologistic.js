@@ -596,10 +596,6 @@ function computeReportCounts(rows) {
   };
 }
 
-function weekHasReviewRows(rows) {
-  return actionableReportRows(rows).some((row) => row.status === "review");
-}
-
 function refreshSummaryCounts() {
   renderSummary({
     employees: Array(reportState.employeeCount || 0).fill(null),
@@ -687,7 +683,7 @@ function overtimeSegmentAlreadySubmitted(row, segmentDate) {
 function collectBulkWeekPendingItems(rows) {
   const items = [];
   for (const row of actionableReportRows(rows)) {
-    if (row.status === "review") continue;
+    if (row.status !== "change") continue;
     const name = `${row.eponymo || ""} ${row.onoma || ""}`.trim() || row.employee_afm || "—";
     if (canSubmitScheduleRow(row) && !scheduleAlreadySubmitted(row)) {
       items.push({
@@ -733,46 +729,54 @@ function collectBulkWeekPendingItems(rows) {
 function bulkWeekEligible(rows) {
   const actionable = actionableReportRows(rows);
   const counts = computeReportCounts(rows);
-  if (!canSubmitErgani || weekHasReviewRows(rows) || (counts.change || 0) <= 0) {
+  if (!canSubmitErgani || (counts.change || 0) <= 0) {
     return { eligible: false, items: [], counts };
   }
   const items = collectBulkWeekPendingItems(actionable);
   return { eligible: items.length > 0, items, counts };
 }
 
+function acceptAllBarEls() {
+  return [...document.querySelectorAll(".apologistic-accept-all-bar")];
+}
+
 function updateAcceptAllBar() {
-  const bar = document.getElementById("apologisticAcceptAllBar");
-  const btn = document.getElementById("apologisticAcceptAllBtn");
-  const hint = document.getElementById("apologisticAcceptAllHint");
-  if (!bar || !btn) return;
+  const bars = acceptAllBarEls();
+  if (!bars.length) return;
   const reviewRows = visibleReportRows().filter((row) => row.status === "review");
   const visible = reportState.filter === "review" && reviewRows.length > 0;
-  if (!visible) {
-    bar.classList.add("hidden");
-    btn.hidden = true;
-    if (hint) hint.textContent = "";
-    return;
-  }
-  bar.classList.remove("hidden");
-  btn.hidden = false;
-  if (hint) {
+  let hintText = "";
+  if (visible) {
     const exchangeCount = reviewRows.filter((row) => (row.exchange_options || []).length).length;
-    hint.textContent =
+    hintText =
       `${reviewRows.length} εγγραφές · έγκριση πρότασης και μετάβαση σε Μ* (Μεταβολή)` +
       (exchangeCount ? ` · ${exchangeCount} με αυτόματη επιλογή ανταλλαγής` : "") +
       (isAllDaysSelected() ? "" : ` · ${reportPeriodLabel()}`);
   }
+  for (const bar of bars) {
+    const btn = bar.querySelector(".apologistic-accept-all-btn");
+    const hint = bar.querySelector(".apologistic-accept-all-hint");
+    bar.classList.toggle("hidden", !visible);
+    if (btn) btn.hidden = !visible;
+    if (hint) hint.textContent = hintText;
+  }
 }
 
 function initAcceptAllBar() {
-  const btn = document.getElementById("apologisticAcceptAllBtn");
-  if (!btn || btn.dataset.bound) return;
-  btn.dataset.bound = "1";
-  btn.addEventListener("click", acceptAllReview);
+  document.querySelectorAll(".apologistic-accept-all-btn").forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", acceptAllReview);
+  });
+}
+
+function setAcceptAllButtonsLoading(loading) {
+  document.querySelectorAll(".apologistic-accept-all-btn").forEach((btn) => {
+    Office.setButtonLoading(btn, loading);
+  });
 }
 
 async function acceptAllReview() {
-  const btn = document.getElementById("apologisticAcceptAllBtn");
   const reviewRows = visibleReportRows().filter((row) => row.status === "review");
   if (!reviewRows.length) {
     updateAcceptAllBar();
@@ -789,7 +793,7 @@ async function acceptAllReview() {
       work_date: row.work_date,
     });
   }
-  if (btn) Office.setButtonLoading(btn, true);
+  setAcceptAllButtonsLoading(true);
   try {
     let changedTotal = 0;
     let unresolvedExchangeTotal = 0;
@@ -849,32 +853,45 @@ async function acceptAllReview() {
   } catch (error) {
     Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
   } finally {
-    if (btn) Office.setButtonLoading(btn, false);
+    setAcceptAllButtonsLoading(false);
   }
 }
 
+function hideBulkWeekBars() {
+  document.querySelectorAll(".apologistic-bulk-bar").forEach((bar) => {
+    bar.classList.add("hidden");
+    const btn = bar.querySelector(".apologistic-bulk-btn");
+    if (btn) btn.hidden = true;
+    const hint = bar.querySelector(".apologistic-bulk-hint");
+    if (hint) hint.textContent = "";
+  });
+}
+
 function updateBulkWeekBar() {
-  const bar = document.getElementById("apologisticBulkBar");
-  const btn = document.getElementById("apologisticBulkWeekBtn");
-  const hint = document.getElementById("apologisticBulkHint");
-  if (!bar || !btn) return;
+  const bars = [...document.querySelectorAll(".apologistic-bulk-bar")];
+  if (!bars.length) return;
   const { eligible, items, counts } = bulkWeekEligible(reportState.rows);
   if (!eligible) {
-    bar.classList.add("hidden");
-    btn.hidden = true;
-    if (hint) hint.textContent = "";
+    hideBulkWeekBars();
     return;
   }
   const scheduleCount = items.filter((item) => item.kind === "schedule").length;
   const overtimeCount = items.filter((item) => item.kind === "overtime").length;
-  bar.classList.remove("hidden");
-  btn.hidden = false;
-  const bulkLabel = document.getElementById("apologisticBulkBtnLabel");
-  if (bulkLabel) bulkLabel.textContent = bulkPeriodLabel();
-  if (hint) {
-    hint.textContent =
-      `Έλεγχος: 0 · Μεταβολές: ${counts.change} · Εκκρεμείς υποβολές: ${items.length}` +
-      ` (WTODailyA ${scheduleCount}, WTOOvA ${overtimeCount}) · προεπισκόπηση χωρίς αποστολή`;
+  const label = bulkPeriodLabel();
+  const hintText =
+    `Έλεγχος: ${counts.review || 0} · Μεταβολές: ${counts.change} · Εκκρεμείς υποβολές: ${items.length}` +
+    ` (WTODailyA ${scheduleCount}, WTOOvA ${overtimeCount})` +
+    ((counts.review || 0) ? " · οι εγγραφές Ελέγχου δεν αποστέλλονται" : "") +
+    ` · προεπισκόπηση χωρίς αποστολή`;
+  for (const bar of bars) {
+    const btn = bar.querySelector(".apologistic-bulk-btn");
+    const hint = bar.querySelector(".apologistic-bulk-hint");
+    bar.classList.remove("hidden");
+    if (btn) btn.hidden = false;
+    bar.querySelectorAll(".apologistic-bulk-btn-label").forEach((el) => {
+      el.textContent = label;
+    });
+    if (hint) hint.textContent = hintText;
   }
 }
 
@@ -930,7 +947,11 @@ function initBulkWeekModal() {
   modal.querySelectorAll("[data-apologistic-bulk-close]").forEach((el) => {
     el.addEventListener("click", closeBulkWeekModal);
   });
-  document.getElementById("apologisticBulkWeekBtn")?.addEventListener("click", openBulkWeekPreview);
+  document.querySelectorAll(".apologistic-bulk-btn").forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", openBulkWeekPreview);
+  });
 }
 
 function mergeErganiSubmit(row, fragment) {
@@ -2092,8 +2113,7 @@ async function loadWeekReport() {
   document.getElementById("weekLabel").textContent = `${weekStart.toLocaleDateString("el-GR")} – ${end.toLocaleDateString("el-GR")}`;
   syncWeekNavigation();
   closeBulkWeekModal();
-  document.getElementById("apologisticBulkBar")?.classList.add("hidden");
-  document.getElementById("apologisticBulkWeekBtn")?.setAttribute("hidden", "");
+  hideBulkWeekBars();
   Office.showTableLoading(wrap);
   closeExplanation();
   const res = await fetch(`/api/apologistic/week?from=${iso(weekStart)}&to=${iso(end)}`);
@@ -2121,8 +2141,7 @@ async function loadEmployeeMonthReport() {
   const wrap = document.getElementById("apologisticWrap");
   syncEmployeeMonthNavigation();
   closeBulkWeekModal();
-  document.getElementById("apologisticBulkBar")?.classList.add("hidden");
-  document.getElementById("apologisticBulkWeekBtn")?.setAttribute("hidden", "");
+  hideBulkWeekBars();
   Office.showTableLoading(wrap);
   closeExplanation();
   const qs = new URLSearchParams({

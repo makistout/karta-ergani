@@ -1167,8 +1167,10 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-submit-segment .field-label { font-size:.72rem; font-weight:700; }
 .apologistic-submit-segment .field-input { padding:.55rem .65rem; }
 .apologistic-bulk-bar { display:flex; align-items:center; gap:.85rem; flex-wrap:wrap; margin:0 0 1rem; padding:.75rem .9rem; border:1px solid color-mix(in srgb,var(--accent) 28%,var(--border)); border-radius:.7rem; background:color-mix(in srgb,var(--accent) 6%,var(--surface)); }
+.apologistic-accept-all-bar + .apologistic-bulk-bar { margin:1rem 0 0; }
 .apologistic-bulk-bar.hidden { display:none; }
 .apologistic-accept-all-bar { display:flex; align-items:center; gap:.85rem; flex-wrap:wrap; margin:0 0 1rem; padding:.75rem .9rem; border:1px solid color-mix(in srgb,#d99500 35%,var(--border)); border-radius:.7rem; background:color-mix(in srgb,#d99500 8%,var(--surface)); }
+.list-card + .apologistic-accept-all-bar { margin:1rem 0 0; }
 .apologistic-accept-all-bar.hidden { display:none; }
 .apologistic-accept-all-hint { margin:0; color:var(--muted); font-size:.78rem; }
 .apologistic-bulk-hint { margin:0; color:var(--muted); font-size:.78rem; }

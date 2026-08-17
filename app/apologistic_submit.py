@@ -204,6 +204,8 @@ def overtime_submit_group_from_row(
     *,
     segment_date_ergani: str | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
+    if str(row.get("status") or "").strip() == "review":
+        raise WorkCardPayloadError("Η γραμμή είναι σε «Έλεγχο» και δεν υποβάλλεται")
     segments = overtime_segments_from_row(row)
     if not segments:
         raise WorkCardPayloadError("Δεν προκύπτει υπερωρία για υποβολή")

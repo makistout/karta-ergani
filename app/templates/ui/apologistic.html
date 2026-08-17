@@ -60,12 +60,20 @@
 
   <div id="apologisticSummary" class="apologistic-summary"></div>
 
-  <div id="apologisticBulkBar" class="apologistic-bulk-bar hidden" aria-live="polite">
-    <button type="button" class="btn btn-primary" id="apologisticBulkWeekBtn" hidden>
+  <div class="apologistic-bulk-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-primary apologistic-bulk-btn" hidden>
       <i class="bi bi-collection" aria-hidden="true"></i>
-      <span>Μαζική Καταχώρηση εβδομάδας</span>
+      <span class="apologistic-bulk-btn-label">Μαζική Καταχώρηση εβδομάδας</span>
     </button>
-    <p class="field-hint apologistic-bulk-hint" id="apologisticBulkHint"></p>
+    <p class="field-hint apologistic-bulk-hint"></p>
+  </div>
+
+  <div class="apologistic-accept-all-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-primary apologistic-accept-all-btn" hidden>
+      <i class="bi bi-check2-all" aria-hidden="true"></i>
+      <span>Έγκριση όλων προς μεταβολή</span>
+    </button>
+    <p class="field-hint apologistic-accept-all-hint"></p>
   </div>
 
   <div class="card list-card">
@@ -74,12 +82,20 @@
 
   </div>
 
-  <div id="apologisticAcceptAllBar" class="apologistic-accept-all-bar hidden" aria-live="polite">
-    <button type="button" class="btn btn-primary" id="apologisticAcceptAllBtn" hidden>
+  <div class="apologistic-accept-all-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-primary apologistic-accept-all-btn" hidden>
       <i class="bi bi-check2-all" aria-hidden="true"></i>
       <span>Έγκριση όλων προς μεταβολή</span>
     </button>
-    <p class="field-hint apologistic-accept-all-hint" id="apologisticAcceptAllHint"></p>
+    <p class="field-hint apologistic-accept-all-hint"></p>
+  </div>
+
+  <div class="apologistic-bulk-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-primary apologistic-bulk-btn" hidden>
+      <i class="bi bi-collection" aria-hidden="true"></i>
+      <span class="apologistic-bulk-btn-label">Μαζική Καταχώρηση εβδομάδας</span>
+    </button>
+    <p class="field-hint apologistic-bulk-hint"></p>
   </div>
 
   <div class="msg hidden" id="apologisticSubmitMsg" role="status"></div>
@@ -275,6 +291,6 @@
 {% block scripts %}
 
   <script src="/static/js/office-date-picker.js?v=20260816apologistic1"></script>
-  <script src="/static/js/apologistic.js?v=20260817dialog2"></script>
+  <script src="/static/js/apologistic.js?v=20260817acceptall4"></script>
 
 {% endblock %}
