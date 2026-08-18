@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.repo_entities import list_employees_for_employer
+from app.repo_entities import list_active_employees_for_store
 from config import Config
+
+from app.assistant_home_context import build_today_home_context
 
 ALLOWED_INTENTS = {
     "card_check_in_now",
@@ -75,12 +77,14 @@ def _employee_catalog(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple[int, str]] = set()
     for ctx in contexts:
         store_id = int(ctx["store_id"])
-        employees = list_employees_for_employer(
+        employees = list_active_employees_for_store(
             str(ctx.get("employer_afm") or ""),
             str(ctx.get("branch_aa") or "0"),
             limit=1000,
         )
         for emp in employees:
+            if emp.get("active") in (False, 0, "0"):
+                continue
             afm = str(emp.get("afm") or "").strip()
             key = (store_id, afm)
             if not afm or key in seen:
@@ -119,6 +123,7 @@ def parse_command(
         raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY")
     now = datetime.now(ZoneInfo("Europe/Athens"))
     employees = _employee_catalog(contexts)
+    today_home = build_today_home_context(contexts)
     stores = [
         {"id": int(c["store_id"]), "name": str(c.get("store_name") or "")}
         for c in contexts
@@ -133,6 +138,15 @@ def parse_command(
             "Αν πολλοί εργαζόμενοι έχουν ακριβώς την ίδια ενέργεια, ημερομηνία και ώρα, μπορούν να βρίσκονται μαζί στην ίδια εγγραφή commands.",
             "Αν έστω ένα ζητούμενο όνομα δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
             "Το τώρα σημαίνει την τρέχουσα ώρα Europe/Athens.",
+            "Το today_home περιέχει την Αρχική μόνο για ΣΗΜΕΡΑ: ονόματα, ψηφιακό ωράριο, χτυπήματα κάρτας και status.",
+            "Για ομαδικές εντολές (π.χ. «κλείσε όσους τελειώνουν στις 15:30») χρησιμοποίησε today_home για να βρεις τους σωστούς ΑΦΜ.",
+            "Η ώρα λήξης ωραρίου είναι το schedule_to ή το τελευταίο intervals[].to.",
+            "Για «κλείσε τώρα» διάλεξε μόνο εργαζόμενους με status at_work ή needs_checkout που ταιριάζουν στο κριτήριο.",
+            "Για έξοδο κάρτας: μόνο ανοιχτές κάρτες (είσοδος χωρίς έξοδο) — όχι ήδη κλεισμένες.",
+            "Για είσοδο κάρτας: μόνο όσοι δεν έχουν ήδη δήλωση εισόδου εκείνη την ημέρα.",
+            "Για «άνοιξε τώρα» διάλεξε εργαζόμενους με status needs_checkin ή late_arrival που ταιριάζουν στο κριτήριο.",
+            "Για εντολές «σήμερα» ή «τώρα» βάλε date=today_home.date.",
+            "Μην χρησιμοποιείς today_home για ημερομηνίες εκτός σήμερας.",
             "Για πριν/στις ΧΧ:ΧΧ ή σχετικό χρόνο όπως '10 λεπτά πριν' χρησιμοποίησε retro intent και υπολόγισε ακριβή ώρα HH:MM από το now.",
             "Για άνοιγμα ή κλείσιμο κάρτας 'βάσει ωραρίου/προγράμματος' χρησιμοποίησε αντίστοιχα card_check_in_schedule ή card_check_out_schedule. Μην επινοήσεις ώρα.",
             "Για αλλαγή ωραρίου δώσε hour_from και hour_to.",
@@ -141,6 +155,7 @@ def parse_command(
             "Μην επινοήσεις εργαζόμενο, ΑΦΜ, κατάστημα, ημερομηνία ή ώρα.",
         ],
         "now": now.isoformat(timespec="minutes"),
+        "today_home": today_home,
         "message": str(text)[:4096],
         "reply_context": reply_context or {},
         "allowed_stores": stores,
@@ -288,6 +303,54 @@ def _validate_single_command(
                 errors.append(f"Δεν βρέθηκε ώρα {'έναρξης' if field == 'hour_from' else 'λήξης'} στο ωράριο για {match.get('name') or afm}")
         parsed["resolved_schedule_times"] = schedule_times
 
+    skipped_card: list[str] = []
+    if (
+        intent.startswith("card_check_")
+        and store_id in allowed_store_ids
+        and _is_iso_date(date)
+        and matches
+        and not errors
+    ):
+        from app.work_card_guards import new_card_punch_blocked_reason
+
+        store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+        employer_afm = str(store_context.get("employer_afm") or "")
+        branch_aa = str(store_context.get("branch_aa") or "0")
+        eligible_matches: list[dict[str, Any]] = []
+        for match in matches:
+            afm = str(match.get("afm") or "")
+            event_at = None
+            if intent.endswith("_retro"):
+                event_at = f"{date}T{time_value}:00"
+            elif intent.endswith("_schedule"):
+                sched_time = schedule_times.get(afm)
+                if sched_time:
+                    event_at = f"{date}T{sched_time}:00"
+            reason = new_card_punch_blocked_reason(
+                intent=intent,
+                employer_afm=employer_afm,
+                branch_aa=branch_aa,
+                employee_afm=afm,
+                reference_date_iso=date,
+                event_at=event_at,
+            )
+            if reason:
+                skipped_card.append(f"{match.get('name') or afm}: {reason}")
+            else:
+                eligible_matches.append(match)
+        if eligible_matches:
+            matches = eligible_matches
+            afms = [str(item.get("afm") or "") for item in matches if str(item.get("afm") or "")]
+            parsed["employee_afms"] = afms
+            parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
+            if skipped_card:
+                parsed["skipped_card_employees"] = skipped_card
+        else:
+            errors.extend(
+                skipped_card
+                or ["Κανένας εργαζόμενος δεν είναι επιλέξιμος για αυτή την ενέργεια κάρτας"]
+            )
+
     validation = {"valid": not errors, "errors": errors, "execution_enabled": False}
     status = "draft" if not errors else "needs_clarification"
     if matches:
@@ -320,6 +383,8 @@ def _validate_single_command(
         )
     else:
         proposed = f"{names} · {display_date} · {labels[intent]}"
+    if skipped_card:
+        proposed += "\n(Παραλείφθηκαν: " + "; ".join(skipped_card) + ")"
     return status, validation, proposed
 
 

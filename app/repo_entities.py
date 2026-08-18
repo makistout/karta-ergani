@@ -25,6 +25,21 @@ def list_employees(limit: int = 500) -> list[dict[str, Any]]:
         return rows_to_dicts(cur)
 
 
+def list_active_employees_for_store(
+    employer_afm: str,
+    branch_aa: str,
+    *,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    """Ενεργοί εργαζόμενοι ενός καταστήματος (employer AFM + branch AA)."""
+    return list_employees_for_employer(
+        employer_afm,
+        branch_aa=branch_aa,
+        active_only=True,
+        limit=limit,
+    )
+
+
 def list_employees_for_employer(
     employer_afm: str,
     branch_aa: str | None = None,

@@ -15,6 +15,58 @@ def _app():
     return app
 
 
+def test_checkout_validation_skips_already_closed_cards():
+    parsed = {
+        "intent": "card_check_out_now",
+        "store_id": 4,
+        "employee_afms": ["111222333", "444555666"],
+        "date": "2026-08-18",
+    }
+    employees = [
+        {"store_id": 4, "afm": "111222333", "name": "OPEN ONE"},
+        {"store_id": 4, "afm": "444555666", "name": "CLOSED TWO"},
+    ]
+
+    def fake_guard(*, employee_afm, **kwargs):
+        if employee_afm == "444555666":
+            return "Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)"
+        return None
+
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", side_effect=fake_guard):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 4,
+                "store_name": "ERATO",
+                "employer_afm": "123456789",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["employee_afms"] == ["111222333"]
+    assert "Παραλείφθηκαν" in proposed
+    assert "CLOSED TWO" in proposed
+
+
+def test_employee_catalog_only_includes_active_store_employees():
+    from app.telegram_assistant_service import _employee_catalog
+
+    contexts = [{"store_id": 4, "employer_afm": "123456789", "branch_aa": "0"}]
+    rows = [
+        {"afm": "111222333", "eponymo": "ΕΝΕΡΓΟΣ", "onoma": "ΕΝΑ", "active": 1},
+        {"afm": "444555666", "eponymo": "ΑΝΕΝΕΡΓΟΣ", "onoma": "ΔΥΟ", "active": 0},
+    ]
+    with patch(
+        "app.telegram_assistant_service.list_active_employees_for_store",
+        return_value=rows,
+    ) as listed:
+        catalog = _employee_catalog(contexts)
+    listed.assert_called_once_with("123456789", "0", limit=1000)
+    assert catalog == [{"store_id": 4, "afm": "111222333", "name": "ΕΝΕΡΓΟΣ ΕΝΑ"}]
+
+
 def test_unknown_chat_is_silently_ignored():
     payload = {"update_id": 10, "message": {"message_id": 20, "chat": {"id": 999}, "text": "άνοιξε κάρτα τώρα"}}
     with patch("app.repo_telegram_assistant.authorized_contexts", return_value=[]), \

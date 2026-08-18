@@ -19,6 +19,8 @@ def test_proposal_rejects_non_canonical_time_before_database(value):
     ("ΤΗΛΕΡΓΑΣΙΑ 09:00–17:00", "ΤΗΛΕΡΓΑΣΙΑ 09:00–17:00"),
     ("09:00–17:00", "09:00–17:00"),
     ("09:00–13:00 · 17:00–21:00", "09:00–13:00 · 17:00–21:00"),
+    ("ΑΔΕΙΑ ADKAN", "ΑΔΕΙΑ ADKAN"),
+    ("ADAA", "ΑΔΕΙΑ ADAA"),
 ])
 def test_normalize_proposed_value_accepts_labels_and_hours(value, expected):
     from app.repo_apologistic import normalize_proposed_value

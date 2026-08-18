@@ -12,13 +12,9 @@
 - αναφορά ελλείψεων κάρτας,
 - υποβολή χτυπήματος κάρτας, WTODaily, WTOWeek και leave,
 - Telegram/Email ειδοποιήσεις με PIN και δημόσιους συνδέσμους.
-- Telegram replies από ενεργούς λήπτες αναλύονται προαιρετικά από Gemini και
-  αποθηκεύονται ως dry-run assistant tasks χωρίς αποστολή στο ΕΡΓΑΝΗ. Μία
-  εντολή υποστηρίζει πολλούς εργαζομένους και σχετικό χρόνο· η επιβεβαίωση
-  γίνεται deterministic απευθείας με προσωπικό PIN και τελική κατάσταση
-  `confirmed_dry_run`. Κάθε επιτυχημένο Gemini request καταγράφει model,
-  διάρκεια και αναλυτικό token usage στο assistant task
-  (`docs/TELEGRAM_ASSISTANT.md`).
+- **AI Agent** (UI chat + Telegram, feature flag `ai_agent_enabled` ανά κατάστημα):
+  Gemini parsing → validation → επιβεβαίωση (UI / PIN) → πραγματική υποβολή WRKCardSE /
+  WTODaily / WTOLeave. Λεπτομέρειες: `docs/TELEGRAM_ASSISTANT.md`.
 
 ## Κύριες Ροές
 
@@ -184,6 +180,8 @@
 - Στο `/ui/schedule`:
   - **Κατέβασμα Excel** (τρέχουσα / επόμενη εβδομάδα) → `.xlsx` με όλους τους εργαζόμενους
     και **κενές** ώρες/ΡΕΠΟ προς συμπλήρωση (όχι προγεμισμένο από Ergani).
+    Δίπλα στο όνομα υπάρχει στήλη **Ώρες** με το σύνολο δηλωμένων ωρών της εβδομάδας
+    (ΕΡΓ/ΤΗΛ, overnight +24ω, ρεπό/άδεια = 0). Πληροφοριακή — δεν αλλάζει στο ανέβασμα.
   - **Ανέβασμα Excel** (ανέβασμα → προεπισκόπηση → επιβεβαίωση):
   - ενδιάμεσοι πίνακες `karta_schedule_import_batch` / `karta_schedule_import_row`,
   - σύγκριση τρέχοντος ψηφ. ωραρίου με τις τιμές του Excel,
@@ -202,6 +200,25 @@
   - όλους τους εργαζόμενους σε γραμμές,
   - `Ενέργεια` μόνο `ΡΕΠΟ` ή κενό,
   - ώρες `Από1/Έως1/Από2/Έως2` με validation μορφής `ΩΩ:ΛΛ`.
+
+## AI Agent (UI + Telegram)
+
+- Ενεργοποίηση ανά κατάστημα: `karta_store_config.ai_agent_enabled` (ρυθμίσεις στο
+  `/ui/stores/notify`).
+- Πλευρικό chat στο office UI και Telegram replies από εξουσιοδοτημένους λήπτες.
+- **Gemini prompt** περιλαμβάνει:
+  - `allowed_employees` — μόνο **ενεργοί** εργαζόμενοι του καταστήματος
+    (`list_active_employees_for_store`, `karta_employment.active = 1`);
+  - **`today_home`** — snapshot Αρχικής **μόνο για σήμερα** (ονόματα, ψηφ. ωράριο,
+    χτυπήματα κάρτας, status) από `build_card_status_report()` /
+    `app/assistant_home_context.py` (ομαδικές εντολές π.χ. «κλείσε όσους τελειώνουν στις 15:30»).
+- **Validation / εκτέλεση κάρτας**: ίδιοι κανόνες με Αρχική / `work_card_guards.py`
+  (`new_card_punch_blocked_reason`):
+  - έξοδος μόνο με είσοδο και **χωρίς** ήδη δηλωμένη έξοδο·
+  - είσοδος μόνο αν **δεν** έχει ήδη δηλωθεί είσοδος;
+  - σε ομαδικές εντολές οι μη επιλέξιμοι παραλείπονται με «Παραλείφθηκαν: …».
+- Επιβεβαίωση: κουμπί στο UI ή PIN στο Telegram → `_submit_work_card` / WTODaily / WTOLeave.
+- Τεκμηρίωση: `docs/TELEGRAM_ASSISTANT.md`.
 
 ## Αρχική Αναφορά
 

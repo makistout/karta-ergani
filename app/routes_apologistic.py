@@ -12,10 +12,13 @@ from app.apologistic_export import build_apologistic_export_xlsx
 from app.apologistic_submit import (
     load_apologistic_day_row,
     overtime_submit_group_from_row,
+    parse_proposed_leave,
     schedule_body_from_apologistic_row,
+    work_date_to_reference_iso,
 )
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
+from app.leave_payload import SUBMISSION_CODE_WTO_LEAVE, build_wto_leave_payload
 from app.office_auth import SESSION_USER
 from app.repo_apologistic import (
     apply_exchange, accept_all_review, accept_review, accept_uneven_distribution_group,
@@ -392,6 +395,52 @@ def apologistic_submit_schedule():
                 employee_afm=employee_afm,
                 work_date=work_date,
             )
+            leave_type = parse_proposed_leave(str(row.get("proposed") or ""))
+            if leave_type:
+                if str(row.get("status") or row.get("result") or "").strip() != "change":
+                    raise WorkCardPayloadError("Η γραμμή δεν έχει αποτέλεσμα «Μεταβολή»")
+                payload = build_wto_leave_payload(
+                    branch_aa=str(ctx.get("branch_aa") or "0"),
+                    employee_afm=str(row.get("employee_afm") or ""),
+                    employee_last_name=str(row.get("eponymo") or ""),
+                    employee_first_name=str(row.get("onoma") or ""),
+                    reference_date=work_date_to_reference_iso(str(row.get("work_date") or "")),
+                    leave_type=leave_type,
+                    comments=body.get("comments"),
+                )
+                resp, parsed, auth_retry, declaration_id = execute_apologistic_wto_submit(
+                    ctx,
+                    submission_code=SUBMISSION_CODE_WTO_LEAVE,
+                    payload=payload,
+                    audit_action="apologistic.submit_leave",
+                    employee_afm=str(row.get("employee_afm") or ""),
+                    reference_date=work_date_to_reference_iso(str(row.get("work_date") or "")),
+                    audit_details={
+                        "source": "apologistic",
+                        "proposed": row.get("proposed"),
+                        "leave_type": leave_type,
+                        "week_from": str(body.get("week_from") or "")[:10] or None,
+                        "work_date": str(body.get("work_date") or "").strip() or None,
+                    },
+                )
+                if resp is None:
+                    return jsonify(parsed), 401
+                ergani_submit = _persist_apologistic_submit(
+                    ctx,
+                    body,
+                    submission_code=SUBMISSION_CODE_WTO_LEAVE,
+                    resp=resp,
+                    parsed=parsed,
+                    declaration_id=declaration_id,
+                    proposed_at_submit=str(row.get("proposed") or "").strip() or None,
+                )
+                return json_submit_result(
+                    submission_code=SUBMISSION_CODE_WTO_LEAVE,
+                    resp=resp,
+                    parsed=parsed,
+                    auth_retry=auth_retry,
+                    extra={"ergani_submit": ergani_submit} if ergani_submit else None,
+                )
             schedule_body = schedule_body_from_apologistic_row(row)
         else:
             schedule_body = body

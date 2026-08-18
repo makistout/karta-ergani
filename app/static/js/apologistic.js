@@ -24,6 +24,17 @@ let acceptReviewPending = new Set();
 let restoreReviewPending = new Set();
 let exchangePending = new Set();
 const canSubmitErgani = apologisticToolbar?.dataset.canSubmit === "1";
+const FALLBACK_LEAVE_TYPES = [
+  { code: "ADKAN", label: "Κανονική άδεια" },
+  { code: "ADAS", label: "Άδεια ασθένειας (ανυπαίτιο κώλυμα)" },
+  { code: "ADAA", label: "Άδεια άνευ αποδοχών" },
+  { code: "ADAIM", label: "Αιμοδοτική άδεια" },
+  { code: "ADEX", label: "Άδεια εξετάσεων" },
+  { code: "ADTHSYG", label: "Άδεια λόγω θανάτου συγγενούς" },
+  { code: "ADAPSYK", label: "Απουσία λόγω επικείμενου κινδύνου βίας/παρενόχλησης" },
+  { code: "ADAL", label: "Άλλη άδεια" },
+];
+let leaveTypes = FALLBACK_LEAVE_TYPES.slice();
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav(isEmployeeMonthView() ? "employees" : "apologistic");
@@ -41,6 +52,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initExplanationModal();
   initEmployeeModal();
   initProposalModal();
+  loadLeaveTypes();
   initSubmitModal();
   initBulkWeekModal();
   initAcceptAllBar();
@@ -407,14 +419,100 @@ function initProposalModal() {
   });
   form.querySelectorAll(".apologistic-proposal-type-option").forEach((option) => {
     option.addEventListener("click", (event) => {
-      if (event.target.closest(".field-input, .input-time-24")) return;
+      if (event.target.closest(".field-input, .input-time-24, .leave-type-picker")) return;
       const radio = option.querySelector('input[name="apologisticProposalType"]');
       if (!radio || radio.checked) return;
       radio.checked = true;
       radio.dispatchEvent(new Event("change", { bubbles: true }));
     });
   });
+  document.getElementById("apologisticProposalLeaveTrigger")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setProposalType("leave");
+    const list = document.getElementById("apologisticProposalLeaveList");
+    setProposalLeaveOpen(!list?.classList.contains("show"));
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#apologisticProposalLeaveWrap")) setProposalLeaveOpen(false);
+  });
   form.addEventListener("submit", saveProposalEditor);
+}
+
+function leaveTypeLabel(type) {
+  if (!type) return "—";
+  return `${type.code} — ${type.label}`;
+}
+
+function findLeaveType(code) {
+  const wanted = String(code || "").trim().toUpperCase();
+  return leaveTypes.find((item) => item.code === wanted) || null;
+}
+
+function parseLeaveCode(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return "";
+  const match = raw.match(/\b(ADKAN|ADAS|ADAA|ADAIM|ADEX|ADTHSYG|ADAPSYK|ADAL)\b/);
+  if (match) return match[1];
+  const known = findLeaveType(raw);
+  return known ? known.code : "";
+}
+
+function renderProposalLeaveTypeList() {
+  const list = document.getElementById("apologisticProposalLeaveList");
+  if (!list) return;
+  list.innerHTML = leaveTypes
+    .map(
+      (item) =>
+        `<li role="option" data-code="${Office.escapeHtml(item.code)}" tabindex="-1">` +
+        `<span class="leave-type-code">${Office.escapeHtml(item.code)}</span>` +
+        `<span>${Office.escapeHtml(item.label)}</span></li>`
+    )
+    .join("");
+  list.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setProposalType("leave");
+      selectProposalLeaveType(li.dataset.code || "");
+      setProposalLeaveOpen(false);
+    });
+  });
+}
+
+function setProposalLeaveOpen(open) {
+  const list = document.getElementById("apologisticProposalLeaveList");
+  const trigger = document.getElementById("apologisticProposalLeaveTrigger");
+  if (!list || !trigger) return;
+  list.classList.toggle("show", Boolean(open) && selectedProposalType() === "leave");
+  trigger.setAttribute("aria-expanded", list.classList.contains("show") ? "true" : "false");
+}
+
+function selectProposalLeaveType(code) {
+  const hidden = document.getElementById("apologisticProposalLeaveType");
+  const trigger = document.getElementById("apologisticProposalLeaveTrigger");
+  const list = document.getElementById("apologisticProposalLeaveList");
+  const type = findLeaveType(code) || leaveTypes[0];
+  if (!hidden || !trigger || !type) return;
+  hidden.value = type.code;
+  trigger.textContent = leaveTypeLabel(type);
+  list?.querySelectorAll("li").forEach((li) => {
+    li.classList.toggle("selected", li.dataset.code === type.code);
+  });
+}
+
+async function loadLeaveTypes() {
+  try {
+    const res = await fetch("/api/leave/types");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(data.types) && data.types.length) {
+      leaveTypes = data.types;
+    }
+  } catch {
+    leaveTypes = FALLBACK_LEAVE_TYPES.slice();
+  }
+  renderProposalLeaveTypeList();
+  selectProposalLeaveType(leaveTypes[0]?.code || "ADKAN");
 }
 
 function selectedProposalType() {
@@ -439,16 +537,22 @@ function syncProposalTypeUi() {
   const workTo2 = document.getElementById("apologisticProposalTo2");
   const teleFrom = document.getElementById("apologisticProposalTeleFrom");
   const teleTo = document.getElementById("apologisticProposalTeleTo");
+  const leaveWrap = document.getElementById("apologisticProposalLeaveWrap");
+  const leaveTrigger = document.getElementById("apologisticProposalLeaveTrigger");
   const workEnabled = type === "work";
   const teleEnabled = type === "telework";
+  const leaveEnabled = type === "leave";
   if (workWrap) workWrap.classList.toggle("is-disabled", !workEnabled);
   if (teleWrap) teleWrap.classList.toggle("is-disabled", !teleEnabled);
+  if (leaveWrap) leaveWrap.classList.toggle("is-disabled", !leaveEnabled);
   if (workFrom) workFrom.disabled = !workEnabled;
   if (workTo) workTo.disabled = !workEnabled;
   if (workFrom2) workFrom2.disabled = !workEnabled;
   if (workTo2) workTo2.disabled = !workEnabled;
   if (teleFrom) teleFrom.disabled = !teleEnabled;
   if (teleTo) teleTo.disabled = !teleEnabled;
+  if (leaveTrigger) leaveTrigger.disabled = !leaveEnabled;
+  if (!leaveEnabled) setProposalLeaveOpen(false);
   document.querySelectorAll(".apologistic-proposal-type-option").forEach((label) => {
     const input = label.querySelector('input[name="apologisticProposalType"]');
     const selected = Boolean(input?.checked);
@@ -469,6 +573,10 @@ function detectProposalType(proposed) {
   const upper = raw.toLocaleUpperCase("el-GR");
   const emptyWork = { type: "work", from: "", to: "", from2: "", to2: "" };
   if (!raw) return emptyWork;
+  const leaveCode = parseLeaveCode(raw);
+  if (leaveCode || upper.includes("ΑΔΕΙΑ") || upper.includes("ΑΔΕΙΑ")) {
+    return { type: "leave", leave_type: leaveCode || leaveTypes[0]?.code || "ADKAN" };
+  }
   if (upper.includes("ΑΝΑΠΑΥΣ") || upper.includes("ΡΕΠΟ")) return { type: "rest", from: "", to: "" };
   if (upper.includes("ΜΗ ΕΡΓΑΣΙΑ")) return { type: "non_work", from: "", to: "" };
   const tele = raw.match(/ΤΗΛΕΡΓΑΣΙΑ\s+(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/i);
@@ -490,6 +598,11 @@ function buildProposedValueFromEditor() {
   const type = selectedProposalType();
   if (type === "rest") return "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ";
   if (type === "non_work") return "ΜΗ ΕΡΓΑΣΙΑ";
+  if (type === "leave") {
+    const code = parseLeaveCode(document.getElementById("apologisticProposalLeaveType")?.value || "");
+    if (!code) return { error: "Επιλέξτε είδος άδειας." };
+    return `ΑΔΕΙΑ ${code}`;
+  }
   if (type === "telework") {
     const from = Office.normalizeHourMinute(document.getElementById("apologisticProposalTeleFrom")?.value || "");
     const to = Office.normalizeHourMinute(document.getElementById("apologisticProposalTeleTo")?.value || "");
@@ -688,7 +801,7 @@ function collectBulkWeekPendingItems(rows) {
     if (canSubmitScheduleRow(row) && !scheduleAlreadySubmitted(row)) {
       items.push({
         kind: "schedule",
-        document: "WTODailyA",
+        document: parseLeaveCode(row.proposed) ? "WTOLeave" : "WTODailyA",
         employee_afm: row.employee_afm,
         employee_name: name,
         work_date: row.work_date,
@@ -1100,11 +1213,12 @@ function openSubmitModal(kind, employeeAfm, workDate) {
 
   if (kind === "schedule") {
     title.textContent = "Υποβολή απολογιστικής μεταβολής";
+    const leaveDoc = parseLeaveCode(row.proposed);
     detail.innerHTML = pairRows.length === 2
       ? `Έγγραφο: <strong>2 × WTODailyA</strong><br>` + pairRows.map((item) =>
           `<strong>${attr(item.work_date)}</strong>: ${attr(compactScheduleLabel(item.proposed))}`
         ).join("<br>")
-      : `Έγγραφο: <strong>WTODailyA</strong><br>Πρόταση: <strong>${attr(compactScheduleLabel(row.proposed))}</strong>`;
+      : `Έγγραφο: <strong>${leaveDoc ? "WTOLeave" : "WTODailyA"}</strong><br>Πρόταση: <strong>${attr(compactScheduleLabel(row.proposed))}</strong>`;
     segmentWrap.classList.add("hidden");
     segmentSelect.innerHTML = "";
   } else {
@@ -1724,12 +1838,14 @@ async function editProposal(employeeAfm, workDate) {
   const teleTo = document.getElementById("apologisticProposalTeleTo");
   if (teleFrom) teleFrom.value = detected.type === "telework" ? (detected.from || "") : "";
   if (teleTo) teleTo.value = detected.type === "telework" ? (detected.to || "") : "";
+  selectProposalLeaveType(detected.type === "leave" ? (detected.leave_type || leaveTypes[0]?.code || "ADKAN") : (leaveTypes[0]?.code || "ADKAN"));
   document.getElementById("apologisticProposalError").textContent = "";
   setProposalType(detected.type);
   document.getElementById("apologisticProposalModal").classList.remove("hidden");
   setTimeout(() => {
     if (detected.type === "work") document.getElementById("apologisticProposalFrom")?.focus();
     else if (detected.type === "telework") document.getElementById("apologisticProposalTeleFrom")?.focus();
+    else if (detected.type === "leave") document.getElementById("apologisticProposalLeaveTrigger")?.focus();
   }, 0);
 }
 
@@ -2027,10 +2143,12 @@ function compactScheduleLabel(value) {
   const raw = String(value || "").trim();
   const upper = raw.toLocaleUpperCase("el-GR");
   if (!raw) return "—";
-  if (upper.includes("ΚΑΝΟΝΙΚ") && upper.includes("ΑΔΕΙΑ")) return "Κανονική άδεια";
-  if (upper.includes("ΑΔΕΙΑ")) {
-    const match = raw.match(/^(.{0,60}?άδεια)/i);
-    return match ? match[1].trim() : "Άδεια";
+  const leaveCode = parseLeaveCode(raw);
+  if (leaveCode || upper.includes("ΑΔΕΙΑ") || upper.includes("ΑΔΕΙΑ")) {
+    const type = findLeaveType(leaveCode);
+    if (type) return `Άδεια ${type.code}`;
+    if (upper.includes("ΚΑΝΟΝΙΚ") && upper.includes("ΑΔΕΙΑ")) return "Κανονική άδεια";
+    return leaveCode ? `Άδεια ${leaveCode}` : "Άδεια";
   }
   if (upper.includes("ΑΝΑΠΑΥΣ") || upper.includes("ΡΕΠΟ")) return "ΡΕΠΟ";
   if (upper.includes("ΜΗ ΕΡΓΑΣΙΑ")) return "ΜΗ ΕΡΓΑΣΙΑ";

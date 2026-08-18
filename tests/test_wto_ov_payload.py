@@ -47,6 +47,19 @@ def test_parse_proposed_schedule_work_range():
     assert parse_proposed_schedule("09:00–17:00") == ("09:00", "17:00", "ΕΡΓ")
 
 
+def test_parse_proposed_leave_from_label():
+    from app.apologistic_submit import parse_proposed_leave
+
+    assert parse_proposed_leave("ΑΔΕΙΑ ADKAN") == "ADKAN"
+    assert parse_proposed_leave("ADAS") == "ADAS"
+    assert parse_proposed_leave("09:00–17:00") is None
+
+
+def test_parse_proposed_schedule_rejects_leave():
+    with pytest.raises(WorkCardPayloadError):
+        parse_proposed_schedule("ΑΔΕΙΑ ADKAN")
+
+
 def test_schedule_body_from_apologistic_row_change():
     row = {
         "status": "change",

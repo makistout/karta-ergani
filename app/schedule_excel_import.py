@@ -12,8 +12,8 @@ from openpyxl import load_workbook
 from app.repo_entities import list_employees_for_employer
 from app.repo_schedule import list_schedule_for_store
 from app.schedule_excel_layout import (
-    BASE_HEADERS,
     DAY_FIELD_COUNT,
+    IDENTITY_HEADERS,
     INSTRUCTIONS_SHEET,
     LEGACY_DAY_HEADERS,
     LEGACY_WIDE_DAY_FIELD_COUNT,
@@ -21,6 +21,7 @@ from app.schedule_excel_layout import (
     SINGLE_SHEET_DATA_START_ROW,
     SINGLE_SHEET_HEADER_ROW_FIELDS,
     WEEK_SHEET,
+    base_col_count_from_header,
     single_sheet_day_col,
 )
 from app.work_card_payload import norm_afm
@@ -384,10 +385,13 @@ def _parse_excel_day_entry(
     return "skip", [], None, row_errors
 
 
-def _is_legacy_wide_single_sheet(ws: Any) -> bool:
+def _is_legacy_wide_single_sheet(ws: Any, *, base_col_count: int | None = None) -> bool:
     """Παλιό format: Από1/Έως1/Από2/Έως2 στην ίδια γραμμή."""
     label = str(
-        ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, single_sheet_day_col(0, 1, fields_per_day=3)).value
+        ws.cell(
+            SINGLE_SHEET_HEADER_ROW_FIELDS,
+            single_sheet_day_col(0, 1, fields_per_day=3, base_col_count=base_col_count),
+        ).value
         or ""
     ).strip().upper().replace(" ", "")
     # Στο wide format η στήλη 5 είναι «Από1»· στο stacked είναι «Από».
@@ -395,7 +399,12 @@ def _is_legacy_wide_single_sheet(ws: Any) -> bool:
     apo2 = str(
         ws.cell(
             SINGLE_SHEET_HEADER_ROW_FIELDS,
-            single_sheet_day_col(0, 3, fields_per_day=LEGACY_WIDE_DAY_FIELD_COUNT),
+            single_sheet_day_col(
+                0,
+                3,
+                fields_per_day=LEGACY_WIDE_DAY_FIELD_COUNT,
+                base_col_count=base_col_count,
+            ),
         ).value
         or ""
     ).strip().upper().replace(" ", "")
@@ -424,14 +433,19 @@ def _parse_single_week_sheet(
         wd: list_schedule_for_store(employer_afm, branch_aa, wd) for wd in work_dates
     }
 
-    base_headers = [str(ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, c).value or "").strip() for c in range(1, 4)]
-    if base_headers != BASE_HEADERS:
+    identity_headers = [
+        str(ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, c).value or "").strip() for c in range(1, 4)
+    ]
+    if identity_headers != IDENTITY_HEADERS:
         errors.append(
             f"Το φύλλο «{WEEK_SHEET}» δεν έχει τα αναμενόμενα headers "
-            f"({', '.join(BASE_HEADERS)}) στη γραμμή {SINGLE_SHEET_HEADER_ROW_FIELDS}"
+            f"({', '.join(IDENTITY_HEADERS)}) στη γραμμή {SINGLE_SHEET_HEADER_ROW_FIELDS}"
         )
 
-    legacy_wide = _is_legacy_wide_single_sheet(ws)
+    base_col_count = base_col_count_from_header(
+        str(ws.cell(SINGLE_SHEET_HEADER_ROW_FIELDS, 4).value or "")
+    )
+    legacy_wide = _is_legacy_wide_single_sheet(ws, base_col_count=base_col_count)
     fields_per_day = LEGACY_WIDE_DAY_FIELD_COUNT if legacy_wide else DAY_FIELD_COUNT
     parsed_rows: list[dict[str, Any]] = []
     row_no = 0
@@ -449,24 +463,50 @@ def _parse_single_week_sheet(
         r2 = r + 1 if not legacy_wide else r
 
         for day_idx, work_date in enumerate(work_dates):
-            energia_col = single_sheet_day_col(day_idx, 0, fields_per_day=fields_per_day)
+            energia_col = single_sheet_day_col(
+                day_idx, 0, fields_per_day=fields_per_day, base_col_count=base_col_count
+            )
             action_raw = str(ws.cell(r, energia_col).value or "")
             if legacy_wide:
                 hf1 = _format_time_cell(
-                    ws.cell(r, single_sheet_day_col(day_idx, 1, fields_per_day=fields_per_day)).value
+                    ws.cell(
+                        r,
+                        single_sheet_day_col(
+                            day_idx, 1, fields_per_day=fields_per_day, base_col_count=base_col_count
+                        ),
+                    ).value
                 )
                 ht1 = _format_time_cell(
-                    ws.cell(r, single_sheet_day_col(day_idx, 2, fields_per_day=fields_per_day)).value
+                    ws.cell(
+                        r,
+                        single_sheet_day_col(
+                            day_idx, 2, fields_per_day=fields_per_day, base_col_count=base_col_count
+                        ),
+                    ).value
                 )
                 hf2 = _format_time_cell(
-                    ws.cell(r, single_sheet_day_col(day_idx, 3, fields_per_day=fields_per_day)).value
+                    ws.cell(
+                        r,
+                        single_sheet_day_col(
+                            day_idx, 3, fields_per_day=fields_per_day, base_col_count=base_col_count
+                        ),
+                    ).value
                 )
                 ht2 = _format_time_cell(
-                    ws.cell(r, single_sheet_day_col(day_idx, 4, fields_per_day=fields_per_day)).value
+                    ws.cell(
+                        r,
+                        single_sheet_day_col(
+                            day_idx, 4, fields_per_day=fields_per_day, base_col_count=base_col_count
+                        ),
+                    ).value
                 )
             else:
-                apo_col = single_sheet_day_col(day_idx, 1, fields_per_day=fields_per_day)
-                eos_col = single_sheet_day_col(day_idx, 2, fields_per_day=fields_per_day)
+                apo_col = single_sheet_day_col(
+                    day_idx, 1, fields_per_day=fields_per_day, base_col_count=base_col_count
+                )
+                eos_col = single_sheet_day_col(
+                    day_idx, 2, fields_per_day=fields_per_day, base_col_count=base_col_count
+                )
                 hf1 = _format_time_cell(ws.cell(r, apo_col).value)
                 ht1 = _format_time_cell(ws.cell(r, eos_col).value)
                 hf2 = _format_time_cell(ws.cell(r2, apo_col).value) if r2 <= max_row else ""

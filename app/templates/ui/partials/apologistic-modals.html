@@ -104,6 +104,22 @@
             <span class="apologistic-proposal-type-title">Μη εργασία</span>
           </span>
         </label>
+        <label class="apologistic-proposal-type-option apologistic-proposal-type-option--leave">
+          <input id="apologisticProposalTypeLeave" type="radio" name="apologisticProposalType" value="leave">
+          <span class="apologistic-proposal-type-body">
+            <span class="apologistic-proposal-type-title">Άδεια</span>
+            <span id="apologisticProposalLeaveWrap" class="apologistic-proposal-leave-wrap">
+              <span class="apologistic-proposal-time-label">Είδος άδειας</span>
+              <span class="leave-type-picker">
+                <button type="button" id="apologisticProposalLeaveTrigger" class="field-input leave-type-trigger" aria-haspopup="listbox" aria-expanded="false">
+                  —
+                </button>
+                <input type="hidden" id="apologisticProposalLeaveType" value="">
+                <ul id="apologisticProposalLeaveList" class="leave-type-list" role="listbox" aria-label="Είδος άδειας"></ul>
+              </span>
+            </span>
+          </span>
+        </label>
         <label class="apologistic-proposal-type-option apologistic-proposal-type-option--telework">
           <input id="apologisticProposalTypeTelework" type="radio" name="apologisticProposalType" value="telework">
           <span class="apologistic-proposal-type-body">

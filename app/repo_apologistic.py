@@ -11,6 +11,7 @@ from typing import Any
 from app.db import cursor
 from app.apologistic_submit import parse_wto_request_meta
 from app.row_util import row_to_dict, rows_to_dicts
+from app.leave_types import LEAVE_TYPES, SUBMISSION_CODE_WTO_LEAVE
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A
 from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A
 
@@ -20,6 +21,11 @@ _PROPOSED_TIME_SLOT = re.compile(
 )
 _PROPOSED_TELEWORK = re.compile(
     r"^ΤΗΛΕΡΓΑΣΙΑ\s+((?:[01]\d|2[0-3]):[0-5]\d)–((?:[01]\d|2[0-3]):[0-5]\d)$",
+    re.IGNORECASE,
+)
+_LEAVE_CODES = frozenset(item["code"] for item in LEAVE_TYPES)
+_PROPOSED_LEAVE = re.compile(
+    r"^(?:ΑΔΕΙΑ\s+)?(" + "|".join(sorted(_LEAVE_CODES, key=len, reverse=True)) + r")$",
     re.IGNORECASE,
 )
 
@@ -34,6 +40,9 @@ def normalize_proposed_value(proposed: str) -> str:
         return "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
     if upper in {"ΜΗ ΕΡΓΑΣΙΑ", "ΜΕ"} or upper.startswith("ΜΗ ΕΡΓΑΣΙΑ"):
         return "ΜΗ ΕΡΓΑΣΙΑ"
+    leave = _PROPOSED_LEAVE.fullmatch(value.strip())
+    if leave:
+        return f"ΑΔΕΙΑ {leave.group(1).upper()}"
     tele = _PROPOSED_TELEWORK.fullmatch(value)
     if tele:
         return f"ΤΗΛΕΡΓΑΣΙΑ {tele.group(1)}–{tele.group(2)}"
@@ -51,7 +60,7 @@ def normalize_proposed_value(proposed: str) -> str:
             return " · ".join(normalized_slots)
     raise ValueError(
         "Η πρόταση πρέπει να είναι ΩΩ:ΛΛ–ΩΩ:ΛΛ (ή σπαστό ΩΩ:ΛΛ–ΩΩ:ΛΛ · ΩΩ:ΛΛ–ΩΩ:ΛΛ), "
-        "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ, ΜΗ ΕΡΓΑΣΙΑ ή ΤΗΛΕΡΓΑΣΙΑ ΩΩ:ΛΛ–ΩΩ:ΛΛ"
+        "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ, ΜΗ ΕΡΓΑΣΙΑ, ΑΔΕΙΑ <κωδικός> ή ΤΗΛΕΡΓΑΣΙΑ ΩΩ:ΛΛ–ΩΩ:ΛΛ"
     )
 
 
@@ -1134,11 +1143,11 @@ def _attach_ergani_submits_from_declarations(
                    request_json, CAST(created_at AS datetime2) AS created_at
             FROM dbo.karta_declaration
             WHERE employer_afm = ? AND success = 1
-              AND submission_code IN (?, ?)
+              AND submission_code IN (?, ?, ?)
               AND created_at >= DATEADD(day, -21, SYSDATETIMEOFFSET())
             ORDER BY id DESC
             """,
-            (employer_afm, SUBMISSION_CODE_WTO_DAILY_A, SUBMISSION_CODE_WTO_OV_A),
+            (employer_afm, SUBMISSION_CODE_WTO_DAILY_A, SUBMISSION_CODE_WTO_OV_A, SUBMISSION_CODE_WTO_LEAVE),
         )
         declarations = rows_to_dicts(cur)
     latest_decl: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -1175,14 +1184,19 @@ def _attach_ergani_submits_from_declarations(
         wd = str(day.get("work_date") or "")
         proposed = str(day.get("proposed") or "")
         schedule_key = (afm, wd, SUBMISSION_CODE_WTO_DAILY_A)
-        if schedule_key in latest_decl and not (day.get("ergani_submit") or {}).get("schedule"):
-            entry = dict(latest_decl[schedule_key])
+        leave_key = (afm, wd, SUBMISSION_CODE_WTO_LEAVE)
+        schedule_entry = latest_decl.get(schedule_key) or latest_decl.get(leave_key)
+        schedule_code = (
+            SUBMISSION_CODE_WTO_DAILY_A if schedule_key in latest_decl else SUBMISSION_CODE_WTO_LEAVE
+        )
+        if schedule_entry and not (day.get("ergani_submit") or {}).get("schedule"):
+            entry = dict(schedule_entry)
             if entry.get("proposed_at_submit"):
                 entry["matches_proposal"] = str(entry["proposed_at_submit"]).strip() == proposed.strip()
             _merge_day_ergani_submit(day, {"schedule": entry})
             _ensure_submit_row_from_declaration(
-                run_id, store_id, week_from, afm, wd, SUBMISSION_CODE_WTO_DAILY_A,
-                latest_decl[schedule_key], proposed_at_submit=entry.get("proposed_at_submit"),
+                run_id, store_id, week_from, afm, wd, schedule_code,
+                schedule_entry, proposed_at_submit=entry.get("proposed_at_submit"),
             )
         ot_key = (afm, wd, SUBMISSION_CODE_WTO_OV_A)
         if ot_key in latest_decl:
@@ -1306,9 +1320,9 @@ def record_ergani_submit(
         "proposed_at_submit": proposed_at_submit,
         "segment_date": seg_display,
     }
-    if submission_code == SUBMISSION_CODE_WTO_DAILY_A and proposed_at_submit:
+    if submission_code in {SUBMISSION_CODE_WTO_DAILY_A, SUBMISSION_CODE_WTO_LEAVE} and proposed_at_submit:
         entry["matches_proposal"] = True
-    if submission_code == SUBMISSION_CODE_WTO_DAILY_A:
+    if submission_code in {SUBMISSION_CODE_WTO_DAILY_A, SUBMISSION_CODE_WTO_LEAVE}:
         return {"schedule": entry}
     if submission_code == SUBMISSION_CODE_WTO_OV_A and seg_display:
         return {"overtime": {seg_display: entry}}

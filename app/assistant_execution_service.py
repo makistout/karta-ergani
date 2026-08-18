@@ -34,10 +34,10 @@ def _authenticate(store: dict[str, Any]) -> tuple[str, Any]:
 
 
 def _employees(store: dict[str, Any], afms: list[str]) -> list[dict[str, Any]]:
-    from app.repo_entities import list_employees_for_employer
+    from app.repo_entities import list_active_employees_for_store
 
     wanted = set(afms)
-    rows = list_employees_for_employer(
+    rows = list_active_employees_for_store(
         str(store.get("employer_afm") or ""), str(store.get("branch_aa") or "0"), limit=5000,
     )
     by_afm = {str(row.get("afm") or "").strip(): row for row in rows}
@@ -100,12 +100,31 @@ def _execute_command(
         name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
         if intent.startswith("card_check_"):
             from app.routes_work_card import _submit_work_card
+            from app.work_card_guards import new_card_punch_blocked_reason
+
             event = "check_in" if "check_in" in intent else "check_out"
             event_time = None
             if intent.endswith("_retro"):
                 event_time = str(parsed.get("time") or "")
             elif intent.endswith("_schedule"):
                 event_time = str((parsed.get("resolved_schedule_times") or {}).get(str(employee.get("afm") or "")) or "")
+            event_at = f"{parsed.get('date')}T{event_time}:00" if event_time else None
+            blocked = new_card_punch_blocked_reason(
+                intent=intent,
+                employer_afm=str(store.get("employer_afm") or ""),
+                branch_aa=str(store.get("branch_aa") or "0"),
+                employee_afm=str(employee.get("afm") or ""),
+                reference_date_iso=str(parsed.get("date") or ""),
+                event_at=event_at,
+            )
+            if blocked:
+                results.append({
+                    "employee": name,
+                    "success": False,
+                    "protocol": None,
+                    "error": blocked,
+                })
+                continue
             body = {
                 "employee_afm": employee.get("afm"), "eponymo": employee.get("eponymo"),
                 "onoma": employee.get("onoma"), "employee_name": name, "event": event,

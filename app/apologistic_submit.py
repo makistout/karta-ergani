@@ -7,16 +7,29 @@ from datetime import datetime
 from typing import Any
 
 from app.work_card_payload import WorkCardPayloadError
+from app.leave_types import LEAVE_TYPES
 
 _PROPOSED_RANGE = re.compile(
     r"^([01]\d|2[0-3]):[0-5]\d[–-]([01]\d|2[0-3]):[0-5]\d$"
 )
 _REST_LABELS = frozenset({"ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", "ΡΕΠΟ", "ΑΝΑΠΑΥΣΗ", "ΑΝ"})
 _NON_WORK_LABELS = frozenset({"ΜΗ ΕΡΓΑΣΙΑ", "ΜΕ"})
+_LEAVE_CODES = frozenset(item["code"] for item in LEAVE_TYPES)
+_LEAVE_CODE_RE = re.compile(r"\b(" + "|".join(sorted(_LEAVE_CODES, key=len, reverse=True)) + r")\b", re.IGNORECASE)
 _TELEWORK_RANGE = re.compile(
     r"^(?:ΤΗΛΕΡΓΑΣΙΑ|ΤΗΛ)((?:[01]\d|2[0-3]):[0-5]\d)[–-]((?:[01]\d|2[0-3]):[0-5]\d)$",
     re.IGNORECASE,
 )
+
+
+def parse_proposed_leave(value: str) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    match = _LEAVE_CODE_RE.search(raw)
+    if not match:
+        return None
+    return match.group(1).upper()
 
 
 def parse_proposed_schedule(value: str) -> tuple[str | None, str | None, str]:
@@ -25,6 +38,11 @@ def parse_proposed_schedule(value: str) -> tuple[str | None, str | None, str]:
     compact = re.sub(r"\s+", "", label)
     if not label:
         return None, None, "ΑΝ"
+    leave_code = parse_proposed_leave(label)
+    if leave_code:
+        raise WorkCardPayloadError(
+            f"Η πρόταση άδειας ({leave_code}) υποβάλλεται ως WTOLeave, όχι ως ωράριο"
+        )
     if upper in _NON_WORK_LABELS or upper.startswith("ΜΗ ΕΡΓΑΣΙΑ"):
         return None, None, "ΜΕ"
     if upper in _REST_LABELS or "ΡΕΠΟ" in upper or "ΑΝΑΠΑΥΣ" in upper:
@@ -91,6 +109,10 @@ def parse_wto_request_meta(request_json: str | None) -> tuple[str | None, str | 
         ht = str(first.get("f_to") or "").strip()
         if hf and ht and hf not in {" ", "-"} and ht not in {" ", "-"}:
             proposed = f"{hf}–{ht}"
+        else:
+            leave_type = str(first.get("f_type") or "").strip().upper()
+            if leave_type in _LEAVE_CODES:
+                proposed = f"ΑΔΕΙΑ {leave_type}"
     return afm, work_date, proposed
 
 

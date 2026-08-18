@@ -245,3 +245,55 @@ def checkout_requires_entry_error() -> dict[str, Any]:
         "error": "Δεν επιτρέπεται έξοδος χωρίς είσοδο (πραγματική ή χτύπημα κάρτας).",
         "code": "checkout_without_entry",
     }
+
+
+def new_card_punch_blocked_reason(
+    *,
+    intent: str,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date_iso: str,
+    event_at: str | None = None,
+) -> str | None:
+    """
+    Έλεγχος πριν από νέα δήλωση κάρτας (όχι correction).
+    None = επιτρέπεται · αλλιώς λόγος απόρριψης (ίδια λογική με UI / auto-close).
+    """
+    key = str(intent or "").strip()
+    emp = norm_afm(employee_afm)
+    ref = str(reference_date_iso or "").strip()[:10]
+    if not emp or not ref:
+        return "Μη έγκυρη ημερομηνία ή ΑΦΜ"
+
+    if "check_out" in key:
+        ref_use = ref
+        event_use = str(event_at or "").strip() or None
+        if event_use or key.endswith("_now"):
+            if not event_use:
+                event_use = datetime.now(tz_athens()).isoformat(timespec="seconds")
+            ref_use, event_use = normalize_overnight_checkout_reference(
+                employer_afm=employer_afm,
+                branch_aa=branch_aa,
+                employee_afm=emp,
+                reference_date_iso=ref,
+                event_at=event_use,
+            )
+        if card_event_exists(emp, ref_use, "1"):
+            return "Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)"
+        if not has_entry_for_checkout(
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            employee_afm=emp,
+            reference_date_iso=ref_use,
+            event_at=event_use,
+        ):
+            return "Δεν επιτρέπεται έξοδος χωρίς είσοδο"
+        return None
+
+    if "check_in" in key:
+        if card_event_exists(emp, ref, "0"):
+            return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+        return None
+
+    return None

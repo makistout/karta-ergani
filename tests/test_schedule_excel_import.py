@@ -125,7 +125,7 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
 
         with patch("app.schedule_excel_template.get_store_config", return_value=store), patch(
             "app.schedule_excel_template.list_employees_for_employer", return_value=employees
-        ):
+        ), patch("app.schedule_excel_template.list_schedule_for_range", return_value=[]):
             xlsx, _filename, _meta = build_weekly_schedule_template_bytes(
                 store_id=1,
                 week_monday=week_monday,
@@ -135,22 +135,29 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
         self.assertIn(WEEK_SHEET, wb.sheetnames)
         self.assertEqual(len(wb.sheetnames), 2)
 
+        from app.schedule_excel_layout import HOURS_COL, HOURS_HEADER, single_sheet_day_col
+
         ws = wb[WEEK_SHEET]
-        # Πάνω γραμμή εργαζομένου 1 · Από Δευτέρας (col 5).
-        self.assertEqual(ws.cell(row=5, column=5).number_format, r"00\:00")
-        self.assertEqual(ws.cell(row=5, column=4).value, None)  # Ενέργεια κενή by default
+        self.assertEqual(ws.cell(row=4, column=HOURS_COL).value, HOURS_HEADER)
+        self.assertEqual(ws.cell(row=5, column=HOURS_COL).value, "0:00")
+        # Πάνω γραμμή εργαζομένου 1 · Από Δευτέρας.
+        self.assertEqual(
+            ws.cell(row=5, column=single_sheet_day_col(0, 1)).number_format,
+            r"00\:00",
+        )
+        self.assertEqual(ws.cell(row=5, column=single_sheet_day_col(0, 0)).value, None)
         # 2 γραμμές ανά εργαζόμενο: AFM μόνο στην πάνω (merged).
         self.assertEqual(str(ws.cell(row=5, column=1).value), "111111111")
         self.assertIsNone(ws.cell(row=6, column=1).value)
 
         # Δευτέρα ΡΕΠΟ · Τρίτη 09:00–17:00 · Τετάρτη σπαστό 10–14 + 17–21
-        ws.cell(row=5, column=4, value="ΡΕΠΟ")
-        ws.cell(row=5, column=8, value=900)   # Τρίτη Από
-        ws.cell(row=5, column=9, value=1700)  # Τρίτη Έως
-        ws.cell(row=5, column=11, value=1000)  # Τετάρτη Από1
-        ws.cell(row=5, column=12, value=1400)  # Τετάρτη Έως1
-        ws.cell(row=6, column=11, value=1700)  # Τετάρτη Από2 (κάτω γραμμή)
-        ws.cell(row=6, column=12, value=2100)  # Τετάρτη Έως2
+        ws.cell(row=5, column=single_sheet_day_col(0, 0), value="ΡΕΠΟ")
+        ws.cell(row=5, column=single_sheet_day_col(1, 1), value=900)
+        ws.cell(row=5, column=single_sheet_day_col(1, 2), value=1700)
+        ws.cell(row=5, column=single_sheet_day_col(2, 1), value=1000)
+        ws.cell(row=5, column=single_sheet_day_col(2, 2), value=1400)
+        ws.cell(row=6, column=single_sheet_day_col(2, 1), value=1700)
+        ws.cell(row=6, column=single_sheet_day_col(2, 2), value=2100)
         bio = BytesIO()
         wb.save(bio)
         filled = bio.getvalue()
@@ -203,7 +210,7 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
 
         with patch("app.schedule_excel_template.get_store_config", return_value=store), patch(
             "app.schedule_excel_template.list_employees_for_employer", return_value=employees
-        ):
+        ), patch("app.schedule_excel_template.list_schedule_for_range", return_value=[]):
             xlsx, _filename, meta = build_weekly_schedule_template_bytes(
                 store_id=1,
                 week_monday=week_monday,
@@ -220,6 +227,142 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
             self.assertIsNone(ws.cell(row=r1, column=single_sheet_day_col(day_idx, 2)).value)
             self.assertIsNone(ws.cell(row=r2, column=single_sheet_day_col(day_idx, 1)).value)
             self.assertIsNone(ws.cell(row=r2, column=single_sheet_day_col(day_idx, 2)).value)
+
+    def test_hours_column_sums_declared_schedule(self):
+        from app.schedule_excel_layout import HOURS_COL, format_hours_minutes, weekly_declared_minutes
+
+        week_monday = date(2026, 7, 6)
+        store = {
+            "id": 1,
+            "name": "Test Store",
+            "employer_afm": "123456789",
+            "branch_aa": "0",
+        }
+        employees = [
+            {"afm": "111111111", "eponymo": "TEST", "onoma": "ONE"},
+            {"afm": "222222222", "eponymo": "TEST", "onoma": "TWO"},
+        ]
+        schedule_rows = [
+            {
+                "employee_afm": "111111111",
+                "work_date": "06/07/2026",
+                "hour_from": "09:00",
+                "hour_to": "17:00",
+                "shift_type": "ΕΡΓΑΣΙΑ",
+            },
+            {
+                "employee_afm": "111111111",
+                "work_date": "07/07/2026",
+                "hour_from": "10:00",
+                "hour_to": "14:00",
+                "shift_type": "ΕΡΓΑΣΙΑ",
+            },
+            {
+                "employee_afm": "111111111",
+                "work_date": "07/07/2026",
+                "hour_from": "17:00",
+                "hour_to": "21:00",
+                "shift_type": "ΕΡΓΑΣΙΑ",
+            },
+            {
+                "employee_afm": "111111111",
+                "work_date": "08/07/2026",
+                "hour_from": "22:00",
+                "hour_to": "06:00",
+                "shift_type": "ΕΡΓΑΣΙΑ",
+            },
+            {
+                "employee_afm": "111111111",
+                "work_date": "09/07/2026",
+                "shift_type": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ",
+            },
+            {
+                "employee_afm": "222222222",
+                "work_date": "06/07/2026",
+                "shift_type": "ADKAN",
+            },
+        ]
+
+        with patch("app.schedule_excel_template.get_store_config", return_value=store), patch(
+            "app.schedule_excel_template.list_employees_for_employer", return_value=employees
+        ), patch(
+            "app.schedule_excel_template.list_schedule_for_range", return_value=schedule_rows
+        ):
+            xlsx, _filename, _meta = build_weekly_schedule_template_bytes(
+                store_id=1,
+                week_monday=week_monday,
+            )
+
+        ws = load_workbook(filename=BytesIO(xlsx))[WEEK_SHEET]
+        self.assertEqual(ws.cell(row=5, column=HOURS_COL).value, "24:00")
+        self.assertEqual(ws.cell(row=7, column=HOURS_COL).value, "0:00")
+        self.assertEqual(
+            format_hours_minutes(weekly_declared_minutes(schedule_rows[:4])),
+            "24:00",
+        )
+
+    def test_import_accepts_legacy_file_without_hours_column(self):
+        from openpyxl import Workbook
+
+        from app.schedule_excel_layout import (
+            INSTRUCTIONS_SHEET,
+            SINGLE_SHEET_DATA_START_ROW,
+            SINGLE_SHEET_HEADER_ROW_FIELDS,
+            WEEK_SHEET,
+            single_sheet_day_col,
+        )
+
+        wb = Workbook()
+        info = wb.active
+        info.title = INSTRUCTIONS_SHEET
+        info["A2"] = "06/07/2026 - 12/07/2026"
+        ws = wb.create_sheet(WEEK_SHEET)
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=1, value="ΑΦΜ")
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=2, value="Επώνυμο")
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=3, value="Όνομα")
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=4, value="Ενέργεια")
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=5, value="Από")
+        ws.cell(row=SINGLE_SHEET_HEADER_ROW_FIELDS, column=6, value="Έως")
+        r1 = SINGLE_SHEET_DATA_START_ROW
+        ws.cell(row=r1, column=1, value="111111111")
+        ws.cell(row=r1, column=2, value="TEST")
+        ws.cell(row=r1, column=3, value="ONE")
+        ws.cell(
+            row=r1,
+            column=single_sheet_day_col(0, 0, base_col_count=3),
+            value="ΡΕΠΟ",
+        )
+        bio = BytesIO()
+        wb.save(bio)
+
+        employees = [{"afm": "111111111", "eponymo": "TEST", "onoma": "ONE"}]
+        with patch(
+            "app.schedule_excel_import.list_employees_for_employer", return_value=employees
+        ), patch("app.schedule_excel_import.list_schedule_for_store", return_value=[]):
+            parsed = parse_weekly_schedule_workbook(
+                bio.getvalue(),
+                employer_afm="123456789",
+                branch_aa="0",
+            )
+
+        mon_repo = [
+            r for r in parsed["rows"] if r["employee_afm"] == "111111111" and r["work_date"] == "06/07/2026"
+        ][0]
+        self.assertEqual(mon_repo["import_action"], "rest")
+        header_errors = [e for e in parsed["errors"] if "headers" in e]
+        self.assertEqual(header_errors, [])
+
+
+class ScheduleExcelHoursCalcTests(unittest.TestCase):
+    def test_interval_overnight_and_rest_excluded(self):
+        from app.schedule_excel_layout import format_hours_minutes, weekly_declared_minutes
+
+        rows = [
+            {"hour_from": "22:00", "hour_to": "06:00", "shift_type": "ΕΡΓΑΣΙΑ"},
+            {"hour_from": "09:00", "hour_to": "17:00", "shift_type": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"},
+            {"hour_from": "09:00", "hour_to": "17:00", "shift_type": "ADKAN"},
+        ]
+        self.assertEqual(format_hours_minutes(weekly_declared_minutes(rows)), "8:00")
 
 
 if __name__ == "__main__":
