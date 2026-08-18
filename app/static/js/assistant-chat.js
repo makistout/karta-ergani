@@ -115,8 +115,14 @@
       const data = await readJsonResponse(res, "Αποτυχία αποστολής"); if (!res.ok) throw new Error(data.error || "Αποτυχία αποστολής"); await loadHistory();
     } catch(e) {
       loadingMessage.remove();
-      try { await loadHistory(); }
-      catch (_) { addMessage({direction:"out",channel:"ui",message_text:e.message}); }
+      try {
+        await loadHistory();
+      } catch (_) {
+        addMessage({direction:"out", channel:"ui", message_text: e.message});
+      }
+      if (!messages.querySelector(".ai-chat-message--out:not(.ai-chat-message--loading)")) {
+        addMessage({direction:"out", channel:"ui", message_text: e.message});
+      }
       messages.scrollTop=messages.scrollHeight;
     }
     finally { input.disabled=false; input.focus(); }

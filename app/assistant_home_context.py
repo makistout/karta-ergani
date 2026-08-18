@@ -88,7 +88,8 @@ def build_today_home_context(contexts: list[dict[str, Any]]) -> dict[str, Any]:
         "scope": "today_only",
         "description": (
             "Δεδομένα Αρχικής μόνο για σήμερα: ονόματα, ψηφιακό ωράριο, "
-            "χτυπήματα κάρτας και status."
+            "χτυπήματα κάρτας και status. "
+            "Χρησιμοποίησέ τα και για απαντήσεις σε ερωτήσεις για σήμερα."
         ),
         "stores": stores,
     }

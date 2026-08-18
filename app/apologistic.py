@@ -200,22 +200,43 @@ def _format_recorded_punches(punches: list[dict[str, Any]]) -> str:
     return "\n".join(_format_recorded_punch(p) for p in punches)
 
 
+def _minutes_from_work_anchor(
+    anchor_date: date,
+    item_date: date,
+    clock_value: Any,
+    *,
+    after_abs: int | None = None,
+) -> int | None:
+    """Absolute minutes from ``anchor_date`` midnight on the work-day timeline."""
+    clock_min = _minute_of_day(clock_value)
+    if clock_min is None:
+        return None
+    result = (item_date - anchor_date).days * 1440 + clock_min
+    if after_abs is not None and result < after_abs:
+        result += 1440
+    return result
+
+
 def _partition_punches_covered_by_previous_overnight(
     punches: dict[tuple[str, str], list[dict[str, Any]]],
     schedules: dict[tuple[str, str], list[dict[str, Any]]],
+    contracts_by_afm: dict[str, dict[str, Any]],
+    weekly_system_by_afm: dict[str, tuple[int | None, str]],
 ) -> tuple[
     dict[tuple[str, str], list[dict[str, Any]]],
     dict[tuple[str, str], list[dict[str, Any]]],
 ]:
-    """Move a short continuation after an explicit ``*`` back to its work day.
+    """Move post-star continuation punches back to the previous work day.
 
-    A complete pair that starts after the starred ending and finishes within
-    the following two hours belongs to the previous work date, provided the
-    declared/main shift of the new day has not started.  The row is added to
-    the previous day's punches so its final ending is actually recalculated.
+    Applies only when the previous day has one assumed start and an explicit ``*``
+    ending.  Candidate pairs on the next calendar day must start after that ending,
+    finish within the contractual daily span (13 h for 5-day / 12 h for 6-day) plus
+    any outside break counted from the assumed start, and begin before the declared
+    main shift of the new day.
     """
     excluded_from_current: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     attributed_to_previous: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+
     def key_date(key: tuple[str, str]) -> date:
         try:
             return datetime.strptime(key[1], "%d/%m/%Y").date()
@@ -228,54 +249,93 @@ def _partition_punches_covered_by_previous_overnight(
             current_date = datetime.strptime(work_date, "%d/%m/%Y").date()
         except ValueError:
             continue
-        previous_date = (current_date - timedelta(days=1)).strftime("%d/%m/%Y")
-        previous_key = (afm, previous_date)
+        previous_date = current_date - timedelta(days=1)
+        previous_label = previous_date.strftime("%d/%m/%Y")
+        previous_key = (afm, previous_label)
         previous_rows = punches.get(previous_key, [])
+        if not previous_rows:
+            continue
+
+        previous_starts = {
+            value
+            for row in previous_rows
+            for value in [_minute_of_day(row.get("hour_from"))]
+            if value is not None and _clock(row.get("hour_from"))
+        }
+        if len(previous_starts) != 1:
+            continue
+        assumed_start_abs = next(iter(previous_starts))
+
         starred_rows = [
-            (index, _minute_of_day(item.get("hour_to")))
+            (index, item)
             for index, item in enumerate(previous_rows)
             if _is_explicit_next_day(item) and _clock(item.get("hour_to"))
         ]
-        valid_starred_rows = [item for item in starred_rows if item[1] is not None]
-        cutoff = max((value for _, value in valid_starred_rows), default=None)
-        if cutoff is None:
+        if not starred_rows:
             continue
-        target_previous_index = next(
-            index for index, value in valid_starred_rows if value == cutoff
+        starred_ends: list[tuple[int, int, dict[str, Any]]] = []
+        for index, item in starred_rows:
+            end_abs = _minutes_from_work_anchor(previous_date, previous_date, item.get("hour_to"))
+            if end_abs is None:
+                continue
+            if _is_explicit_next_day(item):
+                end_abs += 1440
+            starred_ends.append((end_abs, index, item))
+        valid_starred_rows = [row for row in starred_ends if row[0] is not None]
+        if not valid_starred_rows:
+            continue
+        starred_end_abs, target_previous_index, _ = max(valid_starred_rows, key=lambda row: row[0])
+
+        weekly_days = weekly_system_by_afm.get(afm, (None, ""))[0]
+        daily_limit = 780 if weekly_days == 5 else 720 if weekly_days == 6 else None
+        if daily_limit is None:
+            continue
+        _, _, outside_break = _break_context(
+            contracts_by_afm.get(afm),
+            schedules.get(previous_key, []),
+            has_actual_work=True,
         )
+        max_allowed_end_abs = assumed_start_abs + daily_limit + outside_break
 
         declared_starts = [
-            _minute_of_day(item.get("hour_from"))
+            _minutes_from_work_anchor(previous_date, current_date, item.get("hour_from"))
             for item in _working_slots(schedules.get(key, []))
             if _clock(item.get("hour_from"))
         ]
-        new_shift_start = min(
+        new_shift_start_abs = min(
             (value for value in declared_starts if value is not None),
             default=None,
         )
 
         retained: list[dict[str, Any]] = []
-        latest_carried_end = cutoff
+        latest_carried_end_abs = starred_end_abs
         for item in punches.get(key, []):
-            start = _minute_of_day(item.get("hour_from"))
-            end = _minute_of_day(item.get("hour_to"), after=start) if start is not None else None
+            start_abs = _minutes_from_work_anchor(previous_date, current_date, item.get("hour_from"))
+            end_abs = (
+                _minutes_from_work_anchor(
+                    previous_date, current_date, item.get("hour_to"), after_abs=start_abs,
+                )
+                if start_abs is not None else None
+            )
             covered = bool(
-                start is not None
-                and end is not None
+                start_abs is not None
+                and end_abs is not None
                 and not _is_explicit_next_day(item)
-                and cutoff < start <= cutoff + 120
-                and end <= cutoff + 120
-                and (new_shift_start is None or start < new_shift_start)
+                and starred_end_abs is not None
+                and start_abs > starred_end_abs
+                and end_abs <= max_allowed_end_abs
+                and (new_shift_start_abs is None or start_abs < new_shift_start_abs)
             )
             if covered:
                 excluded_from_current[key].append(item)
                 attributed_to_previous[previous_key].append(item)
-                if end > latest_carried_end:
-                    latest_carried_end = end
+                if end_abs > latest_carried_end_abs:
+                    latest_carried_end_abs = end_abs
+                    next_day_end = latest_carried_end_abs >= 1440
                     previous_rows[target_previous_index] = {
                         **previous_rows[target_previous_index],
-                        "hour_to": _hm(end),
-                        "is_end_date_different": 1,
+                        "hour_to": _hm(latest_carried_end_abs - 1440 if next_day_end else latest_carried_end_abs),
+                        "is_end_date_different": 1 if next_day_end else 0,
                     }
             else:
                 retained.append(item)
@@ -677,19 +737,22 @@ def build_weekly_report(
             target[(afm, str(row.get("work_date") or ""))].append(row)
             names[afm] = (str(row.get("eponymo") or ""), str(row.get("onoma") or ""))
 
-    excluded_by_previous_overnight, carried_into_previous = (
-        _partition_punches_covered_by_previous_overnight(punches, schedules)
-    )
-
     schedules_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in schedule_rows:
         schedules_by_afm[str(row.get("employee_afm") or "").zfill(9)].append(row)
+
     weekly_system_by_afm: dict[str, tuple[int | None, str]] = {}
     for afm in set(schedules_by_afm) | set(contracts_by_afm):
         _, contract_weekly_days = _contract_kind(contracts_by_afm.get(afm))
         weekly_system_by_afm[afm] = _effective_weekly_days(
             schedules_by_afm.get(afm, []), contract_weekly_days
         )
+
+    excluded_by_previous_overnight, carried_into_previous = (
+        _partition_punches_covered_by_previous_overnight(
+            punches, schedules, contracts_by_afm, weekly_system_by_afm
+        )
+    )
 
     punch_dates_by_afm: dict[str, set[str]] = defaultdict(set)
     for afm, work_date in punches:

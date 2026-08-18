@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from openpyxl.utils import get_column_letter
+
 WEEK_SHEET = "Εβδομάδα"
 INSTRUCTIONS_SHEET = "Οδηγίες"
 
@@ -113,3 +115,43 @@ def weekly_declared_minutes(rows: list[dict[str, Any]] | None) -> int:
 def format_hours_minutes(total_minutes: int) -> str:
     hours, minutes = divmod(max(0, int(total_minutes or 0)), 60)
     return f"{hours}:{minutes:02d}"
+
+
+def _excel_time_value(ref: str) -> str:
+    """Normalize Excel cell to time fraction: HH:MM, day fraction, or HHMM integer."""
+    return (
+        f"IF(ISNUMBER({ref}),"
+        f"IF({ref}<1,{ref},TIME(INT({ref}/100),MOD({ref},100),0)),"
+        f"{ref})"
+    )
+
+
+def _interval_duration_formula(from_ref: str, to_ref: str) -> str:
+    """Excel duration as fraction of day; supports overnight and HHMM integers (1100, 1900)."""
+    start = _excel_time_value(from_ref)
+    end = _excel_time_value(to_ref)
+    return (
+        f'IF(AND({from_ref}<>"",{to_ref}<>""),'
+        f"IF({end}<{start},{end}-{start}+1,{end}-{start}),0)"
+    )
+
+
+def _day_work_duration_formula(emp_index: int, day_index: int) -> str:
+    r1 = employee_block_start_row(emp_index)
+    r2 = r1 + 1
+    energia = f"{get_column_letter(single_sheet_day_col(day_index, 0))}{r1}"
+    from1 = f"{get_column_letter(single_sheet_day_col(day_index, 1))}{r1}"
+    to1 = f"{get_column_letter(single_sheet_day_col(day_index, 2))}{r1}"
+    from2 = f"{get_column_letter(single_sheet_day_col(day_index, 1))}{r2}"
+    to2 = f"{get_column_letter(single_sheet_day_col(day_index, 2))}{r2}"
+    work = (
+        f"{_interval_duration_formula(from1, to1)}"
+        f"+{_interval_duration_formula(from2, to2)}"
+    )
+    return f'IF({energia}="ΡΕΠΟ",0,{work})'
+
+
+def weekly_hours_excel_formula(emp_index: int) -> str:
+    """Sum declared work intervals across the week (informational)."""
+    parts = [_day_work_duration_formula(emp_index, day_index) for day_index in range(DAY_COUNT)]
+    return "=" + "+".join(parts)

@@ -187,3 +187,31 @@ def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):
         reference_date_iso="2026-08-18",
     )
     assert reason is None
+
+
+def test_new_card_punch_blocked_reason_rejects_future_date():
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_in_now",
+        employer_afm="123456789",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2099-01-01",
+    )
+    assert reason == "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική"
+
+
+def test_new_card_punch_blocked_reason_rejects_future_time_today():
+    from datetime import datetime, timedelta
+
+    from app.work_card_payload import tz_athens
+
+    future = datetime.now(tz_athens()) + timedelta(hours=2)
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_in_retro",
+        employer_afm="123456789",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso=future.date().isoformat(),
+        event_at=future.isoformat(timespec="seconds"),
+    )
+    assert reason == "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική"

@@ -93,7 +93,7 @@ def test_store_without_ai_agent_gets_activation_message_and_is_not_parsed():
     parse.assert_not_called()
     assert reply.call_args.args[1] == (
         "Ο ΑΙ agent δεν είναι ενεργοποιημένος. "
-        "Καλέστε 2100000000 για να ενημερωθείτε για το κόστος ενεργοποίησης του."
+        "Καλέστε στο 2100000000 για να ενημερωθείτε για το κόστος ενεργοποίησης του."
     )
 
 
@@ -151,7 +151,7 @@ def test_authorized_message_creates_dry_run_task_only():
     assert create_task.call_args.kwargs["llm_metadata"] == llm_metadata
     assert reply.call_args.args[1] == "Εντολή #41:\nΔΟΚΙΜΗ ΧΡΗΣΤΗΣ · 15/08/2026 · Άνοιγμα κάρτας τώρα"
     assert reply.call_args.kwargs["reply_markup"] == {
-        "inline_keyboard": [[{"text": "Επιβεβαίωση", "callback_data": "assistant_confirm:41"}]]
+        "inline_keyboard": [[{"text": "Επιβεβαίωση με PIN", "callback_data": "assistant_confirm:41"}]]
     }
     assert reply.call_args.kwargs["context"]["notification_type"] == "assistant_pin"
     conversation_task.assert_not_called()
@@ -267,14 +267,15 @@ def test_multiple_different_commands_are_validated_as_one_batch():
         {"intent": "rest_day", "store_id": 4, "employee_afms": ["222"],
          "employee_references": ["ΒΗΧΟΣ"], "date": "2026-08-18"},
     ]}
-    status, validation, proposed = validate_and_describe(
-        parsed,
-        contexts=[{"store_id": 4, "store_name": "ERATO"}],
-        employees=[
-            {"store_id": 4, "afm": "111", "name": "HOXHA DASHURI"},
-            {"store_id": 4, "afm": "222", "name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ"},
-        ],
-    )
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{"store_id": 4, "store_name": "ERATO"}],
+            employees=[
+                {"store_id": 4, "afm": "111", "name": "HOXHA DASHURI"},
+                {"store_id": 4, "afm": "222", "name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ"},
+            ],
+        )
     assert status == "draft"
     assert validation["valid"] is True
     assert parsed["store_id"] == 4
@@ -339,6 +340,111 @@ def test_impossible_calendar_date_needs_clarification():
     assert "Δεν προσδιορίστηκε έγκυρη ημερομηνία" in validation["errors"]
 
 
+def test_today_info_question_is_answered_without_action():
+    parsed = {
+        "intent": "today_info",
+        "store_id": 4,
+        "employee_afms": [],
+        "date": None,
+        "clarification_question": (
+            "Οι εργαζόμενοι που τελειώνουν στις 20:40 είναι οι: "
+            "Μουρατίδου Αλεξάνδρα, Πουραβέλη Ανδρομάχη και Καραγιάννη Νικολίτσα."
+        ),
+    }
+    status, validation, proposed = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO"}],
+        employees=[{"store_id": 4, "afm": "111222333", "name": "ΜΟΥΡΑΤΙΔΟΥ ΑΛΕΞΑΝΔΡΑ"}],
+    )
+    assert status == "answered"
+    assert validation["valid"] is True
+    assert validation["execution_enabled"] is False
+    assert "Μουρατίδου Αλεξάνδρα" in proposed
+    assert "20:40" in proposed
+
+
+def test_today_info_without_answer_needs_clarification():
+    parsed = {
+        "intent": "today_info",
+        "store_id": 4,
+        "employee_afms": [],
+    }
+    status, validation, _ = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO"}],
+        employees=[],
+    )
+    assert status == "needs_clarification"
+    assert validation["valid"] is False
+    assert "Δεν δόθηκε απάντηση από την εικόνα εργασίας σήμερα" in validation["errors"]
+
+
+def test_today_info_conversation_returns_plain_answer():
+    from app.assistant_conversation_service import process_assistant_command
+
+    parsed = {
+        "intent": "today_info",
+        "store_id": 4,
+        "employee_afms": [],
+        "clarification_question": "Η Μασούρα τελειώνει στις 20:40.",
+    }
+    with patch(
+        "app.telegram_assistant_service.parse_command",
+        return_value=(parsed, [], {"model": "test"}),
+    ), patch("app.repo_telegram_assistant.create_task", return_value=29) as create_task, \
+       patch("app.repo_telegram_assistant.mark_inbound"):
+        result = process_assistant_command(
+            text="ti ora teleionei h masoura",
+            contexts=[{"store_id": 4, "store_name": "VILLA SHARM", "recipient_id": 7}],
+            inbound_id=1,
+            confirmation_mode="ui",
+        )
+    assert result["status"] == "answered"
+    assert result["task_status"] == "answered"
+    assert result["answer"] == "Η Μασούρα τελειώνει στις 20:40."
+    assert create_task.call_args.kwargs["status"] == "answered"
+
+
+def test_future_card_punch_date_is_rejected():
+    parsed = {
+        "intent": "card_check_in_schedule",
+        "store_id": 4,
+        "employee_afms": ["111222333"],
+        "date": "2099-01-01",
+    }
+    status, validation, _ = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO", "employer_afm": "123456789", "branch_aa": "0"}],
+        employees=[{"store_id": 4, "afm": "111222333", "name": "ΔΟΚΙΜΗ ΧΡΗΣΤΗΣ"}],
+    )
+    assert status == "needs_clarification"
+    assert validation["valid"] is False
+    assert "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική" in validation["errors"]
+
+
+def test_future_card_punch_time_today_is_rejected():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    future_time = (datetime.now(ZoneInfo("Europe/Athens")) + timedelta(hours=2)).strftime("%H:%M")
+    today = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
+    parsed = {
+        "intent": "card_check_in_retro",
+        "store_id": 4,
+        "employee_afms": ["111222333"],
+        "date": today,
+        "time": future_time,
+    }
+    status, validation, _ = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO", "employer_afm": "123456789", "branch_aa": "0"}],
+        employees=[{"store_id": 4, "afm": "111222333", "name": "ΔΟΚΙΜΗ ΧΡΗΣΤΗΣ"}],
+    )
+    assert status == "needs_clarification"
+    assert validation["valid"] is False
+    assert any("Η ώρα κίνησης δεν μπορεί να είναι μελλοντική" in item for item in validation["errors"])
+
+
 def test_task_persists_gemini_usage_metadata():
     cur = MagicMock()
     cur.fetchone.side_effect = [None, (77,)]
@@ -395,6 +501,7 @@ def test_gemini_transient_503_is_retried_then_succeeds():
          patch("app.telegram_assistant_service.Config.GEMINI_MODEL", "gemini-3.5-flash-lite"), \
          patch("app.telegram_assistant_service.Config.GEMINI_FALLBACK_MODEL", "gemini-3.5-flash"), \
          patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
+         patch("app.telegram_assistant_service.build_today_home_context", return_value={"date": "2026-08-17", "stores": []}), \
          patch("app.telegram_assistant_service.requests.post", side_effect=[unavailable, success]) as post, \
          patch("app.telegram_assistant_service.time.sleep") as sleep:
         parsed, returned_employees, metadata = parse_command(text="άνοιξε την κάρτα του HOXHA", contexts=contexts)
@@ -420,6 +527,7 @@ def test_gemini_timeout_fails_over_to_secondary_model():
          patch("app.telegram_assistant_service.Config.GEMINI_MODEL", "gemini-3.5-flash-lite"), \
          patch("app.telegram_assistant_service.Config.GEMINI_FALLBACK_MODEL", "gemini-3.5-flash"), \
          patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
+         patch("app.telegram_assistant_service.build_today_home_context", return_value={"date": "2026-08-17", "stores": []}), \
          patch("app.telegram_assistant_service.requests.post", side_effect=[requests.Timeout("slow"), success]) as post:
         parsed, _, metadata = parse_command(text="βάσει ωραρίου", contexts=contexts)
     assert post.call_count == 2

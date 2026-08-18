@@ -333,7 +333,7 @@ def build_wrk_card_se_payload(
     aa = (branch_aa or "0").strip()[:32] or "0"
     ft = f_type_from_event(event, f_type)
     dt = parse_event_at(event_at, reference_date)
-    if event_at and event_at_is_future(dt):
+    if event_at_is_future(dt):
         raise WorkCardPayloadError(FUTURE_EVENT_AT_ERROR)
     ref = (reference_date or "").strip()[:10] or dt.date().isoformat()
     datetime.strptime(ref, "%Y-%m-%d")

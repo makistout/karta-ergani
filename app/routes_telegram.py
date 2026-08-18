@@ -38,12 +38,7 @@ telegram_bp = Blueprint("telegram", __name__, url_prefix="/api/telegram")
 logger = logging.getLogger(__name__)
 
 
-def _ai_agent_disabled_message() -> str:
-    phone = Config.AI_AGENT_CONTACT_PHONE or "ΧΧΧΧΧΧΧ"
-    return (
-        "Ο ΑΙ agent δεν είναι ενεργοποιημένος. "
-        f"Καλέστε {phone} για να ενημερωθείτε για το κόστος ενεργοποίησης του."
-    )
+from app.assistant_messages import ai_agent_disabled_message as _ai_agent_disabled_message
 
 
 def _audit_notification_open(action: str, *, token: str | None, ok: bool, error: str | None = None) -> None:
@@ -275,8 +270,13 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             {"inline_keyboard": [[{"text": "Επιβεβαίωση με PIN", "callback_data": f"assistant_confirm:{task_id}"}]]}
             if status == "draft" else None
         )
+        notification_type = (
+            "assistant_pin" if status == "draft"
+            else "assistant_reply" if status == "answered"
+            else "assistant_clarification"
+        )
         _reply_chat(chat_id, answer, context={
-            "notification_type": "assistant_pin" if status == "draft" else "assistant_clarification",
+            "notification_type": notification_type,
             "notification_reference_id": str(task_id),
             "recipient_id": selected_recipient,
             "store_id": parsed.get("store_id"),

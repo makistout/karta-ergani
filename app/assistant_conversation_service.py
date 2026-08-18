@@ -43,6 +43,8 @@ def process_assistant_command(
     mark_inbound(inbound_id, "parsed")
     if status == "draft":
         answer = f"Εντολή #{task_id}:\n{proposed}"
+    elif status == "answered":
+        answer = proposed
     else:
         problems = "\n".join(f"• {item}" for item in validation.get("errors") or [])
         answer = f"Η εντολή #{task_id} χρειάζεται διευκρίνιση:\n{problems}\n\nΔεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."

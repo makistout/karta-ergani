@@ -311,9 +311,10 @@ function initScheduleTemplateDownload() {
 async function downloadScheduleTemplate(week) {
   Office.showMsg("schedMsg", "Δημιουργία Excel…", true);
   try {
-    const res = await fetch(`/api/schedule/import/template?week=${encodeURIComponent(week)}`, {
-      credentials: "same-origin",
-    });
+    const res = await fetch(
+      `/api/schedule/import/template?week=${encodeURIComponent(week)}&_=${Date.now()}`,
+      { credentials: "same-origin", cache: "no-store" },
+    );
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       Office.showMsg("schedMsg", data.error || `Σφάλμα HTTP ${res.status}`, false);

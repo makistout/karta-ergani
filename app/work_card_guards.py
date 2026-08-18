@@ -13,7 +13,14 @@ from app.repo_work_log_core import (
     work_log_has_open_entry,
     work_log_open_hour_from,
 )
-from app.work_card_payload import WorkCardPayloadError, norm_afm, parse_event_at, tz_athens
+from app.work_card_payload import (
+    FUTURE_EVENT_AT_ERROR,
+    WorkCardPayloadError,
+    event_at_is_future,
+    norm_afm,
+    parse_event_at,
+    tz_athens,
+)
 
 # Έξοδοι έως αυτή την ώρα (από μεσάνυχτα) δένουν στη μέρα εργασίας (*).
 OVERNIGHT_EXIT_BEFORE_MINUTES = 3 * 60
@@ -265,6 +272,19 @@ def new_card_punch_blocked_reason(
     ref = str(reference_date_iso or "").strip()[:10]
     if not emp or not ref:
         return "Μη έγκυρη ημερομηνία ή ΑΦΜ"
+
+    try:
+        ref_day = datetime.strptime(ref, "%Y-%m-%d").date()
+    except ValueError:
+        return "Μη έγκυρη ημερομηνία ή ΑΦΜ"
+    if ref_day > datetime.now(tz_athens()).date():
+        return FUTURE_EVENT_AT_ERROR
+    if event_at:
+        try:
+            if event_at_is_future(parse_event_at(str(event_at), ref)):
+                return FUTURE_EVENT_AT_ERROR
+        except (WorkCardPayloadError, ValueError):
+            return "Μη έγκυρη ημερομηνία ή ΑΦΜ"
 
     if "check_out" in key:
         ref_use = ref

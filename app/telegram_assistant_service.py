@@ -15,6 +15,7 @@ from app.repo_entities import list_active_employees_for_store
 from config import Config
 
 from app.assistant_home_context import build_today_home_context
+from app.assistant_messages import future_card_punch_blocked_message
 
 ALLOWED_INTENTS = {
     "card_check_in_now",
@@ -26,8 +27,10 @@ ALLOWED_INTENTS = {
     "schedule_change",
     "rest_day",
     "leave",
+    "today_info",
     "unknown",
 }
+_INFO_INTENTS = {"today_info"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
 _GEMINI_FALLBACK_ATTEMPTS = 2
@@ -129,16 +132,22 @@ def parse_command(
         for c in contexts
     ]
     prompt = {
-        "role": "Μετατροπή ελληνικού μηνύματος σε δομημένη draft εντολή εργασίας.",
+        "role": (
+            "Μετατροπή ελληνικού ή greeklish μηνύματος σε δομημένη draft εντολή εργασίας, "
+            "ή απάντηση ερώτησης από την εικόνα εργασίας σήμερα."
+        ),
         "rules": [
             "Επίλεξε μόνο store_id και ΑΦΜ που υπάρχουν στους δοσμένους καταλόγους.",
             "Βάλε ΟΛΟΥΣ τους εργαζομένους που ζητά ο χρήστης στα employee_afms και employee_references, με ίδια σειρά.",
             "Για έναν εργαζόμενο πάλι χρησιμοποίησε employee_afms με ένα στοιχείο. Μην συγχωνεύεις πολλαπλά ονόματα.",
             "Επέστρεψε μία εγγραφή στο commands για κάθε διαφορετική ενέργεια/ημερομηνία/ώρα. Επιτρέπονται πολλές διαφορετικές εντολές και πολλοί εργαζόμενοι στο ίδιο μήνυμα.",
             "Αν πολλοί εργαζόμενοι έχουν ακριβώς την ίδια ενέργεια, ημερομηνία και ώρα, μπορούν να βρίσκονται μαζί στην ίδια εγγραφή commands.",
-            "Αν έστω ένα ζητούμενο όνομα δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
+            "Διάβασε greeklish ως ελληνικά (π.χ. ti ora=τι ώρα, klise karta=κλείσε κάρτα, masoura=ΜΑΣΟΥΡΑ) και αντιστοίχισε ονόματα φωνητικά στον κατάλογο.",
+            "Αν έστω ένα ζητούμενο όνομα (ελληνικά ή greeklish) δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
             "Το τώρα σημαίνει την τρέχουσα ώρα Europe/Athens.",
             "Το today_home περιέχει την Αρχική μόνο για ΣΗΜΕΡΑ: ονόματα, ψηφιακό ωράριο, χτυπήματα κάρτας και status.",
+            "Αν ο χρήστης ρωτά για την εικόνα εργασίας σήμερα (ποιοι τελειώνουν στις ΧΧ:ΧΧ, τι ώρα τελειώνει ο Χ, ποιος έχει ανοιχτή κάρτα, ποιος είναι σε εργασία) χρησιμοποίησε intent today_info.",
+            "Για today_info βάλε την πλήρη απάντηση στα ελληνικά στο clarification_question, μόνο από today_home. employee_afms μπορεί να είναι κενό. Μην ζητάς επιβεβαίωση ενέργειας αν δεν ζητήθηκε ενέργεια.",
             "Για ομαδικές εντολές (π.χ. «κλείσε όσους τελειώνουν στις 15:30») χρησιμοποίησε today_home για να βρεις τους σωστούς ΑΦΜ.",
             "Η ώρα λήξης ωραρίου είναι το schedule_to ή το τελευταίο intervals[].to.",
             "Για «κλείσε τώρα» διάλεξε μόνο εργαζόμενους με status at_work ή needs_checkout που ταιριάζουν στο κριτήριο.",
@@ -259,12 +268,15 @@ def _validate_single_command(
         for employee in employees
         if employee["store_id"] == store_id and employee["afm"] == afm
     ]
-    if intent != "unknown" and (not afms or len(matches) != len(afms)):
+    if intent not in {"unknown", *_INFO_INTENTS} and (not afms or len(matches) != len(afms)):
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
-    if intent != "unknown" and not _is_iso_date(date):
+    if intent not in {"unknown", *_INFO_INTENTS} and not _is_iso_date(date):
         errors.append("Δεν προσδιορίστηκε έγκυρη ημερομηνία")
+    today_iso = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
+    if intent.startswith("card_check_") and _is_iso_date(date) and date > today_iso:
+        errors.append(future_card_punch_blocked_message())
     time_value = str(parsed.get("time") or "").strip()
     if intent in {"card_check_in_retro", "card_check_out_retro"} and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
         errors.append("Δεν προσδιορίστηκε έγκυρη ώρα προγενέστερου χτυπήματος")
@@ -275,6 +287,8 @@ def _validate_single_command(
                 break
     if intent == "leave" and not str(parsed.get("leave_type") or "").strip():
         errors.append("Η άδεια χρειάζεται συγκεκριμένο τύπο")
+    if intent == "today_info" and not str(parsed.get("clarification_question") or "").strip():
+        errors.append("Δεν δόθηκε απάντηση από την εικόνα εργασίας σήμερα")
     if intent == "unknown":
         errors.append(str(parsed.get("clarification_question") or "Δεν αναγνωρίστηκε υποστηριζόμενη εντολή"))
 
@@ -352,7 +366,12 @@ def _validate_single_command(
             )
 
     validation = {"valid": not errors, "errors": errors, "execution_enabled": False}
-    status = "draft" if not errors else "needs_clarification"
+    if errors:
+        status = "needs_clarification"
+    elif intent in _INFO_INTENTS:
+        status = "answered"
+    else:
+        status = "draft"
     if matches:
         names = ", ".join(str(match.get("name") or match.get("afm") or "εργαζόμενος") for match in matches)
     else:
@@ -374,9 +393,12 @@ def _validate_single_command(
         "schedule_change": f"Αλλαγή ωραρίου σε {parsed.get('hour_from') or '—'}–{parsed.get('hour_to') or '—'}",
         "rest_day": "Δήλωση ρεπό",
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
+        "today_info": "Πληροφορία σήμερα",
         "unknown": "Μη αναγνωρισμένη εντολή",
     }
-    if intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
+    if intent == "today_info":
+        proposed = str(parsed.get("clarification_question") or "").strip()
+    elif intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
         proposed = "\n".join(
             f"{match.get('name') or match.get('afm')} · {display_date} · {labels[intent]} {schedule_times.get(str(match.get('afm') or ''), '—')}"
             for match in matches
@@ -403,14 +425,14 @@ def validate_and_describe(
     proposed_lines: list[str] = []
     errors: list[str] = []
     store_ids: set[int] = set()
-    all_valid = True
+    statuses: list[str] = []
     for index, command in enumerate(normalized, start=1):
         status, validation, proposed = _validate_single_command(
             command, contexts=contexts, employees=employees,
         )
         proposed_lines.extend(line for line in proposed.splitlines() if line.strip())
-        if status != "draft":
-            all_valid = False
+        statuses.append(status)
+        if status == "needs_clarification":
             errors.extend(f"Εντολή {index}: {error}" for error in validation.get("errors") or [])
         if command.get("store_id") is not None:
             store_ids.add(int(command["store_id"]))
@@ -418,5 +440,11 @@ def validate_and_describe(
     parsed["commands"] = normalized
     if len(store_ids) == 1:
         parsed["store_id"] = next(iter(store_ids))
-    validation = {"valid": all_valid, "errors": errors, "execution_enabled": all_valid}
-    return ("draft" if all_valid else "needs_clarification"), validation, "\n".join(proposed_lines)
+    if errors:
+        validation = {"valid": False, "errors": errors, "execution_enabled": False}
+        return "needs_clarification", validation, "\n".join(proposed_lines)
+    if statuses and all(item == "answered" for item in statuses):
+        validation = {"valid": True, "errors": [], "execution_enabled": False}
+        return "answered", validation, "\n".join(proposed_lines)
+    validation = {"valid": True, "errors": [], "execution_enabled": True}
+    return "draft", validation, "\n".join(proposed_lines)

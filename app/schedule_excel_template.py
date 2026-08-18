@@ -28,10 +28,9 @@ from app.schedule_excel_layout import (
     SINGLE_SHEET_HEADER_ROW_FIELDS,
     WEEK_SHEET,
     employee_block_start_row,
-    format_hours_minutes,
     single_sheet_day_col,
     single_sheet_last_col,
-    weekly_declared_minutes,
+    weekly_hours_excel_formula,
 )
 from app.work_card_payload import norm_afm
 
@@ -99,7 +98,7 @@ def build_weekly_schedule_template_bytes(
         "Οδηγίες:",
         "1. Όλες οι ημέρες της εβδομάδας είναι στο φύλλο «Εβδομάδα».",
         "2. Κάθε εργαζόμενος έχει 2 γραμμές (συνενωμένες ΑΦΜ/Επώνυμο/Όνομα/Ώρες).",
-        "   Η στήλη Ώρες είναι το σύνολο δηλωμένων ωρών της εβδομάδας (πληροφοριακή).",
+        "   Η στήλη Ώρες υπολογίζει αυτόματα το σύνολο δηλωμένων ωρών της εβδομάδας.",
         "3. Ανά ημέρα: Ενέργεια, Από, Έως.",
         "4. Πάνω γραμμή = 1ο διάστημα (Από/Έως). Κάτω γραμμή = 2ο διάστημα (σπαστό).",
         "5. Οι ώρες/ΡΕΠΟ ξεκινούν κενά — συμπληρώστε μόνο ό,τι θέλετε να αλλάξει.",
@@ -132,7 +131,7 @@ def build_weekly_schedule_template_bytes(
     ws.merge_cells(f"A1:{last_letter}1")
     ws["A2"] = (
         "Κενό template για συμπλήρωση  |  "
-        "Στήλη Ώρες = σύνολο δηλωμένου ωραρίου  |  "
+        "Στήλη Ώρες = αυτόματο άθροισμα ωραρίου  |  "
         "Ενέργεια: ΡΕΠΟ ή κενό  |  Ώρες ημέρας: 4 ψηφία (0900→09:00)  |  "
         "Σπαστό: κάτω γραμμή = 2ο διάστημα (Από/Έως)"
     )
@@ -178,18 +177,9 @@ def build_weekly_schedule_template_bytes(
     work_dates = [
         (week_monday + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(DAY_COUNT)
     ]
-    week_rows = list_schedule_for_range(
+    _ = list_schedule_for_range(
         store["employer_afm"], store["branch_aa"], work_dates
     )
-    rows_by_afm: dict[str, list[dict]] = {}
-    for row in week_rows:
-        afm_key = norm_afm(str(row.get("employee_afm") or ""))
-        if not afm_key:
-            continue
-        rows_by_afm.setdefault(afm_key, []).append(row)
-    hours_by_afm = {
-        afm_key: weekly_declared_minutes(items) for afm_key, items in rows_by_afm.items()
-    }
 
     hours_fill = PatternFill("solid", fgColor="D6EAF8")
     hours_font = Font(bold=True)
@@ -201,11 +191,7 @@ def build_weekly_schedule_template_bytes(
         ws.cell(row=r1, column=1, value=afm or str(emp.get("afm") or ""))
         ws.cell(row=r1, column=2, value=str(emp.get("eponymo") or ""))
         ws.cell(row=r1, column=3, value=str(emp.get("onoma") or ""))
-        ws.cell(
-            row=r1,
-            column=HOURS_COL,
-            value=format_hours_minutes(hours_by_afm.get(afm, 0)),
-        )
+        ws.cell(row=r1, column=HOURS_COL, value=weekly_hours_excel_formula(emp_idx))
         for c in range(1, BASE_COL_COUNT + 1):
             ws.merge_cells(
                 start_row=r1, start_column=c, end_row=r2, end_column=c
@@ -217,7 +203,7 @@ def build_weekly_schedule_template_bytes(
                 if c == HOURS_COL:
                     cell.fill = hours_fill
                     cell.font = hours_font
-                    cell.number_format = "@"
+                    cell.number_format = "[h]:mm"
 
         for day_idx in range(DAY_COUNT):
             energia_col = single_sheet_day_col(day_idx, 0)

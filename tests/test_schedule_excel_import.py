@@ -139,7 +139,9 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
 
         ws = wb[WEEK_SHEET]
         self.assertEqual(ws.cell(row=4, column=HOURS_COL).value, HOURS_HEADER)
-        self.assertEqual(ws.cell(row=5, column=HOURS_COL).value, "0:00")
+        hours_formula = str(ws.cell(row=5, column=HOURS_COL).value or "")
+        self.assertTrue(hours_formula.startswith("="), hours_formula)
+        self.assertIn("ΡΕΠΟ", hours_formula)
         # Πάνω γραμμή εργαζομένου 1 · Από Δευτέρας.
         self.assertEqual(
             ws.cell(row=5, column=single_sheet_day_col(0, 1)).number_format,
@@ -294,8 +296,9 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
             )
 
         ws = load_workbook(filename=BytesIO(xlsx))[WEEK_SHEET]
-        self.assertEqual(ws.cell(row=5, column=HOURS_COL).value, "24:00")
-        self.assertEqual(ws.cell(row=7, column=HOURS_COL).value, "0:00")
+        hours_formula = str(ws.cell(row=5, column=HOURS_COL).value or "")
+        self.assertTrue(hours_formula.startswith("="))
+        self.assertEqual(str(ws.cell(row=7, column=HOURS_COL).value or "").startswith("="), True)
         self.assertEqual(
             format_hours_minutes(weekly_declared_minutes(schedule_rows[:4])),
             "24:00",
@@ -354,6 +357,14 @@ class ScheduleExcelSingleSheetTests(unittest.TestCase):
 
 
 class ScheduleExcelHoursCalcTests(unittest.TestCase):
+    def test_weekly_hours_formula_sums_all_days(self):
+        from app.schedule_excel_layout import weekly_hours_excel_formula
+
+        formula = weekly_hours_excel_formula(0)
+        self.assertTrue(formula.startswith("="))
+        self.assertEqual(formula.count('="ΡΕΠΟ"'), 7)
+        self.assertIn("TIME(INT(", formula)
+
     def test_interval_overnight_and_rest_excluded(self):
         from app.schedule_excel_layout import format_hours_minutes, weekly_declared_minutes
 

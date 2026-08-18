@@ -24,10 +24,19 @@ def test_disabled_store_rejects_ui_message_before_ai():
     with patch("app.routes_assistant.can_access_store", return_value=True), \
          patch("app.routes_assistant.get_store_config", return_value=store), \
          patch("app.routes_assistant.get_action_settings", return_value={"ai_agent_enabled": False}), \
+         patch("app.repo_telegram_assistant.create_ui_inbound_message", return_value=31) as inbound, \
+         patch("app.repo_telegram_assistant.record_ui_outbound_message") as outbound, \
+         patch("app.repo_telegram_assistant.mark_inbound") as mark, \
+         patch("app.routes_assistant.record_audit_event"), \
          patch("app.assistant_conversation_service.process_assistant_command") as process:
         response = client.post("/api/assistant/message", json={"store_id": 4, "text": "άνοιξε κάρτα"})
-    assert response.status_code == 403
-    assert "δεν είναι ενεργοποιημένος" in response.get_json()["error"]
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["disabled"] is True
+    assert "δεν είναι ενεργοποιημένος" in body["answer"]
+    inbound.assert_called_once()
+    outbound.assert_called_once()
+    mark.assert_called_once_with(31, "disabled")
     process.assert_not_called()
 
 

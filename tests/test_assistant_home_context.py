@@ -125,6 +125,8 @@ class AssistantHomeContextTests(unittest.TestCase):
             )
         self.assertIn("today_home", captured["prompt"])
         self.assertEqual(captured["prompt"]["today_home"]["stores"][0]["employees"][0]["schedule_to"], "15:30")
+        self.assertTrue(any("greeklish" in str(rule).casefold() for rule in captured["prompt"]["rules"]))
+        self.assertTrue(any("today_info" in str(rule) for rule in captured["prompt"]["rules"]))
         intent = parsed.get("intent") or (parsed.get("commands") or [{}])[0].get("intent")
         self.assertEqual(intent, "card_check_out_now")
 

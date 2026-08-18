@@ -201,6 +201,19 @@ class WorkCardAitiologiaTests(unittest.TestCase):
                 event_at=future.isoformat(),
             )
 
+    def test_payload_rejects_future_reference_date_without_event_at(self):
+        tomorrow = (datetime.now(tz_athens()) + timedelta(days=1)).date().isoformat()
+        with self.assertRaisesRegex(WorkCardPayloadError, "μελλοντική"):
+            build_wrk_card_se_payload(
+                employer_afm="123456789",
+                branch_aa="0",
+                employee_afm="987654321",
+                employee_last_name="Test",
+                employee_first_name="User",
+                event="check_in",
+                reference_date=tomorrow,
+            )
+
     def test_future_guard_accepts_current_or_past_event(self):
         now = datetime(2026, 8, 11, 1, 36, 10, tzinfo=tz_athens())
         self.assertTrue(event_at_is_future(

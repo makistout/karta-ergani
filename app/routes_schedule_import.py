@@ -49,12 +49,15 @@ def download_schedule_import_template():
 
     from io import BytesIO
 
-    return send_file(
+    response = send_file(
         BytesIO(content),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name=filename,
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @schedule_import_bp.post("/upload")

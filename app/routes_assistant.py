@@ -5,10 +5,10 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request, session
 
 from app.access_control import can_access_store
+from app.assistant_messages import ai_agent_disabled_message
 from app.audit_log import record_audit_event
 from app.office_auth import SESSION_USER
 from app.repo_store import get_action_settings, get_store_config
-from config import Config
 
 assistant_bp = Blueprint("assistant", __name__, url_prefix="/api/assistant")
 
@@ -46,11 +46,23 @@ def message():
     if not store:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
     store["ai_agent_enabled"] = bool(get_action_settings(store_id).get("ai_agent_enabled"))
-    if not store["ai_agent_enabled"]:
-        phone = Config.AI_AGENT_CONTACT_PHONE or "ΧΧΧΧΧΧΧ"
-        return jsonify({"error": f"Ο ΑΙ agent δεν είναι ενεργοποιημένος. Καλέστε {phone} για να ενημερωθείτε για το κόστος ενεργοποίησης του."}), 403
-    from app.assistant_conversation_service import process_assistant_command
     from app.repo_telegram_assistant import create_ui_inbound_message, mark_inbound, record_ui_outbound_message
+    if not store["ai_agent_enabled"]:
+        answer = ai_agent_disabled_message()
+        inbound_id = create_ui_inbound_message(
+            office_user=_user(), store_id=store_id, text=text,
+            raw_payload={"source": "ui", "path": request.path, "disabled": True},
+        )
+        record_ui_outbound_message(
+            office_user=_user(), store_id=store_id, text=answer,
+            context={"notification_type": "assistant_disabled", "notification_reference_id": str(inbound_id)},
+        )
+        mark_inbound(inbound_id, "disabled")
+        record_audit_event(action="assistant.message", success=False, http_status=403,
+                           entity_type="assistant_message", entity_id=str(inbound_id),
+                           details={"channel": "ui", "store_id": store_id, "reason": "ai_agent_disabled"})
+        return jsonify({"success": True, "answer": answer, "disabled": True})
+    from app.assistant_conversation_service import process_assistant_command
     inbound_id = create_ui_inbound_message(
         office_user=_user(), store_id=store_id, text=text,
         raw_payload={"source": "ui", "path": request.path},
