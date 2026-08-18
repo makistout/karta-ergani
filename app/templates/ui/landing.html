@@ -397,76 +397,53 @@
           <div class="landing-kicker">Τιμοκατάλογος</div>
           <h2>Πακέτα ψηφιακής κάρτας εργασίας ανάλογα με το μέγεθος της ομάδας σας</h2>
           <p class="landing-section-text">
-            Κάθε επιχείρηση έχει διαφορετικές ανάγκες.
-            Το erganiOS προσφέρει πακέτα ψηφιακής κάρτας εργασίας με βάση τον αριθμό εργαζομένων,
-            τα καταστήματα, τις ειδοποιήσεις και το επίπεδο υποστήριξης που χρειάζεστε.
+            Επιλέξτε εύρος ατόμων και δείτε καθαρά το βασικό πακέτο erganiOS και
+            τη δυνατότητα AI Agent ως ξεχωριστή πρόταση.
           </p>
         </div>
 
-        <div class="landing-pricing">
-          <article class="landing-price-card">
-            <div class="landing-plan-label">Για 2–5 εργαζόμενους</div>
-            <h3>Small</h3>
-            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για μικρές επιχειρήσεις — απλός και καθαρός έλεγχος.</p>
+        <div class="landing-pricing-switch" role="tablist" aria-label="Εύρος εργαζομένων">
+          <button type="button" class="landing-pricing-tab is-active" data-pricing-tab data-range="1-2" aria-selected="true">1-2</button>
+          <button type="button" class="landing-pricing-tab" data-pricing-tab data-range="3-5" aria-selected="false">3-5</button>
+          <button type="button" class="landing-pricing-tab" data-pricing-tab data-range="6-20" aria-selected="false">6-20</button>
+          <button type="button" class="landing-pricing-tab" data-pricing-tab data-range="21-50" aria-selected="false">21-50</button>
+          <button type="button" class="landing-pricing-tab" data-pricing-tab data-range="51-100" aria-selected="false">51-100</button>
+          <button type="button" class="landing-pricing-tab" data-pricing-tab data-range="101-200" aria-selected="false">101-200</button>
+        </div>
 
-            <ul class="landing-features">
-              <li>1 κατάστημα</li>
-              <li>Συγχρονισμός εργαζομένων και ωραρίου</li>
-              <li>Εικόνα πραγματικής απασχόλησης</li>
-              <li>Αναφορά αποκλίσεων</li>
-              <li>Βασικές ειδοποιήσεις εκκρεμοτήτων</li>
-            </ul>
-
-            <a class="landing-btn landing-btn-secondary" href="#contact">Ζητήστε προσφορά</a>
+        <div class="landing-pricing-duo" data-pricing-root>
+          <article class="landing-pricing-panel">
+            <div class="landing-pricing-brand landing-pricing-brand-erganios">erganiOS</div>
+            <div class="landing-pricing-chip" data-pricing-range-label>1-2 άτομα</div>
+            <div class="landing-pricing-duration">1 έτος</div>
+            <div class="landing-pricing-amount" data-pricing-amount>94€</div>
+            <div class="landing-pricing-includes-title">Περιλαμβάνεται</div>
+            <p class="landing-pricing-includes">
+              <strong>Απολογιστικό</strong> και <strong>Ωρομέτρηση</strong>
+            </p>
+            <a class="landing-btn landing-btn-primary" href="#contact">Ενδιαφέρομαι</a>
           </article>
 
-          <article class="landing-price-card landing-price-card-featured">
-            <div class="landing-plan-label">Για 6–15 εργαζόμενους</div>
-            <h3>Team</h3>
-            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για επιχειρήσεις με συχνές αλλαγές και καθημερινές κινήσεις.</p>
-
-            <ul class="landing-features">
-              <li>Όλα του Small</li>
-              <li>Ημερήσιες και εβδομαδιαίες αλλαγές ωραρίου</li>
-              <li>Ειδοποιήσεις μέσω Telegram ή Email</li>
-              <li>Αναφορά σημερινών ενεργειών</li>
-              <li>Ρυθμίσεις ειδοποιήσεων ανά λήπτη</li>
-            </ul>
-
-            <a class="landing-btn landing-btn-primary" href="#contact">Μιλήστε μαζί μας</a>
+          <article class="landing-pricing-panel landing-pricing-panel-ai">
+            <div class="landing-pricing-brand landing-pricing-brand-ai">
+              <i class="bi bi-stars" aria-hidden="true"></i>
+              <span>AI Agent</span>
+            </div>
+            <div class="landing-pricing-chip">Προαιρετική ενεργοποίηση</div>
+            <div class="landing-pricing-duration">Κατόπιν συνεννόησης</div>
+            <div class="landing-pricing-amount landing-pricing-amount-note">Κατόπιν συνεννόησης</div>
+            <div class="landing-pricing-includes-title">Περιλαμβάνεται</div>
+            <p class="landing-pricing-includes">
+              <strong>Απολογιστικό</strong>, <strong>Ωρομέτρηση</strong> και
+              αυτοματοποιημένες διαδικασίες για την ημερήσια λειτουργία της
+              επιχείρησης και τη διαχείριση καρτών.
+            </p>
+            <a class="landing-btn landing-btn-secondary" href="tel:6977392742">Μιλήστε μαζί μας</a>
           </article>
+        </div>
 
-          <article class="landing-price-card">
-            <div class="landing-plan-label">Για 16–30 εργαζόμενους</div>
-            <h3>Business</h3>
-            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για επιχειρήσεις με περισσότερες βάρδιες και καταστήματα.</p>
-
-            <ul class="landing-features">
-              <li>Όλα του Team</li>
-              <li>Πολλαπλά καταστήματα</li>
-              <li>Ρυθμίσεις πρόσβασης ανά κατάστημα</li>
-              <li>Μαζικοί συγχρονισμοί περιόδου</li>
-              <li>Διαχωρισμός ληπτών ειδοποιήσεων</li>
-            </ul>
-
-            <a class="landing-btn landing-btn-secondary" href="#contact">Ζητήστε προσφορά</a>
-          </article>
-
-          <article class="landing-price-card">
-            <div class="landing-plan-label">Για 30+ εργαζόμενους</div>
-            <h3>Enterprise</h3>
-            <p class="landing-plan-subtitle">Ψηφιακή κάρτα για λογιστικά γραφεία και μεγαλύτερες επιχειρήσεις.</p>
-
-            <ul class="landing-features">
-              <li>Όλα του Business</li>
-              <li>Διαχείριση πολλών ΑΦΜ</li>
-              <li>Ρόλοι χρηστών</li>
-              <li>Πρόσβαση ανά κατάστημα ή πελάτη</li>
-              <li>Προτεραιότητα στην υποστήριξη</li>
-            </ul>
-
-            <a class="landing-btn landing-btn-secondary" href="#contact">Μιλήστε μαζί μας</a>
-          </article>
+        <div class="landing-pricing-actions">
+          <a class="landing-btn landing-btn-secondary" href="#contact">Ζητήστε προσφορά</a>
         </div>
       </div>
     </section>
@@ -620,4 +597,5 @@
 {% block scripts %}
   <script src="/static/js/landing-screens.js?v=20260706landing2"></script>
   <script src="/static/js/landing-contact.js?v=20260706landing2"></script>
+  <script src="/static/js/landing-pricing.js?v=20260818pricing1"></script>
 {% endblock %}

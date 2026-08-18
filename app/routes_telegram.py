@@ -272,7 +272,7 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         parsed = result["parsed"]
         selected_recipient = result["recipient_id"]
         reply_markup = (
-            {"inline_keyboard": [[{"text": "Επιβεβαίωση", "callback_data": f"assistant_confirm:{task_id}"}]]}
+            {"inline_keyboard": [[{"text": "Επιβεβαίωση με PIN", "callback_data": f"assistant_confirm:{task_id}"}]]}
             if status == "draft" else None
         )
         _reply_chat(chat_id, answer, context={

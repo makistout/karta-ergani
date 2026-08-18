@@ -83,7 +83,13 @@
 - Κοινά partials: `_landing_public_nav.html`, `_landing_public_footer.html`· base άρθρου `landing-article.html`.
 - Το public περιεχόμενο δεν προβάλλει audit/καταγραφές ως feature και αποφεύγει αναφορές
   σε ιστορικό κινήσεων εργαζομένων.
-- Ο τιμοκατάλογος οργανώνεται σε εύρη εργαζομένων **2-5**, **6-15**, **16-30**, **30+**.
+- Ο τιμοκατάλογος οργανώνεται πλέον ως interactive selector με εύρη εργαζομένων
+  **1-2**, **3-5**, **6-20**, **21-50**, **51-100**, **101-200**.
+- Υπάρχουν δύο ξεχωριστά pricing cards:
+  - βασικό **erganiOS** με περιεχόμενο **Απολογιστικό + Ωρομέτρηση**
+  - προαιρετικό **AI Agent** με AI icon και μήνυμα **Κατόπιν συνεννόησης**
+- Το AI Agent περιγράφεται ως πρόσθετη δυνατότητα για αυτοματοποιημένες διαδικασίες
+  της ημερήσιας λειτουργίας της επιχείρησης και της διαχείρισης καρτών.
 - Η φόρμα επικοινωνίας υποβάλλει στο `/api/contact` (`app/routes_contact.py`), κάνει validation
   και honeypot, και στέλνει email μέσω **SMTP Mailgun** (`app/email_notify.py`, `SMTP_*` στο `.env`).
 - **Παραλήπτης:** `info@erganios.gr` (`CONTACT_TO_EMAIL`). **Αποστολέας:** `SMTP_FROM_EMAIL` /
@@ -100,6 +106,8 @@
   - conversion event **`AW-11221001888/Ac5bCMOorKwYEKDNy-Yp`** μόνο σε επιτυχημένη
     υποβολή της landing contact form και σε click σε `tel:` link
   - δεν υπάρχει thank-you page· η μέτρηση γίνεται client-side γιατί η φόρμα είναι AJAX (`landing-contact.js`)
+- Στο Telegram assistant, το inline confirm button εμφανίζεται ως
+  **`Επιβεβαίωση με PIN`** για να είναι σαφής η απαίτηση επιβεβαίωσης με προσωπικό PIN.
 - Τα μικρά uppercase labels του landing γράφονται άτονα στο template, ώστε να αποδίδονται
   καθαρά όταν εφαρμόζεται `text-transform: uppercase`.
 
