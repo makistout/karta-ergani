@@ -46,7 +46,9 @@ def message():
     if not store:
         return jsonify({"error": "Δεν βρέθηκε κατάστημα"}), 404
     store["ai_agent_enabled"] = bool(get_action_settings(store_id).get("ai_agent_enabled"))
-    from app.repo_telegram_assistant import create_ui_inbound_message, mark_inbound, record_ui_outbound_message
+    from app.repo_telegram_assistant import (
+        create_ui_inbound_message, latest_chat_context, mark_inbound, record_ui_outbound_message,
+    )
     if not store["ai_agent_enabled"]:
         answer = ai_agent_disabled_message()
         inbound_id = create_ui_inbound_message(
@@ -68,14 +70,21 @@ def message():
         raw_payload={"source": "ui", "path": request.path},
     )
     try:
+        reply_ctx = latest_chat_context(f"ui:{_user()}:{store_id}") or {}
         result = process_assistant_command(
             text=text, contexts=[_context(store)], inbound_id=inbound_id,
             store_id=store_id, confirmation_mode="ui",
+            reply_context=dict(reply_ctx),
         )
         record_ui_outbound_message(
             office_user=_user(), store_id=store_id, text=result["answer"],
-            context={"notification_type": "assistant_reply", "notification_reference_id": str(result["task_id"]),
-                     "employee_afm": result["parsed"].get("employee_afm")},
+            context={
+                "notification_type": "assistant_reply",
+                "notification_reference_id": str(result["task_id"]),
+                "store_id": result["parsed"].get("store_id") or store_id,
+                "employee_afm": result["parsed"].get("employee_afm"),
+                "employee_afms": result["parsed"].get("employee_afms") or [],
+            },
         )
         record_audit_event(action="assistant.message", success=True, entity_type="assistant_task",
                            entity_id=str(result["task_id"]), details={"channel": "ui", "store_id": store_id})

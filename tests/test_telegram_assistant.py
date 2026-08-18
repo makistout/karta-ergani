@@ -15,6 +15,119 @@ def _app():
     return app
 
 
+def test_follow_up_inherits_store_employee_and_parses_dotted_time():
+    parsed = {
+        "intent": "unknown",
+        "store_id": None,
+        "employee_afms": [],
+        "clarification_question": "Παρακαλώ διευκρινίστε ποιοι εργαζόμενοι πρέπει να κλείσουν κάρτα στις 17:00.",
+    }
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[
+                {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "123456789", "branch_aa": "0"},
+                {"store_id": 9, "store_name": "VILLA SHARM", "employer_afm": "987654321", "branch_aa": "0"},
+            ],
+            employees=[{"store_id": 4, "afm": "136967547", "name": "HOXHA DASHURI"}],
+            reply_context={
+                "store_id": 4,
+                "employee_afm": "136967547",
+                "message_text": "Τι ενέργεια θα θέλατε να κάνετε για τον εργαζόμενο HOXHA DASHURI;",
+            },
+            user_text="Κλείσε κάρτα στις 17.00",
+        )
+    assert status == "draft"
+    assert parsed["intent"] == "card_check_out_retro"
+    assert parsed["store_id"] == 4
+    assert parsed["employee_afms"] == ["136967547"]
+    assert parsed["time"] == "17:00"
+    assert "HOXHA DASHURI" in proposed
+
+
+def test_reply_to_notification_inherits_store_and_afm_from_message_text():
+    parsed = {
+        "intent": "unknown",
+        "store_id": None,
+        "employee_afms": [],
+    }
+    notify = (
+        "erganiOS — Training Room Ίλιον\n"
+        "Υπάρχει πρόβλημα με τον εργαζόμενο HOXHA DASHURI (ΑΦΜ 136967547) την 18/08/2026."
+    )
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[
+                {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "123456789", "branch_aa": "0"},
+                {"store_id": 9, "store_name": "VILLA SHARM", "employer_afm": "987654321", "branch_aa": "0"},
+            ],
+            employees=[{"store_id": 4, "afm": "136967547", "name": "HOXHA DASHURI"}],
+            reply_context={"message_text": notify},
+            user_text="Κλειστόν",
+        )
+    assert status == "draft"
+    assert parsed["intent"] == "card_check_out_now"
+    assert parsed["store_id"] == 4
+    assert parsed["employee_afms"] == ["136967547"]
+    assert "HOXHA DASHURI" in proposed
+
+
+def test_sticky_focus_keeps_store_and_names_until_user_changes_them():
+    parsed = {
+        "intent": "card_check_out_now",
+        "store_id": 9,
+        "employee_afms": ["999999999"],
+        "date": "2026-08-18",
+    }
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, _, _ = validate_and_describe(
+            parsed,
+            contexts=[
+                {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "123456789", "branch_aa": "0"},
+                {"store_id": 9, "store_name": "VILLA SHARM", "employer_afm": "987654321", "branch_aa": "0"},
+            ],
+            employees=[
+                {"store_id": 4, "afm": "136967547", "name": "HOXHA DASHURI"},
+                {"store_id": 9, "afm": "111222333", "name": "ΜΑΣΟΥΡΑ ΕΛΕΝΗ"},
+            ],
+            reply_context={
+                "focus_locked": True,
+                "store_id": 4,
+                "employee_afms": ["136967547"],
+                "message_text": "erganiOS — Training Room Ίλιον\nHOXHA DASHURI (ΑΦΜ 136967547)",
+            },
+            user_text="κλείσε τώρα",
+        )
+    assert status == "draft"
+    assert parsed["store_id"] == 4
+    assert parsed["employee_afms"] == ["136967547"]
+
+
+def test_sticky_focus_switches_when_user_names_someone_else():
+    parsed = {
+        "intent": "card_check_out_now",
+        "store_id": 4,
+        "employee_afms": ["136967547"],
+        "date": "2026-08-18",
+    }
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, _, _ = validate_and_describe(
+            parsed,
+            contexts=[
+                {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "123456789", "branch_aa": "0"},
+            ],
+            employees=[
+                {"store_id": 4, "afm": "136967547", "name": "HOXHA DASHURI"},
+                {"store_id": 4, "afm": "111222333", "name": "ΜΑΣΟΥΡΑ ΕΛΕΝΗ"},
+            ],
+            reply_context={"store_id": 4, "employee_afm": "136967547"},
+            user_text="κλείσε την κάρτα της Μασούρα",
+        )
+    assert status == "draft"
+    assert parsed["employee_afms"] == ["111222333"]
+
+
 def test_checkout_validation_skips_already_closed_cards():
     parsed = {
         "intent": "card_check_out_now",
@@ -106,6 +219,7 @@ def test_mixed_store_chat_only_exposes_ai_enabled_store_to_parser():
     with patch("app.repo_telegram_assistant.authorized_contexts", return_value=contexts), \
          patch("app.repo_telegram_assistant.create_inbound_message", return_value=(36, True)), \
          patch("app.repo_telegram_assistant.reply_context", return_value=None), \
+         patch("app.repo_telegram_assistant.latest_chat_context", return_value=None), \
          patch("app.repo_telegram_assistant.create_task", return_value=46), \
          patch("app.repo_telegram_assistant.mark_inbound"), \
          patch("app.telegram_assistant_service.parse_command", side_effect=RuntimeError("stop")) as parse, \
@@ -139,6 +253,7 @@ def test_authorized_message_creates_dry_run_task_only():
          patch("app.repo_telegram_assistant.conversation_task") as conversation_task, \
          patch("app.repo_telegram_assistant.create_inbound_message", return_value=(31, True)), \
          patch("app.repo_telegram_assistant.reply_context", return_value=None), \
+         patch("app.repo_telegram_assistant.latest_chat_context", return_value=None), \
          patch("app.repo_telegram_assistant.create_task", return_value=41) as create_task, \
          patch("app.repo_telegram_assistant.mark_inbound") as mark, \
          patch("app.telegram_assistant_service.parse_command", return_value=(parsed, employees, llm_metadata)), \
@@ -212,6 +327,7 @@ def test_gemini_failure_is_recorded_without_creating_task():
     with patch("app.repo_telegram_assistant.authorized_contexts", return_value=contexts), \
          patch("app.repo_telegram_assistant.create_inbound_message", return_value=(32, True)), \
          patch("app.repo_telegram_assistant.reply_context", return_value=None), \
+         patch("app.repo_telegram_assistant.latest_chat_context", return_value=None), \
          patch("app.repo_telegram_assistant.create_task") as create_task, \
          patch("app.repo_telegram_assistant.mark_inbound") as mark, \
          patch("app.telegram_assistant_service.parse_command", side_effect=RuntimeError("Gemini unavailable")), \

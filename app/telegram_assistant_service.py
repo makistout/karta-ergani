@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import unicodedata
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -160,13 +161,21 @@ def parse_command(
             "Για άνοιγμα ή κλείσιμο κάρτας 'βάσει ωραρίου/προγράμματος' χρησιμοποίησε αντίστοιχα card_check_in_schedule ή card_check_out_schedule. Μην επινοήσεις ώρα.",
             "Για αλλαγή ωραρίου δώσε hour_from και hour_to.",
             "Για ρεπό χρησιμοποίησε rest_day. Για άδεια χρησιμοποίησε leave.",
+            "Το conversation_focus είναι το τρέχον κατάστημα και τα τρέχοντα ονόματα της συνομιλίας. Διατήρησέ τα μέχρι ο χρήστης να ζητήσει ρητά άλλο κατάστημα ή άλλα ονόματα.",
+            "Αν το μήνυμα είναι απάντηση (reply) σε ειδοποίηση/εντολή με κατάστημα και όνομα, και τα δύο είναι δεδομένα. Μην τα ξαναρωτήσεις.",
+            "Αν το reply_context έχει store_id, employee_afm, employee_afms ή message_text από προηγούμενη εντολή/ειδοποίηση, κληρονόμησέ τα. Μην τα αγνοήσεις επειδή το νέο μήνυμα είναι σύντομο.",
+            "«Κλειστόν», «κλείσε», «κλείσε την/την κάρτα» χωρίς άλλο όνομα = κλείσιμο κάρτας των εργαζομένων στο conversation_focus.",
+            "Ώρες τύπου 17.00 ή 17,00 είναι 17:00.",
             "Αν κάτι είναι ασαφές επέστρεψε unknown και σύντομη clarification_question στα ελληνικά.",
-            "Μην επινοήσεις εργαζόμενο, ΑΦΜ, κατάστημα, ημερομηνία ή ώρα.",
+            "Μην επινοήσεις εργαζόμενο, ΑΦΜ, κατάστημα, ημερομηνία ή ώρα εκτός conversation_focus/reply_context.",
         ],
         "now": now.isoformat(timespec="minutes"),
         "today_home": today_home,
         "message": str(text)[:4096],
         "reply_context": reply_context or {},
+        "conversation_focus": _conversation_focus(
+            reply_context, contexts=contexts, employees=employees,
+        ),
         "allowed_stores": stores,
         "allowed_employees": employees,
     }
@@ -227,9 +236,184 @@ def parse_command(
     return _extract_json(response_data), employees, llm_metadata
 
 
+def _nested_context(reply_context: dict[str, Any] | None) -> dict[str, Any]:
+    raw = dict(reply_context or {})
+    nested = raw.get("context")
+    if isinstance(nested, dict):
+        merged = dict(nested)
+        merged.update({key: value for key, value in raw.items() if key != "context" and value not in (None, "", [])})
+        return merged
+    return raw
+
+
+def _normalize_clock_time(value: str) -> str:
+    text = str(value or "").strip().replace(",", ":").replace(".", ":")
+    if re.fullmatch(r"[0-9]:[0-5]\d", text):
+        text = f"0{text}"
+    return text if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", text) else str(value or "").strip()
+
+
+def _clock_from_text(text: str) -> str:
+    match = re.search(r"(?:[01]?\d|2[0-3])[.:][0-5]\d", str(text or ""))
+    return _normalize_clock_time(match.group(0).replace(".", ":").replace(",", ":")) if match else ""
+
+
+_GROUP_FOCUS_HINTS = (
+    "όσους", "οσους", "όλοι", "ολοι", "όλες", "ολες",
+    "τελειώνουν", "ξεκινάνε", "ξεκινανε", "ανοιχτή κάρτα", "ανοιχτη καρτα",
+)
+
+
+def _fold_text(value: str) -> str:
+    text = unicodedata.normalize("NFD", str(value or "").casefold())
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+
+
+def _mentioned_store_ids(text: str, contexts: list[dict[str, Any]]) -> list[int]:
+    folded = _fold_text(text)
+    hits: list[int] = []
+    for row in contexts:
+        name = str(row.get("store_name") or "").strip()
+        if name and _fold_text(name) in folded:
+            hits.append(int(row["store_id"]))
+    return list(dict.fromkeys(hits))
+
+
+def _mentioned_afms(
+    text: str, employees: list[dict[str, Any]], store_id: int | None,
+) -> list[str]:
+    raw = str(text or "")
+    folded = _fold_text(raw)
+    hits: list[str] = []
+    for emp in employees:
+        if store_id is not None and emp.get("store_id") != store_id:
+            continue
+        afm = str(emp.get("afm") or "").strip()
+        name = str(emp.get("name") or "").strip()
+        if afm and afm in raw:
+            hits.append(afm)
+            continue
+        if name and len(name) >= 4 and _fold_text(name) in folded:
+            hits.append(afm)
+            continue
+        last = name.split()[0] if name else ""
+        if last and len(last) >= 4 and _fold_text(last) in folded:
+            hits.append(afm)
+    return list(dict.fromkeys(value for value in hits if value))
+
+
+def _afms_from_text(text: str, employees: list[dict[str, Any]], store_id: int | None) -> list[str]:
+    found = [match.group(1) for match in re.finditer(r"ΑΦΜ[:\s]*([0-9]{9})", str(text or ""), flags=re.I)]
+    if found:
+        return list(dict.fromkeys(found))
+    return _mentioned_afms(text, employees, store_id)
+
+
+def _conversation_focus(
+    reply_context: dict[str, Any] | None,
+    *,
+    contexts: list[dict[str, Any]],
+    employees: list[dict[str, Any]],
+) -> dict[str, Any]:
+    ctx = _nested_context(reply_context)
+    allowed = {int(row["store_id"]): row for row in contexts}
+    try:
+        store_id = int(ctx["store_id"]) if ctx.get("store_id") is not None else None
+    except (TypeError, ValueError):
+        store_id = None
+    message_text = str(ctx.get("message_text") or "")
+    if store_id not in allowed:
+        named = _mentioned_store_ids(message_text, contexts)
+        store_id = named[0] if len(named) == 1 else None
+    inherited = ctx.get("employee_afms") if isinstance(ctx.get("employee_afms"), list) else []
+    afms = [str(value).strip() for value in inherited if str(value or "").strip()]
+    if ctx.get("employee_afm"):
+        afms = [str(ctx.get("employee_afm")).strip(), *afms]
+    if not afms:
+        afms = _afms_from_text(message_text, employees, store_id)
+    afms = list(dict.fromkeys(value for value in afms if value))
+    names = [
+        str(emp.get("name") or "").strip()
+        for afm in afms
+        for emp in employees
+        if emp.get("afm") == afm and (store_id is None or emp.get("store_id") == store_id)
+    ]
+    store_name = str((allowed.get(store_id) or {}).get("store_name") or "").strip() if store_id else ""
+    return {
+        "locked": bool(ctx.get("focus_locked")),
+        "store_id": store_id,
+        "store_name": store_name or None,
+        "employee_afms": afms,
+        "employee_names": [name for name in names if name],
+        "source": "reply" if ctx.get("focus_locked") else "previous",
+    }
+
+
+def _inherit_conversation_context(
+    parsed: dict[str, Any],
+    *,
+    contexts: list[dict[str, Any]],
+    employees: list[dict[str, Any]],
+    reply_context: dict[str, Any] | None,
+    user_text: str,
+) -> None:
+    focus = _conversation_focus(reply_context, contexts=contexts, employees=employees)
+    allowed_store_ids = {int(row["store_id"]) for row in contexts}
+    mentioned_stores = _mentioned_store_ids(user_text, contexts)
+    store_id = parsed.get("store_id")
+    try:
+        store_id = int(store_id) if store_id is not None else None
+    except (TypeError, ValueError):
+        store_id = None
+    if mentioned_stores:
+        if len(mentioned_stores) == 1:
+            store_id = mentioned_stores[0]
+    elif focus.get("store_id") in allowed_store_ids:
+        store_id = int(focus["store_id"])
+    if store_id in allowed_store_ids:
+        parsed["store_id"] = store_id
+
+    raw_afms = parsed.get("employee_afms")
+    if not isinstance(raw_afms, list):
+        raw_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
+    parsed_afms = [str(value).strip() for value in raw_afms if str(value or "").strip()]
+    mentioned_afms = _mentioned_afms(user_text, employees, store_id if store_id in allowed_store_ids else None)
+    group_query = any(hint in str(user_text or "").casefold() for hint in _GROUP_FOCUS_HINTS)
+    if mentioned_afms:
+        afms = mentioned_afms
+    elif not group_query and focus.get("employee_afms"):
+        afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]
+    else:
+        afms = parsed_afms
+    if afms:
+        parsed["employee_afms"] = list(dict.fromkeys(afms))
+        parsed["employee_afm"] = parsed["employee_afms"][0] if len(parsed["employee_afms"]) == 1 else None
+
+    time_value = _normalize_clock_time(str(parsed.get("time") or ""))
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
+        time_value = _clock_from_text(user_text)
+    if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
+        parsed["time"] = time_value
+
+    intent = str(parsed.get("intent") or "unknown")
+    folded = str(user_text or "").casefold()
+    if intent == "unknown" and (parsed.get("employee_afms") or parsed.get("employee_afm")):
+        if any(token in folded for token in ("κλειστ", "κλείσε", "close", "checkout", "έξοδ")):
+            parsed["intent"] = "card_check_out_retro" if parsed.get("time") else "card_check_out_now"
+        elif any(token in folded for token in ("άνοιξε", "ανοιξε", "open", "checkin", "είσοδ", "εισοδ")):
+            parsed["intent"] = "card_check_in_retro" if parsed.get("time") else "card_check_in_now"
+    if str(parsed.get("intent") or "unknown") not in {"unknown", "today_info"} and not str(parsed.get("date") or "").strip():
+        parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
+
+
 def _validate_single_command(
     parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
+    reply_context: dict[str, Any] | None = None, user_text: str = "",
 ) -> tuple[str, dict[str, Any], str]:
+    _inherit_conversation_context(
+        parsed, contexts=contexts, employees=employees,
+        reply_context=reply_context, user_text=user_text,
+    )
     errors: list[str] = []
     intent = str(parsed.get("intent") or "unknown")
     if intent not in ALLOWED_INTENTS:
@@ -412,10 +596,14 @@ def _validate_single_command(
 
 def validate_and_describe(
     parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
+    reply_context: dict[str, Any] | None = None, user_text: str = "",
 ) -> tuple[str, dict[str, Any], str]:
     commands = parsed.get("commands")
     if not isinstance(commands, list):
-        return _validate_single_command(parsed, contexts=contexts, employees=employees)
+        return _validate_single_command(
+            parsed, contexts=contexts, employees=employees,
+            reply_context=reply_context, user_text=user_text,
+        )
 
     normalized = [command for command in commands if isinstance(command, dict)]
     if not normalized:
@@ -429,6 +617,7 @@ def validate_and_describe(
     for index, command in enumerate(normalized, start=1):
         status, validation, proposed = _validate_single_command(
             command, contexts=contexts, employees=employees,
+            reply_context=reply_context, user_text=user_text,
         )
         proposed_lines.extend(line for line in proposed.splitlines() if line.strip())
         statuses.append(status)

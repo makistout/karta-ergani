@@ -18,6 +18,7 @@ def process_assistant_command(
     )
     status, validation, proposed = validate_and_describe(
         parsed, contexts=contexts, employees=employees,
+        reply_context=dict(reply_context or {}), user_text=text,
     )
     store_ids = {int(row["store_id"]) for row in contexts}
     selected_store = parsed.get("store_id")

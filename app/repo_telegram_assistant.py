@@ -191,6 +191,35 @@ def mark_inbound(inbound_id: int, status: str, error: str | None = None) -> None
         )
 
 
+def latest_chat_context(chat_id: str) -> dict[str, Any] | None:
+    """Most recent outbound with store/employee focus for this chat."""
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (20) recipient_id, store_id, employee_afm, notification_type,
+                   notification_reference_id, context_json, message_text
+            FROM dbo.karta_telegram_outbound_message
+            WHERE chat_id=?
+            ORDER BY sent_at DESC, id DESC
+            """,
+            (str(chat_id),),
+        )
+        rows = rows_to_dicts(cur)
+    for row in rows:
+        try:
+            nested = json.loads(row.get("context_json") or "{}")
+        except (TypeError, ValueError):
+            nested = {}
+        if not isinstance(nested, dict):
+            nested = {}
+        row["context"] = nested
+        has_names = bool(row.get("employee_afm") or nested.get("employee_afm") or nested.get("employee_afms"))
+        has_store = row.get("store_id") is not None or nested.get("store_id") is not None
+        if has_store or has_names or "ΑΦΜ" in str(row.get("message_text") or ""):
+            return row
+    return rows[0] if rows else None
+
+
 def reply_context(chat_id: str, message_id: int | None) -> dict[str, Any] | None:
     if message_id is None:
         return None
@@ -198,7 +227,7 @@ def reply_context(chat_id: str, message_id: int | None) -> dict[str, Any] | None
         cur.execute(
             """
             SELECT TOP (1) recipient_id, store_id, employee_afm, notification_type,
-                   notification_reference_id, context_json
+                   notification_reference_id, context_json, message_text
             FROM dbo.karta_telegram_outbound_message
             WHERE chat_id=? AND telegram_message_id=?
             """,

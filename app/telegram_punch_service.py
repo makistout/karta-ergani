@@ -453,7 +453,12 @@ def send_missing_punch_notifications(
             has_pin=bool((rec.get("notify_pin_hash") or "").strip()),
         )
         try:
-            send_telegram_message(chat_id, text)
+            send_telegram_message(chat_id, text, context={
+                "recipient_id": rec.get("id"),
+                "store_id": store_id,
+                "employee_afm": employee_afm,
+                "notification_type": "missing_punch",
+            })
             sent += 1
         except TelegramNotConfigured:
             errors.append(f"Telegram {rec.get('name')}: λείπει TELEGRAM_BOT_TOKEN")

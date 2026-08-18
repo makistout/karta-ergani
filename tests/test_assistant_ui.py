@@ -50,6 +50,7 @@ def test_ui_message_uses_shared_conversation_service():
          patch("app.routes_assistant.get_store_config", return_value=store), \
          patch("app.routes_assistant.get_action_settings", return_value={"ai_agent_enabled": True}), \
          patch("app.repo_telegram_assistant.create_ui_inbound_message", return_value=31), \
+         patch("app.repo_telegram_assistant.latest_chat_context", return_value=None), \
          patch("app.assistant_conversation_service.process_assistant_command", return_value=result) as process, \
          patch("app.repo_telegram_assistant.record_ui_outbound_message") as outbound, \
          patch("app.routes_assistant.record_audit_event"):
@@ -83,6 +84,7 @@ def test_ui_ai_configuration_failure_is_persisted_as_chat_reply():
          patch("app.routes_assistant.get_store_config", return_value=store), \
          patch("app.routes_assistant.get_action_settings", return_value={"ai_agent_enabled": True}), \
          patch("app.repo_telegram_assistant.create_ui_inbound_message", return_value=31), \
+         patch("app.repo_telegram_assistant.latest_chat_context", return_value=None), \
          patch("app.assistant_conversation_service.process_assistant_command", side_effect=RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY")), \
          patch("app.repo_telegram_assistant.mark_inbound") as mark, \
          patch("app.repo_telegram_assistant.record_ui_outbound_message") as outbound, \

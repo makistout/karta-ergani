@@ -346,7 +346,12 @@ def send_wto_schedule_notifications(
             notify_grace_minutes=grace,
         )
         try:
-            send_telegram_message(chat_id, text)
+            send_telegram_message(chat_id, text, context={
+                "recipient_id": rec.get("id"),
+                "store_id": store_id,
+                "employee_afm": employee_afm,
+                "notification_type": "today_alert",
+            })
             sent += 1
         except Exception as ex:
             errors.append(f"{rec.get('name')}: {ex}")
@@ -697,7 +702,12 @@ def send_today_punch_notifications(
                 recipient_name=rec.get("name"),
                 notification_channel="telegram",
             )
-            send_telegram_message(chat_id, text)
+            send_telegram_message(chat_id, text, context={
+                "recipient_id": rec.get("id"),
+                "store_id": store_id,
+                "employee_afm": employee_afm,
+                "notification_type": "today_alert",
+            })
             sent += 1
             log_notification(
                 level="info",

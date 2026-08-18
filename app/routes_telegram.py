@@ -158,6 +158,7 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         conversation_task,
         create_inbound_message,
         create_task,
+        latest_chat_context,
         mark_inbound,
         reply_context,
         verify_and_confirm_task_pin,
@@ -251,6 +252,10 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
 
     try:
         reply_ctx = reply_context(chat_id, int(reply_message_id)) if reply_message_id is not None else None
+        if reply_ctx:
+            reply_ctx["focus_locked"] = True
+        else:
+            reply_ctx = latest_chat_context(chat_id)
         reply_ctx = dict(reply_ctx or {})
         replied_text = str(reply_message.get("text") or reply_message.get("caption") or "").strip()
         if replied_text:

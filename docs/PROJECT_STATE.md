@@ -213,6 +213,8 @@
   - **`today_home`** — snapshot Αρχικής **μόνο για σήμερα** (ονόματα, ψηφ. ωράριο,
     χτυπήματα κάρτας, status) από `build_card_status_report()` /
     `app/assistant_home_context.py` (ομαδικές εντολές και ερωτήσεις `today_info`).
+  - **`conversation_focus`** — τρέχον κατάστημα και ονόματα της συνομιλίας·
+    διατηρούνται μέχρι ρητή αλλαγή. Reply σε ειδοποίηση/εντολή κλειδώνει και τα δύο.
   - greeklish διαβάζεται ως ελληνικά με φωνητική αντιστοίχιση ονομάτων.
 - **Validation / εκτέλεση κάρτας**: ίδιοι κανόνες με Αρχική / `work_card_guards.py`
   (`new_card_punch_blocked_reason`):
