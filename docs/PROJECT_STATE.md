@@ -72,8 +72,10 @@
 - Το canonical public URL είναι **`https://erganios.gr/`**. Το `/psifiaki-karta-ergasias/` κάνει **301 redirect** εκεί. Το `/ui/landing` κάνει επίσης 301 στο `/`.
 - Η σελίδα είναι διαθέσιμη χωρίς office login και παρουσιάζει τις βασικές ροές ωραρίου, WTODaily,
   WTOWeek, ειδοποιήσεις και αποκλίσεις.
-- SEO title: «Εφαρμογή Ψηφιακής Κάρτας Εργασίας | erganiOS». H1: «Η Ψηφιακή Κάρτα Εργασίας σε τάξη, κάθε μέρα».
+- SEO title: «Εφαρμογή Ψηφιακής Κάρτας Εργασίας | erganiOS». Το hero πλέον προβάλλει μήνυμα
+  **AI / απολογιστικό με 3 κλικ** με emphasis σε ομαδοποίηση ζητημάτων και προτάσεις λύσεων.
 - Public nav: κουμπί **Login** → `/ui/login`.
+- Στο public nav υπάρχει και εμφανές τηλέφωνο επικοινωνίας **`6977392742`**.
 - Το `office-boot.js` / `office-auth.js` δεν φορτώνουν office chrome ούτε κάνουν login redirect στο `/` και στα SEO slugs.
 - Προστέθηκαν **5 SEO υποσελίδες** (informational guides) μέσω `app/landing_seo.py`:
   `/psifiaki-karta-logistika-grafeia/`, `/ti-einai-i-psifiaki-karta-ergasias/`,
@@ -90,7 +92,14 @@
   στοιχεία εργοδότη/καταστήματος και φόντο πίσω από modal όπου εμφανίζονται προσωπικά
   ή αναγνωριστικά στοιχεία.
 - Τα public screenshot filenames είναι ουδέτερα, χωρίς όνομα πραγματικού καταστήματος.
+- Το slideshow ξεκινά πλέον με δύο screenshots απολογιστικού
+  (**Απολογιστικό ελέγχου**, **Μεταβολές εβδομάδας**) πριν από τις υπόλοιπες οθόνες.
 - SEO: canonical, meta tags, Open Graph, JSON-LD. Logo `erganios-logo.png` με διαφανές φόντο.
+- Google Ads tracking:
+  - sitewide **Google tag `AW-11221001888`** στο κοινό `ui/base.html`
+  - conversion event **`AW-11221001888/Ac5bCMOorKwYEKDNy-Yp`** μόνο σε επιτυχημένη
+    υποβολή της landing contact form και σε click σε `tel:` link
+  - δεν υπάρχει thank-you page· η μέτρηση γίνεται client-side γιατί η φόρμα είναι AJAX (`landing-contact.js`)
 - Τα μικρά uppercase labels του landing γράφονται άτονα στο template, ώστε να αποδίδονται
   καθαρά όταν εφαρμόζεται `text-transform: uppercase`.
 

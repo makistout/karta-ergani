@@ -1,5 +1,15 @@
 (function () {
   const form = document.getElementById("landingContactForm");
+  const phoneLinks = document.querySelectorAll('a[href^="tel:"]');
+  phoneLinks.forEach((link) => {
+    link.addEventListener("click", () => {
+      if (typeof window.gtag === "function") {
+        window.gtag("event", "conversion", {
+          send_to: "AW-11221001888/Ac5bCMOorKwYEKDNy-Yp",
+        });
+      }
+    });
+  });
   if (!form) return;
 
   const submitBtn = document.getElementById("landingContactSubmit");
@@ -45,6 +55,11 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) {
         throw new Error(data.error || "Δεν ήταν δυνατή η αποστολή.");
+      }
+      if (typeof window.gtag === "function") {
+        window.gtag("event", "conversion", {
+          send_to: "AW-11221001888/Ac5bCMOorKwYEKDNy-Yp",
+        });
       }
       Office.showMsg(msgId, data.message || "Το μήνυμα στάλθηκε.", true);
       form.reset();
