@@ -659,12 +659,23 @@ Object.assign(window.Office, {
   formatWorkLogTimeCell(value, title = "Λείπει ώρα", cardMeta = null) {
     const txt = String(value || "").trim();
     const proto = String(cardMeta?.protocol || "").trim();
-    const protoHtml = proto
-      ? `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
-      : "";
+    const cardTime = String(cardMeta?.time || "").trim();
+    let protoHtml = "";
+    if (proto && !(cardMeta?.superseded_by_portal && cardTime && cardTime !== txt)) {
+      protoHtml = `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`;
+    } else if (cardMeta?.superseded_by_portal && cardTime && cardTime !== txt) {
+      const cardLabel = proto
+        ? `κάρτα ${cardTime} (${proto})`
+        : `κάρτα ${cardTime}`;
+      protoHtml =
+        `<br><span class="work-log-protocol work-log-protocol--superseded" ` +
+        `title="Δήλωση κάρτας erganiOS — η πραγματική από portal είναι αργότερη">` +
+        `${this.escapeHtml(cardLabel)}</span>`;
+    }
     if (txt) {
       const corrected =
         cardMeta &&
+        !cardMeta.superseded_by_portal &&
         ((Array.isArray(cardMeta.previous_events) && cardMeta.previous_events.length > 0) ||
           String(cardMeta.corrected_previous_time || "").trim()) &&
         String(cardMeta.time || "").trim() === txt;

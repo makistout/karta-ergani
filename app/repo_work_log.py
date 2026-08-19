@@ -285,6 +285,74 @@ def _card_entry_is_correction(entry: dict[str, Any] | None) -> bool:
     return isinstance(prev, list) and len(prev) > 0
 
 
+def _clock_minutes_hm(raw: str | None) -> int | None:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    parts = s.replace(".", ":").split(":")
+    try:
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+    except (ValueError, TypeError):
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _merge_portal_and_card_punch_time(
+    *,
+    portal_time: str,
+    card_entry: dict[str, Any],
+    punch_kind: str,
+) -> tuple[str, dict[str, Any], str | None]:
+    """
+    Συγχώνευση πραγματικής (portal) με δήλωση κάρτας.
+
+    «διορθ.» μόνο όταν η κάρτα αντικαθιστά παλαιότερη τιμή (άλλη κάρτα ή
+    πραγματική με νωρίτερη έξοδο / αργότερη είσοδο). Αν η πραγματική ήρθε
+    αργότερα (π.χ. τερματικό μετά από retro κάρτα), κρατάμε την πραγματική.
+    """
+    card_time = str(card_entry.get("time") or "").strip()
+    portal = str(portal_time or "").strip()
+    if not card_time:
+        return portal, card_entry, None
+    if not portal:
+        return card_time, card_entry, "card_event"
+    if card_time == portal:
+        return portal, card_entry, None
+
+    if _card_entry_is_correction(card_entry):
+        return card_time, card_entry, "card_event_correction"
+
+    pm = _clock_minutes_hm(portal)
+    cm = _clock_minutes_hm(card_time)
+    if pm is None or cm is None:
+        if punch_kind == "out":
+            return portal, {**card_entry, "superseded_by_portal": True}, None
+        return card_time, card_entry, "card_event"
+
+    if punch_kind == "out":
+        if cm > pm:
+            meta = {
+                **card_entry,
+                "corrected_previous_time": portal,
+                "previous_events": list(card_entry.get("previous_events") or []),
+            }
+            return card_time, meta, "card_event_correction"
+        return portal, {**card_entry, "superseded_by_portal": True}, None
+
+    # Είσοδος: η κάρτα «διορθώνει» μόνο όταν δηλώνει αργότερη είσοδο.
+    if cm > pm:
+        meta = {
+            **card_entry,
+            "corrected_previous_time": portal,
+            "previous_events": list(card_entry.get("previous_events") or []),
+        }
+        return card_time, meta, "card_event_correction"
+    return card_time, card_entry, "card_event"
+
+
 def _card_types_by_employee_work_date(
     employer_afm: str,
     branch_aa: str,
@@ -407,37 +475,27 @@ def enrich_work_log_rows_with_card_punch(
         check_in = detail.get("check_in") or {}
         check_out = detail.get("check_out") or {}
         if check_in:
+            display_from, check_in, src = _merge_portal_and_card_punch_time(
+                portal_time=str(row.get("hour_from") or "").strip(),
+                card_entry=check_in,
+                punch_kind="in",
+            )
             row["card_db_in"] = check_in
-            existing_from = str(row.get("hour_from") or "").strip()
-            card_from = str(check_in.get("time") or "").strip()
-            if card_from and existing_from and existing_from != card_from:
-                check_in = {
-                    **check_in,
-                    "corrected_previous_time": existing_from,
-                    "previous_events": list(check_in.get("previous_events") or []),
-                }
-                row["card_db_in"] = check_in
-                row["hour_from"] = card_from
-                row["hour_from_source"] = "card_event_correction"
-            elif _card_entry_is_correction(check_in):
-                row["hour_from"] = check_in.get("time") or row.get("hour_from") or ""
-                row["hour_from_source"] = "card_event_correction"
+            if display_from:
+                row["hour_from"] = display_from
+            if src:
+                row["hour_from_source"] = src
         if check_out:
+            display_to, check_out, src = _merge_portal_and_card_punch_time(
+                portal_time=str(row.get("hour_to") or "").strip(),
+                card_entry=check_out,
+                punch_kind="out",
+            )
             row["card_db_out"] = check_out
-            existing_to = str(row.get("hour_to") or "").strip()
-            card_to = str(check_out.get("time") or "").strip()
-            if card_to and existing_to and existing_to != card_to:
-                check_out = {
-                    **check_out,
-                    "corrected_previous_time": existing_to,
-                    "previous_events": list(check_out.get("previous_events") or []),
-                }
-                row["card_db_out"] = check_out
-                row["hour_to"] = card_to
-                row["hour_to_source"] = "card_event_correction"
-            elif _card_entry_is_correction(check_out):
-                row["hour_to"] = check_out.get("time") or row.get("hour_to") or ""
-                row["hour_to_source"] = "card_event_correction"
+            if display_to:
+                row["hour_to"] = display_to
+            if src:
+                row["hour_to_source"] = src
         submitted = card_types.get((afm, wd), set())
         _attach_card_punch_hint(row, slots, submitted_types=submitted)
     return rows
