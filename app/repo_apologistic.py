@@ -547,6 +547,92 @@ def update_proposed(*, store_id: int, week_from: date, employee_afm: str,
     }
 
 
+def update_overtime(*, store_id: int, week_from: date, employee_afm: str,
+                    work_date: date, overtime_from: str | None, overtime_to: str | None,
+                    changed_by: str | None) -> dict[str, Any]:
+    """Override υπερωρίας (from/to) σε αποθηκευμένο ημερήσιο snapshot."""
+    from app.apologistic import _overtime_segments as compute_overtime_segments
+    ot_from = str(overtime_from or "").strip() or None
+    ot_to = str(overtime_to or "").strip() or None
+    if bool(ot_from) != bool(ot_to):
+        raise ValueError("Πρέπει να δοθούν και η αρχή και το τέλος υπερωρίας, ή καμία")
+    if ot_from and not _valid_hhmm(ot_from):
+        raise ValueError(f"Μη έγκυρη ώρα αρχής: {ot_from}")
+    if ot_to and not _valid_hhmm(ot_to):
+        raise ValueError(f"Μη έγκυρη ώρα τέλους: {ot_to}")
+    with cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT d.id, d.override_json, d.effective_json, r.id, r.status, r.effective_report_json
+            FROM dbo.karta_apologistic_day d WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.karta_apologistic_run r ON r.id=d.run_id
+            WHERE r.store_id=? AND r.week_from=? AND d.employee_afm=? AND d.work_date=?
+        """, (int(store_id), week_from, employee_afm, work_date))
+        row = cur.fetchone()
+        if not row:
+            raise LookupError("Δεν βρέθηκε αποθηκευμένο ημερήσιο αποτέλεσμα")
+        if str(row[4]) == "locked":
+            raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
+        day_id, run_id = int(row[0]), int(row[3])
+        override = json.loads(row[1]) if row[1] else {}
+        effective = json.loads(row[2])
+        old_from = effective.get("overtime_from") or ""
+        old_to = effective.get("overtime_to") or ""
+        if (ot_from or "") == old_from and (ot_to or "") == old_to:
+            return {"overtime_from": ot_from, "overtime_to": ot_to, "changed": False,
+                    "overtime_segments": effective.get("overtime_segments", [])}
+        override["overtime_from"] = ot_from
+        override["overtime_to"] = ot_to
+        effective["overtime_from"] = ot_from
+        effective["overtime_to"] = ot_to
+        if ot_from and ot_to:
+            from app.apologistic import _minute_of_day
+            fm = _minute_of_day(ot_from) or 0
+            tm = _minute_of_day(ot_to) or 0
+            ot_minutes = (tm - fm) if tm > fm else (tm + 1440 - fm)
+            effective["overtime_minutes"] = ot_minutes
+            override["overtime_minutes"] = ot_minutes
+            segments = compute_overtime_segments(work_date.strftime("%d/%m/%Y"), fm, tm)
+            effective["overtime_segments"] = segments
+            override["overtime_segments"] = segments
+        else:
+            effective["overtime_minutes"] = 0
+            override["overtime_minutes"] = 0
+            effective["overtime_segments"] = []
+            override["overtime_segments"] = []
+        report = json.loads(row[5])
+        for item in report.get("days") or []:
+            if str(item.get("employee_afm") or "") == employee_afm and str(item.get("work_date") or "") == work_date.strftime("%d/%m/%Y"):
+                item["overtime_from"] = ot_from
+                item["overtime_to"] = ot_to
+                item["overtime_minutes"] = effective["overtime_minutes"]
+                item["overtime_segments"] = effective["overtime_segments"]
+                break
+        cur.execute("""
+            UPDATE dbo.karta_apologistic_day SET override_json=?, effective_json=?,
+                override_reason=N'Χειροκίνητη αλλαγή υπερωρίας', updated_by=?,
+                override_updated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            WHERE id=?
+        """, (_json(override), _json(effective), changed_by, day_id))
+        cur.execute("""
+            INSERT dbo.karta_apologistic_change(day_id, field_name, old_value, new_value, changed_by)
+            VALUES (?, N'overtime', ?, ?, ?)
+        """, (day_id, f"{old_from}–{old_to}" if old_from else "—",
+              f"{ot_from}–{ot_to}" if ot_from else "—", changed_by))
+        cur.execute("UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                    (_json(report), run_id))
+    return {
+        "overtime_from": ot_from, "overtime_to": ot_to,
+        "overtime_minutes": effective["overtime_minutes"],
+        "overtime_segments": effective["overtime_segments"],
+        "changed": True,
+    }
+
+
+def _valid_hhmm(value: str) -> bool:
+    import re
+    return bool(re.match(r"^\d{2}:\d{2}$", value))
+
+
 def accept_review(*, store_id: int, week_from: date, employee_afm: str,
                   work_date: date, changed_by: str | None) -> dict[str, Any]:
     with cursor(commit=True) as cur:

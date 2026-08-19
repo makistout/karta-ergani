@@ -116,6 +116,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       openSubmitModal("schedule", scheduleSubmitButton.dataset.employeeAfm || "", scheduleSubmitButton.dataset.workDate || "");
       return;
     }
+    const overtimeEditButton = event.target.closest(".apologistic-overtime-btn");
+    if (overtimeEditButton) {
+      event.stopPropagation();
+      editOvertime(overtimeEditButton.dataset.employeeAfm || "", overtimeEditButton.dataset.workDate || "");
+      return;
+    }
     const overtimeSubmitButton = event.target.closest(".apologistic-submit-overtime-btn");
     if (overtimeSubmitButton) {
       event.stopPropagation();
@@ -1894,6 +1900,83 @@ async function saveProposalEditor(event) {
   }
 }
 
+let overtimeEditRow = null;
+
+function initOvertimeModal() {
+  const modal = document.getElementById("apologisticOvertimeModal");
+  const form = document.getElementById("apologisticOvertimeForm");
+  if (!modal || !form || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-apologistic-overtime-close]").forEach((el) => el.addEventListener("click", closeOvertimeEditor));
+  modal.querySelectorAll(".input-time-24").forEach((input) => {
+    input.addEventListener("input", () => { input.value = Office.formatHourMinuteInput(input.value || ""); });
+    input.addEventListener("blur", () => {
+      const normalized = Office.normalizeHourMinute(input.value || "");
+      if (normalized) input.value = normalized;
+    });
+  });
+  form.addEventListener("submit", saveOvertimeEditor);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) closeOvertimeEditor();
+  });
+}
+
+function editOvertime(employeeAfm, workDate) {
+  const row = reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate);
+  if (!row) return;
+  initOvertimeModal();
+  overtimeEditRow = row;
+  document.getElementById("apologisticOvertimeModalMeta").textContent = `${row.eponymo || ""} ${row.onoma || ""} · ${row.work_date}`;
+  document.getElementById("apologisticOvertimeFrom").value = row.overtime_from || "";
+  document.getElementById("apologisticOvertimeTo").value = row.overtime_to || "";
+  document.getElementById("apologisticOvertimeError").textContent = "";
+  document.getElementById("apologisticOvertimeModal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("apologisticOvertimeFrom")?.focus(), 0);
+}
+
+function closeOvertimeEditor() {
+  overtimeEditRow = null;
+  document.getElementById("apologisticOvertimeModal")?.classList.add("hidden");
+  const error = document.getElementById("apologisticOvertimeError");
+  if (error) error.textContent = "";
+}
+
+async function saveOvertimeEditor(event) {
+  event.preventDefault();
+  const row = overtimeEditRow;
+  if (!row) return;
+  const errorBox = document.getElementById("apologisticOvertimeError");
+  const otFrom = (document.getElementById("apologisticOvertimeFrom").value || "").trim();
+  const otTo = (document.getElementById("apologisticOvertimeTo").value || "").trim();
+  if ((otFrom && !otTo) || (!otFrom && otTo)) {
+    errorBox.textContent = "Συμπληρώστε και τα δύο πεδία ή αφήστε κενά για αφαίρεση.";
+    return;
+  }
+  if (otFrom === (row.overtime_from || "") && otTo === (row.overtime_to || "")) {
+    closeOvertimeEditor();
+    return;
+  }
+  try {
+    const res = await fetch("/api/apologistic/overtime", {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        week_from: weekFromForRow(row), employee_afm: row.employee_afm,
+        work_date: row.work_date, overtime_from: otFrom || null, overtime_to: otTo || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    row.overtime_from = data.overtime_from || null;
+    row.overtime_to = data.overtime_to || null;
+    row.overtime_minutes = data.overtime_minutes ?? 0;
+    row.overtime_segments = data.overtime_segments || [];
+    closeOvertimeEditor();
+    renderVisibleRows();
+  } catch (error) {
+    errorBox.innerHTML = Office.formatMultilineHtml(error.message || error);
+  }
+}
+
 function findExplanationRow(id) {
   return reportState.rows.find((row) => rowExplanationId(row) === id) || null;
 }
@@ -2164,8 +2247,10 @@ function compactDayState(value) {
 }
 function overtimeCell(row) {
   const segments = row.overtime_segments || [];
-  if (!segments.length) return "—";
-  return segments.map((segment) => `${attr(segment.from)}–${attr(segment.to)}`).join("<br>");
+  const label = segments.length
+    ? segments.map((segment) => `${attr(segment.from)}–${attr(segment.to)}`).join("<br>")
+    : "—";
+  return `<button type="button" class="apologistic-overtime-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή υπερωρίας">${label}</button>`;
 }
 
 async function loadReport() {

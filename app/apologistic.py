@@ -980,13 +980,23 @@ def build_weekly_report(
             and declared_minutes > 0
             and not possible_split_parts
         ):
-            decision = RuleDecision(
-                "change",
-                "Μετά τη μεταφορά της συνέχειας στην προηγούμενη ημέρα, η νέα βάρδια υπολογίστηκε από την πραγματική έναρξη",
-                f"{_hm(ps)}–{_hm(ps + declared_minutes)}",
-                "Πραγματική έναρξη κύριας βάρδιας και δηλωμένη διάρκεια",
-                "POST_CARRY_MAIN_SHIFT",
-            )
+            post_carry_proposed = f"{_hm(ps)}–{_hm(ps + declared_minutes)}"
+            if post_carry_proposed == declared_label:
+                decision = RuleDecision(
+                    "ok",
+                    "Η πραγματική βάρδια συμφωνεί με το δηλωμένο (μετά τη μεταφορά νυχτερινής συνέχειας)",
+                    declared_label,
+                    "Πραγματική έναρξη = δηλωμένη",
+                    "POST_CARRY_COMPLIANT",
+                )
+            else:
+                decision = RuleDecision(
+                    "change",
+                    "Μετά τη μεταφορά της συνέχειας στην προηγούμενη ημέρα, η νέα βάρδια υπολογίστηκε από την πραγματική έναρξη",
+                    post_carry_proposed,
+                    "Πραγματική έναρξη κύριας βάρδιας και δηλωμένη διάρκεια",
+                    "POST_CARRY_MAIN_SHIFT",
+                )
         status, reason, proposed, proposal_basis, rule_id = (
             decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
         )

@@ -144,3 +144,27 @@
       </div>
     </form>
   </div>
+
+  <div id="apologisticOvertimeModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticOvertimeModalTitle">
+    <div class="office-modal-backdrop" data-apologistic-overtime-close></div>
+    <form id="apologisticOvertimeForm" class="office-modal-panel apologistic-proposal-modal-panel">
+      <h2 id="apologisticOvertimeModalTitle" class="office-modal-title">Αλλαγή υπερωρίας</h2>
+      <p id="apologisticOvertimeModalMeta" class="office-modal-sub"></p>
+      <div class="apologistic-proposal-time-grid">
+        <span class="apologistic-proposal-time-field">
+          <span class="apologistic-proposal-time-label">Από</span>
+          <input id="apologisticOvertimeFrom" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="22:00" autocomplete="off">
+        </span>
+        <span class="apologistic-proposal-time-field">
+          <span class="apologistic-proposal-time-label">Έως</span>
+          <input id="apologisticOvertimeTo" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="23:30" autocomplete="off">
+        </span>
+      </div>
+      <p class="apologistic-overtime-hint">Αφήστε κενό και τα δύο πεδία για να αφαιρέσετε την υπερωρία.</p>
+      <p id="apologisticOvertimeError" class="apologistic-proposal-error" role="alert"></p>
+      <div class="office-modal-actions">
+        <button type="button" class="btn btn-secondary" data-apologistic-overtime-close>Ακύρωση</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Αποθήκευση</button>
+      </div>
+    </form>
+  </div>
