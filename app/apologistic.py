@@ -226,13 +226,13 @@ def _partition_punches_covered_by_previous_overnight(
     dict[tuple[str, str], list[dict[str, Any]]],
     dict[tuple[str, str], list[dict[str, Any]]],
 ]:
-    """Move post-star continuation punches back to the previous work day.
+    """Move next-calendar-day punches back when they fall within the daily span window.
 
-    Applies only when the previous day has one assumed start and an explicit ``*``
-    ending.  Candidate pairs on the next calendar day must start after that ending,
-    finish within the contractual daily span (13 h for 5-day / 12 h for 6-day) plus
-    any outside break counted from the assumed start, and begin before the declared
-    main shift of the new day.
+    Applies when the previous day has one assumed start.  Candidate pairs on the next
+    calendar day must fall within assumed_start + contractual daily span (13 h for
+    5-day / 12 h for 6-day) plus outside break, and begin before the declared main
+    shift of the new day.  Judgment is by clock times only; the ``*`` marker is not
+    used as a gate for this rule.
     """
     excluded_from_current: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     attributed_to_previous: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -242,6 +242,17 @@ def _partition_punches_covered_by_previous_overnight(
             return datetime.strptime(key[1], "%d/%m/%Y").date()
         except ValueError:
             return date.max
+
+    def row_end_abs(anchor_date: date, row: dict[str, Any]) -> int | None:
+        start_abs = _minutes_from_work_anchor(anchor_date, anchor_date, row.get("hour_from"))
+        end_abs = _minutes_from_work_anchor(anchor_date, anchor_date, row.get("hour_to"))
+        if start_abs is None or end_abs is None:
+            return None
+        if _is_explicit_next_day(row):
+            end_abs += 1440
+        elif end_abs < start_abs:
+            end_abs += 1440
+        return end_abs
 
     for key in sorted(list(punches), key=key_date):
         afm, work_date = key
@@ -266,25 +277,21 @@ def _partition_punches_covered_by_previous_overnight(
             continue
         assumed_start_abs = next(iter(previous_starts))
 
-        starred_rows = [
-            (index, item)
-            for index, item in enumerate(previous_rows)
-            if _is_explicit_next_day(item) and _clock(item.get("hour_to"))
-        ]
-        if not starred_rows:
-            continue
-        starred_ends: list[tuple[int, int, dict[str, Any]]] = []
-        for index, item in starred_rows:
-            end_abs = _minutes_from_work_anchor(previous_date, previous_date, item.get("hour_to"))
-            if end_abs is None:
+        target_previous_index = None
+        latest_previous_end_abs = assumed_start_abs
+        for index, item in enumerate(previous_rows):
+            if _minute_of_day(item.get("hour_from")) != assumed_start_abs:
                 continue
-            if _is_explicit_next_day(item):
-                end_abs += 1440
-            starred_ends.append((end_abs, index, item))
-        valid_starred_rows = [row for row in starred_ends if row[0] is not None]
-        if not valid_starred_rows:
+            end_abs = row_end_abs(previous_date, item)
+            if end_abs is None:
+                if target_previous_index is None:
+                    target_previous_index = index
+                continue
+            if end_abs >= latest_previous_end_abs:
+                latest_previous_end_abs = end_abs
+                target_previous_index = index
+        if target_previous_index is None:
             continue
-        starred_end_abs, target_previous_index, _ = max(valid_starred_rows, key=lambda row: row[0])
 
         weekly_days = weekly_system_by_afm.get(afm, (None, ""))[0]
         daily_limit = 780 if weekly_days == 5 else 720 if weekly_days == 6 else None
@@ -308,7 +315,7 @@ def _partition_punches_covered_by_previous_overnight(
         )
 
         retained: list[dict[str, Any]] = []
-        latest_carried_end_abs = starred_end_abs
+        latest_carried_end_abs = latest_previous_end_abs
         for item in punches.get(key, []):
             start_abs = _minutes_from_work_anchor(previous_date, current_date, item.get("hour_from"))
             end_abs = (
@@ -321,8 +328,7 @@ def _partition_punches_covered_by_previous_overnight(
                 start_abs is not None
                 and end_abs is not None
                 and not _is_explicit_next_day(item)
-                and starred_end_abs is not None
-                and start_abs > starred_end_abs
+                and start_abs >= assumed_start_abs
                 and end_abs <= max_allowed_end_abs
                 and (new_shift_start_abs is None or start_abs < new_shift_start_abs)
             )

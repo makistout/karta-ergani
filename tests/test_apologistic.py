@@ -248,6 +248,36 @@ def test_pair_after_thirteen_hour_carry_window_stays_on_new_day():
     assert current_row["reason"] == "ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ"
 
 
+def test_early_next_day_punch_carried_without_star_on_previous_day():
+    """Overnight carry uses clock window only, not the ``*`` marker on the previous row."""
+    schedules = [
+        sched(day="05/06/2026", start="14:57", end="00:49"),
+        sched(day="06/06/2026", start="14:57", end="00:49"),
+        sched(day="07/06/2026", start="14:54", end="23:47"),
+    ]
+    day5 = punch(day="05/06/2026", start="14:57", end="23:55")
+    day6_early = punch(day="06/06/2026", start="00:06", end="00:57")
+    day6_main = punch(day="06/06/2026", start="14:57", end="23:55")
+    day7_early = punch(day="07/06/2026", start="00:06", end="00:49")
+    day7_main = punch(day="07/06/2026", start="14:54", end="23:47")
+
+    rows = build_weekly_report(
+        schedules,
+        [day5, day6_early, day6_main, day7_early, day7_main],
+        [contract(flex=0)],
+    )["days"]
+    row5 = next(row for row in rows if row["work_date"] == "05/06/2026")
+    row6 = next(row for row in rows if row["work_date"] == "06/06/2026")
+    row7 = next(row for row in rows if row["work_date"] == "07/06/2026")
+
+    assert row5["actual"] == "14:57–00:57"
+    assert row6["punch_recorded"] == "14:57–00:49*"
+    assert row6["actual"] == "14:57–00:49"
+    assert row6["rule_id"] != "POSSIBLE_SPLIT_REVIEW"
+    assert row7["punch_recorded"] == "14:54–23:47"
+    assert row7["rule_id"] != "POSSIBLE_SPLIT_REVIEW"
+
+
 def test_pair_after_starred_end_but_before_thirteen_hour_limit_is_carried():
     schedules = [
         sched(day="15/08/2026", start="16:00", end="00:00"),
