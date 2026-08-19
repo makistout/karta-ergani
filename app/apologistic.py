@@ -836,8 +836,7 @@ def build_weekly_report(
         actual_minutes = sum(_minutes(m.get("from"), m.get("to")) or 0 for m in matched) if matched else None
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
         declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")
-        all_day_punches = excluded_overnight_punches + day_punches
-        punch_recorded = _format_recorded_punches(all_day_punches)
+        punch_recorded = _format_recorded_punches(day_punches)
         actual_label = _format_matched_label(matched)
         flex = int((contract or {}).get("flex_arrival_minutes") or (work_slots[0].get("flex_arrival_minutes") if work_slots else 0) or 0)
         break_minutes, break_in_work, outside_break = _break_context(
@@ -1062,7 +1061,7 @@ def build_weekly_report(
             for p in orphan_punches
         ]
         status_explanation = _build_status_explanation(
-            status=status, reason=reason, day_punches=all_day_punches, orphan_punches=orphan_punches,
+            status=status, reason=reason, day_punches=day_punches, orphan_punches=orphan_punches,
             matched=matched, inferred=inferred, fully_missing=fully_missing,
             declared_label=declared_label, actual_label=actual_label, punch_recorded=punch_recorded,
             proposed=proposed, proposal_basis=proposal_basis, confidence=confidence,
@@ -1150,7 +1149,7 @@ def build_weekly_report(
             "declared_minutes": declared_minutes, "actual_minutes": actual_minutes,
             "overtime_worked_minutes": overtime_actual_minutes,
             "effective_actual_minutes": effective_actual, "extra_minutes": max(0, net_difference or 0),
-            "punch_count": len(all_day_punches), "matched_parts": len(matched), "orphan_punch_count": len(orphan_punches),
+            "punch_count": len(day_punches), "matched_parts": len(matched), "orphan_punch_count": len(orphan_punches),
             "day_state": state, "punch_completeness": "Τεκμαρτό" if inferred else ("Πλήρες" if matched else "Χωρίς χτύπημα"),
             "data_source": "Πραγματική + δηλωμένα όρια" if inferred else ("Πραγματική απασχόληση" if matched else "Μόνο δηλωμένο ωράριο"),
             "flex_minutes": flex, "start_difference_minutes": start_difference, "end_difference_minutes": end_difference,

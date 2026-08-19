@@ -42,8 +42,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     initEmployeeMonthNavigation();
   } else {
     initStorePeriodNavigation();
-    document.getElementById("weekPrev").onclick = () => moveWeek(-7);
-    document.getElementById("weekNext").onclick = () => moveWeek(7);
+  document.getElementById("weekPrev").onclick = () => moveWeek(-7);
+  document.getElementById("weekNext").onclick = () => moveWeek(7);
   }
   document.getElementById("apologisticEmployeeSearch")?.addEventListener("input", (event) => {
     reportState.employeeSearch = String(event.target.value || "");
@@ -2147,7 +2147,7 @@ function compactScheduleLabel(value) {
   if (leaveCode || upper.includes("ΑΔΕΙΑ") || upper.includes("ΑΔΕΙΑ")) {
     const type = findLeaveType(leaveCode);
     if (type) return `Άδεια ${type.code}`;
-    if (upper.includes("ΚΑΝΟΝΙΚ") && upper.includes("ΑΔΕΙΑ")) return "Κανονική άδεια";
+  if (upper.includes("ΚΑΝΟΝΙΚ") && upper.includes("ΑΔΕΙΑ")) return "Κανονική άδεια";
     return leaveCode ? `Άδεια ${leaveCode}` : "Άδεια";
   }
   if (upper.includes("ΑΝΑΠΑΥΣ") || upper.includes("ΡΕΠΟ")) return "ΡΕΠΟ";
@@ -2246,7 +2246,7 @@ async function loadWeekReport() {
   };
   renderSummary(data);
   if (!isEmployeeMonthView()) {
-    renderDayTabs();
+  renderDayTabs();
     syncDaySelectionUi();
   } else {
     reportState.selectedDate = "";
@@ -2305,11 +2305,11 @@ function renderSummary(data) {
       `<button type="button" class="card apologistic-kpi apologistic-kpi--review apologistic-kpi--filter" data-report-filter="review" title="Μόνο για έλεγχο"><span>Για έλεγχο</span><strong>${counts.review || 0}</strong></button>` +
       `<button type="button" class="card apologistic-kpi apologistic-kpi--submitted apologistic-kpi--filter" data-report-filter="submitted" title="Ημέρες με υποβολή Ergani"><span>Υποβεβλημένες</span><strong>${counts.submitted || 0}</strong></button>`;
   } else {
-    document.getElementById("apologisticSummary").innerHTML =
-      `<div class="card apologistic-kpi"><span>Εργαζόμενοι</span><strong>${(data.employees || []).length}</strong></div>` +
-      `<button type="button" class="card apologistic-kpi apologistic-kpi--filter" data-report-filter="all" title="Εμφάνιση όλων των αποτελεσμάτων"><span>Αποτελέσματα</span><strong>${counts.all || 0}</strong></button>` +
-      `<button type="button" class="card apologistic-kpi apologistic-kpi--ok apologistic-kpi--filter" data-report-filter="ok" title="Εμφάνιση μόνο των σύμφωνων εγγραφών"><span>Σύμφωνο</span><strong>${counts.ok || 0}</strong></button>` +
-      `<button type="button" class="card apologistic-kpi apologistic-kpi--change apologistic-kpi--filter" data-report-filter="change" title="Εμφάνιση μόνο των μεταβολών"><span>Μεταβολές</span><strong>${counts.change || 0}</strong></button>` +
+  document.getElementById("apologisticSummary").innerHTML =
+    `<div class="card apologistic-kpi"><span>Εργαζόμενοι</span><strong>${(data.employees || []).length}</strong></div>` +
+    `<button type="button" class="card apologistic-kpi apologistic-kpi--filter" data-report-filter="all" title="Εμφάνιση όλων των αποτελεσμάτων"><span>Αποτελέσματα</span><strong>${counts.all || 0}</strong></button>` +
+    `<button type="button" class="card apologistic-kpi apologistic-kpi--ok apologistic-kpi--filter" data-report-filter="ok" title="Εμφάνιση μόνο των σύμφωνων εγγραφών"><span>Σύμφωνο</span><strong>${counts.ok || 0}</strong></button>` +
+    `<button type="button" class="card apologistic-kpi apologistic-kpi--change apologistic-kpi--filter" data-report-filter="change" title="Εμφάνιση μόνο των μεταβολών"><span>Μεταβολές</span><strong>${counts.change || 0}</strong></button>` +
       `<button type="button" class="card apologistic-kpi apologistic-kpi--review apologistic-kpi--filter" data-report-filter="review" title="Εμφάνιση μόνο των εγγραφών για έλεγχο"><span>Για έλεγχο</span><strong>${counts.review || 0}</strong></button>` +
       `<button type="button" class="card apologistic-kpi apologistic-kpi--submitted apologistic-kpi--filter" data-report-filter="submitted" title="Εμφάνιση γραμμών με υποβληθείσα απολογιστική μεταβολή ή υπερωρία (WTODailyA / WTOOvA)"><span>Υποβεβλημένες</span><strong>${counts.submitted || 0}</strong></button>`;
   }
@@ -2349,13 +2349,13 @@ function renderDayTabs() {
         `<span>${weekdayLabelForDate(date)}</span><strong>${attr(date.slice(0, 5))}</strong></button>`;
     }).join("");
   } else {
-    const weekdayNames = ["Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο", "Κυριακή"];
-    mount.innerHTML = reportState.dates.map((date, index) => {
-      const count = reportState.rows.filter((row) => row.work_date === date).length;
-      return `<button type="button" class="apologistic-day-tab${date === reportState.selectedDate ? " is-active" : ""}" ` +
-        `data-work-date="${attr(date)}" aria-pressed="${date === reportState.selectedDate ? "true" : "false"}">` +
-        `<span>${weekdayNames[index] || "Ημέρα"}</span><strong>${attr(date.slice(0, 5))}</strong><small>${count}</small></button>`;
-    }).join("");
+  const weekdayNames = ["Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο", "Κυριακή"];
+  mount.innerHTML = reportState.dates.map((date, index) => {
+    const count = reportState.rows.filter((row) => row.work_date === date).length;
+    return `<button type="button" class="apologistic-day-tab${date === reportState.selectedDate ? " is-active" : ""}" ` +
+      `data-work-date="${attr(date)}" aria-pressed="${date === reportState.selectedDate ? "true" : "false"}">` +
+      `<span>${weekdayNames[index] || "Ημέρα"}</span><strong>${attr(date.slice(0, 5))}</strong><small>${count}</small></button>`;
+  }).join("");
   }
   mount.querySelectorAll("[data-work-date]").forEach((button) => {
     button.addEventListener("click", () => {
