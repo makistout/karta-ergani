@@ -167,6 +167,16 @@ def _run_configured_auto_actions(
     else:
         actions["apologistic_snapshot"] = {"skipped": True, "reason": apologistic_reason}
 
+    archive_should_run, archive_reason = _should_run_schedule_archive(cfg)
+    if archive_should_run:
+        from app.portal_schedule_archive import run_monthly_archive
+        try:
+            actions["schedule_archive"] = run_monthly_archive(cfg, months_back=2)
+        except Exception as ex:
+            actions["schedule_archive"] = {"success": False, "error": str(ex)}
+    else:
+        actions["schedule_archive"] = {"skipped": True, "reason": archive_reason}
+
     weekly_should_run, weekly_from, weekly_to, weekly_reason = (
         should_run_weekly_repair_work_log_sync(cfg)
     )
@@ -530,6 +540,24 @@ def should_run_apologistic_snapshot(
     run = repo_apologistic.get_run(int(cfg["id"]), week_from)
     if run and run.get("status") in ("draft", "approved", "locked"):
         return False, "η προηγούμενη εβδομάδα έχει ήδη παραχθεί"
+    return True, "έτοιμο"
+
+
+def _should_run_schedule_archive(
+    cfg: dict[str, Any], *, now: datetime | None = None,
+) -> tuple[bool, str]:
+    """1η κάθε μήνα, 05:00 — αρχειοθέτηση ψηφιακής οργάνωσης 2 μηνών πριν."""
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if local_now.day != 1:
+        return False, "δεν είναι 1η του μήνα"
+    if local_now.strftime("%H:%M") < "05:00":
+        return False, "αναμονή μέχρι 05:00"
+    if not repo_sync_log.tables_available():
+        return False, "λείπουν πίνακες sync log"
+    operation = "scheduled_schedule_archive"
+    base_date = local_now.date().isoformat()
+    if _operation_run_exists(operation, int(cfg["id"]), base_date):
+        return False, "έχει ήδη εκτελεστεί σήμερα"
     return True, "έτοιμο"
 
 
