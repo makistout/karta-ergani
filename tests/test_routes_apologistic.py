@@ -78,6 +78,28 @@ def test_timekeeping_preview_rejects_review_rows(monkeypatch):
     assert response.status_code == 409
 
 
+def test_timekeeping_month_preview_returns_merged_period(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(
+        routes_apologistic,
+        "_build_timekeeping_for_month",
+        lambda *_args, **_kwargs: (
+            {"calculation_version": "timekeeping-v1-month", "employees": [], "days": [], "counts": {"days": 10, "employees": 2}},
+            [{"id": 7, "week_from": "2026-08-03", "week_to": "2026-08-09", "status": "draft"}],
+            {"123456789": {"legal_overtime_minutes_before_period": 120}},
+        ),
+    )
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview", json={"year": 2026, "month": 8},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["period_type"] == "month"
+    assert body["period_from"] == "2026-08-01"
+    assert body["period_to"] == "2026-08-31"
+    assert body["counts"]["days"] == 10
+
+
 def test_timekeeping_export_returns_xlsx(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_: ({
@@ -90,6 +112,20 @@ def test_timekeeping_export_returns_xlsx(monkeypatch):
     assert response.status_code == 200
     assert response.data == b"xlsx-bytes"
     assert response.headers["Content-Disposition"].endswith("orometrisi_20260803.xlsx")
+
+
+def test_timekeeping_month_export_returns_xlsx(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_month", lambda *_args, **_kwargs: ({
+        "calculation_version": "timekeeping-v1-month", "employees": [], "days": [],
+    }, [{"id": 7}], {}))
+    monkeypatch.setattr(routes_apologistic, "build_timekeeping_export_xlsx", lambda **kwargs: b"xlsx-bytes")
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/export", json={"year": 2026, "month": 8},
+    )
+    assert response.status_code == 200
+    assert response.data == b"xlsx-bytes"
+    assert response.headers["Content-Disposition"].endswith("orometrisi_month_202608.xlsx")
 
 
 def test_month_returns_saved_rows_and_all_intersecting_weeks(monkeypatch):

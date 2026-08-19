@@ -28,7 +28,8 @@ def load_annual_overtime_context(
     placeholders = ",".join("?" for _ in afms)
     year_from = date(period_from.year, 1, 1)
     sql = f"""
-        SELECT employee_afm, work_date, overtime_from, overtime_to, synced_at
+        SELECT employee_afm, work_date, overtime_from, overtime_to,
+               CAST(synced_at AS datetime2) AS synced_at
         FROM dbo.karta_portal_schedule_archive
         WHERE store_id=? AND employee_afm IN ({placeholders})
           AND work_date>=? AND work_date<?

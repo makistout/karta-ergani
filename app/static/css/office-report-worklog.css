@@ -1178,12 +1178,21 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-bulk-bar.hidden { display:none; }
 .apologistic-timekeeping-bar { display:flex; align-items:center; gap:.85rem; flex-wrap:wrap; margin:0 0 1rem; padding:.75rem .9rem; border:1px solid color-mix(in srgb,var(--ok) 35%,var(--border)); border-radius:.7rem; background:color-mix(in srgb,var(--ok) 7%,var(--surface)); }
 .apologistic-timekeeping-bar.hidden { display:none; }
+.apologistic-restore-all-bar { display:flex; align-items:center; gap:.85rem; flex-wrap:wrap; margin:0 0 1rem; padding:.75rem .9rem; border:1px solid color-mix(in srgb,#b7791f 35%,var(--border)); border-radius:.7rem; background:color-mix(in srgb,#b7791f 8%,var(--surface)); }
+.list-card + .apologistic-restore-all-bar { margin:1rem 0 0; }
+.apologistic-restore-all-bar.hidden { display:none; }
+.apologistic-restore-all-hint { margin:0; color:var(--muted); font-size:.78rem; }
 .apologistic-timekeeping-panel { width:min(1100px,calc(100vw - 2rem)); }
 .apologistic-timekeeping-body { overflow:auto; max-height:70vh; }
 .apologistic-timekeeping-table { width:100%; border-collapse:collapse; font-size:.9rem; }
 .apologistic-timekeeping-table th,.apologistic-timekeeping-table td { padding:.55rem .65rem; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
 .apologistic-timekeeping-table th { text-transform:none; }
 .apologistic-timekeeping-table th:first-child,.apologistic-timekeeping-table td:first-child { text-align:left; }
+.timekeeping-problem-box { padding:1rem 1.1rem; border:1px solid color-mix(in srgb,var(--err) 24%,var(--border)); border-radius:.75rem; background:color-mix(in srgb,var(--err) 5%,var(--surface)); }
+.timekeeping-problem-text { margin:0; color:var(--err); font-size:.95rem; }
+.timekeeping-problem-hint { margin:.85rem 0 .45rem; color:var(--muted); font-size:.8rem; }
+.timekeeping-problem-weeks { display:flex; flex-wrap:wrap; gap:.55rem; }
+.timekeeping-problem-link { text-decoration:none; }
 .timekeeping-page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
 .timekeeping-page-head .page-title { margin-top:.4rem; }
 .timekeeping-back { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); text-decoration:none; font-weight:600; }

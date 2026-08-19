@@ -61,7 +61,11 @@ def _finish_table(ws, header_row: int, duration_from: int, duration_to: int) -> 
             cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (1, ws.max_column))
 
 
-def build_timekeeping_export_xlsx(*, report: dict[str, Any], meta_line: str) -> bytes:
+def build_timekeeping_export_xlsx(
+    *, report: dict[str, Any], meta_line: str,
+    title: str = "Ωρομέτρηση εβδομάδας",
+    daily_title: str = "Αναλυτική ωρομέτρηση ανά ημέρα",
+) -> bytes:
     wb = Workbook()
     summary = wb.active
     summary.title = "Σύνοψη"
@@ -72,7 +76,7 @@ def build_timekeeping_export_xlsx(*, report: dict[str, Any], meta_line: str) -> 
         "Ετήσιες νόμιμες υπερωρίες μετά την περίοδο",
     ]
     header_row = _style_sheet(
-        summary, title="Ωρομέτρηση εβδομάδας", meta=meta_line,
+        summary, title=title, meta=meta_line,
         headers=summary_headers, widths=[28, 14, 20, 14, 16, 20, 22, 16, 17, 17, 17, 14, 25],
     )
     for item in report.get("employees") or []:
@@ -98,7 +102,7 @@ def build_timekeeping_export_xlsx(*, report: dict[str, Any], meta_line: str) -> 
         "Υπερωρία 40%", "Υπερωρία 60%", "120%", "Παρατηρήσεις",
     ]
     daily_header = _style_sheet(
-        daily, title="Αναλυτική ωρομέτρηση ανά ημέρα", meta=meta_line,
+        daily, title=daily_title, meta=meta_line,
         headers=daily_headers,
         widths=[14, 28, 14, 12, 22, 24, 18, 16, 14, 16, 20, 22, 16, 17, 17, 17, 14, 46],
     )

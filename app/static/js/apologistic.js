@@ -38,6 +38,7 @@ let leaveTypes = FALLBACK_LEAVE_TYPES.slice();
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav(isEmployeeMonthView() ? "employees" : "apologistic");
+  applyInitialStoreViewFromQuery();
   if (isEmployeeMonthView()) {
     initEmployeeMonthNavigation();
   } else {
@@ -56,6 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSubmitModal();
   initBulkWeekModal();
   initAcceptAllBar();
+  initRestoreChangeBar();
   initTimekeeping();
   window.addEventListener("scroll", () => {
     hideProposalHistoryOverlay();
@@ -163,6 +165,37 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) { showError(e); }
 });
 
+function applyInitialStoreViewFromQuery() {
+  if (isEmployeeMonthView()) return;
+  const mode = String(monthPageQuery.get("mode") || "").trim();
+  if (mode === "month" || mode === "range" || mode === "week") {
+    periodMode = mode;
+  }
+  const weekFrom = String(monthPageQuery.get("week_from") || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(weekFrom)) {
+    weekStart = new Date(`${weekFrom}T12:00:00`);
+  }
+  const year = Number(monthPageQuery.get("year") || 0);
+  const month = Number(monthPageQuery.get("month") || 0);
+  if (Number.isInteger(year) && year >= 2000 && Number.isInteger(month) && month >= 1 && month <= 12) {
+    monthStart = new Date(year, month - 1, 1);
+  }
+  const from = String(monthPageQuery.get("from") || "").trim();
+  const to = String(monthPageQuery.get("to") || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    rangeStart = new Date(`${from}T12:00:00`);
+    rangeEnd = new Date(`${to}T12:00:00`);
+  }
+  const filter = String(monthPageQuery.get("filter") || "").trim();
+  if (["all", "ok", "change", "review", "submitted"].includes(filter)) {
+    reportState.filter = filter;
+  }
+  const selectedDate = String(monthPageQuery.get("selected_date") || "").trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(selectedDate)) {
+    reportState.selectedDate = selectedDate;
+  }
+}
+
 function employeeMonthAfm() {
   return (monthPageQuery.get("afm") || reportState.employee?.afm || "").trim();
 }
@@ -240,11 +273,16 @@ function switchStorePeriod(mode) {
 
 function resetPeriodResults() {
   const employeeSearch = reportState.employeeSearch || "";
+  const filter = reportState.filter || "all";
+  const selectedDate = reportState.selectedDate || "";
   reportState = {
-    rows: [], store: reportState.store, filter: "all", selectedDate: "", dates: [],
+    rows: [], store: reportState.store, filter, selectedDate, dates: [],
     employee: null, employeeCount: 0, employeeSearch,
   };
   renderSummary({ days: [], employees: [] });
+  const monthWeeks = document.getElementById("apologisticMonthWeeks");
+  if (monthWeeks) monthWeeks.innerHTML = "";
+  document.getElementById("apologisticNotice").textContent = "";
   syncDaySelectionUi();
 }
 
@@ -726,7 +764,30 @@ function refreshSummaryCounts() {
 
 function initTimekeeping() {
   document.getElementById("apologisticTimekeepingBtn")?.addEventListener("click", () => {
-    location.href = `/ui/apologistic/timekeeping?week_from=${encodeURIComponent(iso(weekStart))}`;
+    const params = new URLSearchParams();
+    if (isStoreMonthView()) {
+      params.set("year", String(monthStart.getFullYear()));
+      params.set("month", String(monthStart.getMonth() + 1));
+      params.set("origin_mode", "month");
+      params.set("origin_year", String(monthStart.getFullYear()));
+      params.set("origin_month", String(monthStart.getMonth() + 1));
+    } else {
+      const currentWeek = iso(weekStart);
+      params.set("week_from", currentWeek);
+      params.set("origin_mode", "week");
+      params.set("origin_week_from", currentWeek);
+    }
+    if (reportState.filter && reportState.filter !== "all") {
+      params.set("origin_filter", reportState.filter);
+    }
+    if (reportState.selectedDate) {
+      params.set("origin_selected_date", reportState.selectedDate);
+    }
+    if (isStoreMonthView()) {
+      location.href = `/ui/apologistic/timekeeping?${params.toString()}`;
+      return;
+    }
+    location.href = `/ui/apologistic/timekeeping?${params.toString()}`;
   });
 }
 
@@ -734,10 +795,13 @@ function updateTimekeepingBar() {
   const bar = document.querySelector(".apologistic-timekeeping-bar");
   if (!bar) return;
   const counts = computeReportCounts(reportState.rows || []);
-  const visible = !isEmployeeMonthView() && !isStoreMonthView() && !isStoreRangeView()
-    && (counts.all || 0) > 0 && (counts.review || 0) === 0;
+  const isSupportedPeriod = !isEmployeeMonthView() && !isStoreRangeView();
+  const visible = isSupportedPeriod && (counts.all || 0) > 0 && (counts.review || 0) === 0;
   bar.classList.toggle("hidden", !visible);
   const hint = document.getElementById("apologisticTimekeepingHint");
+  const btn = document.getElementById("apologisticTimekeepingBtn");
+  const label = isStoreMonthView() ? "Ωρομέτρηση μήνα" : "Ωρομέτρηση";
+  btn?.querySelector("span")?.replaceChildren(document.createTextNode(label));
   if (hint) hint.textContent = visible
     ? `${counts.ok || 0} Σύμφωνα · ${counts.change || 0} Μεταβολές · χωρίς εκκρεμότητες Ελέγχου`
     : "";
@@ -879,6 +943,10 @@ function acceptAllBarEls() {
   return [...document.querySelectorAll(".apologistic-accept-all-bar")];
 }
 
+function restoreChangeBarEls() {
+  return [...document.querySelectorAll(".apologistic-restore-all-bar")];
+}
+
 function updateAcceptAllBar() {
   const bars = acceptAllBarEls();
   if (!bars.length) return;
@@ -906,6 +974,38 @@ function initAcceptAllBar() {
     if (btn.dataset.bound) return;
     btn.dataset.bound = "1";
     btn.addEventListener("click", acceptAllReview);
+  });
+}
+
+function updateRestoreChangeBar() {
+  const bars = restoreChangeBarEls();
+  if (!bars.length) return;
+  const restorableRows = visibleReportRows().filter(changeFromReview);
+  const visible = restorableRows.length > 0;
+  const hintText = visible
+    ? `${restorableRows.length} εγγραφές Μ* από Έλεγχο · επαναφορά στην αρχική κατάσταση Ε` +
+      (isAllDaysSelected() ? "" : ` · ${reportPeriodLabel()}`)
+    : "";
+  for (const bar of bars) {
+    const btn = bar.querySelector(".apologistic-restore-all-btn");
+    const hint = bar.querySelector(".apologistic-restore-all-hint");
+    bar.classList.toggle("hidden", !visible);
+    if (btn) btn.hidden = !visible;
+    if (hint) hint.textContent = hintText;
+  }
+}
+
+function initRestoreChangeBar() {
+  document.querySelectorAll(".apologistic-restore-all-btn").forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", restoreAllChanges);
+  });
+}
+
+function setRestoreChangeButtonsLoading(loading) {
+  document.querySelectorAll(".apologistic-restore-all-btn").forEach((btn) => {
+    Office.setButtonLoading(btn, loading);
   });
 }
 
@@ -979,6 +1079,11 @@ async function acceptAllReview() {
       row.change_from_review = true;
       row.reason = "Εγκρίθηκε η πρόταση — μετατράπηκε από Έλεγχο σε Μεταβολή";
     }
+    if (reportState.filter === "review" && changedTotal > 0) {
+      reportState.filter = "change";
+      reportState.selectedDate = "";
+      syncDaySelectionUi();
+    }
     refreshSummaryCounts();
     renderVisibleRows();
     Office.showMsg(
@@ -993,6 +1098,75 @@ async function acceptAllReview() {
     Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
   } finally {
     setAcceptAllButtonsLoading(false);
+  }
+}
+
+async function restoreAllChanges() {
+  const targetRows = visibleReportRows().filter(changeFromReview);
+  if (!targetRows.length) {
+    updateRestoreChangeBar();
+    return;
+  }
+  if (!await Office.confirm(
+    `Να επανέλθουν ${targetRows.length} εγγραφές Μ* στην αρχική κατάσταση Ε;`,
+    { title: "Επαναφορά αλλαγών", confirmText: "Επαναφορά", danger: true },
+  )) return;
+  setRestoreChangeButtonsLoading(true);
+  try {
+    let changedTotal = 0;
+    const restoredKeys = new Set();
+    const orderedRows = targetRows.slice().sort((left, right) => {
+      const weekCmp = String(weekFromForRow(left)).localeCompare(String(weekFromForRow(right)), "el");
+      if (weekCmp) return weekCmp;
+      const dateCmp = compareWorkDates(left.work_date, right.work_date);
+      if (dateCmp) return dateCmp;
+      return String(left.employee_afm || "").localeCompare(String(right.employee_afm || ""), "el");
+    });
+    for (const target of orderedRows) {
+      const key = `${target.employee_afm}|${target.work_date}`;
+      if (restoredKeys.has(key)) continue;
+      const row = reportState.rows.find((item) =>
+        item.employee_afm === target.employee_afm && item.work_date === target.work_date
+      );
+      if (!row || !changeFromReview(row)) continue;
+      const res = await fetch("/api/apologistic/restore-review", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_from: weekFromForRow(row),
+          employee_afm: row.employee_afm,
+          work_date: row.work_date,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      changedTotal += Number(data.changed || (data.rows || []).length || 1);
+      for (const restored of data.rows || []) {
+        const restoredKey = `${restored.employee_afm}|${restored.work_date}`;
+        restoredKeys.add(restoredKey);
+        const index = reportState.rows.findIndex((item) =>
+          item.employee_afm === restored.employee_afm && item.work_date === restored.work_date
+        );
+        if (index >= 0) reportState.rows[index] = { ...restored };
+      }
+      restoredKeys.add(key);
+    }
+    if (reportState.filter === "change" && changedTotal > 0) {
+      reportState.filter = "review";
+      reportState.selectedDate = "";
+      syncDaySelectionUi();
+    }
+    refreshSummaryCounts();
+    renderVisibleRows();
+    Office.showMsg(
+      "apologisticSubmitMsg",
+      `Επαναφέρθηκαν ${changedTotal} εγγραφές στην αρχική κατάσταση Ε.`,
+      changedTotal > 0,
+    );
+  } catch (error) {
+    Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
+  } finally {
+    setRestoreChangeButtonsLoading(false);
   }
 }
 
@@ -1659,6 +1833,11 @@ async function restoreReviewRow(employeeAfm, workDate, button) {
       );
       if (index >= 0) reportState.rows[index] = { ...restored };
     }
+    if (reportState.filter === "change" && (data.changed || 0) > 0) {
+      reportState.filter = "review";
+      reportState.selectedDate = "";
+      syncDaySelectionUi();
+    }
     refreshSummaryCounts();
     renderVisibleRows();
     Office.showMsg("apologisticSubmitMsg", `Επαναφέρθηκαν ${data.changed || 1} εγγραφές στην αρχική τους κατάσταση.`, true);
@@ -2274,6 +2453,7 @@ function overtimeCell(row) {
 }
 
 async function loadReport() {
+  resetPeriodResults();
   if (isEmployeeMonthView()) return loadEmployeeMonthReport();
   if (isStoreMonthView()) return loadStoreMonthReport();
   if (isStoreRangeView()) return loadStoreRangeReport();
@@ -2290,9 +2470,11 @@ async function loadStoreRangeReport() {
   const res = await fetch(`/api/apologistic/range?${qs}`, { cache: "no-store" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
+  const selectedDate = reportState.selectedDate || "";
   reportState = {
-    rows: data.days || [], store: data.store, filter: "all", dates: data.work_dates || [],
-    selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+    rows: data.days || [], store: data.store, filter: reportState.filter || "all", dates: data.work_dates || [],
+    selectedDate: (data.work_dates || []).includes(selectedDate) ? selectedDate : "",
+    employeeCount: (data.employees || []).length, employee: null,
     employeeSearch: currentEmployeeSearch(),
   };
   renderSummary(data);
@@ -2318,10 +2500,12 @@ async function loadStoreMonthReport() {
     const workDate = new Date(parts[2], parts[1] - 1, parts[0]);
     return workDate >= monthFrom && workDate <= monthTo;
   });
+  const selectedDate = reportState.selectedDate || "";
   reportState = {
-    rows: days, store: data.store, filter: "all",
+    rows: days, store: data.store, filter: reportState.filter || "all",
     dates: (data.work_dates || []).filter((value) => days.some((row) => row.work_date === value)),
-    selectedDate: "", employeeCount: (data.employees || []).length, employee: null,
+    selectedDate: days.some((row) => row.work_date === selectedDate) ? selectedDate : "",
+    employeeCount: (data.employees || []).length, employee: null,
     employeeSearch: currentEmployeeSearch(),
   };
   renderStoreMonthWeeks(data.weeks || []);
@@ -2342,9 +2526,10 @@ async function loadWeekReport() {
   const res = await fetch(`/api/apologistic/week?from=${iso(weekStart)}&to=${iso(end)}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
+  const selectedDate = reportState.selectedDate || "";
   reportState = {
-    rows: data.days || [], store: data.store, filter: "all",
-    dates: data.work_dates || [], selectedDate: "",
+    rows: data.days || [], store: data.store, filter: reportState.filter || "all",
+    dates: data.work_dates || [], selectedDate: (data.work_dates || []).includes(selectedDate) ? selectedDate : "",
     employeeCount: (data.employees || []).length,
     employee: null,
     employeeSearch: currentEmployeeSearch(),
@@ -2376,12 +2561,13 @@ async function loadEmployeeMonthReport() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
   const days = data.days || [];
+  const selectedDate = reportState.selectedDate || "";
   reportState = {
     rows: days,
     store: data.store,
-    filter: "all",
+    filter: reportState.filter || "all",
     dates: days.map((row) => row.work_date),
-    selectedDate: "",
+    selectedDate: days.some((row) => row.work_date === selectedDate) ? selectedDate : "",
     employee: data.employee || null,
     employeeCount: 1,
     employeeSearch: "",
@@ -2424,6 +2610,7 @@ function renderSummary(data) {
   syncFilterButtons();
   updateBulkWeekBar();
   updateAcceptAllBar();
+  updateRestoreChangeBar();
   updateTimekeepingBar();
 }
 function applyReportFilter(requested) {
@@ -2436,6 +2623,7 @@ function applyReportFilter(requested) {
   syncFilterButtons();
   updateBulkWeekBar();
   updateAcceptAllBar();
+  updateRestoreChangeBar();
 }
 function syncFilterButtons() {
   document.querySelectorAll("[data-report-filter]").forEach((button) => {
@@ -2474,6 +2662,10 @@ function renderDayTabs() {
 }
 function renderVisibleRows() {
   renderRows(visibleReportRows(), reportState.store);
+  updateAcceptAllBar();
+  updateRestoreChangeBar();
+  updateBulkWeekBar();
+  updateTimekeepingBar();
 }
 function renderRows(rows, store) {
   hideProposalHistoryOverlay();

@@ -41,6 +41,12 @@ from app.timekeeping_export import build_timekeeping_export_xlsx
 apologistic_bp = Blueprint("apologistic", __name__, url_prefix="/api/apologistic")
 
 
+class TimekeepingPeriodError(ValueError):
+    def __init__(self, message: str, *, problem_weeks: list[dict[str, str]] | None = None):
+        super().__init__(message)
+        self.problem_weeks = problem_weeks or []
+
+
 def _saved_range_response(ctx: dict, date_from: date, date_to: date):
     days = list_store_days(store_id=int(ctx["id"]), date_from=date_from, date_to=date_to)
     enrich_employee_month_days(
@@ -157,21 +163,38 @@ def apologistic_week():
 
 @apologistic_bp.post("/timekeeping/preview")
 def apologistic_timekeeping_preview():
-    """Calculate a read-only payroll timekeeping preview for one finalized week."""
+    """Calculate a read-only payroll timekeeping preview for one week or month."""
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
     body = request.get_json(silent=True) or {}
     try:
+        if body.get("year") is not None or body.get("month") is not None:
+            year = int(body.get("year") or 0)
+            month = int(body.get("month") or 0)
+            result, snapshots, annual_context = _build_timekeeping_for_month(ctx, year=year, month=month)
+            month_from = date(year, month, 1)
+            month_to = date(year, month, monthrange(year, month)[1])
+            return jsonify({
+                **result,
+                "store": {"id": ctx["id"], "name": ctx["name"]},
+                "year": year,
+                "month": month,
+                "period_from": month_from.isoformat(),
+                "period_to": month_to.isoformat(),
+                "source_runs": snapshots,
+                "annual_context": annual_context,
+                "preview": True,
+                "period_type": "month",
+            })
         week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify({"error": "Μη έγκυρη εβδομάδα"}), 400
-    if week_from.weekday() != 0:
-        return jsonify({"error": "Η εβδομάδα πρέπει να ξεκινά Δευτέρα"}), 400
-    try:
+        if week_from.weekday() != 0:
+            raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
         result, snapshot, annual_context = _build_timekeeping_for_week(ctx, week_from)
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
+    except TimekeepingPeriodError as exc:
+        return jsonify({"error": str(exc), "problem_weeks": exc.problem_weeks}), 409
     except ValueError as exc:
         status = 409 if "Σ ή Μ" in str(exc) else 400
         return jsonify({"error": str(exc)}), status
@@ -183,6 +206,7 @@ def apologistic_timekeeping_preview():
         "source_run": snapshot,
         "annual_context": annual_context,
         "preview": True,
+        "period_type": "week",
     })
 
 
@@ -205,6 +229,123 @@ def _build_timekeeping_for_week(ctx: dict, week_from: date):
     return result, snapshot, annual_context
 
 
+def _merge_timekeeping_days(
+    days: list[dict[str, object]], annual_after_by_employee: dict[str, int],
+) -> dict[str, object]:
+    employees: dict[str, dict[str, object]] = {}
+    for day in days:
+        afm = str(day.get("employee_afm") or "")
+        total = employees.setdefault(afm, {
+            "employee_afm": afm,
+            "eponymo": day.get("eponymo") or "",
+            "onoma": day.get("onoma") or "",
+            "recognized_work_minutes": 0,
+            "day": 0,
+            "night": 0,
+            "sunday_holiday": 0,
+            "night_sunday_holiday": 0,
+            "overtime_40": 0,
+            "overtime_60": 0,
+            "overtime_120": 0,
+            "partial_additional_12": 0,
+            "partial_120": 0,
+            "sixth_day_minutes": 0,
+        })
+        total["recognized_work_minutes"] += int(day.get("recognized_work_minutes") or 0)
+        for key, value in (day.get("premium_minutes") or {}).items():
+            total[str(key)] += int(value or 0)
+        for key in ("overtime_40", "overtime_60", "overtime_120", "partial_additional_12", "partial_120", "sixth_day_minutes"):
+            total[key] += int(day.get(key) or 0)
+    for afm, total in employees.items():
+        total["annual_legal_overtime_minutes_after_period"] = int(
+            annual_after_by_employee.get(afm) or 0
+        )
+    return {
+        "calculation_version": "timekeeping-v1-month",
+        "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
+        "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
+        "counts": {"days": len(days), "employees": len(employees)},
+    }
+
+
+def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
+    if not (1 <= month <= 12):
+        raise ValueError("Μη έγκυρος μήνας")
+    month_from = date(year, month, 1)
+    month_to = date(year, month, monthrange(year, month)[1])
+    month_rows = list_store_days(store_id=int(ctx["id"]), date_from=month_from, date_to=month_to)
+    if not month_rows:
+        raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον μήνα")
+    week_starts = sorted({
+        datetime.strptime(str(row.get("week_from") or "")[:10], "%Y-%m-%d").date()
+        for row in month_rows if str(row.get("week_from") or "").strip()
+    })
+    if not week_starts:
+        raise LookupError("Δεν βρέθηκαν αποθηκευμένες εβδομάδες για αυτόν τον μήνα")
+
+    problem_weeks: list[dict[str, str]] = []
+    initial_afms: set[str] = set()
+    for week_from in week_starts:
+        loaded = load_report(int(ctx["id"]), week_from)
+        if loaded is None:
+            raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
+        report, _ = loaded
+        if any(str(row.get("status") or "").lower() == "review" for row in (report.get("days") or [])):
+            problem_weeks.append({
+                "week_from": week_from.isoformat(),
+                "week_to": (week_from + timedelta(days=6)).isoformat(),
+                "label": f"{week_from:%d/%m}–{(week_from + timedelta(days=6)):%d/%m}",
+            })
+        initial_afms.update(
+            str(row.get("employee_afm") or "") for row in (report.get("days") or []) if row.get("employee_afm")
+        )
+    if problem_weeks:
+        raise TimekeepingPeriodError(
+            "Η ωρομέτρηση μήνα είναι διαθέσιμη μόνο όταν όλες οι εβδομάδες είναι Σ ή Μ",
+            problem_weeks=problem_weeks,
+        )
+    running_context = load_annual_overtime_context(
+        store_id=int(ctx["id"]),
+        employee_afms=sorted(initial_afms),
+        period_from=week_starts[0],
+    )
+
+    merged_days: list[dict[str, object]] = []
+    snapshots: list[dict[str, object]] = []
+    annual_after_by_employee: dict[str, int] = {}
+    for week_from in week_starts:
+        loaded = load_report(int(ctx["id"]), week_from)
+        if loaded is None:
+            raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
+        report, snapshot = loaded
+        holidays = get_effective_holidays_for_store(int(ctx["id"]), week_from.year)
+        week_result = build_timekeeping_report(
+            list(report.get("days") or []),
+            holidays=holidays,
+            annual_context_by_employee=running_context,
+        )
+        snapshots.append({
+            "id": snapshot.get("id"),
+            "week_from": week_from.isoformat(),
+            "week_to": (week_from + timedelta(days=6)).isoformat(),
+            "status": snapshot.get("status"),
+        })
+        for employee in week_result.get("employees") or []:
+            afm = str(employee.get("employee_afm") or "")
+            annual_after = int(employee.get("annual_legal_overtime_minutes_after_period") or 0)
+            annual_after_by_employee[afm] = annual_after
+            meta = running_context.get(afm, {})
+            running_context[afm] = {
+                **meta,
+                "legal_overtime_minutes_before_period": annual_after,
+            }
+        for day in week_result.get("days") or []:
+            work_date = datetime.strptime(str(day.get("work_date") or ""), "%d/%m/%Y").date()
+            if month_from <= work_date <= month_to:
+                merged_days.append(day)
+    return _merge_timekeeping_days(merged_days, annual_after_by_employee), snapshots, running_context
+
+
 @apologistic_bp.post("/timekeeping/export")
 def apologistic_timekeeping_export():
     ctx = resolve_active_store()
@@ -212,6 +353,24 @@ def apologistic_timekeeping_export():
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
     body = request.get_json(silent=True) or {}
     try:
+        if body.get("year") is not None or body.get("month") is not None:
+            year = int(body.get("year") or 0)
+            month = int(body.get("month") or 0)
+            report, _, _ = _build_timekeeping_for_month(ctx, year=year, month=month)
+            month_from = date(year, month, 1)
+            month_to = date(year, month, monthrange(year, month)[1])
+            content = build_timekeeping_export_xlsx(
+                report=report,
+                meta_line=f"{ctx['name']} · {month_from:%d/%m/%Y}–{month_to:%d/%m/%Y} · {report['calculation_version']}",
+                title="Ωρομέτρηση μήνα",
+                daily_title="Αναλυτική ωρομέτρηση μήνα ανά ημέρα",
+            )
+            return send_file(
+                BytesIO(content),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                as_attachment=True,
+                download_name=f"orometrisi_month_{year}{month:02d}.xlsx",
+            )
         week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
         if week_from.weekday() != 0:
             raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
@@ -223,6 +382,8 @@ def apologistic_timekeeping_export():
         )
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
+    except TimekeepingPeriodError as exc:
+        return jsonify({"error": str(exc), "problem_weeks": exc.problem_weeks}), 409
     except ValueError as exc:
         status = 409 if "Σ ή Μ" in str(exc) else 400
         return jsonify({"error": str(exc)}), status

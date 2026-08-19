@@ -84,6 +84,14 @@
     <p class="field-hint apologistic-accept-all-hint"></p>
   </div>
 
+  <div class="apologistic-restore-all-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-secondary apologistic-restore-all-btn" hidden>
+      <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+      <span>Επαναφορά αλλαγών</span>
+    </button>
+    <p class="field-hint apologistic-restore-all-hint"></p>
+  </div>
+
   <div class="card list-card">
 
     <div id="apologisticWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
@@ -96,6 +104,14 @@
       <span>Έγκριση όλων προς μεταβολή</span>
     </button>
     <p class="field-hint apologistic-accept-all-hint"></p>
+  </div>
+
+  <div class="apologistic-restore-all-bar hidden" aria-live="polite">
+    <button type="button" class="btn btn-secondary apologistic-restore-all-btn" hidden>
+      <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+      <span>Επαναφορά αλλαγών</span>
+    </button>
+    <p class="field-hint apologistic-restore-all-hint"></p>
   </div>
 
   <div class="apologistic-bulk-bar hidden" aria-live="polite">
@@ -340,6 +356,6 @@
 {% block scripts %}
 
   <script src="/static/js/office-date-picker.js?v=20260816apologistic1"></script>
-  <script src="/static/js/apologistic.js?v=20260819overtime1"></script>
+  <script src="/static/js/apologistic.js?v=20260819back1"></script>
 
 {% endblock %}

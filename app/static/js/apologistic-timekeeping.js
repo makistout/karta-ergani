@@ -1,5 +1,7 @@
 const qs = new URLSearchParams(location.search);
 const weekFrom = qs.get("week_from") || "";
+const year = qs.get("year") || "";
+const month = qs.get("month") || "";
 let timekeepingData = null;
 
 function esc(value) { return Office.escapeHtml(String(value ?? "")); }
@@ -14,28 +16,103 @@ function displayDate(value) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("apologistic");
-  document.getElementById("timekeepingBack").href = `/ui/apologistic${weekFrom ? `?week_from=${encodeURIComponent(weekFrom)}` : ""}`;
+  document.getElementById("timekeepingBack").href = buildBackHref();
   document.getElementById("timekeepingExport").addEventListener("click", downloadExcel);
   try {
     const active = await Office.fetchActiveStore();
     Office.applyActiveStoreChrome(active);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekFrom)) throw new Error("Λείπει έγκυρη εβδομάδα ωρομέτρησης.");
+    if (!isWeekMode() && !isMonthMode()) {
+      throw new Error("Λείπει έγκυρη εβδομάδα ή μήνας ωρομέτρησης.");
+    }
     await loadTimekeeping();
   } catch (error) {
     document.getElementById("timekeepingWrap").innerHTML = `<p style="color:var(--err);">${esc(error.message || error)}</p>`;
   }
 });
 
+function isWeekMode() {
+  return /^\d{4}-\d{2}-\d{2}$/.test(weekFrom);
+}
+
+function isMonthMode() {
+  const y = Number(year || 0);
+  const m = Number(month || 0);
+  return Number.isInteger(y) && y >= 2000 && Number.isInteger(m) && m >= 1 && m <= 12;
+}
+
+function periodPayload() {
+  if (isMonthMode()) return { year: Number(year), month: Number(month) };
+  return { week_from: weekFrom };
+}
+
+function buildBackHref() {
+  const params = new URLSearchParams();
+  const mode = String(qs.get("origin_mode") || "").trim();
+  if (mode) params.set("mode", mode);
+  const originWeekFrom = String(qs.get("origin_week_from") || "").trim();
+  if (originWeekFrom) params.set("week_from", originWeekFrom);
+  const originYear = String(qs.get("origin_year") || "").trim();
+  const originMonth = String(qs.get("origin_month") || "").trim();
+  if (originYear) params.set("year", originYear);
+  if (originMonth) params.set("month", originMonth);
+  const originFrom = String(qs.get("origin_from") || "").trim();
+  const originTo = String(qs.get("origin_to") || "").trim();
+  if (originFrom) params.set("from", originFrom);
+  if (originTo) params.set("to", originTo);
+  const originFilter = String(qs.get("origin_filter") || "").trim();
+  if (originFilter) params.set("filter", originFilter);
+  const originSelectedDate = String(qs.get("origin_selected_date") || "").trim();
+  if (originSelectedDate) params.set("selected_date", originSelectedDate);
+  return `/ui/apologistic${params.toString() ? `?${params.toString()}` : ""}`;
+}
+
+function problemWeekHref(weekFrom) {
+  const params = new URLSearchParams();
+  params.set("mode", "week");
+  params.set("week_from", String(weekFrom || ""));
+  params.set("filter", "review");
+  return `/ui/apologistic?${params.toString()}`;
+}
+
+function renderProblemWeeksError(message, problemWeeks) {
+  const rows = Array.isArray(problemWeeks) ? problemWeeks : [];
+  const links = rows.length
+    ? `<div class="timekeeping-problem-weeks">` +
+      rows.map((week) =>
+        `<a class="btn btn-secondary timekeeping-problem-link" href="${esc(problemWeekHref(week.week_from))}">` +
+        `${esc(week.label || `${displayDate(week.week_from)}–${displayDate(week.week_to)}`)}` +
+        `</a>`
+      ).join("") +
+      `</div>`
+    : "";
+  document.getElementById("timekeepingWrap").innerHTML =
+    `<div class="timekeeping-problem-box">` +
+    `<p class="timekeeping-problem-text">${esc(message)}</p>` +
+    (rows.length ? `<p class="timekeeping-problem-hint">Προβληματικές εβδομάδες:</p>${links}` : "") +
+    `</div>`;
+}
+
 async function loadTimekeeping() {
   const res = await fetch("/api/apologistic/timekeeping/preview", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ week_from: weekFrom }),
+    body: JSON.stringify(periodPayload()),
   });
   const data = await Office.parseJson(res);
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    if (Array.isArray(data.problem_weeks) && data.problem_weeks.length) {
+      renderProblemWeeksError(data.error || `HTTP ${res.status}`, data.problem_weeks);
+      return;
+    }
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
   timekeepingData = data;
-  document.getElementById("timekeepingMeta").textContent =
-    `${data.store?.name || "Κατάστημα"} · ${displayDate(data.week_from)} – ${displayDate(data.week_to)} · ${data.calculation_version}`;
+  if (data.period_type === "month") {
+    document.getElementById("timekeepingMeta").textContent =
+      `${data.store?.name || "Κατάστημα"} · ${displayDate(data.period_from)} – ${displayDate(data.period_to)} · ${data.calculation_version}`;
+  } else {
+    document.getElementById("timekeepingMeta").textContent =
+      `${data.store?.name || "Κατάστημα"} · ${displayDate(data.week_from)} – ${displayDate(data.week_to)} · ${data.calculation_version}`;
+  }
   document.getElementById("timekeepingSummary").innerHTML =
     `<div class="card apologistic-kpi"><span>Εργαζόμενοι</span><strong>${data.counts?.employees || 0}</strong></div>` +
     `<div class="card apologistic-kpi"><span>Ημέρες</span><strong>${data.counts?.days || 0}</strong></div>` +
@@ -65,7 +142,7 @@ async function downloadExcel() {
   try {
     const res = await fetch("/api/apologistic/timekeeping/export", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ week_from: weekFrom }),
+      body: JSON.stringify(periodPayload()),
     });
     if (!res.ok) {
       const data = await Office.parseJson(res);
@@ -75,7 +152,9 @@ async function downloadExcel() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `orometrisi_${weekFrom.replaceAll("-", "")}.xlsx`;
+    link.download = isMonthMode()
+      ? `orometrisi_month_${String(year)}${String(month).padStart(2, "0")}.xlsx`
+      : `orometrisi_${weekFrom.replaceAll("-", "")}.xlsx`;
     document.body.appendChild(link);
     link.click();
     link.remove();
