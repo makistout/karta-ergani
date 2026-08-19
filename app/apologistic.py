@@ -636,6 +636,16 @@ def _contract_kind(contract: dict[str, Any] | None) -> tuple[str, int | None]:
     return "Μη προσδιορισμένη", days
 
 
+def _contract_weekly_minutes(contract: dict[str, Any] | None) -> int | None:
+    raw = (contract or {}).get("weekly_hours")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return max(0, int(round(float(str(raw).strip().replace(",", ".")) * 60)))
+    except ValueError:
+        return None
+
+
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
@@ -1132,6 +1142,7 @@ def build_weekly_report(
         daily.append({
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
+            "contract_weekly_minutes": _contract_weekly_minutes(contract),
             "weekly_days_source": weekly_days_source,
             "actual_start_minutes": ps,
             "declared_start_minutes": ds,

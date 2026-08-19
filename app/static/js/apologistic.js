@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSubmitModal();
   initBulkWeekModal();
   initAcceptAllBar();
+  initTimekeeping();
   window.addEventListener("scroll", () => {
     hideProposalHistoryOverlay();
     hideEmployeeWeekOverlay();
@@ -721,6 +722,25 @@ function refreshSummaryCounts() {
     days: reportState.rows,
     counts: computeReportCounts(reportState.rows),
   });
+}
+
+function initTimekeeping() {
+  document.getElementById("apologisticTimekeepingBtn")?.addEventListener("click", () => {
+    location.href = `/ui/apologistic/timekeeping?week_from=${encodeURIComponent(iso(weekStart))}`;
+  });
+}
+
+function updateTimekeepingBar() {
+  const bar = document.querySelector(".apologistic-timekeeping-bar");
+  if (!bar) return;
+  const counts = computeReportCounts(reportState.rows || []);
+  const visible = !isEmployeeMonthView() && !isStoreMonthView() && !isStoreRangeView()
+    && (counts.all || 0) > 0 && (counts.review || 0) === 0;
+  bar.classList.toggle("hidden", !visible);
+  const hint = document.getElementById("apologisticTimekeepingHint");
+  if (hint) hint.textContent = visible
+    ? `${counts.ok || 0} Σύμφωνα · ${counts.change || 0} Μεταβολές · χωρίς εκκρεμότητες Ελέγχου`
+    : "";
 }
 
 function isAllDaysSelected() {
@@ -2404,6 +2424,7 @@ function renderSummary(data) {
   syncFilterButtons();
   updateBulkWeekBar();
   updateAcceptAllBar();
+  updateTimekeepingBar();
 }
 function applyReportFilter(requested) {
   reportState.filter = requested !== "all" && reportState.filter === requested ? "all" : requested;

@@ -47,6 +47,51 @@ def test_missing_past_snapshot_does_not_calculate_on_the_fly(monkeypatch):
     assert "αποθηκευμένο" in response.get_json()["error"]
 
 
+def test_timekeeping_preview_uses_archive_context_and_holidays(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: ({"days": [{
+        "employee_afm": "123456789", "work_date": "03/08/2026", "status": "ok",
+        "declared": "09:00–17:00", "punch_count": 2, "overtime_minutes": 60,
+    }]}, {"id": 7, "status": "draft"}))
+    monkeypatch.setattr(routes_apologistic, "load_annual_overtime_context", lambda **kwargs: {
+        "123456789": {"legal_overtime_minutes_before_period": 149 * 60 + 30, "data_complete": True},
+    })
+    monkeypatch.setattr(routes_apologistic, "get_effective_holidays_for_store", lambda *_: set())
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview", json={"week_from": "2026-08-03"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["preview"] is True
+    assert body["days"][0]["overtime_40"] == 30
+    assert body["days"][0]["overtime_60"] == 30
+
+
+def test_timekeeping_preview_rejects_review_rows(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: ({"days": [{
+        "employee_afm": "123456789", "work_date": "03/08/2026", "status": "review",
+    }]}, {"id": 7}))
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview", json={"week_from": "2026-08-03"},
+    )
+    assert response.status_code == 409
+
+
+def test_timekeeping_export_returns_xlsx(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_: ({
+        "calculation_version": "timekeeping-v1", "employees": [], "days": [],
+    }, {"id": 7}, {}))
+    monkeypatch.setattr(routes_apologistic, "build_timekeeping_export_xlsx", lambda **kwargs: b"xlsx-bytes")
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/export", json={"week_from": "2026-08-03"},
+    )
+    assert response.status_code == 200
+    assert response.data == b"xlsx-bytes"
+    assert response.headers["Content-Disposition"].endswith("orometrisi_20260803.xlsx")
+
+
 def test_month_returns_saved_rows_and_all_intersecting_weeks(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))

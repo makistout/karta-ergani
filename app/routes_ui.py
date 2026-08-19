@@ -177,6 +177,11 @@ def ui_apologistic():
     return render_template("ui/apologistic.html")
 
 
+@ui_bp.get("/apologistic/timekeeping")
+def ui_apologistic_timekeeping():
+    return render_template("ui/apologistic-timekeeping.html")
+
+
 @ui_bp.get("/work-card")
 def ui_work_card():
     return render_template("ui/work-card-list.html")

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date, datetime, timedelta
+from io import BytesIO
 
-from flask import Blueprint, Response, jsonify, request, session
+from flask import Blueprint, Response, jsonify, request, send_file, session
 
 from app.apologistic import previous_week
 from app.apologistic_export import build_apologistic_export_xlsx
@@ -26,11 +27,15 @@ from app.repo_apologistic import (
     enrich_employee_month_days, list_store_days, successful_overtime_minutes_for_year,
     restore_review_change, tables_available, update_proposed, update_overtime,
 )
+from app.repo_holidays import get_effective_holidays_for_store
+from app.repo_timekeeping import load_annual_overtime_context
 from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_submit_result
 from app.wto_submit import parse_submit_response
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a_payload
 from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A, build_wto_ov_a_payload
 from app.work_card_payload import WorkCardPayloadError
+from app.timekeeping import build_timekeeping_report
+from app.timekeeping_export import build_timekeeping_export_xlsx
 
 
 apologistic_bp = Blueprint("apologistic", __name__, url_prefix="/api/apologistic")
@@ -148,6 +153,85 @@ def apologistic_week():
         "snapshot": snapshot,
         **report,
     })
+
+
+@apologistic_bp.post("/timekeeping/preview")
+def apologistic_timekeeping_preview():
+    """Calculate a read-only payroll timekeeping preview for one finalized week."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Μη έγκυρη εβδομάδα"}), 400
+    if week_from.weekday() != 0:
+        return jsonify({"error": "Η εβδομάδα πρέπει να ξεκινά Δευτέρα"}), 400
+    try:
+        result, snapshot, annual_context = _build_timekeeping_for_week(ctx, week_from)
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except ValueError as exc:
+        status = 409 if "Σ ή Μ" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({
+        **result,
+        "store": {"id": ctx["id"], "name": ctx["name"]},
+        "week_from": week_from.isoformat(),
+        "week_to": (week_from + timedelta(days=6)).isoformat(),
+        "source_run": snapshot,
+        "annual_context": annual_context,
+        "preview": True,
+    })
+
+
+def _build_timekeeping_for_week(ctx: dict, week_from: date):
+    loaded = load_report(int(ctx["id"]), week_from)
+    if loaded is None:
+        raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτή την εβδομάδα")
+    report, snapshot = loaded
+    rows = list(report.get("days") or [])
+    if any(str(row.get("status") or "").lower() == "review" for row in rows):
+        raise ValueError("Η ωρομέτρηση είναι διαθέσιμη μόνο όταν όλες οι εγγραφές είναι Σ ή Μ")
+    employee_afms = sorted({str(row.get("employee_afm") or "") for row in rows if row.get("employee_afm")})
+    annual_context = load_annual_overtime_context(
+        store_id=int(ctx["id"]), employee_afms=employee_afms, period_from=week_from,
+    )
+    holidays = get_effective_holidays_for_store(int(ctx["id"]), week_from.year)
+    result = build_timekeeping_report(
+        rows, holidays=holidays, annual_context_by_employee=annual_context,
+    )
+    return result, snapshot, annual_context
+
+
+@apologistic_bp.post("/timekeeping/export")
+def apologistic_timekeeping_export():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+        if week_from.weekday() != 0:
+            raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
+        report, _, _ = _build_timekeeping_for_week(ctx, week_from)
+        week_to = week_from + timedelta(days=6)
+        content = build_timekeeping_export_xlsx(
+            report=report,
+            meta_line=f"{ctx['name']} · {week_from:%d/%m/%Y}–{week_to:%d/%m/%Y} · {report['calculation_version']}",
+        )
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except ValueError as exc:
+        status = 409 if "Σ ή Μ" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return send_file(
+        BytesIO(content),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"orometrisi_{week_from:%Y%m%d}.xlsx",
+    )
 
 
 @apologistic_bp.put("/proposal")
