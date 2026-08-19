@@ -726,6 +726,7 @@ def build_weekly_report(
     *,
     sunday_rest_transfer_enabled: bool = False,
     uneven_distribution_enabled: bool = False,
+    holiday_dates: set | None = None,
 ) -> dict[str, Any]:
     schedules: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     punches: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -885,9 +886,10 @@ def build_weekly_report(
             and (bool(slots) or not inferred)
         )
         parsed_work_date = datetime.strptime(work_date, "%d/%m/%Y").date()
+        _is_rest_day = parsed_work_date.weekday() == 6 or (holiday_dates and parsed_work_date in holiday_dates)
         compensatory_rest_due = bool(
             sunday_rest_transfer_enabled
-            and parsed_work_date.weekday() == 6
+            and _is_rest_day
             and contract_required_days == 5
             and len(punch_dates_by_afm.get(afm, set())) >= 6
             and (effective_actual or 0) > 300

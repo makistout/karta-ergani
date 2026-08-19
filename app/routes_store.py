@@ -526,3 +526,88 @@ def put_notify_recipients(store_id: int):
             return jsonify({"error": hint, "db_setup": hint}), 500
         return jsonify({"error": f"Αποτυχία αποθήκευσης ληπτών: {ex}"}), 500
     return jsonify({"success": True, "count": n, "recipients": _json_rows(saved)})
+
+
+# ─── Holidays ──────────────────────────────────────────────────────────────────
+
+@store_bp.get("/holidays")
+def get_holidays():
+    from app.repo_holidays import list_holidays
+    year = request.args.get("year", type=int)
+    return jsonify({"holidays": list_holidays(year)})
+
+
+@store_bp.post("/holidays")
+def add_holiday_route():
+    from datetime import datetime as _dt
+    from app.repo_holidays import add_holiday
+    body = request.get_json(silent=True) or {}
+    try:
+        d = _dt.strptime(str(body.get("holiday_date") or "")[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"error": "Μη έγκυρη ημερομηνία"}), 400
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Απαιτείται όνομα αργίας"}), 400
+    recurring = bool(body.get("recurring"))
+    try:
+        hid = add_holiday(d, name, recurring=recurring)
+    except Exception as ex:
+        if "UQ_karta_holidays_date" in str(ex):
+            return jsonify({"error": "Υπάρχει ήδη αργία σε αυτή την ημερομηνία"}), 409
+        raise
+    return jsonify({"success": True, "id": hid})
+
+
+@store_bp.delete("/holidays/<int:holiday_id>")
+def delete_holiday_route(holiday_id: int):
+    from app.repo_holidays import delete_holiday
+    if delete_holiday(holiday_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Δεν βρέθηκε"}), 404
+
+
+@store_bp.get("/<int:store_id>/holidays")
+def get_store_holidays(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση"}), 403
+    from app.repo_holidays import list_holidays, list_store_overrides
+    year = request.args.get("year", type=int)
+    return jsonify({
+        "holidays": list_holidays(year),
+        "overrides": list_store_overrides(store_id),
+    })
+
+
+@store_bp.put("/<int:store_id>/holidays/override")
+def put_store_holiday_override(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση"}), 403
+    from datetime import datetime as _dt
+    from app.repo_holidays import set_store_override
+    body = request.get_json(silent=True) or {}
+    try:
+        d = _dt.strptime(str(body.get("holiday_date") or "")[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"error": "Μη έγκυρη ημερομηνία"}), 400
+    action = str(body.get("action") or "").strip()
+    if action not in ("add", "remove"):
+        return jsonify({"error": "action πρέπει να είναι 'add' ή 'remove'"}), 400
+    custom_name = str(body.get("custom_name") or "").strip() or None
+    set_store_override(store_id, d, action, custom_name)
+    return jsonify({"success": True})
+
+
+@store_bp.delete("/<int:store_id>/holidays/override")
+def delete_store_holiday_override(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση"}), 403
+    from datetime import datetime as _dt
+    from app.repo_holidays import delete_store_override
+    body = request.get_json(silent=True) or {}
+    try:
+        d = _dt.strptime(str(body.get("holiday_date") or "")[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"error": "Μη έγκυρη ημερομηνία"}), 400
+    delete_store_override(store_id, d)
+    return jsonify({"success": True})

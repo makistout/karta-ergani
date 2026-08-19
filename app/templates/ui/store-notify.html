@@ -254,11 +254,54 @@
             </button>
           </div>
         </section>
+
+        <section class="card settings-section" id="holidaysCard" aria-labelledby="holidaysTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="holidaysTitle"><i class="bi bi-calendar-event" aria-hidden="true"></i> Αργίες</h2>
+              <p class="field-hint">Γενικές αργίες Ελλάδας + τροποποιήσεις ανά κατάστημα (προσθήκη/αφαίρεση).</p>
+            </div>
+          </div>
+          <div class="settings-action-block">
+            <div class="holidays-year-picker">
+              <label for="holidaysYear">Έτος:</label>
+              <select id="holidaysYear" class="input-select">
+                <option value="2026" selected>2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+            <table class="data holidays-table" id="holidaysTable">
+              <thead>
+                <tr>
+                  <th>Ημερομηνία</th>
+                  <th>Αργία</th>
+                  <th>Επαναλαμβ.</th>
+                  <th class="col-holiday-status">Κατάστημα</th>
+                  <th class="col-holiday-actions"></th>
+                </tr>
+              </thead>
+              <tbody id="holidaysBody"></tbody>
+            </table>
+            <p id="holidaysEmpty" class="field-hint" style="display:none;">Δεν υπάρχουν αργίες.</p>
+          </div>
+          <div class="holidays-add-row">
+            <input id="holidayNewDate" type="date" class="field-input">
+            <input id="holidayNewName" type="text" class="field-input" placeholder="Όνομα αργίας" maxlength="200">
+            <label class="holidays-recurring-label"><input id="holidayNewRecurring" type="checkbox"> Ετήσια</label>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnAddHoliday">
+              <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Προσθήκη</span>
+            </button>
+          </div>
+          <p class="field-hint">
+            <strong>Κατάστημα:</strong> «✓ Ισχύει» = η αργία ισχύει για το κατάστημα. Κλικ για αφαίρεση/επαναφορά.
+            Μπορείτε να προσθέσετε νέα αργία ειδικά για αυτό το κατάστημα.
+          </p>
+        </section>
       </div>
       <div id="stepMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260817dialog1"></script>
+  <script src="/static/js/store-notify.js?v=20260819hol7"></script>
 {% endblock %}

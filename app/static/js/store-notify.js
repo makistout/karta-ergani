@@ -253,8 +253,11 @@ async function selectStore(storeId, pushUrl) {
     url.searchParams.set("id", String(storeId));
     history.replaceState(null, "", url.pathname + url.search);
   }
-  await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId), loadCardListenerSettings(storeId)]);
+  try {
+    await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId), loadCardListenerSettings(storeId)]);
+  } catch (e) { /* ignore */ }
   updateNotifyUiState();
+  try { await loadHolidays(); } catch (e) { /* ignore */ }
 }
 
 function initNotifyRecipientButtons() {
@@ -1021,3 +1024,120 @@ async function testNotifyRecipients() {
     updateNotifyUiState();
   }
 }
+
+// ─── Holidays ─────────────────────────────────────────────────────────────────
+
+let holidaysData = [];
+let holidaysOverrides = [];
+
+function getSelectedStoreId() {
+  return currentStoreId || document.getElementById("notifyStoreId")?.value || "";
+}
+
+async function loadHolidays() {
+  const year = document.getElementById("holidaysYear")?.value || "2026";
+  const storeId = getSelectedStoreId();
+  const empty = document.getElementById("holidaysEmpty");
+  if (!storeId) {
+    if (empty) empty.textContent = "Επιλέξτε πρώτα κατάστημα.";
+    renderHolidays();
+    return;
+  }
+  const url = `/api/store/${storeId}/holidays?year=${year}`;
+  try {
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      if (empty) { empty.textContent = errData.error || `HTTP ${res.status}`; empty.style.display = ""; }
+      holidaysData = []; holidaysOverrides = [];
+      renderHolidays();
+      return;
+    }
+    const data = await res.json();
+    holidaysData = data.holidays || [];
+    holidaysOverrides = data.overrides || [];
+  } catch (e) {
+    if (empty) { empty.textContent = `Σφάλμα: ${e.message}`; empty.style.display = ""; }
+    holidaysData = []; holidaysOverrides = [];
+  }
+  renderHolidays();
+}
+
+function renderHolidays() {
+  const tbody = document.getElementById("holidaysBody");
+  const empty = document.getElementById("holidaysEmpty");
+  if (!tbody) return;
+  const storeId = getSelectedStoreId();
+  const overrideMap = {};
+  holidaysOverrides.forEach(o => { overrideMap[o.holiday_date] = o.action; });
+
+  if (!holidaysData.length) {
+    tbody.innerHTML = "";
+    if (empty) empty.style.display = "";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  tbody.innerHTML = holidaysData.map(h => {
+    const override = overrideMap[h.holiday_date];
+    const isRemoved = override === "remove";
+    const statusLabel = isRemoved ? "Αφαιρέθηκε" : "✓ Ισχύει";
+    const statusClass = isRemoved ? "holiday-removed" : "holiday-active";
+    const toggleAction = isRemoved ? "restore" : "remove";
+    const toggleLabel = isRemoved ? "Επαναφορά" : "Αφαίρεση";
+    return `<tr class="${isRemoved ? 'row-muted' : ''}">
+      <td>${h.holiday_date.split("-").reverse().join("/")}</td>
+      <td>${Office.escapeHtml(h.name)}</td>
+      <td>${h.recurring ? "Ναι" : "—"}</td>
+      <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+      <td>${storeId ? `<button type="button" class="btn-link btn-sm holiday-toggle" data-date="${h.holiday_date}" data-action="${toggleAction}">${toggleLabel}</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+}
+
+async function toggleHolidayOverride(holidayDate, action) {
+  const storeId = getSelectedStoreId();
+  if (!storeId) return;
+  if (action === "restore") {
+    await fetch(`/api/store/${storeId}/holidays/override`, {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", body: JSON.stringify({ holiday_date: holidayDate }),
+    });
+  } else {
+    await fetch(`/api/store/${storeId}/holidays/override`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", body: JSON.stringify({ holiday_date: holidayDate, action: "remove" }),
+    });
+  }
+  await loadHolidays();
+}
+
+async function addHoliday() {
+  const dateInput = document.getElementById("holidayNewDate");
+  const nameInput = document.getElementById("holidayNewName");
+  const recurringInput = document.getElementById("holidayNewRecurring");
+  const d = dateInput?.value;
+  const name = nameInput?.value?.trim();
+  if (!d || !name) { Office.showMsg("stepMsg", "Συμπληρώστε ημερομηνία και όνομα", false); return; }
+  const res = await fetch("/api/store/holidays", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ holiday_date: d, name, recurring: recurringInput?.checked || false }),
+  });
+  const data = await res.json();
+  if (!res.ok) { Office.showMsg("stepMsg", data.error || "Σφάλμα", false); return; }
+  dateInput.value = "";
+  nameInput.value = "";
+  if (recurringInput) recurringInput.checked = false;
+  await loadHolidays();
+  Office.showMsg("stepMsg", "Αργία προστέθηκε", true);
+}
+
+(function initHolidays() {
+  document.getElementById("holidaysYear")?.addEventListener("change", loadHolidays);
+  document.getElementById("btnAddHoliday")?.addEventListener("click", addHoliday);
+  document.getElementById("holidaysBody")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".holiday-toggle");
+    if (btn) toggleHolidayOverride(btn.dataset.date, btn.dataset.action);
+  });
+})();

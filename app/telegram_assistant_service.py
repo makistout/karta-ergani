@@ -132,6 +132,24 @@ def parse_command(
         {"id": int(c["store_id"]), "name": str(c.get("store_name") or "")}
         for c in contexts
     ]
+
+    # If we can resolve a single store from focus/reply/text, narrow employees & today_home
+    focus = _conversation_focus(reply_context, contexts=contexts, employees=employees)
+    focused_store_id: int | None = None
+    if focus.get("store_id") and int(focus["store_id"]) in {int(c["store_id"]) for c in contexts}:
+        focused_store_id = int(focus["store_id"])
+    if not focused_store_id:
+        mentioned = _mentioned_store_ids(text, contexts)
+        if len(mentioned) == 1:
+            focused_store_id = mentioned[0]
+    if focused_store_id:
+        employees = [e for e in employees if e["store_id"] == focused_store_id]
+        today_stores = today_home.get("stores") or []
+        today_home = {
+            **today_home,
+            "stores": [s for s in today_stores if int(s.get("store_id") or 0) == focused_store_id],
+        }
+
     prompt = {
         "role": (
             "Μετατροπή ελληνικού ή greeklish μηνύματος σε δομημένη draft εντολή εργασίας, "
@@ -173,9 +191,7 @@ def parse_command(
         "today_home": today_home,
         "message": str(text)[:4096],
         "reply_context": reply_context or {},
-        "conversation_focus": _conversation_focus(
-            reply_context, contexts=contexts, employees=employees,
-        ),
+        "conversation_focus": focus,
         "allowed_stores": stores,
         "allowed_employees": employees,
     }
