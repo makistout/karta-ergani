@@ -201,6 +201,7 @@ def format_today_alert_notification(
     hour_from: str | None = None,
     expected_exit: str | None = None,
     notify_grace_minutes: int | None = None,
+    ai_agent_enabled: bool = False,
 ) -> str:
     """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
     from app.today_notify_logic import (
@@ -244,11 +245,14 @@ def format_today_alert_notification(
             if ht:
                 sched_line += f" – {ht}"
             lines.append(sched_line)
-    lines.extend(["", "Προχωρήστε σε ενέργεια:"])
-    if link:
-        lines.append(link)
-    elif not has_pin:
-        lines.append(
-            "(Ορίστε PIN λήπτη στο κατάστημα για σύνδεσμο με επιλογές ενέργειας.)"
-        )
+    if ai_agent_enabled:
+        lines.extend(["", "Απαντήστε στο μήνυμα για ενέργεια."])
+    else:
+        lines.extend(["", "Προχωρήστε σε ενέργεια:"])
+        if link:
+            lines.append(link)
+        elif not has_pin:
+            lines.append(
+                "(Ορίστε PIN λήπτη στο κατάστημα για σύνδεσμο με επιλογές ενέργειας.)"
+            )
     return "\n".join(lines)

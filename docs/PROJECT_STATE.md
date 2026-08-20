@@ -249,6 +249,8 @@
   - `cancel_pending` κλείνει ανοιχτές εντολές και μηδενίζει το conversation focus
     (κρατά μόνο κατάστημα)· το μήνυμα ακύρωσης αναφέρει πρώτα το νεότερο `#N`.
 - Επιβεβαίωση: κουμπί στο UI ή PIN στο Telegram → `_submit_work_card` / WTODaily / WTOLeave.
+- Today-alert Telegram: με AI Agent = ON → «Απαντήστε στο μήνυμα για ενέργεια.»
+  (χωρίς `today-hit` URL)· με OFF → «Προχωρήστε σε ενέργεια:» + σύνδεσμος.
 - Τεκμηρίωση: `docs/TELEGRAM_ASSISTANT.md`.
 
 ## Αρχική Αναφορά

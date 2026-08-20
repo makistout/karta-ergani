@@ -43,6 +43,10 @@ deterministic validation, inbound/outbound ιστορικό, task/event logging,
 Οι today-alert και missing-punch ειδοποιήσεις γράφουν `store_id` και `employee_afm`
 στο `karta_telegram_outbound_message`, ώστε το reply να έχει έτοιμο πλαίσιο.
 
+Όταν το κατάστημα έχει **AI Agent = ON**, το Telegram κείμενο today-alert δεν
+περιλαμβάνει σύνδεσμο `today-hit`· τελειώνει με «Απαντήστε στο μήνυμα για ενέργεια.»
+Με AI Agent = OFF παραμένει «Προχωρήστε σε ενέργεια:» + URL.
+
 ## Gemini prompt (`parse_command`)
 
 Πηγή: `app/telegram_assistant_service.py` → `_assistant_prompt_guide()` + payload.

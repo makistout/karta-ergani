@@ -291,9 +291,10 @@ def send_wto_schedule_notifications(
     prop_from = str(proposal.get("hour_from") or hour_from or "").strip() or None
     prop_to = str(proposal.get("hour_to") or hour_to or "").strip() or None
 
-    from app.repo_store import get_notify_grace_minutes
+    from app.repo_store import get_notify_grace_minutes, get_action_settings
 
     grace = get_notify_grace_minutes(store_id)
+    ai_agent_enabled = bool(get_action_settings(store_id).get("ai_agent_enabled"))
 
     recipients = list_deliverable_recipients(store_id)
     email_recipients = list_email_deliverable_recipients(store_id)
@@ -314,7 +315,7 @@ def send_wto_schedule_notifications(
         ):
             continue
         hit_url = None
-        if (rec.get("notify_pin_hash") or "").strip():
+        if not ai_agent_enabled and (rec.get("notify_pin_hash") or "").strip():
             try:
                 token = create_today_alert_token(
                     recipient_id=int(rec["id"]),
@@ -344,6 +345,7 @@ def send_wto_schedule_notifications(
             wto_hour_from=prop_from,
             wto_hour_to=prop_to,
             notify_grace_minutes=grace,
+            ai_agent_enabled=ai_agent_enabled,
         )
         try:
             send_telegram_message(chat_id, text, context={
@@ -489,9 +491,10 @@ def send_today_punch_notifications(
     schedule_hour_from = str((sched or {}).get("hour_from") or "").strip() or None
     schedule_hour_to = str((sched or {}).get("hour_to") or "").strip() or None
 
-    from app.repo_store import get_notify_grace_minutes
+    from app.repo_store import get_notify_grace_minutes, get_action_settings
 
     grace = get_notify_grace_minutes(store_id)
+    ai_agent_enabled = bool(get_action_settings(store_id).get("ai_agent_enabled"))
     row["notify_grace_minutes"] = grace
 
     resolved_kind = resolve_today_notify_kind(row, grace_minutes=grace)
@@ -656,7 +659,7 @@ def send_today_punch_notifications(
         ):
             continue
         hit_url = None
-        if (rec.get("notify_pin_hash") or "").strip():
+        if not ai_agent_enabled and (rec.get("notify_pin_hash") or "").strip():
             try:
                 log_step(
                     "Δημιουργία token ενέργειας Telegram",
@@ -694,6 +697,7 @@ def send_today_punch_notifications(
             hour_from=hour_from,
             expected_exit=expected_exit_hm,
             notify_grace_minutes=grace,
+            ai_agent_enabled=ai_agent_enabled,
         )
         try:
             log_step(

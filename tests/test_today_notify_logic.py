@@ -248,6 +248,45 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertIn(">30'", text)
         self.assertNotIn(">15'", text)
 
+    def test_today_alert_ai_agent_cta_without_link(self):
+        from app.telegram_notify import format_today_alert_notification
+
+        text = format_today_alert_notification(
+            store_name="ERATO",
+            employee_afm="074281686",
+            eponymo="ΚΑΝΑΚΗΣ",
+            onoma="ΣΤΥΛΙΑΝΟΣ",
+            work_date="20/08/2026",
+            notify_kind="late_check_in",
+            hit_url="https://erganios.gr/ui/today-hit?t=abc",
+            has_pin=True,
+            schedule_hour_from="16:00",
+            schedule_hour_to="22:40",
+            notify_grace_minutes=30,
+            ai_agent_enabled=True,
+        )
+        self.assertIn("Απαντήστε στο μήνυμα για ενέργεια.", text)
+        self.assertNotIn("Προχωρήστε σε ενέργεια:", text)
+        self.assertNotIn("today-hit", text)
+
+    def test_today_alert_default_cta_keeps_link(self):
+        from app.telegram_notify import format_today_alert_notification
+
+        text = format_today_alert_notification(
+            store_name="ERATO",
+            employee_afm="074281686",
+            eponymo="ΚΑΝΑΚΗΣ",
+            onoma="ΣΤΥΛΙΑΝΟΣ",
+            work_date="20/08/2026",
+            notify_kind="late_check_in",
+            hit_url="https://erganios.gr/ui/today-hit?t=abc",
+            has_pin=True,
+            ai_agent_enabled=False,
+        )
+        self.assertIn("Προχωρήστε σε ενέργεια:", text)
+        self.assertIn("today-hit?t=abc", text)
+        self.assertNotIn("Απαντήστε στο μήνυμα για ενέργεια.", text)
+
     def test_grace_constant_is_fifteen_minutes(self):
         self.assertEqual(NOTIFY_GRACE_MINUTES, 15)
 
