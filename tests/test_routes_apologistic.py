@@ -82,6 +82,23 @@ def test_timekeeping_preview_rejects_review_rows(monkeypatch):
     assert response.status_code == 409
 
 
+def test_timekeeping_preview_ignores_leave_even_when_its_apologistic_status_is_review(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: ({"days": [{
+        "employee_afm": "123456789", "work_date": "03/08/2026", "status": "review",
+        "day_state": "Άδεια", "declared": "ΑΔΕΙΑ", "proposed": "ΑΔΕΙΑ",
+    }]}, {"id": 7}))
+    monkeypatch.setattr(routes_apologistic, "load_annual_overtime_context", lambda **_: {})
+    monkeypatch.setattr(routes_apologistic, "get_effective_holidays_for_store", lambda *_: set())
+    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
+    monkeypatch.setattr(routes_apologistic, "_next_week_rest_context", lambda *_: {})
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview", json={"week_from": "2026-08-03"},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["counts"] == {"days": 0, "employees": 0}
+
+
 def test_next_week_context_counts_only_explicit_rest_days(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "list_schedule_for_range", lambda *_args, **_kwargs: [
         {"employee_afm": "123", "work_date": "10/08/2026", "shift_type": "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"},

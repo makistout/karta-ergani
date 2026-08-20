@@ -122,18 +122,37 @@ async function loadTimekeeping() {
 }
 
 function renderRows(rows) {
+  const zones = [
+    ["day", "Ημέρας"], ["night", "Νύχτας"],
+    ["sunday_holiday", "Κυρ/Αργίας"],
+    ["night_sunday_holiday", "Νύχτας/Κυρ-Αργίας"],
+  ];
+  const families = [
+    ["overwork_breakdown", "Υπερεργασία 20%"],
+    ["partial_additional_12_breakdown", "Μερική 12%"],
+    ["partial_120_breakdown", "Μερική 120%"],
+    ["overtime_40_breakdown", "Υπερωρία 40%"],
+    ["overtime_60_breakdown", "Υπερωρία 60%"],
+    ["overtime_120_breakdown", "Υπερωρία 120%"],
+    ["sixth_day_breakdown", "6η ημέρα 30%"],
+  ];
+  const familyHeaders = families.map(([, label]) =>
+    `<th colspan="4">${esc(label)}</th>`
+  ).join("");
+  const zoneHeaders = zones.map(([, label]) => `<th>${esc(label)}</th>`).join("");
+  const detailHeaders = `<th>Βάση</th>${zoneHeaders}${families.map(() => zoneHeaders).join("")}`;
+  const breakdownCells = (row, field) => zones.map(([key]) =>
+    `<td>${duration(row[field]?.[key])}</td>`
+  ).join("");
   document.getElementById("timekeepingWrap").innerHTML =
-    `<table class="data apologistic-timekeeping-table"><thead><tr>` +
-    `<th>Εργαζόμενος</th><th>Βάση</th><th>Ημέρα</th><th>Νύχτα 25%</th>` +
-    `<th>Κυρ/Αργία 75%</th><th>Νύχτα + Κυρ/Αργία</th><th>Μερική 12%</th>` +
-    `<th>6η ημέρα 30%</th><th>Υπερωρία 40%</th><th>Υπερωρία 60%</th><th>120%</th>` +
-    `</tr></thead><tbody>${rows.map((row) => `<tr>` +
+    `<table class="data apologistic-timekeeping-table"><thead>` +
+    `<tr><th rowspan="2">Εργαζόμενος</th><th colspan="5">Αναγνωρισμένη βάση</th>${familyHeaders}</tr>` +
+    `<tr>${detailHeaders}</tr></thead><tbody>${rows.map((row) => `<tr>` +
       `<td>${esc(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}<br><small>${esc(row.employee_afm)}</small></td>` +
       `<td>${duration(row.recognized_work_minutes)}</td><td>${duration(row.day)}</td>` +
       `<td>${duration(row.night)}</td><td>${duration(row.sunday_holiday)}</td>` +
-      `<td>${duration(row.night_sunday_holiday)}</td><td>${duration(row.partial_additional_12)}</td>` +
-      `<td>${duration(row.sixth_day_minutes)}</td><td>${duration(row.overtime_40)}</td>` +
-      `<td>${duration(row.overtime_60)}</td><td>${duration((row.overtime_120 || 0) + (row.partial_120 || 0))}</td></tr>`
+      `<td>${duration(row.night_sunday_holiday)}</td>` +
+      families.map(([field]) => breakdownCells(row, field)).join("") + `</tr>`
     ).join("")}</tbody></table>`;
 }
 

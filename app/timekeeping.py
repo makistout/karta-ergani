@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 ANNUAL_OVERTIME_LIMIT_MINUTES = 150 * 60
 _SLOT_RE = re.compile(r"(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})")
+PREMIUM_KEYS = ("day", "night", "sunday_holiday", "night_sunday_holiday")
 
 
 def _hm_minutes(value: str) -> int:
@@ -101,6 +102,88 @@ def _interval_minutes(intervals: Iterable[tuple[datetime, datetime]]) -> list[da
     return result
 
 
+def _empty_breakdown() -> dict[str, int]:
+    return {key: 0 for key in PREMIUM_KEYS}
+
+
+def _categorize_timeline(timeline: Iterable[datetime], holidays: set[date]) -> dict[str, int]:
+    result = _empty_breakdown()
+    for moment in timeline:
+        result[_minute_category(moment, holidays)] += 1
+    return result
+
+
+def _breakdown_total(value: dict[str, int] | None) -> int:
+    return sum(int((value or {}).get(key) or 0) for key in PREMIUM_KEYS)
+
+
+def _apply_exclusive_base_allocation(day: dict[str, Any]) -> None:
+    """Remove specially classified base minutes from the ordinary base buckets."""
+    ordinary = dict(day.get("premium_minutes") or _empty_breakdown())
+    special_fields = (
+        "sixth_day_breakdown", "partial_additional_12_breakdown", "partial_120_breakdown",
+    )
+    for field in special_fields:
+        for key in PREMIUM_KEYS:
+            ordinary[key] = max(0, int(ordinary.get(key) or 0) - int((day.get(field) or {}).get(key) or 0))
+    day["premium_minutes"] = ordinary
+    allocated = _breakdown_total(ordinary) + sum(
+        _breakdown_total(day.get(field)) for field in special_fields
+    )
+    day["base_allocation_integrity_minutes"] = allocated
+    if allocated != int(day.get("recognized_work_minutes") or 0):
+        day["warnings"].append(
+            "Ασυμφωνία κατανομής βάσης: κοινές προσαυξήσεις + 6η ημέρα + μερική δεν ισούνται με την καθαρή βάση"
+        )
+
+
+def _overtime_timeline(source: dict[str, Any], work_date: str) -> list[datetime]:
+    timeline: list[datetime] = []
+    for segment in source.get("overtime_segments") or []:
+        segment_date = str(segment.get("date") or work_date)
+        label = f"{segment.get('from') or ''}–{segment.get('to') or ''}"
+        timeline.extend(_interval_minutes(parse_intervals(label, segment_date)))
+    if not timeline and source.get("overtime_from") and source.get("overtime_to"):
+        label = f"{source.get('overtime_from')}–{source.get('overtime_to')}"
+        timeline.extend(_interval_minutes(parse_intervals(label, work_date)))
+    return sorted(set(timeline))
+
+
+def _overwork_timeline(
+    source: dict[str, Any], day: dict[str, Any], overtime_timeline: list[datetime],
+) -> list[datetime]:
+    minutes = max(0, int(day.get("overwork_minutes") or 0))
+    if not minutes:
+        return []
+    if overtime_timeline:
+        end = overtime_timeline[0]
+    else:
+        recognized = day.get("_recognized_timeline") or []
+        if recognized:
+            end = recognized[-1] + timedelta(minutes=1 + minutes)
+        else:
+            anchor = datetime.combine(_work_date(day["work_date"]), datetime.min.time())
+            actual_start = source.get("actual_start_minutes")
+            base = source.get("daily_overtime_basis_minutes")
+            if actual_start is None or base is None:
+                return []
+            end = anchor + timedelta(
+                minutes=int(actual_start) + int(source.get("outside_break_minutes") or 0)
+                + int(base) + minutes
+            )
+    start = end - timedelta(minutes=minutes)
+    return [start + timedelta(minutes=index) for index in range(minutes)]
+
+
+def is_timekeeping_leave_row(row: dict[str, Any]) -> bool:
+    status = str(row.get("status") or "").strip().lower()
+    if status == "change" and str(row.get("proposed") or "").strip():
+        values = (row.get("proposed"),)
+    else:
+        values = (row.get("day_state"), row.get("declared"))
+    return any("ΑΔΕΙΑ" in str(value or "").strip().upper() for value in values)
+
+
 def _display_interval(start: datetime, end: datetime) -> str:
     suffix = " (+1)" if end.date() > start.date() else ""
     return f"{start:%H:%M}–{end:%H:%M}{suffix}"
@@ -126,6 +209,14 @@ def _tail_interval_labels(
     return [_display_interval(group_start, group_end) for group_start, group_end in groups]
 
 
+def _tail_timeline(
+    timeline: list[datetime], minutes: int, *, tail_offset: int = 0,
+) -> list[datetime]:
+    end = max(0, len(timeline) - max(0, int(tail_offset or 0)))
+    start = max(0, end - max(0, int(minutes or 0)))
+    return timeline[start:end]
+
+
 def build_recognized_day(
     row: dict[str, Any], holidays: set[date], *, sunday_work_enabled: bool,
 ) -> dict[str, Any]:
@@ -142,16 +233,14 @@ def build_recognized_day(
     premium_holidays = holidays if sunday_work_enabled or int(row.get("punch_count") or 0) > 0 else set()
     break_set = _allocate_contiguous_break(physical_minutes, break_duration, premium_holidays)
     recognized_timeline = [minute for minute in physical_minutes if minute not in break_set]
-    categories: dict[str, int] = defaultdict(int)
-    for minute in recognized_timeline:
-        categories[_minute_category(minute, premium_holidays)] += 1
+    categories = _categorize_timeline(recognized_timeline, premium_holidays)
 
     break_label = None
     if break_set:
         ordered = sorted(break_set)
         break_label = _display_interval(ordered[0], ordered[-1] + timedelta(minutes=1))
     warnings: list[str] = []
-    if break_duration and not break_set:
+    if break_duration and physical_minutes and not break_set:
         warnings.append("Δεν βρέθηκε εσωτερικό συνεχόμενο διάστημα που να χωρά ολόκληρο το διάλειμμα")
 
     return {
@@ -166,12 +255,8 @@ def build_recognized_day(
         "break_minutes": len(break_set),
         "break_interval": break_label,
         "recognized_work_minutes": len(physical_minutes) - len(break_set),
-        "premium_minutes": {
-            "day": categories["day"],
-            "night": categories["night"],
-            "sunday_holiday": categories["sunday_holiday"],
-            "night_sunday_holiday": categories["night_sunday_holiday"],
-        },
+        "premium_minutes": categories,
+        "_premium_holidays": premium_holidays,
         "warnings": warnings,
         "contract_kind": row.get("contract_kind"),
         "weekly_days": row.get("weekly_days"),
@@ -220,14 +305,18 @@ def build_timekeeping_report(
     """Build a deterministic preview from finalized apologistic rows."""
     holiday_dates = set(holidays or set())
     contexts = annual_context_by_employee or {}
-    if any(str(row.get("status") or "").lower() == "review" for row in rows):
+    payroll_rows = [row for row in rows if not is_timekeeping_leave_row(row)]
+    if any(str(row.get("status") or "").lower() == "review" for row in payroll_rows):
         raise ValueError("Υπάρχουν εγγραφές για έλεγχο. Ολοκληρώστε πρώτα το απολογιστικό.")
 
     days = [
         build_recognized_day(row, holiday_dates, sunday_work_enabled=sunday_work_enabled)
-        for row in rows
+        for row in payroll_rows
     ]
-    source_by_key = {(str(row.get("employee_afm") or ""), str(row.get("work_date") or "")): row for row in rows}
+    source_by_key = {
+        (str(row.get("employee_afm") or ""), str(row.get("work_date") or "")): row
+        for row in payroll_rows
+    }
     running = {
         afm: int(context.get("legal_overtime_minutes_before_period") or 0)
         for afm, context in contexts.items()
@@ -237,6 +326,8 @@ def build_timekeeping_report(
         key = (day["employee_afm"], day["work_date"])
         source = source_by_key[key]
         overtime = max(0, int(source.get("overtime_minutes") or 0))
+        if str(day.get("contract_kind") or "") == "Μερική":
+            overtime = 0
         if day["special_arrangement"]:
             day["warnings"].append(
                 "Ειδικό καθεστώς διευθέτησης/ανισομερούς κατανομής: δεν έγινε τελικός χαρακτηρισμός υπερωρίας"
@@ -251,6 +342,25 @@ def build_timekeeping_report(
         daily_overtime[key] = daily_after
         day.update(split)
         day["overtime_minutes"] = overtime
+        overtime_timeline = _overtime_timeline(source, day["work_date"])
+        if len(overtime_timeline) > overtime:
+            overtime_timeline = overtime_timeline[:overtime]
+        if overtime and len(overtime_timeline) < overtime:
+            day["warnings"].append(
+                "Δεν βρέθηκε πλήρες χρονικό διάστημα για τον επιμερισμό της υπερωρίας σε προσαυξήσεις"
+            )
+        position = 0
+        for field in ("overtime_40", "overtime_60", "overtime_120"):
+            field_minutes = int(day.get(field) or 0)
+            selected = overtime_timeline[position:position + field_minutes]
+            day[f"{field}_breakdown"] = _categorize_timeline(selected, holiday_dates)
+            position += field_minutes
+        overwork_timeline = _overwork_timeline(source, day, overtime_timeline)
+        day["overwork_breakdown"] = _categorize_timeline(overwork_timeline, holiday_dates)
+        if day["overwork_minutes"] and len(overwork_timeline) < day["overwork_minutes"]:
+            day["warnings"].append(
+                "Δεν βρέθηκε πλήρες χρονικό διάστημα για τον επιμερισμό της υπερεργασίας σε προσαυξήσεις"
+            )
         context = contexts.get(day["employee_afm"], {})
         if context and not context.get("data_complete", True):
             day["warnings"].append("Το ετήσιο ιστορικό υπερωριών δεν είναι πλήρες")
@@ -269,9 +379,7 @@ def build_timekeeping_report(
         # two candidates, six days at most one.
         for item in employee_days:
             item["sixth_day_minutes"] = 0
-            item["sixth_day_breakdown"] = {
-                "day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0,
-            }
+            item["sixth_day_breakdown"] = _empty_breakdown()
         contract_kind = str(working_days[0].get("contract_kind") or "") if working_days else ""
         candidates: list[dict[str, Any]] = []
         remaining = list(working_days)
@@ -319,6 +427,8 @@ def build_timekeeping_report(
             item["partial_120"] = 0
             item["partial_additional_12_intervals"] = []
             item["partial_120_intervals"] = []
+            item["partial_additional_12_breakdown"] = _empty_breakdown()
+            item["partial_120_breakdown"] = _empty_breakdown()
         if working_days and str(working_days[0].get("contract_kind") or "") == "Μερική":
             contract_weekly = working_days[0].get("contract_weekly_minutes")
             weekly_days = int(working_days[0].get("weekly_days") or 0)
@@ -359,6 +469,61 @@ def build_timekeeping_report(
                         timeline, item["partial_additional_12"],
                         tail_offset=item["partial_120"],
                     )
+                    item["partial_120_breakdown"] = _categorize_timeline(
+                        _tail_timeline(timeline, item["partial_120"]),
+                        item.get("_premium_holidays") or set(),
+                    )
+                    item["partial_additional_12_breakdown"] = _categorize_timeline(
+                        _tail_timeline(
+                            timeline, item["partial_additional_12"],
+                            tail_offset=item["partial_120"],
+                        ),
+                        item.get("_premium_holidays") or set(),
+                    )
+
+        # Rotating employment: every recognized day beyond the contractual
+        # weekly day count is an extra-part-time day. Selection runs from
+        # Sunday backwards to Monday and may yield more than one day.
+        if working_days and str(working_days[0].get("contract_kind") or "") == "Εκ περιτροπής":
+            contractual_days = int(working_days[0].get("weekly_days") or 0)
+            extra_count = max(0, len(working_days) - contractual_days) if contractual_days > 0 else 0
+            full_day_cap = 480 if contractual_days == 5 else 400 if contractual_days == 6 else None
+            for item in reversed(working_days):
+                if extra_count <= 0:
+                    break
+                timeline = item.get("_recognized_timeline") or []
+                item["rotation_extra_day"] = True
+                item["partial_120"] = (
+                    max(0, item["recognized_work_minutes"] - full_day_cap)
+                    if full_day_cap is not None else 0
+                )
+                item["partial_additional_12"] = max(
+                    0, item["recognized_work_minutes"] - item["partial_120"]
+                )
+                item["partial_120_intervals"] = _tail_interval_labels(
+                    timeline, item["partial_120"],
+                )
+                item["partial_additional_12_intervals"] = _tail_interval_labels(
+                    timeline, item["partial_additional_12"],
+                    tail_offset=item["partial_120"],
+                )
+                premium_holidays = item.get("_premium_holidays") or set()
+                item["partial_120_breakdown"] = _categorize_timeline(
+                    _tail_timeline(timeline, item["partial_120"]),
+                    premium_holidays,
+                )
+                item["partial_additional_12_breakdown"] = _categorize_timeline(
+                    _tail_timeline(
+                        timeline, item["partial_additional_12"],
+                        tail_offset=item["partial_120"],
+                    ),
+                    premium_holidays,
+                )
+                extra_count -= 1
+
+        for item in employee_days:
+            item.setdefault("rotation_extra_day", False)
+            _apply_exclusive_base_allocation(item)
 
     employee_totals: dict[str, dict[str, Any]] = {}
     for day in days:
@@ -377,14 +542,22 @@ def build_timekeeping_report(
             total[key] += day[key]
         for key in ("partial_additional_12", "partial_120", "sixth_day_minutes"):
             total[key] += day[key]
+        for family in (
+            "overwork", "overtime_40", "overtime_60", "overtime_120",
+            "partial_additional_12", "partial_120", "sixth_day",
+        ):
+            target = total.setdefault(f"{family}_breakdown", _empty_breakdown())
+            for category, value in (day.get(f"{family}_breakdown") or {}).items():
+                target[category] += int(value or 0)
     for afm, total in employee_totals.items():
         total["annual_legal_overtime_minutes_after_period"] = running.get(afm, 0)
 
     for day in days:
         day.pop("_recognized_timeline", None)
+        day.pop("_premium_holidays", None)
 
     return {
-        "calculation_version": "timekeeping-v2-sixth-day",
+        "calculation_version": "timekeeping-v4-exclusive-base",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},

@@ -36,7 +36,7 @@ from app.wto_submit import parse_submit_response
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a_payload
 from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A, build_wto_ov_a_payload
 from app.work_card_payload import WorkCardPayloadError
-from app.timekeeping import build_timekeeping_report
+from app.timekeeping import build_timekeeping_report, is_timekeeping_leave_row
 from app.timekeeping_export import (
     build_timekeeping_detailed_export_xlsx,
     build_timekeeping_export_xlsx,
@@ -221,9 +221,10 @@ def _build_timekeeping_for_week(ctx: dict, week_from: date):
         raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτή την εβδομάδα")
     report, snapshot = loaded
     rows = list(report.get("days") or [])
-    if any(str(row.get("status") or "").lower() == "review" for row in rows):
+    payroll_rows = [row for row in rows if not is_timekeeping_leave_row(row)]
+    if any(str(row.get("status") or "").lower() == "review" for row in payroll_rows):
         raise ValueError("Η ωρομέτρηση είναι διαθέσιμη μόνο όταν όλες οι εγγραφές είναι Σ ή Μ")
-    employee_afms = sorted({str(row.get("employee_afm") or "") for row in rows if row.get("employee_afm")})
+    employee_afms = sorted({str(row.get("employee_afm") or "") for row in payroll_rows if row.get("employee_afm")})
     annual_context = load_annual_overtime_context(
         store_id=int(ctx["id"]), employee_afms=employee_afms, period_from=week_from,
     )
@@ -277,6 +278,11 @@ def _next_week_rest_context(
 def _merge_timekeeping_days(
     days: list[dict[str, object]], annual_after_by_employee: dict[str, int],
 ) -> dict[str, object]:
+    premium_keys = ("day", "night", "sunday_holiday", "night_sunday_holiday")
+    breakdown_families = (
+        "overwork", "overtime_40", "overtime_60", "overtime_120",
+        "partial_additional_12", "partial_120", "sixth_day",
+    )
     employees: dict[str, dict[str, object]] = {}
     for day in days:
         afm = str(day.get("employee_afm") or "")
@@ -301,12 +307,17 @@ def _merge_timekeeping_days(
             total[str(key)] += int(value or 0)
         for key in ("overtime_40", "overtime_60", "overtime_120", "partial_additional_12", "partial_120", "sixth_day_minutes"):
             total[key] += int(day.get(key) or 0)
+        for family in breakdown_families:
+            field = f"{family}_breakdown"
+            target = total.setdefault(field, {key: 0 for key in premium_keys})
+            for key in premium_keys:
+                target[key] += int((day.get(field) or {}).get(key) or 0)
     for afm, total in employees.items():
         total["annual_legal_overtime_minutes_after_period"] = int(
             annual_after_by_employee.get(afm) or 0
         )
     return {
-        "calculation_version": "timekeeping-v2-sixth-day-month",
+        "calculation_version": "timekeeping-v4-exclusive-base-month",
         "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
         "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
         "counts": {"days": len(days), "employees": len(employees)},
@@ -335,14 +346,17 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
         if loaded is None:
             raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
         report, _ = loaded
-        if any(str(row.get("status") or "").lower() == "review" for row in (report.get("days") or [])):
+        payroll_rows = [
+            row for row in (report.get("days") or []) if not is_timekeeping_leave_row(row)
+        ]
+        if any(str(row.get("status") or "").lower() == "review" for row in payroll_rows):
             problem_weeks.append({
                 "week_from": week_from.isoformat(),
                 "week_to": (week_from + timedelta(days=6)).isoformat(),
                 "label": f"{week_from:%d/%m}–{(week_from + timedelta(days=6)):%d/%m}",
             })
         initial_afms.update(
-            str(row.get("employee_afm") or "") for row in (report.get("days") or []) if row.get("employee_afm")
+            str(row.get("employee_afm") or "") for row in payroll_rows if row.get("employee_afm")
         )
     if problem_weeks:
         raise TimekeepingPeriodError(

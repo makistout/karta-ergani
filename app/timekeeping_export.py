@@ -15,10 +15,21 @@ _NAVY = "17324D"
 _BLUE = "2F75B5"
 _LIGHT = "EAF2F8"
 _BORDER = Side(style="thin", color="D9E2E9")
+_BREAKDOWN_KEYS = ("day", "night", "sunday_holiday", "night_sunday_holiday")
+_BREAKDOWN_LABELS = ("Ημέρας", "Νύχτας", "Κυρ/Αργίας", "Νύχτας/Κυρ-Αργίας")
 
 
 def _duration(minutes: Any) -> float:
     return max(0, int(minutes or 0)) / 1440
+
+
+def _breakdown_values(item: dict[str, Any], field: str) -> list[float]:
+    values = item.get(field) or {}
+    return [_duration(values.get(key)) for key in _BREAKDOWN_KEYS]
+
+
+def _family_headers(prefix: str) -> list[str]:
+    return [f"{prefix} – {label}" for label in _BREAKDOWN_LABELS]
 
 
 def _style_sheet(ws, *, title: str, meta: str, headers: list[str], widths: list[int]) -> int:
@@ -68,61 +79,67 @@ def build_timekeeping_export_xlsx(
     daily_title: str = "Αναλυτική ωρομέτρηση ανά ημέρα",
 ) -> bytes:
     wb = Workbook()
+    families = (
+        ("Υπερεργασία 20%", "overwork_breakdown"),
+        ("Πρόσθετη μερικής 12%", "partial_additional_12_breakdown"),
+        ("Μερική 120%", "partial_120_breakdown"),
+        ("Υπερωρία 40%", "overtime_40_breakdown"),
+        ("Υπερωρία 60%", "overtime_60_breakdown"),
+        ("Υπερωρία 120%", "overtime_120_breakdown"),
+        ("6η ημέρα 30%", "sixth_day_breakdown"),
+    )
+
     summary = wb.active
     summary.title = "Σύνοψη"
-    summary_headers = [
-        "Εργαζόμενος", "ΑΦΜ", "Αναγνωρισμένη βάση", "Ημέρα", "Νύχτα 25%",
-        "Κυρ/Αργία 75%", "Νύχτα + Κυρ/Αργία", "Μερική 12%",
-        "6η ημέρα 30%", "Υπερωρία 40%", "Υπερωρία 60%", "120%",
-        "Ετήσιες νόμιμες υπερωρίες μετά την περίοδο",
-    ]
+    summary_headers = ["Εργαζόμενος", "ΑΦΜ", "Αναγνωρισμένη βάση"] + _family_headers("Βάση")
+    for label, _ in families:
+        summary_headers += _family_headers(label)
+    summary_headers += ["Ετήσιες νόμιμες υπερωρίες μετά την περίοδο"]
     header_row = _style_sheet(
-        summary, title=title, meta=meta_line,
-        headers=summary_headers, widths=[28, 14, 20, 14, 16, 20, 22, 16, 17, 17, 17, 14, 25],
+        summary, title=title, meta=meta_line, headers=summary_headers,
+        widths=[28, 14, 20] + [18] * (4 + 4 * len(families)) + [25],
     )
     for item in report.get("employees") or []:
-        summary.append([
+        values = [
             f"{item.get('eponymo') or ''} {item.get('onoma') or ''}".strip(),
             str(item.get("employee_afm") or ""),
-            _duration(item.get("recognized_work_minutes")), _duration(item.get("day")),
-            _duration(item.get("night")), _duration(item.get("sunday_holiday")),
-            _duration(item.get("night_sunday_holiday")), _duration(item.get("partial_additional_12")),
-            _duration(item.get("sixth_day_minutes")), _duration(item.get("overtime_40")),
-            _duration(item.get("overtime_60")),
-            _duration(int(item.get("overtime_120") or 0) + int(item.get("partial_120") or 0)),
-            _duration(item.get("annual_legal_overtime_minutes_after_period")),
-        ])
+            _duration(item.get("recognized_work_minutes")),
+            _duration(item.get("day")), _duration(item.get("night")),
+            _duration(item.get("sunday_holiday")), _duration(item.get("night_sunday_holiday")),
+        ]
+        for _, field in families:
+            values += _breakdown_values(item, field)
+        values.append(_duration(item.get("annual_legal_overtime_minutes_after_period")))
+        summary.append(values)
     _finish_table(summary, header_row, 3, len(summary_headers))
-    summary.column_dimensions["B"].number_format = "@"
 
     daily = wb.create_sheet("Ανά ημέρα")
     daily_headers = [
         "Ημερομηνία", "Εργαζόμενος", "ΑΦΜ", "Κατάσταση", "Πηγή βάσης",
-        "Αναγνωρισμένο ωράριο", "Διάλειμμα", "Καθαρή βάση", "Ημέρα", "Νύχτα 25%",
-        "Κυρ/Αργία 75%", "Νύχτα + Κυρ/Αργία", "Μερική 12%", "6η ημέρα 30%",
-        "Υπερωρία 40%", "Υπερωρία 60%", "120%", "Παρατηρήσεις",
-    ]
+        "Αναγνωρισμένο ωράριο", "Διάλειμμα", "Καθαρή βάση",
+    ] + _family_headers("Βάση")
+    for label, _ in families:
+        daily_headers += _family_headers(label)
+    daily_headers += ["Παρατηρήσεις"]
     daily_header = _style_sheet(
-        daily, title=daily_title, meta=meta_line,
-        headers=daily_headers,
-        widths=[14, 28, 14, 12, 22, 24, 18, 16, 14, 16, 20, 22, 16, 17, 17, 17, 14, 46],
+        daily, title=daily_title, meta=meta_line, headers=daily_headers,
+        widths=[14, 28, 14, 12, 22, 24, 18, 16] + [18] * (4 + 4 * len(families)) + [46],
     )
     for item in report.get("days") or []:
         premiums = item.get("premium_minutes") or {}
-        daily.append([
+        values = [
             item.get("work_date") or "",
             f"{item.get('eponymo') or ''} {item.get('onoma') or ''}".strip(),
             str(item.get("employee_afm") or ""), item.get("status") or "",
             item.get("basis_source") or "", item.get("basis_label") or "",
             item.get("break_interval") or "", _duration(item.get("recognized_work_minutes")),
-            _duration(premiums.get("day")), _duration(premiums.get("night")),
-            _duration(premiums.get("sunday_holiday")), _duration(premiums.get("night_sunday_holiday")),
-            _duration(item.get("partial_additional_12")), _duration(item.get("sixth_day_minutes")),
-            _duration(item.get("overtime_40")), _duration(item.get("overtime_60")),
-            _duration(int(item.get("overtime_120") or 0) + int(item.get("partial_120") or 0)),
-            " · ".join(str(value) for value in item.get("warnings") or []),
-        ])
-    _finish_table(daily, daily_header, 8, 17)
+            *_breakdown_values({"base": premiums}, "base"),
+        ]
+        for _, field in families:
+            values += _breakdown_values(item, field)
+        values.append(" · ".join(str(value) for value in item.get("warnings") or []))
+        daily.append(values)
+    _finish_table(daily, daily_header, 8, len(daily_headers) - 1)
 
     buf = BytesIO()
     wb.save(buf)
@@ -150,17 +167,23 @@ def build_timekeeping_detailed_export_xlsx(
         "Ημέρα", "Ημερομηνία", "Δηλωμένο ωράριο", "Αναγνωρισμένο ωράριο",
         "Κινήσεις κάρτας", "Μικτή διάρκεια", "Διάλειμμα", "Καθαρή βάση",
         "Ώρες ημέρας", "Ώρες νύχτας 25%", "Ώρες Κυρ/Αργίας 75%",
-        "Ώρες νύχτας + Κυρ/Αργίας", "Υπερεργασία",
-        "Πρόσθετη μερικής 12%", "Διάστημα πρόσθετης μερικής", "Μερική 120%",
-        "Υπερωρία 40%", "Υπερωρία 60%", "Υπερωρία 120%",
-        "6η ημέρα - ημέρα", "6η ημέρα - νύχτα", "6η ημέρα - Κυρ/Αργία",
-        "6η ημέρα - νύχτα + Κυρ/Αργία", "Σύνολο 6ης ημέρας",
-        "Κατάσταση ημέρας", "Πηγή βάσης", "Παρατηρήσεις",
+        "Ώρες νύχτας + Κυρ/Αργίας",
     ]
+    headers += _family_headers("Υπερεργασία 20%")
+    headers += _family_headers("Πρόσθετη μερικής 12%") + ["Διάστημα πρόσθετης μερικής"]
+    headers += _family_headers("Μερική 120%")
+    headers += _family_headers("Υπερωρία 40%")
+    headers += _family_headers("Υπερωρία 60%")
+    headers += _family_headers("Υπερωρία 120%")
+    headers += _family_headers("6η ημέρα 30%") + ["Σύνολο 6ης ημέρας"]
+    headers += ["Κατάσταση ημέρας", "Πηγή βάσης", "Παρατηρήσεις"]
     groups = [
         (1, 3, "Επιχείρηση"), (4, 7, "Εργαζόμενος"), (8, 15, "Ημερήσια στοιχεία"),
-        (16, 19, "Προσαυξήσεις"), (20, 23, "Υπερεργασία / Πρόσθετη μερικής"),
-        (24, 26, "Υπερωρίες"), (27, 31, "6η ημέρα"), (32, 34, "Έλεγχος"),
+        (16, 19, "Προσαυξήσεις βάσης"), (20, 23, "Υπερεργασία 20%"),
+        (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Μερική 120%"),
+        (33, 36, "Υπερωρία 40%"), (37, 40, "Υπερωρία 60%"),
+        (41, 44, "Υπερωρία 120%"), (45, 49, "6η ημέρα 30%"),
+        (50, 52, "Έλεγχος"),
     ]
     for start, end, label in groups:
         ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
@@ -190,7 +213,6 @@ def build_timekeeping_detailed_export_xlsx(
     weekday_names = ("Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ", "Κυρ")
     for item in report.get("days") or []:
         premiums = item.get("premium_minutes") or {}
-        sixth = item.get("sixth_day_breakdown") or {}
         work_date = datetime.strptime(str(item.get("work_date") or ""), "%d/%m/%Y").date()
         ws.append([
             str(store.get("employer_afm") or ""), str(store.get("branch_aa") or ""),
@@ -202,26 +224,27 @@ def build_timekeeping_detailed_export_xlsx(
             _duration(item.get("recognized_span_minutes")), item.get("break_interval") or "",
             _duration(item.get("recognized_work_minutes")), _duration(premiums.get("day")),
             _duration(premiums.get("night")), _duration(premiums.get("sunday_holiday")),
-            _duration(premiums.get("night_sunday_holiday")), _duration(item.get("overwork_minutes")),
-            _duration(item.get("partial_additional_12")),
+            _duration(premiums.get("night_sunday_holiday")),
+            *_breakdown_values(item, "overwork_breakdown"),
+            *_breakdown_values(item, "partial_additional_12_breakdown"),
             " · ".join(str(value) for value in item.get("partial_additional_12_intervals") or []),
-            _duration(item.get("partial_120")),
-            _duration(item.get("overtime_40")), _duration(item.get("overtime_60")),
-            _duration(item.get("overtime_120")), _duration(sixth.get("day")),
-            _duration(sixth.get("night")), _duration(sixth.get("sunday_holiday")),
-            _duration(sixth.get("night_sunday_holiday")),
+            *_breakdown_values(item, "partial_120_breakdown"),
+            *_breakdown_values(item, "overtime_40_breakdown"),
+            *_breakdown_values(item, "overtime_60_breakdown"),
+            *_breakdown_values(item, "overtime_120_breakdown"),
+            *_breakdown_values(item, "sixth_day_breakdown"),
             _duration(item.get("sixth_day_minutes")), item.get("day_state") or "",
             item.get("basis_source") or "", " · ".join(str(value) for value in item.get("warnings") or []),
         ])
 
     widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 22, 24, 25, 15, 18, 15,
-              15, 17, 19, 23, 16, 19, 24, 15, 16, 16, 16, 16, 16, 20, 24, 18, 18, 20, 42]
+              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 20 + [18, 18, 20, 42]
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "J5"
     if ws.max_row > 4:
         ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
-    duration_columns = {13} | set(range(15, 22)) | set(range(23, 32))
+    duration_columns = {13} | set(range(15, 28)) | set(range(29, 50))
     for row in range(5, ws.max_row + 1):
         if row % 2:
             for cell in ws[row]:
@@ -234,7 +257,7 @@ def build_timekeeping_detailed_export_xlsx(
             cell.border = Border(bottom=_BORDER)
             cell.font = Font(name="Aptos", size=9)
             if cell.column not in duration_columns:
-                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 22, 34))
+                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 52))
     ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
     ws.print_title_rows = "1:4"
     ws.sheet_properties.pageSetUpPr.fitToPage = True

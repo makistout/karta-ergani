@@ -39,6 +39,135 @@ def test_no_punch_uses_declared_basis():
     assert day["recognized_work_minutes"] == 480
 
 
+def test_leave_is_excluded_from_timekeeping_entirely():
+    report = build_timekeeping_report([
+        _row(day_state="Άδεια", declared="ΑΔΕΙΑ", proposed="ΑΔΕΙΑ", punch_count=0)
+    ])
+    assert report["days"] == []
+    assert report["employees"] == []
+    assert report["counts"] == {"days": 0, "employees": 0}
+
+
+def test_approved_change_from_leave_to_work_is_included_by_effective_proposal():
+    day = build_timekeeping_report([
+        _row(status="change", day_state="Άδεια", declared="ΑΔΕΙΑ", proposed="09:00–17:00")
+    ])["days"][0]
+    assert day["effective_declared"] == "09:00–17:00"
+    assert day["recognized_work_minutes"] == 480
+
+
+def test_non_working_day_does_not_warn_that_break_cannot_fit():
+    day = build_timekeeping_report([
+        _row(status="change", proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", punch_count=0, break_minutes=30)
+    ])["days"][0]
+    assert day["recognized_work_minutes"] == 0
+    assert day["warnings"] == []
+
+
+def test_overwork_and_overtime_are_split_by_actual_premium_zone():
+    row = _row(
+        work_date="16/08/2026", status="change", proposed="14:30–22:30",
+        declared="14:30–22:30", contract_kind="Πλήρης", weekly_days=5,
+        overwork_minutes=60, overtime_minutes=120,
+        overtime_segments=[{
+            "date": "16/08/2026", "from": "23:30", "to": "01:30", "minutes": 120,
+        }],
+    )
+    day = build_timekeeping_report([row])["days"][0]
+    assert day["overwork_breakdown"] == {
+        "day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 60,
+    }
+    assert day["overtime_40_breakdown"] == {
+        "day": 0, "night": 90, "sunday_holiday": 0, "night_sunday_holiday": 30,
+    }
+
+
+def test_annual_150_hour_boundary_preserves_chronological_premium_breakdown():
+    context = {"123456789": {
+        "legal_overtime_minutes_before_period": 149 * 60 + 30, "data_complete": True,
+    }}
+    row = _row(
+        work_date="16/08/2026", status="change", proposed="14:30–22:30",
+        declared="14:30–22:30", overtime_minutes=90,
+        overtime_segments=[{
+            "date": "16/08/2026", "from": "23:30", "to": "01:00", "minutes": 90,
+        }],
+    )
+    day = build_timekeeping_report([row], annual_context_by_employee=context)["days"][0]
+    assert day["overtime_40_breakdown"]["night_sunday_holiday"] == 30
+    assert day["overtime_60_breakdown"]["night"] == 60
+
+
+def test_sixth_day_base_is_removed_from_ordinary_premium_buckets():
+    rows = [
+        _row(
+            work_date=f"{day:02d}/08/2026", declared="09:00–17:00",
+            proposed="09:00–17:00", contract_kind="Πλήρης", weekly_days=5,
+        )
+        for day in range(3, 9)
+    ]
+    report = build_timekeeping_report(rows)
+    sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
+    assert sixth["work_date"] == "08/08/2026"
+    assert sum(sixth["premium_minutes"].values()) == 0
+    assert sum(sixth["sixth_day_breakdown"].values()) == 480
+    assert sixth["base_allocation_integrity_minutes"] == 480
+
+
+def test_rotating_multiple_extra_days_are_selected_from_sunday_towards_monday():
+    rows = [
+        _row(
+            work_date=f"{day:02d}/08/2026", declared="09:00–17:00",
+            proposed="09:00–17:00", contract_kind="Εκ περιτροπής", weekly_days=3,
+        )
+        for day in range(3, 8)
+    ]
+    report = build_timekeeping_report(rows)
+    extras = [day for day in report["days"] if day["rotation_extra_day"]]
+    assert [day["work_date"] for day in extras] == ["06/08/2026", "07/08/2026"]
+    for day in extras:
+        assert day["partial_additional_12"] == 480
+        assert sum(day["premium_minutes"].values()) == 0
+        assert sum(day["partial_additional_12_breakdown"].values()) == 480
+        assert day["base_allocation_integrity_minutes"] == 480
+
+
+def test_rotating_extra_day_splits_12_and_120_and_keeps_zones_exclusive():
+    rows = [
+        _row(
+            work_date=f"{day:02d}/08/2026", declared="09:00–17:00",
+            proposed="09:00–17:00", contract_kind="Εκ περιτροπής", weekly_days=5,
+        )
+        for day in range(3, 9)
+    ]
+    rows.append(_row(
+        work_date="09/08/2026", declared="20:00–06:00", proposed="20:00–06:00",
+        contract_kind="Εκ περιτροπής", weekly_days=5,
+    ))
+    report = build_timekeeping_report(rows)
+    sunday = next(day for day in report["days"] if day["work_date"] == "09/08/2026")
+    saturday = next(day for day in report["days"] if day["work_date"] == "08/08/2026")
+    assert sunday["rotation_extra_day"] is True
+    assert saturday["rotation_extra_day"] is True
+    assert sunday["partial_additional_12"] == 480
+    assert sunday["partial_120"] == 120
+    assert sum(sunday["premium_minutes"].values()) == 0
+    assert sum(sunday["partial_additional_12_breakdown"].values()) == 480
+    assert sum(sunday["partial_120_breakdown"].values()) == 120
+    assert sunday["base_allocation_integrity_minutes"] == 600
+
+
+def test_partial_employment_never_generates_40_or_60_overtime():
+    day = build_timekeeping_report([_row(
+        contract_kind="Μερική", weekly_days=5, contract_weekly_minutes=1200,
+        declared="09:00–13:00", proposed="09:00–13:00", overtime_minutes=120,
+        overtime_segments=[{"date": "17/08/2026", "from": "13:00", "to": "15:00", "minutes": 120}],
+    )])["days"][0]
+    assert day["overtime_40"] == 0
+    assert day["overtime_60"] == 0
+    assert day["overtime_120"] == 0
+
+
 def test_break_is_contiguous_and_prefers_first_non_premium_point():
     day = build_timekeeping_report([_row(declared="21:00–23:00", break_minutes=30)])["days"][0]
     assert day["break_interval"] == "21:01–21:31"
