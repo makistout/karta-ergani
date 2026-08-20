@@ -52,6 +52,10 @@ _COMMAND_SCHEMA = {
     "type": "object",
     "properties": {
         "intent": {"type": "string", "enum": sorted(ALLOWED_INTENTS)},
+        "pending_intent": {"type": ["string", "null"], "enum": [
+            None,
+            *sorted(ALLOWED_INTENTS - {"unknown", "today_info", "cancel_pending"}),
+        ]},
         "store_id": {"type": ["integer", "null"]},
         "employee_afms": {"type": "array", "items": {"type": "string"}},
         "employee_references": {"type": "array", "items": {"type": "string"}},
@@ -146,8 +150,9 @@ def _assistant_prompt_guide() -> list[str]:
         "Parser εντολών erganiOS (όχι chatbot). Ελληνικά/greeklish → JSON. Μην γράφεις meta («το διορθώνω»).",
         "Μόνο store_id/ΑΦΜ από allowed_*. Ονόματα φωνητικά (dionisi→ΔΙΟΝΥΣΙΟΣ, fotopoulou→ΦΩΤΟΠΟΥΛΟΣ). Greeklish=ελληνικά.",
         "Πολλά ονόματα/επώνυμα στο μήνυμα («του Χ και του Υ»): αν καθένα ταιριάζει σε διαφορετικό εργαζόμενο, βάλε ΟΛΑ τα ΑΦΜ σε employee_afms. ΜΗΝ ρωτάς «Εννοείτε…» ανάμεσα σε άσχετα επώνυμα.",
-        "Ίδιο/παρόμοιο επώνυμο χωρίς διακριτό όνομα (Φωτόπουλος×2, VLASENKO×2) → unknown + «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου) και βάλε τα υποψήφια ΑΦΜ σε ambiguous_employee_afms (employee_afms=[]).",
-        "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· ένα ΑΦΜ από candidate_*· κληρονόμησε preserve_*.",
+        "Ίδιο/παρόμοιο επώνυμο χωρίς διακριτό όνομα (Φωτόπουλος×2, VLASENKO×2): κράτησε στο intent την ενέργεια που ήδη ζήτησε ο χρήστης, βάλε την και στο pending_intent, γράψε «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου), ambiguous_employee_afms=όλα τα υποψήφια και employee_afms=[]. Μην αλλάζεις την ενέργεια σε unknown μόνο επειδή λείπει η επιλογή προσώπου.",
+        "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· επίλεξε ένα ΑΦΜ από candidate_* και κληρονόμησε preserve_*. Αν preserve_intent λείπει/είναι unknown (παλιό task), ανάκτησε την ενέργεια από original_message και κράτησέ την στο intent.",
+        "Όσο υπάρχει pending_clarification, το message αφορά ΠΑΝΤΑ την ίδια τρέχουσα εντολή. Συμπλήρωσε ή διόρθωσε μόνο όσα ζητά ο χρήστης και κληρονόμησε όλα τα υπόλοιπα preserve_*· νέα ανεξάρτητη εντολή δεν δημιουργείται μέχρι εκτέλεση/ακύρωση/τερματισμό.",
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν 10 λεπτά» = *_retro από now. «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
@@ -631,6 +636,14 @@ def _validate_single_command(
     )
     errors: list[str] = []
     intent = str(parsed.get("intent") or "unknown")
+    pending_intent = str(parsed.get("pending_intent") or "").strip()
+    if (
+        intent == "unknown"
+        and pending_intent in ALLOWED_INTENTS
+        and pending_intent not in {"unknown", *_INFO_INTENTS}
+    ):
+        intent = pending_intent
+        parsed["intent"] = intent
     if intent not in ALLOWED_INTENTS:
         intent = "unknown"
         parsed["intent"] = intent
@@ -667,29 +680,38 @@ def _validate_single_command(
         for employee in employees
         if employee["store_id"] == store_id and employee["afm"] == afm
     ]
-    # Name resolution is Gemini's job (guide). Python only checks AFMs exist in-store.
-    if intent == "unknown":
-        question = str(parsed.get("clarification_question") or "")
-        if "εννοειτε" in _fold_text(question):
-            raw_ambiguous = parsed.get("ambiguous_employee_afms")
-            if not isinstance(raw_ambiguous, list) or not raw_ambiguous:
-                raw_ambiguous = afms
-            ambiguous_afms = []
-            for value in raw_ambiguous:
-                afm = str(value or "").strip()
-                if not afm or afm in ambiguous_afms:
-                    continue
-                if any(emp["store_id"] == store_id and emp["afm"] == afm for emp in employees):
-                    ambiguous_afms.append(afm)
-            if ambiguous_afms:
-                parsed["ambiguous_employee_afms"] = ambiguous_afms
-                parsed["employee_afms"] = []
-                parsed["employee_afm"] = None
-                afms = []
-                matches = []
-    else:
+    # Name resolution is Gemini's job. Ambiguity is an incomplete field of the
+    # existing command; it must not erase the already understood action.
+    question = str(parsed.get("clarification_question") or "").strip()
+    raw_ambiguous = parsed.get("ambiguous_employee_afms")
+    has_ambiguity = isinstance(raw_ambiguous, list) and bool(raw_ambiguous)
+    if not has_ambiguity and intent == "unknown" and "εννοειτε" in _fold_text(question):
+        raw_ambiguous = afms
+        has_ambiguity = bool(raw_ambiguous)
+    ambiguous_afms: list[str] = []
+    if has_ambiguity:
+        for value in raw_ambiguous:
+            afm = str(value or "").strip()
+            if not afm or afm in ambiguous_afms:
+                continue
+            if any(emp["store_id"] == store_id and emp["afm"] == afm for emp in employees):
+                ambiguous_afms.append(afm)
+        if ambiguous_afms:
+            parsed["ambiguous_employee_afms"] = ambiguous_afms
+            parsed["pending_intent"] = intent if intent not in {"unknown", *_INFO_INTENTS} else pending_intent or None
+            parsed["employee_afms"] = []
+            parsed["employee_afm"] = None
+            afms = []
+            matches = []
+            errors.append(question or "Χρειάζεται επιλογή εργαζομένου")
+    elif intent != "unknown":
         parsed.pop("ambiguous_employee_afms", None)
-    if intent not in {"unknown", *_INFO_INTENTS} and (not afms or len(matches) != len(afms)):
+        parsed.pop("pending_intent", None)
+    if (
+        intent not in {"unknown", *_INFO_INTENTS}
+        and not ambiguous_afms
+        and (not afms or len(matches) != len(afms))
+    ):
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
@@ -710,7 +732,7 @@ def _validate_single_command(
         errors.append("Η άδεια χρειάζεται συγκεκριμένο τύπο")
     if intent == "today_info" and not str(parsed.get("clarification_question") or "").strip():
         errors.append("Δεν δόθηκε απάντηση από την εικόνα εργασίας σήμερα")
-    if intent == "unknown":
+    if intent == "unknown" and not ambiguous_afms:
         errors.append(str(parsed.get("clarification_question") or "Δεν αναγνωρίστηκε υποστηριζόμενη εντολή"))
 
     schedule_times: dict[str, str] = {}

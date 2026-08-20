@@ -276,6 +276,7 @@ def test_name_choice_answer_sent_as_is_to_gemini(monkeypatch):
             "• Εννοείτε του Διονυσιου ή του Κωνσταντινου;\n\n"
             "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
         ),
+        "original_message_text": "Κλείσε του Φωτόπουλου",
         "payload": {
             "intent": "card_check_in_now",
             "store_id": 4,
@@ -333,11 +334,151 @@ def test_name_choice_answer_sent_as_is_to_gemini(monkeypatch):
 
     assert captured["text"] == "διονυση"
     assert captured["pending"]["kind"] == "name_choice"
+    assert captured["pending"]["original_message"] == "Κλείσε του Φωτόπουλου"
     assert set(captured["pending"]["candidate_afms"]) == {"111111111", "222222222"}
     assert result["task_id"] == 52
     assert result["status"] == "draft"
     assert updates["parsed"]["employee_afms"] == ["222222222"]
     assert "Εννοείτε" not in result["answer"]
+
+
+def test_name_ambiguity_keeps_original_command_until_choice(monkeypatch):
+    """A missing employee choice must not turn the existing action into unknown."""
+    from unittest.mock import patch
+
+    from app.telegram_assistant_service import validate_and_describe
+
+    employees = [
+        {"afm": "111111111", "name": "ΦΩΤΟΠΟΥΛΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ", "store_id": 4},
+        {"afm": "222222222", "name": "ΦΩΤΟΠΟΥΛΟΣ ΔΙΟΝΥΣΙΟΣ", "store_id": 4},
+    ]
+    parsed = {
+        "intent": "card_check_out_now",
+        "pending_intent": "card_check_out_now",
+        "store_id": 4,
+        "employee_afms": [],
+        "ambiguous_employee_afms": ["111111111", "222222222"],
+        "date": "2026-08-20",
+        "confidence": 0.95,
+        "clarification_question": (
+            "Εννοείτε του Φωτόπουλου Διονύσιου ή του Φωτόπουλου Κωνσταντίνου;"
+        ),
+    }
+
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, _ = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 4,
+                "store_name": "ERATO",
+                "employer_afm": "1",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+            user_text="Κλείσε του Φωτόπουλου",
+        )
+
+    assert status == "needs_clarification"
+    assert validation["errors"] == [parsed["clarification_question"]]
+    assert parsed["intent"] == "card_check_out_now"
+    assert parsed["pending_intent"] == "card_check_out_now"
+    assert parsed["ambiguous_employee_afms"] == ["111111111", "222222222"]
+
+
+def test_unknown_name_ambiguity_promotes_pending_intent(monkeypatch):
+    """Compatibility: pending_intent restores the action if Gemini says unknown."""
+    from app.telegram_assistant_service import validate_and_describe
+
+    employees = [
+        {"afm": "111111111", "name": "ΦΩΤΟΠΟΥΛΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ", "store_id": 4},
+        {"afm": "222222222", "name": "ΦΩΤΟΠΟΥΛΟΣ ΔΙΟΝΥΣΙΟΣ", "store_id": 4},
+    ]
+    parsed = {
+        "intent": "unknown",
+        "pending_intent": "card_check_out_now",
+        "store_id": 4,
+        "employee_afms": [],
+        "ambiguous_employee_afms": ["111111111", "222222222"],
+        "date": "2026-08-20",
+        "confidence": 0.9,
+        "clarification_question": "Εννοείτε του Διονύσιου ή του Κωνσταντίνου;",
+    }
+
+    status, _, _ = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO"}],
+        employees=employees,
+        user_text="Κλείσε του Φωτόπουλου",
+    )
+
+    assert status == "needs_clarification"
+    assert parsed["intent"] == "card_check_out_now"
+
+
+def test_reply_to_confirmation_revises_same_open_task(monkeypatch):
+    """Until execution/cancellation, a reply updates the current command, not a new one."""
+    pending = {
+        "id": 64,
+        "recipient_id": None,
+        "store_id": 4,
+        "task_status": "awaiting_ui_confirmation",
+        "proposed_action_text": "ΦΩΤΟΠΟΥΛΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ · Κλείσιμο κάρτας τώρα",
+        "original_message_text": "Κλείσε του Κωνσταντίνου",
+        "payload": {
+            "intent": "card_check_out_now",
+            "store_id": 4,
+            "employee_afms": ["111111111"],
+            "date": "2026-08-20",
+        },
+    }
+    updates = {}
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification", lambda **kwargs: pending,
+    )
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.update_assistant_task",
+        lambda task_id, **kwargs: updates.update({"id": task_id, **kwargs}) or True,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {
+                "intent": "card_check_out_retro",
+                "store_id": 4,
+                "employee_afms": [],
+                "date": "2026-08-20",
+                "time": "17:00",
+                "confidence": 0.95,
+            },
+            [{"store_id": 4, "afm": "111111111", "name": "ΦΩΤΟΠΟΥΛΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ"}],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda parsed, **kwargs: (
+            "draft",
+            {"valid": True, "errors": [], "execution_enabled": True},
+            "ΦΩΤΟΠΟΥΛΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ · Κλείσιμο κάρτας στις 17:00",
+        ),
+    )
+
+    result = process_assistant_command(
+        text="όχι τώρα, στις 17:00",
+        contexts=[{"store_id": 4, "store_name": "ERATO"}],
+        inbound_id=501,
+        store_id=4,
+        confirmation_mode="ui",
+        office_user="admin",
+    )
+
+    assert result["task_id"] == 64
+    assert updates["id"] == 64
+    assert updates["status"] == "awaiting_ui_confirmation"
+    assert updates["parsed"]["employee_afms"] == ["111111111"]
+    assert updates["parsed"]["time"] == "17:00"
 
 
 def test_name_choice_greeklish_answer_uses_gemini(monkeypatch):
