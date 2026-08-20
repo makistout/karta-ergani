@@ -161,12 +161,28 @@ def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
         "card_event_exists",
         lambda emp, day, f_type: f_type == "0",
     )
+    monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: False)
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_in_now",
         employer_afm="123",
         branch_aa="0",
         employee_afm="111222333",
         reference_date_iso="2026-08-18",
+    )
+    assert reason == "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+
+
+def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monkeypatch):
+    """Πραγματική ανοιχτή (χωρίς WRKCardSE) μετράει ως ήδη ανοιχτή κάρτα."""
+    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: True)
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_in_retro",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-20",
+        event_at="2026-08-20T11:50:00",
     )
     assert reason == "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
 

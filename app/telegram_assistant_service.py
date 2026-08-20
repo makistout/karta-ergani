@@ -35,7 +35,9 @@ ALLOWED_INTENTS = {
 _INFO_INTENTS = {"today_info", "cancel_pending"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
-_GEMINI_FALLBACK_ATTEMPTS = 2
+# Hard wall-clock budget for all Gemini attempts so the chat stays ≤ ~10s.
+_GEMINI_TOTAL_BUDGET_SEC = 8.0
+_GEMINI_CONNECT_TIMEOUT = 2.0
 
 
 def _is_iso_date(value: str) -> bool:
@@ -126,24 +128,6 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-def _needs_today_home(text: str, reply_context: dict[str, Any] | None) -> bool:
-    """Skip building/sending today_home unless the message likely needs it."""
-    ctx = dict(reply_context or {})
-    pending = ctx.get("pending_clarification")
-    if isinstance(pending, dict) and pending.get("kind") == "name_choice":
-        return False
-    if _is_group_or_criteria_query(text):
-        return True
-    folded = _fold_text(text)
-    if not folded:
-        return False
-    needles = (
-        "ποιοι", "ποιος", "ποια", "τι ωρα",
-        "εικον εργασ", "χτυπημ", "στη δουλεια", "σε εργασια",
-    )
-    return any(needle in folded for needle in needles)
-
-
 def _assistant_prompt_guide() -> list[str]:
     """Compact, non-duplicated guidance (token-cheap). Examples are non-binding."""
     return [
@@ -156,9 +140,9 @@ def _assistant_prompt_guide() -> list[str]:
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν 10 λεπτά» = *_retro από now. «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
-        "today_home μόνο σήμερα· για today_info / ομαδικά («όσους…», «δουλεύουν μετά τις…»). Αν today_home απόν, μην επινοείς εικόνα εργασίας.",
+        "today_home είναι ΠΑΝΤΑ παρόν (εικόνα Αρχικής σήμερα: ωράρια/status/κάρτες). Ερωτήσεις σήμερα («ποιοι δουλεύουν στις 12», «ποιος έχει ανοιχτή κάρτα») → today_info και βάλε την πλήρη απάντηση στο clarification_question. Μην επινοείς δεδομένα εκτός today_home.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home βάσει ωραρίου/status.",
-        "Έξοδος: μόνο ανοιχτές κάρτες. Είσοδος: χωρίς ήδη είσοδο. *_now: at_work/needs_checkout ή needs_checkin/late_arrival.",
+        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
@@ -200,16 +184,14 @@ def parse_command(
     if focused_store_id:
         employees = [e for e in employees if e["store_id"] == focused_store_id]
 
-    include_home = _needs_today_home(text, reply_context) or group_query
-    today_home: dict[str, Any] | None = None
-    if include_home:
-        today_home = build_today_home_context(contexts)
-        if focused_store_id:
-            today_stores = today_home.get("stores") or []
-            today_home = {
-                **today_home,
-                "stores": [s for s in today_stores if int(s.get("store_id") or 0) == focused_store_id],
-            }
+    # Always attach today's home snapshot — most commands/questions are about today.
+    today_home = build_today_home_context(contexts)
+    if focused_store_id:
+        today_stores = today_home.get("stores") or []
+        today_home = {
+            **today_home,
+            "stores": [s for s in today_stores if int(s.get("store_id") or 0) == focused_store_id],
+        }
 
     prompt: dict[str, Any] = {
         "role": "erganiOS command parser → structured JSON draft or today_info answer.",
@@ -220,10 +202,10 @@ def parse_command(
         "conversation_focus": focus,
         "allowed_stores": stores,
         "allowed_employees": employees,
+        "today_home": today_home,
     }
-    if today_home is not None:
-        prompt["today_home"] = today_home
     started_at = time.monotonic()
+    deadline = started_at + _GEMINI_TOTAL_BUDGET_SEC
     request_body = {
             "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
             "generationConfig": {
@@ -234,34 +216,35 @@ def parse_command(
         }
     models = [Config.GEMINI_MODEL]
     fallback_model = str(Config.GEMINI_FALLBACK_MODEL or "").strip()
+    # Heavy fallback (e.g. flash) often exceeds the 10s UX budget alone — only
+    # keep it when it is a distinct model and we still have time after a fast fail.
     if fallback_model and fallback_model not in models:
         models.append(fallback_model)
     response = None
     last_network_error: requests.RequestException | None = None
     used_model = models[0]
     for model_index, model in enumerate(models):
-        attempts = 1 if model_index == 0 and len(models) > 1 else _GEMINI_FALLBACK_ATTEMPTS
-        for attempt in range(attempts):
-            used_model = model
-            try:
-                response = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                    headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
-                    json=request_body,
-                    timeout=(3.05, 10),
-                )
-            except requests.RequestException as exc:
-                last_network_error = exc
-                response = None
-                if attempt < attempts - 1:
-                    time.sleep(0.5)
-                continue
-            if response.ok or response.status_code not in _GEMINI_RETRY_STATUSES:
-                break
-            if attempt < attempts - 1:
-                time.sleep(0.5)
-        if response is not None and (response.ok or response.status_code not in _GEMINI_RETRY_STATUSES):
+        remaining = deadline - time.monotonic()
+        # Need connect + at least ~2s read; otherwise stop within budget.
+        if remaining < (_GEMINI_CONNECT_TIMEOUT + 2.0):
             break
+        read_timeout = min(6.0, max(2.0, remaining - 0.25))
+        used_model = model
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
+                json=request_body,
+                timeout=(_GEMINI_CONNECT_TIMEOUT, read_timeout),
+            )
+        except requests.RequestException as exc:
+            last_network_error = exc
+            response = None
+            continue
+        if response.ok or response.status_code not in _GEMINI_RETRY_STATUSES:
+            break
+        # Retryable HTTP from this model — try next model only if budget remains.
+        continue
     duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
     if response is None:
         detail = str(last_network_error or "χωρίς απόκριση")
@@ -590,12 +573,17 @@ def _inherit_conversation_context(
         if not isinstance(pending_clarification, dict):
             pending_clarification = {}
     group_query = _is_group_or_criteria_query(user_text)
-    # Name-choice / group / explicit LLM picks: trust Gemini AFMs.
-    # Do not override with Python surname matching — the model owns name resolution.
+    named_in_message = _mentioned_afms(
+        user_text, employees, store_id if store_id in allowed_store_ids else None,
+    )
+    # Name-choice / group: trust Gemini. Sticky focus: if the user did not name
+    # anyone this turn, keep the previous people even if the model invents AFMs.
     if pending_clarification.get("kind") == "name_choice" and parsed_afms:
         afms = parsed_afms
     elif group_query:
         afms = parsed_afms
+    elif not named_in_message and focus.get("employee_afms"):
+        afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]
     elif parsed_afms:
         afms = parsed_afms
     elif focus.get("employee_afms"):
@@ -791,27 +779,45 @@ def _validate_single_command(
                 reference_date_iso=date,
                 event_at=event_at,
             )
-            if reason:
-                skipped_card.append(f"{match.get('name') or afm}: {reason}")
-            else:
+            if not reason:
                 eligible_matches.append(match)
-        if eligible_matches:
+                continue
+            label = f"{match.get('name') or afm}: {reason}"
+            # Soft skips: already open/closed / no entry — continue with others.
+            # Hard errors (e.g. future time): block as clarification.
+            soft = (
+                "έχει ήδη ανοίξει" in reason
+                or "έχει ήδη κλείσει" in reason
+                or "χωρίς είσοδο" in reason
+            )
+            if soft:
+                skipped_card.append(label)
+            else:
+                errors.append(label)
+        if errors:
+            pass
+        elif eligible_matches:
             matches = eligible_matches
             afms = [str(item.get("afm") or "") for item in matches if str(item.get("afm") or "")]
             parsed["employee_afms"] = afms
             parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
             if skipped_card:
                 parsed["skipped_card_employees"] = skipped_card
+        elif skipped_card:
+            # Everyone soft-skipped — inform, do not ask clarification.
+            matches = []
+            afms = []
+            parsed["employee_afms"] = []
+            parsed["employee_afm"] = None
+            parsed["skipped_card_employees"] = skipped_card
+            parsed["card_action_all_skipped"] = True
         else:
-            errors.extend(
-                skipped_card
-                or ["Κανένας εργαζόμενος δεν είναι επιλέξιμος για αυτή την ενέργεια κάρτας"]
-            )
+            errors.append("Κανένας εργαζόμενος δεν είναι επιλέξιμος για αυτή την ενέργεια κάρτας")
 
     validation = {"valid": not errors, "errors": errors, "execution_enabled": False}
     if errors:
         status = "needs_clarification"
-    elif intent in _INFO_INTENTS:
+    elif intent in _INFO_INTENTS or parsed.get("card_action_all_skipped"):
         status = "answered"
     else:
         status = "draft"
@@ -821,7 +827,7 @@ def _validate_single_command(
         references = parsed.get("employee_references")
         if not isinstance(references, list):
             references = [parsed.get("employee_reference")] if parsed.get("employee_reference") else []
-        names = ", ".join(str(value).strip() for value in references if str(value).strip()) or "εργαζόμενος"
+        names = ", ".join(str(value).strip() for value in references if str(value or "").strip()) or "εργαζόμενος"
     try:
         display_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y")
     except ValueError:
@@ -844,6 +850,13 @@ def _validate_single_command(
         proposed = str(parsed.get("clarification_question") or "").strip()
     elif intent == "cancel_pending":
         proposed = str(parsed.get("clarification_question") or "Ακυρώθηκε η εντολή.").strip()
+    elif parsed.get("card_action_all_skipped"):
+        action = "άνοιγμα" if "check_in" in intent else "κλείσιμο"
+        proposed = (
+            f"Κανένας εργαζόμενος δεν είναι επιλέξιμος για {action} κάρτας.\n"
+            "Παραλείφθηκαν:\n"
+            + "\n".join(f"• {item}" for item in skipped_card)
+        )
     elif intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
         proposed = "\n".join(
             f"{match.get('name') or match.get('afm')} · {display_date} · {labels[intent]} {schedule_times.get(str(match.get('afm') or ''), '—')}"
@@ -851,8 +864,8 @@ def _validate_single_command(
         )
     else:
         proposed = f"{names} · {display_date} · {labels[intent]}"
-    if skipped_card:
-        proposed += "\n(Παραλείφθηκαν: " + "; ".join(skipped_card) + ")"
+    if skipped_card and not parsed.get("card_action_all_skipped"):
+        proposed += "\nΠαραλείφθηκαν:\n" + "\n".join(f"• {item}" for item in skipped_card)
     return status, validation, proposed
 
 

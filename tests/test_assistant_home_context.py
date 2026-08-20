@@ -132,7 +132,7 @@ class AssistantHomeContextTests(unittest.TestCase):
         intent = parsed.get("intent") or (parsed.get("commands") or [{}])[0].get("intent")
         self.assertEqual(intent, "card_check_out_now")
 
-    def test_parse_command_skips_today_home_for_named_card_open(self):
+    def test_parse_command_always_includes_today_home(self):
         contexts = [{
             "store_id": 4,
             "store_name": "ERATO",
@@ -140,6 +140,11 @@ class AssistantHomeContextTests(unittest.TestCase):
             "branch_aa": "0",
         }]
         employees = [{"store_id": 4, "afm": "111222333", "name": "HOXHA ARBEN"}]
+        today_home = {
+            "date": "2026-08-18",
+            "scope": "today_only",
+            "stores": [{"store_id": 4, "name": "ERATO", "employees": []}],
+        }
         captured: dict = {}
 
         def fake_post(url, **kwargs):
@@ -163,12 +168,13 @@ class AssistantHomeContextTests(unittest.TestCase):
 
         with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
              patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
-             patch("app.telegram_assistant_service.build_today_home_context") as build_home, \
+             patch("app.telegram_assistant_service.build_today_home_context", return_value=today_home) as build_home, \
              patch("app.telegram_assistant_service.requests.post", side_effect=fake_post):
             parse_command(text="άνοιξε την κάρτα του HOXHA", contexts=contexts)
-        build_home.assert_not_called()
-        self.assertNotIn("today_home", captured["prompt"])
-        self.assertIn("guide", captured["prompt"])
+        build_home.assert_called_once()
+        self.assertIn("today_home", captured["prompt"])
+        guide = " ".join(captured["prompt"]["guide"])
+        self.assertIn("today_home είναι ΠΑΝΤΑ", guide)
 
 
 if __name__ == "__main__":

@@ -108,7 +108,7 @@ def test_sticky_focus_switches_when_user_names_someone_else():
     parsed = {
         "intent": "card_check_out_now",
         "store_id": 4,
-        "employee_afms": ["136967547"],
+        "employee_afms": ["111222333"],
         "date": "2026-08-18",
     }
     with patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
@@ -161,6 +161,78 @@ def test_checkout_validation_skips_already_closed_cards():
     assert parsed["employee_afms"] == ["111222333"]
     assert "Παραλείφθηκαν" in proposed
     assert "CLOSED TWO" in proposed
+    assert "ήδη κλείσει" in proposed
+
+
+def test_checkin_validation_skips_already_open_cards():
+    parsed = {
+        "intent": "card_check_in_retro",
+        "store_id": 4,
+        "employee_afms": ["111222333", "444555666"],
+        "date": "2026-08-20",
+        "time": "11:50",
+    }
+    employees = [
+        {"store_id": 4, "afm": "111222333", "name": "CLOSED ONE"},
+        {"store_id": 4, "afm": "444555666", "name": "OPEN TWO"},
+    ]
+
+    def fake_guard(*, employee_afm, **kwargs):
+        if employee_afm == "444555666":
+            return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+        return None
+
+    with patch("app.work_card_guards.new_card_punch_blocked_reason", side_effect=fake_guard):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 4,
+                "store_name": "ERATO",
+                "employer_afm": "123456789",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["employee_afms"] == ["111222333"]
+    assert "Παραλείφθηκαν" in proposed
+    assert "OPEN TWO" in proposed
+    assert "ήδη ανοίξει" in proposed
+
+
+def test_card_action_all_skipped_is_answered_not_clarification():
+    parsed = {
+        "intent": "card_check_out_now",
+        "store_id": 4,
+        "employee_afms": ["111222333", "444555666"],
+        "date": "2026-08-20",
+    }
+    employees = [
+        {"store_id": 4, "afm": "111222333", "name": "A"},
+        {"store_id": 4, "afm": "444555666", "name": "B"},
+    ]
+
+    with patch(
+        "app.work_card_guards.new_card_punch_blocked_reason",
+        return_value="Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)",
+    ):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 4,
+                "store_name": "ERATO",
+                "employer_afm": "123456789",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+        )
+    assert status == "answered"
+    assert validation["valid"] is True
+    assert parsed.get("employee_afms") == []
+    assert "Κανένας εργαζόμενος δεν είναι επιλέξιμος" in proposed
+    assert "Παραλείφθηκαν" in proposed
+    assert "ήδη κλείσει" in proposed
 
 
 def test_employee_catalog_only_includes_active_store_employees():

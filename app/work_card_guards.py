@@ -314,6 +314,18 @@ def new_card_punch_blocked_reason(
     if "check_in" in key:
         if card_event_exists(emp, ref, "0"):
             return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+        # Αρχική may show «σε εργασία» from open πραγματική even before a local
+        # WRKCardSE row exists — treat that as already open for a new check-in.
+        try:
+            if work_log_has_open_entry(
+                employer_afm,
+                branch_aa,
+                emp,
+                format_date_for_ergani(ref),
+            ):
+                return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+        except WorkCardPayloadError:
+            pass
         return None
 
     return None
