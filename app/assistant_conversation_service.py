@@ -131,7 +131,7 @@ def _resolve_pending_clarification(
     confirmation_mode: str,
     reply_context: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Bind a user answer to an open clarification instead of opening a new command."""
+    """Bind every user reply to the current non-terminal command."""
     from app.repo_telegram_assistant import (
         cancel_assistant_task,
         mark_inbound,
@@ -225,9 +225,10 @@ def _resolve_pending_clarification(
             "kind": "name_choice",
             "task_id": task_id,
             "question": question,
+            "original_message": pending.get("original_message_text"),
             "candidate_afms": candidate_afms,
             "candidate_employees": candidates[:20],
-            "preserve_intent": payload.get("intent"),
+            "preserve_intent": payload.get("pending_intent") or payload.get("intent"),
             "preserve_date": payload.get("date"),
             "preserve_time": payload.get("time"),
             "preserve_store_id": payload.get("store_id") or store_id,
@@ -237,13 +238,22 @@ def _resolve_pending_clarification(
         }
     else:
         merged_reply["pending_clarification"] = {
-            "kind": "generic",
+            "kind": (
+                "command_revision"
+                if str(pending.get("task_status") or "") in {"awaiting_ui_confirmation", "awaiting_pin"}
+                else "generic"
+            ),
             "task_id": task_id,
             "question": question,
+            "original_message": pending.get("original_message_text"),
             "preserve_intent": payload.get("intent"),
             "preserve_date": payload.get("date"),
+            "preserve_time": payload.get("time"),
             "preserve_store_id": payload.get("store_id"),
             "preserve_employee_afms": payload.get("employee_afms"),
+            "preserve_hour_from": payload.get("hour_from"),
+            "preserve_hour_to": payload.get("hour_to"),
+            "preserve_leave_type": payload.get("leave_type"),
         }
 
     # Critical: send the user's raw answer — do not wrap / rephrase / stem it.
@@ -279,6 +289,11 @@ def _resolve_pending_clarification(
         ):
             if not parsed.get(key) and preserve.get(preserve_key) not in (None, ""):
                 parsed[key] = preserve[preserve_key]
+        if not parsed.get("employee_afms") and preserve.get("preserve_employee_afms"):
+            parsed["employee_afms"] = list(preserve["preserve_employee_afms"])
+            parsed["employee_afm"] = (
+                parsed["employee_afms"][0] if len(parsed["employee_afms"]) == 1 else None
+            )
         if preserve.get("kind") == "name_choice":
             parsed.pop("ambiguous_employee_afms", None)
 

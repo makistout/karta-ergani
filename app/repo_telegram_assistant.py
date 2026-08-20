@@ -264,10 +264,10 @@ def latest_pending_clarification(
     office_user: str | None = None,
     chat_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Latest task waiting for a user answer to a clarification question."""
+    """Latest non-terminal task; every reply belongs to it until it is closed."""
     if office_user and store_id is not None:
         where = """
-            t.task_status=N'needs_clarification'
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
             AND t.store_id=?
             AND i.channel=N'ui'
             AND i.office_user=?
@@ -275,7 +275,7 @@ def latest_pending_clarification(
         params: tuple[Any, ...] = (int(store_id), str(office_user)[:128])
     elif chat_id:
         where = """
-            t.task_status=N'needs_clarification'
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
             AND i.chat_id=?
         """
         params = (str(chat_id),)
@@ -289,7 +289,7 @@ def latest_pending_clarification(
             f"""
             SELECT TOP (1) t.id, t.recipient_id, t.store_id, t.task_status, t.intent,
                    t.proposed_action_text, t.payload_json, t.validation_json,
-                   i.chat_id, i.office_user, i.channel,
+                   i.chat_id, i.office_user, i.channel, i.message_text AS original_message_text,
                    (
                        SELECT TOP (1) o.message_text
                        FROM dbo.karta_telegram_outbound_message o
@@ -416,7 +416,9 @@ def update_assistant_task(
             SET intent=?, task_status=?, employee_afm=?, work_date=TRY_CONVERT(date, ?),
                 payload_json=?, llm_response_json=?, confidence=?, validation_json=?,
                 proposed_action_text=?, updated_at=SYSDATETIMEOFFSET()
-            WHERE id=? AND task_status=N'needs_clarification'
+            WHERE id=? AND task_status IN (
+                N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin'
+            )
             """,
             (
                 str(parsed.get("intent") or "unknown")[:64],
