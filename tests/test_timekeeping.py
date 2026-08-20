@@ -19,6 +19,18 @@ def test_change_uses_effective_proposed_schedule():
     day = report["days"][0]
     assert day["basis_source"] == "effective_proposed"
     assert day["basis_label"] == "10:00–18:00"
+    assert day["effective_declared"] == "10:00–18:00"
+    assert day["declared"] == "09:00–17:00"
+
+
+def test_change_to_rest_replaces_payroll_declaration_but_has_no_recognized_interval():
+    day = build_timekeeping_report([
+        _row(status="change", proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", punch_count=0)
+    ])["days"][0]
+    assert day["effective_declared"] == "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
+    assert day["declared"] == "09:00–17:00"
+    assert day["basis_label"] == ""
+    assert day["recognized_work_minutes"] == 0
 
 
 def test_no_punch_uses_declared_basis():

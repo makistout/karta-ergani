@@ -43,7 +43,8 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
     report = {"days": [{
         "employee_afm": "012345678", "eponymo": "ΔΟΚΙΜΗ", "onoma": "ΕΝΑ",
         "work_date": "17/08/2026", "contract_kind": "Μερική", "status": "change",
-        "declared": "09:00–13:00", "basis_label": "09:00–15:00",
+        "declared": "09:00–13:00", "effective_declared": "09:00–15:00",
+        "basis_label": "09:00–15:00",
         "punch_recorded": "09:01–15:02", "recognized_span_minutes": 360,
         "recognized_work_minutes": 360, "break_interval": "",
         "premium_minutes": {"day": 360, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
@@ -63,6 +64,8 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
     sheet = workbook["Πλήρης ανάλυση"]
     assert sheet["F5"].value == "012345678"
     assert sheet["I5"].value.strftime("%d/%m/%Y") == "17/08/2026"
+    assert sheet["J5"].value == "09:00–15:00"
+    assert sheet["K5"].value == "09:00–15:00"
     assert sheet["O5"].value == timedelta(hours=6)
     assert sheet["U5"].value == timedelta(hours=2)
     assert sheet["U5"].number_format == "[h]:mm"

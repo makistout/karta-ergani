@@ -181,6 +181,10 @@ def build_recognized_day(
         # Exporters are projections of this report and must never recalculate rules.
         "declared": row.get("declared") or "",
         "proposed": row.get("proposed") or "",
+        # For payroll purposes an approved change replaces the original
+        # declaration.  The original value above remains available only for
+        # retrospective/audit use.
+        "effective_declared": label,
         "actual": row.get("actual") or "",
         "punch_recorded": row.get("punch_recorded") or "",
         "actual_minutes": row.get("actual_minutes"),
