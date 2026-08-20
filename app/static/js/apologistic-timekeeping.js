@@ -17,7 +17,8 @@ function displayDate(value) {
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("apologistic");
   document.getElementById("timekeepingBack").href = buildBackHref();
-  document.getElementById("timekeepingExport").addEventListener("click", downloadExcel);
+  document.getElementById("timekeepingExport").addEventListener("click", () => downloadExcel("summary"));
+  document.getElementById("timekeepingDetailedExport").addEventListener("click", () => downloadExcel("detailed"));
   try {
     const active = await Office.fetchActiveStore();
     Office.applyActiveStoreChrome(active);
@@ -136,11 +137,14 @@ function renderRows(rows) {
     ).join("")}</tbody></table>`;
 }
 
-async function downloadExcel() {
-  const button = document.getElementById("timekeepingExport");
+async function downloadExcel(kind) {
+  const detailed = kind === "detailed";
+  const button = document.getElementById(detailed ? "timekeepingDetailedExport" : "timekeepingExport");
   Office.setButtonLoading(button, true);
   try {
-    const res = await fetch("/api/apologistic/timekeeping/export", {
+    const res = await fetch(detailed
+      ? "/api/apologistic/timekeeping/export-detailed"
+      : "/api/apologistic/timekeeping/export", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(periodPayload()),
     });
@@ -152,9 +156,10 @@ async function downloadExcel() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
+    const prefix = detailed ? "orometrisi_analysis" : "orometrisi";
     link.download = isMonthMode()
-      ? `orometrisi_month_${String(year)}${String(month).padStart(2, "0")}.xlsx`
-      : `orometrisi_${weekFrom.replaceAll("-", "")}.xlsx`;
+      ? `${prefix}_month_${String(year)}${String(month).padStart(2, "0")}.xlsx`
+      : `${prefix}_${weekFrom.replaceAll("-", "")}.xlsx`;
     document.body.appendChild(link);
     link.click();
     link.remove();

@@ -3,7 +3,10 @@ from datetime import timedelta
 
 from openpyxl import load_workbook
 
-from app.timekeeping_export import build_timekeeping_export_xlsx
+from app.timekeeping_export import (
+    build_timekeeping_detailed_export_xlsx,
+    build_timekeeping_export_xlsx,
+)
 
 
 def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
@@ -34,3 +37,33 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
     assert workbook["Σύνοψη"]["C4"].value == timedelta(hours=8)
     assert workbook["Σύνοψη"]["C4"].number_format == "[h]:mm"
     assert workbook["Ανά ημέρα"]["F4"].value == "14:00–22:00"
+
+
+def test_detailed_export_projects_common_daily_report_without_recalculation():
+    report = {"days": [{
+        "employee_afm": "012345678", "eponymo": "ΔΟΚΙΜΗ", "onoma": "ΕΝΑ",
+        "work_date": "17/08/2026", "contract_kind": "Μερική", "status": "change",
+        "declared": "09:00–13:00", "basis_label": "09:00–15:00",
+        "punch_recorded": "09:01–15:02", "recognized_span_minutes": 360,
+        "recognized_work_minutes": 360, "break_interval": "",
+        "premium_minutes": {"day": 360, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
+        "overwork_minutes": 0, "partial_additional_12": 120, "partial_120": 0,
+        "partial_additional_12_intervals": ["13:00–15:00"],
+        "overtime_40": 0, "overtime_60": 0, "overtime_120": 0,
+        "sixth_day_minutes": 0, "day_state": "Εργασία", "basis_source": "effective_proposed",
+        "sixth_day_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
+        "warnings": [],
+    }]}
+    content = build_timekeeping_detailed_export_xlsx(
+        report=report,
+        store={"name": "Store", "employer_afm": "111111111", "branch_aa": "0"},
+        meta_line="Store · 17/08/2026–23/08/2026",
+    )
+    workbook = load_workbook(BytesIO(content), data_only=False)
+    sheet = workbook["Πλήρης ανάλυση"]
+    assert sheet["F5"].value == "012345678"
+    assert sheet["I5"].value.strftime("%d/%m/%Y") == "17/08/2026"
+    assert sheet["O5"].value == timedelta(hours=6)
+    assert sheet["U5"].value == timedelta(hours=2)
+    assert sheet["U5"].number_format == "[h]:mm"
+    assert sheet["V5"].value == "13:00–15:00"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from typing import Any
 
@@ -122,6 +123,123 @@ def build_timekeeping_export_xlsx(
             " · ".join(str(value) for value in item.get("warnings") or []),
         ])
     _finish_table(daily, daily_header, 8, 17)
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def build_timekeeping_detailed_export_xlsx(
+    *, report: dict[str, Any], store: dict[str, Any], meta_line: str,
+    title: str = "Πλήρης ανάλυση ωρομέτρησης ανά εργαζόμενο",
+) -> bytes:
+    """Render the common timekeeping report as one auditable employee/day table.
+
+    This function deliberately performs no payroll classification.  Every
+    duration comes from ``build_timekeeping_report`` so summary and detailed
+    exports cannot drift into separate rule engines.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Πλήρης ανάλυση"
+    ws.sheet_view.showGridLines = False
+
+    headers = [
+        "Εργοδότης ΑΦΜ", "Κωδικός υποκ/τος", "Υποκατάστημα",
+        "Επώνυμο", "Όνομα", "ΑΦΜ εργαζομένου", "Μερική απασχόληση",
+        "Ημέρα", "Ημερομηνία", "Δηλωμένο ωράριο", "Αναγνωρισμένο ωράριο",
+        "Κινήσεις κάρτας", "Μικτή διάρκεια", "Διάλειμμα", "Καθαρή βάση",
+        "Ώρες ημέρας", "Ώρες νύχτας 25%", "Ώρες Κυρ/Αργίας 75%",
+        "Ώρες νύχτας + Κυρ/Αργίας", "Υπερεργασία",
+        "Πρόσθετη μερικής 12%", "Διάστημα πρόσθετης μερικής", "Μερική 120%",
+        "Υπερωρία 40%", "Υπερωρία 60%", "Υπερωρία 120%",
+        "6η ημέρα - ημέρα", "6η ημέρα - νύχτα", "6η ημέρα - Κυρ/Αργία",
+        "6η ημέρα - νύχτα + Κυρ/Αργία", "Σύνολο 6ης ημέρας",
+        "Κατάσταση ημέρας", "Πηγή βάσης", "Παρατηρήσεις",
+    ]
+    groups = [
+        (1, 3, "Επιχείρηση"), (4, 7, "Εργαζόμενος"), (8, 15, "Ημερήσια στοιχεία"),
+        (16, 19, "Προσαυξήσεις"), (20, 23, "Υπερεργασία / Πρόσθετη μερικής"),
+        (24, 26, "Υπερωρίες"), (27, 31, "6η ημέρα"), (32, 34, "Έλεγχος"),
+    ]
+    for start, end, label in groups:
+        ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
+        cell = ws.cell(1, start, label)
+        cell.fill = PatternFill("solid", fgColor=_NAVY)
+        cell.font = Font(name="Aptos", size=10, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        for col in range(start, end + 1):
+            ws.cell(1, col).fill = PatternFill("solid", fgColor=_NAVY)
+    ws.row_dimensions[1].height = 24
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    ws.cell(2, 1, title)
+    ws.cell(2, 1).font = Font(name="Aptos Display", size=16, bold=True, color=_NAVY)
+    ws.cell(2, 1).alignment = Alignment(vertical="center")
+    ws.row_dimensions[2].height = 28
+    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(headers))
+    ws.cell(3, 1, meta_line)
+    ws.cell(3, 1).font = Font(name="Aptos", size=10, color="526777")
+    ws.append(headers)
+    for cell in ws[4]:
+        cell.fill = PatternFill("solid", fgColor=_BLUE)
+        cell.font = Font(name="Aptos", size=9, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = Border(bottom=_BORDER)
+    ws.row_dimensions[4].height = 44
+
+    weekday_names = ("Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ", "Κυρ")
+    for item in report.get("days") or []:
+        premiums = item.get("premium_minutes") or {}
+        sixth = item.get("sixth_day_breakdown") or {}
+        work_date = datetime.strptime(str(item.get("work_date") or ""), "%d/%m/%Y").date()
+        ws.append([
+            str(store.get("employer_afm") or ""), str(store.get("branch_aa") or ""),
+            str(store.get("name") or ""), item.get("eponymo") or "", item.get("onoma") or "",
+            str(item.get("employee_afm") or ""), "ΝΑΙ" if str(item.get("contract_kind") or "") == "Μερική" else "ΟΧΙ",
+            weekday_names[work_date.weekday()], work_date, item.get("declared") or "",
+            item.get("basis_label") or "", item.get("punch_recorded") or item.get("actual") or "",
+            _duration(item.get("recognized_span_minutes")), item.get("break_interval") or "",
+            _duration(item.get("recognized_work_minutes")), _duration(premiums.get("day")),
+            _duration(premiums.get("night")), _duration(premiums.get("sunday_holiday")),
+            _duration(premiums.get("night_sunday_holiday")), _duration(item.get("overwork_minutes")),
+            _duration(item.get("partial_additional_12")),
+            " · ".join(str(value) for value in item.get("partial_additional_12_intervals") or []),
+            _duration(item.get("partial_120")),
+            _duration(item.get("overtime_40")), _duration(item.get("overtime_60")),
+            _duration(item.get("overtime_120")), _duration(sixth.get("day")),
+            _duration(sixth.get("night")), _duration(sixth.get("sunday_holiday")),
+            _duration(sixth.get("night_sunday_holiday")),
+            _duration(item.get("sixth_day_minutes")), item.get("day_state") or "",
+            item.get("basis_source") or "", " · ".join(str(value) for value in item.get("warnings") or []),
+        ])
+
+    widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 22, 24, 25, 15, 18, 15,
+              15, 17, 19, 23, 16, 19, 24, 15, 16, 16, 16, 16, 16, 20, 24, 18, 18, 20, 42]
+    for index, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    ws.freeze_panes = "J5"
+    if ws.max_row > 4:
+        ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
+    duration_columns = {13} | set(range(15, 22)) | set(range(23, 32))
+    for row in range(5, ws.max_row + 1):
+        if row % 2:
+            for cell in ws[row]:
+                cell.fill = PatternFill("solid", fgColor=_LIGHT)
+        ws.cell(row, 9).number_format = "dd/mm/yyyy"
+        for col in duration_columns:
+            ws.cell(row, col).number_format = "[h]:mm"
+            ws.cell(row, col).alignment = Alignment(horizontal="right", vertical="top")
+        for cell in ws[row]:
+            cell.border = Border(bottom=_BORDER)
+            cell.font = Font(name="Aptos", size=9)
+            if cell.column not in duration_columns:
+                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 22, 34))
+    ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
+    ws.print_title_rows = "1:4"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
 
     buf = BytesIO()
     wb.save(buf)

@@ -10,9 +10,14 @@
       <h1 class="page-title"><i class="bi bi-stopwatch" aria-hidden="true"></i> Ωρομέτρηση</h1>
       <p class="page-desc" id="timekeepingMeta">Φόρτωση αποτελεσμάτων…</p>
     </div>
-    <button type="button" class="btn btn-primary" id="timekeepingExport">
-      <i class="bi bi-file-earmark-excel" aria-hidden="true"></i> Λήψη Excel
-    </button>
+    <div class="timekeeping-export-actions">
+      <button type="button" class="btn btn-primary" id="timekeepingExport">
+        <i class="bi bi-file-earmark-excel" aria-hidden="true"></i> Συγκεντρωτικό Excel
+      </button>
+      <button type="button" class="btn btn-secondary" id="timekeepingDetailedExport">
+        <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Πλήρης ανάλυση Excel
+      </button>
+    </div>
   </div>
 
   <div id="timekeepingSummary" class="apologistic-summary"></div>
@@ -23,5 +28,5 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="/static/js/apologistic-timekeeping.js?v=20260819back1"></script>
+  <script src="/static/js/apologistic-timekeeping.js?v=20260820exports2"></script>
 {% endblock %}

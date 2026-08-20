@@ -48,6 +48,29 @@ def test_holiday_is_treated_like_sunday():
     assert day["premium_minutes"]["sunday_holiday"] == 60
 
 
+def test_holiday_without_punch_has_no_premium_when_store_does_not_work_sundays():
+    row = _row(work_date="17/08/2026", declared="09:00–10:00", punch_count=0)
+    day = build_timekeeping_report(
+        [row], holidays={date(2026, 8, 17)}, sunday_work_enabled=False,
+    )["days"][0]
+    assert day["premium_minutes"]["sunday_holiday"] == 0
+    assert day["premium_minutes"]["day"] == 60
+
+
+def test_holiday_without_punch_keeps_premium_when_store_works_sundays():
+    row = _row(work_date="17/08/2026", declared="09:00–10:00", punch_count=0)
+    day = build_timekeeping_report(
+        [row], holidays={date(2026, 8, 17)}, sunday_work_enabled=True,
+    )["days"][0]
+    assert day["premium_minutes"]["sunday_holiday"] == 60
+
+
+def test_sunday_without_punch_always_uses_recognized_basis_for_premium():
+    row = _row(work_date="23/08/2026", declared="09:00–10:00", punch_count=0)
+    day = build_timekeeping_report([row], sunday_work_enabled=False)["days"][0]
+    assert day["premium_minutes"]["sunday_holiday"] == 60
+
+
 def test_overtime_crossing_annual_limit_splits_40_and_60():
     context = {"123456789": {"legal_overtime_minutes_before_period": 149 * 60 + 30, "data_complete": True}}
     day = build_timekeeping_report([_row(overtime_minutes=90)], annual_context_by_employee=context)["days"][0]
@@ -71,16 +94,108 @@ def test_review_blocks_timekeeping():
 
 
 def test_six_days_do_not_create_sixth_day_band():
-    rows = [_row(work_date=f"{day:02d}/08/2026") for day in range(17, 23)]
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", declared="09:00–15:00", contract_kind="Πλήρης")
+        for day in range(17, 23)
+    ]
     report = build_timekeeping_report(rows)
     assert sum(day["sixth_day_minutes"] for day in report["days"]) == 0
 
 
-def test_seven_days_mark_sunday_as_sixth_day():
-    rows = [_row(work_date=f"{day:02d}/08/2026") for day in range(17, 24)]
+def test_seven_equal_days_mark_sunday_then_saturday_as_at_most_two_sixth_days():
+    rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
     report = build_timekeeping_report(rows)
+    marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
+    assert marked == ["22/08/2026", "23/08/2026"]
+
+
+def test_six_days_above_40_hours_mark_only_shortest_tie_priority_day():
+    rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 23)]
+    report = build_timekeeping_report(rows)
+    marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
+    assert marked == ["22/08/2026"]
+
+
+def test_seven_days_choose_shortest_before_sunday_priority():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης",
+             declared="09:00–11:00" if day == 19 else "09:00–17:00")
+        for day in range(17, 24)
+    ]
+    report = build_timekeeping_report(rows)
+    marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
+    assert marked == ["19/08/2026", "23/08/2026"]
+
+
+def test_next_week_three_explicit_rests_suppress_any_sixth_day_when_sunday_over_five_hours():
+    rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
+    report = build_timekeeping_report(
+        rows,
+        sunday_work_enabled=False,
+        next_week_context_by_employee={
+            "123456789": {"known": True, "explicit_rest_days": 3},
+        },
+    )
+    assert sum(day["sixth_day_minutes"] for day in report["days"]) == 0
+
+
+def test_exactly_five_sunday_hours_do_not_trigger_next_week_rest_exemption():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης",
+             declared="09:00–14:00" if day == 23 else "09:00–17:00")
+        for day in range(17, 24)
+    ]
+    report = build_timekeeping_report(
+        rows,
+        sunday_work_enabled=False,
+        next_week_context_by_employee={"123456789": {"known": True, "explicit_rest_days": 3}},
+    )
+    assert sum(day["sixth_day_minutes"] for day in report["days"]) > 0
+
+
+def test_sixth_day_breakdown_splits_sunday_night_at_midnight():
+    work_dates = ("17/08/2026", "18/08/2026", "19/08/2026", "20/08/2026", "21/08/2026")
+    rows = [_row(work_date=value, contract_kind="Πλήρης") for value in work_dates]
+    rows.append(_row(work_date="23/08/2026", contract_kind="Πλήρης", declared="23:00–01:00"))
+    report = build_timekeeping_report(rows, sunday_work_enabled=True)
     sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
-    assert sunday["sixth_day_minutes"] == 480
+    assert sunday["sixth_day_minutes"] == 120
+    assert sunday["sixth_day_breakdown"] == {
+        "day": 0, "night": 60, "sunday_holiday": 0, "night_sunday_holiday": 60,
+    }
+
+
+def test_sixth_day_contains_only_clean_basis_not_overtime():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", overtime_minutes=60)
+        for day in range(17, 23)
+    ]
+    report = build_timekeeping_report(rows)
+    sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
+    assert sixth["sixth_day_minutes"] == 480
+    assert sixth["overtime_40"] == 60
+
+
+def test_unknown_next_week_does_not_suppress_sixth_day():
+    rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
+    report = build_timekeeping_report(
+        rows,
+        sunday_work_enabled=False,
+        next_week_context_by_employee={
+            "123456789": {"known": False, "explicit_rest_days": 3},
+        },
+    )
+    assert sum(day["sixth_day_minutes"] for day in report["days"]) > 0
+
+
+def test_sixth_day_rule_does_not_apply_to_partial_contract():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Μερική", weekly_days=5,
+             contract_weekly_minutes=1200)
+        for day in range(17, 24)
+    ]
+    report = build_timekeeping_report(rows)
+    assert sum(day["sixth_day_minutes"] for day in report["days"]) == 0
 
 
 def test_partial_extra_is_allocated_only_from_weekly_excess():
@@ -91,6 +206,38 @@ def test_partial_extra_is_allocated_only_from_weekly_excess():
     ]
     report = build_timekeeping_report(rows)
     assert sum(day["partial_additional_12"] for day in report["days"]) == 300
+
+
+def test_partial_extra_is_allocated_from_sunday_back_to_monday_with_tail_intervals():
+    durations = {
+        "17/08/2026": "09:00–15:00",  # Monday: 2 h above imputed base
+        "18/08/2026": "09:00–13:00",
+        "19/08/2026": "09:00–13:00",
+        "20/08/2026": "09:00–13:00",
+        "23/08/2026": "09:00–14:00",  # Sunday: 1 h above imputed base
+    }
+    rows = [
+        _row(work_date=work_date, declared=declared, contract_kind="Μερική",
+             weekly_days=5, contract_weekly_minutes=1200)
+        for work_date, declared in durations.items()
+    ]
+    days = {day["work_date"]: day for day in build_timekeeping_report(rows)["days"]}
+    assert days["23/08/2026"]["partial_additional_12"] == 60
+    assert days["23/08/2026"]["partial_additional_12_intervals"] == ["13:00–14:00"]
+    assert days["17/08/2026"]["partial_additional_12"] == 120
+    assert days["17/08/2026"]["partial_additional_12_intervals"] == ["13:00–15:00"]
+
+
+def test_partial_extra_fallback_uses_last_workday_then_moves_backwards():
+    rows = [
+        _row(work_date=work_date, declared="09:00–13:00", contract_kind="Μερική",
+             weekly_days=5, contract_weekly_minutes=1200)
+        for work_date in ("17/08/2026", "18/08/2026", "19/08/2026", "20/08/2026", "21/08/2026", "23/08/2026")
+    ]
+    days = {day["work_date"]: day for day in build_timekeeping_report(rows)["days"]}
+    assert sum(day["partial_additional_12"] for day in days.values()) == 240
+    assert days["23/08/2026"]["partial_additional_12"] == 240
+    assert days["23/08/2026"]["partial_additional_12_intervals"] == ["09:00–13:00"]
 
 
 def test_partial_above_full_daily_cap_is_120():

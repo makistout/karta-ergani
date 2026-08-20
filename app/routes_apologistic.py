@@ -28,6 +28,8 @@ from app.repo_apologistic import (
     restore_review_change, tables_available, update_proposed, update_overtime,
 )
 from app.repo_holidays import get_effective_holidays_for_store
+from app.repo_schedule import list_schedule_for_range
+from app.repo_store import get_sunday_rest_transfer_enabled
 from app.repo_timekeeping import load_annual_overtime_context
 from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_submit_result
 from app.wto_submit import parse_submit_response
@@ -35,7 +37,10 @@ from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a
 from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A, build_wto_ov_a_payload
 from app.work_card_payload import WorkCardPayloadError
 from app.timekeeping import build_timekeeping_report
-from app.timekeeping_export import build_timekeeping_export_xlsx
+from app.timekeeping_export import (
+    build_timekeeping_detailed_export_xlsx,
+    build_timekeeping_export_xlsx,
+)
 
 
 apologistic_bp = Blueprint("apologistic", __name__, url_prefix="/api/apologistic")
@@ -223,10 +228,50 @@ def _build_timekeeping_for_week(ctx: dict, week_from: date):
         store_id=int(ctx["id"]), employee_afms=employee_afms, period_from=week_from,
     )
     holidays = get_effective_holidays_for_store(int(ctx["id"]), week_from.year)
+    sunday_work_enabled = get_sunday_rest_transfer_enabled(int(ctx["id"]))
+    next_week_context = _next_week_rest_context(ctx, week_from, employee_afms)
     result = build_timekeeping_report(
         rows, holidays=holidays, annual_context_by_employee=annual_context,
+        sunday_work_enabled=sunday_work_enabled,
+        next_week_context_by_employee=next_week_context,
     )
     return result, snapshot, annual_context
+
+
+def _next_week_rest_context(
+    ctx: dict, week_from: date, employee_afms: list[str],
+) -> dict[str, dict[str, object]]:
+    """Read next-week schedule once and count only explicit ΑΝΑΠΑΥΣΗ/ΡΕΠΟ days."""
+    next_from = week_from + timedelta(days=7)
+    next_to = next_from + timedelta(days=6)
+    dates = iso_to_ergani_dates(next_from.isoformat(), next_to.isoformat(), 7)
+    wanted = {str(value or "").strip() for value in employee_afms}
+    rows = list_schedule_for_range(
+        str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0"), dates,
+    )
+    by_employee_date: dict[tuple[str, str], list[dict]] = {}
+    for row in rows:
+        afm = str(row.get("employee_afm") or "").strip()
+        if afm not in wanted:
+            continue
+        key = (afm, str(row.get("work_date") or "").strip())
+        by_employee_date.setdefault(key, []).append(row)
+    result: dict[str, dict[str, object]] = {}
+    for afm in wanted:
+        employee_groups = [items for (item_afm, _), items in by_employee_date.items() if item_afm == afm]
+        explicit_rest_days = 0
+        for items in employee_groups:
+            has_work = any(str(item.get("hour_from") or "").strip() and str(item.get("hour_to") or "").strip() for item in items)
+            markers = " ".join(str(item.get("shift_type") or "").upper() for item in items)
+            if not has_work and ("ΑΝΑΠΑΥΣ" in markers or "ΡΕΠΟ" in markers):
+                explicit_rest_days += 1
+        result[afm] = {
+            "known": bool(employee_groups),
+            "explicit_rest_days": explicit_rest_days,
+            "week_from": next_from.isoformat(),
+            "week_to": next_to.isoformat(),
+        }
+    return result
 
 
 def _merge_timekeeping_days(
@@ -261,7 +306,7 @@ def _merge_timekeeping_days(
             annual_after_by_employee.get(afm) or 0
         )
     return {
-        "calculation_version": "timekeeping-v1-month",
+        "calculation_version": "timekeeping-v2-sixth-day-month",
         "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
         "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
         "counts": {"days": len(days), "employees": len(employees)},
@@ -313,16 +358,21 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
     merged_days: list[dict[str, object]] = []
     snapshots: list[dict[str, object]] = []
     annual_after_by_employee: dict[str, int] = {}
+    sunday_work_enabled = get_sunday_rest_transfer_enabled(int(ctx["id"]))
     for week_from in week_starts:
         loaded = load_report(int(ctx["id"]), week_from)
         if loaded is None:
             raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
         report, snapshot = loaded
         holidays = get_effective_holidays_for_store(int(ctx["id"]), week_from.year)
+        week_rows = list(report.get("days") or [])
+        week_afms = sorted({str(row.get("employee_afm") or "") for row in week_rows if row.get("employee_afm")})
         week_result = build_timekeeping_report(
-            list(report.get("days") or []),
+            week_rows,
             holidays=holidays,
             annual_context_by_employee=running_context,
+            sunday_work_enabled=sunday_work_enabled,
+            next_week_context_by_employee=_next_week_rest_context(ctx, week_from, week_afms),
         )
         snapshots.append({
             "id": snapshot.get("id"),
@@ -346,52 +396,81 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
     return _merge_timekeeping_days(merged_days, annual_after_by_employee), snapshots, running_context
 
 
+def _timekeeping_export_data(ctx: dict, body: dict):
+    """Load the single canonical report used by every Excel projection."""
+    if body.get("year") is not None or body.get("month") is not None:
+        year = int(body.get("year") or 0)
+        month = int(body.get("month") or 0)
+        report, _, _ = _build_timekeeping_for_month(ctx, year=year, month=month)
+        period_from = date(year, month, 1)
+        period_to = date(year, month, monthrange(year, month)[1])
+        return report, period_from, period_to, f"month_{year}{month:02d}", True
+    week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+    if week_from.weekday() != 0:
+        raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
+    report, _, _ = _build_timekeeping_for_week(ctx, week_from)
+    return report, week_from, week_from + timedelta(days=6), f"{week_from:%Y%m%d}", False
+
+
+def _timekeeping_export_error(exc: Exception):
+    if isinstance(exc, LookupError):
+        return jsonify({"error": str(exc)}), 404
+    if isinstance(exc, TimekeepingPeriodError):
+        return jsonify({"error": str(exc), "problem_weeks": exc.problem_weeks}), 409
+    status = 409 if "Σ ή Μ" in str(exc) else 400
+    return jsonify({"error": str(exc)}), status
+
+
 @apologistic_bp.post("/timekeeping/export")
 def apologistic_timekeeping_export():
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
-    body = request.get_json(silent=True) or {}
     try:
-        if body.get("year") is not None or body.get("month") is not None:
-            year = int(body.get("year") or 0)
-            month = int(body.get("month") or 0)
-            report, _, _ = _build_timekeeping_for_month(ctx, year=year, month=month)
-            month_from = date(year, month, 1)
-            month_to = date(year, month, monthrange(year, month)[1])
-            content = build_timekeeping_export_xlsx(
-                report=report,
-                meta_line=f"{ctx['name']} · {month_from:%d/%m/%Y}–{month_to:%d/%m/%Y} · {report['calculation_version']}",
-                title="Ωρομέτρηση μήνα",
-                daily_title="Αναλυτική ωρομέτρηση μήνα ανά ημέρα",
-            )
-            return send_file(
-                BytesIO(content),
-                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                as_attachment=True,
-                download_name=f"orometrisi_month_{year}{month:02d}.xlsx",
-            )
-        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
-        if week_from.weekday() != 0:
-            raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
-        report, _, _ = _build_timekeeping_for_week(ctx, week_from)
-        week_to = week_from + timedelta(days=6)
+        report, period_from, period_to, filename_tag, is_month = _timekeeping_export_data(
+            ctx, request.get_json(silent=True) or {},
+        )
         content = build_timekeeping_export_xlsx(
             report=report,
-            meta_line=f"{ctx['name']} · {week_from:%d/%m/%Y}–{week_to:%d/%m/%Y} · {report['calculation_version']}",
+            meta_line=f"{ctx['name']} · {period_from:%d/%m/%Y}–{period_to:%d/%m/%Y} · {report['calculation_version']}",
+            title="Ωρομέτρηση μήνα" if is_month else "Ωρομέτρηση εβδομάδας",
+            daily_title="Αναλυτική ωρομέτρηση μήνα ανά ημέρα" if is_month else "Αναλυτική ωρομέτρηση ανά ημέρα",
         )
     except LookupError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return _timekeeping_export_error(exc)
     except TimekeepingPeriodError as exc:
-        return jsonify({"error": str(exc), "problem_weeks": exc.problem_weeks}), 409
+        return _timekeeping_export_error(exc)
     except ValueError as exc:
-        status = 409 if "Σ ή Μ" in str(exc) else 400
-        return jsonify({"error": str(exc)}), status
+        return _timekeeping_export_error(exc)
     return send_file(
         BytesIO(content),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"orometrisi_{week_from:%Y%m%d}.xlsx",
+        download_name=f"orometrisi_{filename_tag}.xlsx",
+    )
+
+
+@apologistic_bp.post("/timekeeping/export-detailed")
+def apologistic_timekeeping_detailed_export():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    try:
+        report, period_from, period_to, filename_tag, _ = _timekeeping_export_data(
+            ctx, request.get_json(silent=True) or {},
+        )
+        content = build_timekeeping_detailed_export_xlsx(
+            report=report,
+            store=ctx,
+            meta_line=f"{ctx['name']} · {period_from:%d/%m/%Y}–{period_to:%d/%m/%Y} · {report['calculation_version']}",
+        )
+    except (LookupError, TimekeepingPeriodError, ValueError) as exc:
+        return _timekeeping_export_error(exc)
+    return send_file(
+        BytesIO(content),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"orometrisi_analysis_{filename_tag}.xlsx",
     )
 
 

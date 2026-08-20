@@ -1194,10 +1194,11 @@ table.data tbody tr.work-log-row--deficient td strong {
 .timekeeping-problem-weeks { display:flex; flex-wrap:wrap; gap:.55rem; }
 .timekeeping-problem-link { text-decoration:none; }
 .timekeeping-page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+.timekeeping-export-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.5rem; }
 .timekeeping-page-head .page-title { margin-top:.4rem; }
 .timekeeping-back { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); text-decoration:none; font-weight:600; }
 .timekeeping-back:hover { color:var(--accent); }
-@media (max-width:700px) { .timekeeping-page-head { flex-direction:column; } .timekeeping-page-head #timekeepingExport { width:100%; } }
+@media (max-width:700px) { .timekeeping-page-head { flex-direction:column; } .timekeeping-export-actions { width:100%; } .timekeeping-export-actions .btn { width:100%; } }
 .apologistic-accept-all-bar { display:flex; align-items:center; gap:.85rem; flex-wrap:wrap; margin:0 0 1rem; padding:.75rem .9rem; border:1px solid color-mix(in srgb,#d99500 35%,var(--border)); border-radius:.7rem; background:color-mix(in srgb,#d99500 8%,var(--surface)); }
 .list-card + .apologistic-accept-all-bar { margin:1rem 0 0; }
 .apologistic-accept-all-bar.hidden { display:none; }
