@@ -208,8 +208,9 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/work-log/sync/status/*", "work_log.view"),
     RouteRule("GET", "/api/apologistic/*", "work_log.view"),
     RouteRule("POST", "/api/apologistic/timekeeping/preview", "work_log.view"),
-    RouteRule("POST", "/api/apologistic/timekeeping/export", "work_log.export"),
-    RouteRule("POST", "/api/apologistic/timekeeping/export-detailed", "work_log.export"),
+    # Read-only calculated Excel — same gate as preview so viewer/store_viewer can download.
+    RouteRule("POST", "/api/apologistic/timekeeping/export", "work_log.view"),
+    RouteRule("POST", "/api/apologistic/timekeeping/export-detailed", "work_log.view"),
     RouteRule("PUT", "/api/apologistic/proposal", "work_log.view"),
     RouteRule("PUT", "/api/apologistic/exchange", "work_log.view"),
     RouteRule("POST", "/api/apologistic/submit-schedule", "schedule.submit_daily"),

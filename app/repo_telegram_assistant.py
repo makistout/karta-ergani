@@ -213,6 +213,20 @@ def latest_chat_context(chat_id: str) -> dict[str, Any] | None:
         if not isinstance(nested, dict):
             nested = {}
         row["context"] = nested
+        # After cancel, conversation restarts: keep store, drop previous people.
+        if (
+            nested.get("reset_conversation_focus")
+            or str(row.get("notification_type") or "") == "assistant_cancelled"
+        ):
+            store_id = row.get("store_id") if row.get("store_id") is not None else nested.get("store_id")
+            row["employee_afm"] = None
+            row["context"] = {
+                "store_id": store_id,
+                "employee_afm": None,
+                "employee_afms": [],
+                "reset_conversation_focus": True,
+            }
+            return row
         has_names = bool(row.get("employee_afm") or nested.get("employee_afm") or nested.get("employee_afms"))
         has_store = row.get("store_id") is not None or nested.get("store_id") is not None
         if has_store or has_names or "ΑΦΜ" in str(row.get("message_text") or ""):
@@ -312,7 +326,9 @@ def cancel_assistant_task(task_id: int, *, reason: str = "user_cancelled") -> bo
             """
             UPDATE dbo.karta_assistant_task
             SET task_status=N'cancelled', updated_at=SYSDATETIMEOFFSET()
-            WHERE id=? AND task_status=N'needs_clarification'
+            WHERE id=? AND task_status IN (
+                N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin'
+            )
             """,
             (int(task_id),),
         )
@@ -324,6 +340,52 @@ def cancel_assistant_task(task_id: int, *, reason: str = "user_cancelled") -> bo
                 (int(task_id), str(reason or "user_cancelled")[:64], "{}"),
             )
         return changed
+
+
+def cancel_open_assistant_tasks(
+    *,
+    store_id: int | None = None,
+    office_user: str | None = None,
+    chat_id: str | None = None,
+    reason: str = "user_cancelled",
+) -> list[int]:
+    """Cancel all open clarification/draft tasks for this UI user or Telegram chat."""
+    if office_user and store_id is not None:
+        where = """
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
+            AND t.store_id=?
+            AND i.channel=N'ui'
+            AND i.office_user=?
+        """
+        params: tuple[Any, ...] = (int(store_id), str(office_user)[:128])
+    elif chat_id:
+        where = """
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
+            AND i.chat_id=?
+        """
+        params = (str(chat_id),)
+        if store_id is not None:
+            where += " AND t.store_id=?"
+            params = (*params, int(store_id))
+    else:
+        return []
+    with cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT t.id
+            FROM dbo.karta_assistant_task t
+            JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
+            WHERE {where}
+            ORDER BY t.id DESC
+            """,
+            params,
+        )
+        ids = [int(row[0]) for row in cur.fetchall()]
+    cancelled: list[int] = []
+    for task_id in ids:
+        if cancel_assistant_task(task_id, reason=reason):
+            cancelled.append(task_id)
+    return cancelled
 
 
 def update_assistant_task(

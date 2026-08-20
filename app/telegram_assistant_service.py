@@ -64,6 +64,7 @@ _COMMAND_SCHEMA = {
         "leave_type": {"type": ["string", "null"]},
         "confidence": {"type": "number"},
         "clarification_question": {"type": ["string", "null"]},
+        "ambiguous_employee_afms": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["intent", "employee_afms", "employee_references", "confidence"],
 }
@@ -127,15 +128,14 @@ def _needs_today_home(text: str, reply_context: dict[str, Any] | None) -> bool:
     pending = ctx.get("pending_clarification")
     if isinstance(pending, dict) and pending.get("kind") == "name_choice":
         return False
+    if _is_group_or_criteria_query(text):
+        return True
     folded = _fold_text(text)
     if not folded:
         return False
     needles = (
         "ποιοι", "ποιος", "ποια", "τι ωρα",
-        "τελειων", "αρχιζ", "οσοι", "οσους", "οσες",
-        "ολους ", "ολες ", "ανοιχτ", "σε εργασια", "στη δουλεια",
-        "ποιος εχει", "εικον εργασ", "χτυπημ",
-        "οσοι τελειων", "οσους τελειων",
+        "εικον εργασ", "χτυπημ", "στη δουλεια", "σε εργασια",
     )
     return any(needle in folded for needle in needles)
 
@@ -145,15 +145,17 @@ def _assistant_prompt_guide() -> list[str]:
     return [
         "Parser εντολών erganiOS (όχι chatbot). Ελληνικά/greeklish → JSON. Μην γράφεις meta («το διορθώνω»).",
         "Μόνο store_id/ΑΦΜ από allowed_*. Ονόματα φωνητικά (dionisi→ΔΙΟΝΥΣΙΟΣ, fotopoulou→ΦΩΤΟΠΟΥΛΟΣ). Greeklish=ελληνικά.",
-        "Ίδια/παρόμοια επώνυμα χωρίς διακριτό όνομα → unknown + «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου).",
+        "Πολλά ονόματα/επώνυμα στο μήνυμα («του Χ και του Υ»): αν καθένα ταιριάζει σε διαφορετικό εργαζόμενο, βάλε ΟΛΑ τα ΑΦΜ σε employee_afms. ΜΗΝ ρωτάς «Εννοείτε…» ανάμεσα σε άσχετα επώνυμα.",
+        "Ίδιο/παρόμοιο επώνυμο χωρίς διακριτό όνομα (Φωτόπουλος×2, VLASENKO×2) → unknown + «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου) και βάλε τα υποψήφια ΑΦΜ σε ambiguous_employee_afms (employee_afms=[]).",
         "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· ένα ΑΦΜ από candidate_*· κληρονόμησε preserve_*.",
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν 10 λεπτά» = *_retro από now. «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
-        "today_home μόνο σήμερα· για today_info / ομαδικά («όσους τελειώνουν…»). Αν today_home απόν, μην επινοείς εικόνα εργασίας.",
+        "today_home μόνο σήμερα· για today_info / ομαδικά («όσους…», «δουλεύουν μετά τις…»). Αν today_home απόν, μην επινοείς εικόνα εργασίας.",
+        "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home βάσει ωραρίου/status.",
         "Έξοδος: μόνο ανοιχτές κάρτες. Είσοδος: χωρίς ήδη είσοδο. *_now: at_work/needs_checkout ή needs_checkin/late_arrival.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
-        "conversation_focus/reply_context κληρονομούνται σε σύντομες απαντήσεις. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
+        "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
 
 
@@ -171,6 +173,18 @@ def parse_command(
 
     # If we can resolve a single store from focus/reply/text, narrow employees & today_home
     focus = _conversation_focus(reply_context, contexts=contexts, employees=employees)
+    group_query = _is_group_or_criteria_query(text)
+    if group_query:
+        # Do not leak previous person names into Gemini for criteria queries.
+        focus = {
+            **focus,
+            "employee_afms": [],
+            "employee_names": [],
+            "note": (
+                "Ομαδικό/κριτήριο μήνυμα: αγνόησε προηγούμενα ονόματα· "
+                "διάλεξε ΑΦΜ μόνο από today_home / allowed_employees βάσει κριτηρίου."
+            ),
+        }
     focused_store_id: int | None = None
     if focus.get("store_id") and int(focus["store_id"]) in {int(c["store_id"]) for c in contexts}:
         focused_store_id = int(focus["store_id"])
@@ -181,7 +195,7 @@ def parse_command(
     if focused_store_id:
         employees = [e for e in employees if e["store_id"] == focused_store_id]
 
-    include_home = _needs_today_home(text, reply_context)
+    include_home = _needs_today_home(text, reply_context) or group_query
     today_home: dict[str, Any] | None = None
     if include_home:
         today_home = build_today_home_context(contexts)
@@ -284,8 +298,9 @@ def _clock_from_text(text: str) -> str:
 
 
 _GROUP_FOCUS_HINTS = (
-    "όσους", "οσους", "όλοι", "ολοι", "όλες", "ολες",
-    "τελειώνουν", "ξεκινάνε", "ξεκινανε", "ανοιχτή κάρτα", "ανοιχτη καρτα",
+    "οσους", "οσοι", "οσες", "ολους", "ολες", "ολοι", "ολα",
+    "τελειων", "ξεκινα", "δουλευ", "εργαζ", "ανοιχτ",
+    "μετα τι", "μετα τις", "πριν τι", "πριν τις",
 )
 
 
@@ -294,6 +309,11 @@ def _fold_text(value: str) -> str:
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     # Greek casefold maps capital Σ to final ς; normalize to σ for matching.
     return text.replace("ς", "σ")
+
+
+def _is_group_or_criteria_query(text: str) -> bool:
+    folded = f" {_fold_text(text)} "
+    return any(hint in folded for hint in _GROUP_FOCUS_HINTS)
 
 
 def _edit_distance(left: str, right: str) -> int:
@@ -342,22 +362,6 @@ def _name_parts(employee: dict[str, Any]) -> tuple[str, str]:
     return parts[0], " ".join(parts[1:])
 
 
-def _is_female_name(first_name: str, surname: str = "") -> bool:
-    first = _fold_text(first_name)
-    if first.endswith(("α", "η", "ω")) or first.endswith(_fold_text("ου")):
-        if not (
-            first.endswith(_fold_text("ας"))
-            or first.endswith(_fold_text("ης"))
-            or first.endswith(_fold_text("ος"))
-        ):
-            return True
-    female_tokens = {
-        "ελενη", "μαρια", "αικατερινη", "σοφια", "αννα", "ευα", "ιωαννα", "χριστινα",
-        "γεωργια", "δημητρα", "παρασκευη", "βασιλικη", "αλεξανδρα", "ολγα", "ειρηνη",
-    }
-    return first in female_tokens
-
-
 def _genitive_first_name(first_name: str) -> str:
     raw = str(first_name or "").strip()
     if not raw:
@@ -376,25 +380,6 @@ def _genitive_first_name(first_name: str) -> str:
     if folded.endswith("ια") and len(folded) > 2:
         return (folded[:-1] + "ασ").upper()
     return raw.upper()
-
-
-def _choice_label(employee: dict[str, Any]) -> str:
-    surname, first = _name_parts(employee)
-    article = "της" if _is_female_name(first, surname) else "του"
-    first_gen = _genitive_first_name(first) or str(employee.get("name") or employee.get("afm") or "").upper()
-    return f"{article} {first_gen.title()}"
-
-
-def _format_name_choices(candidates: list[dict[str, Any]]) -> str:
-    labels = [_choice_label(item) for item in candidates]
-    labels = [label for label in labels if label.strip()]
-    if not labels:
-        return "Παρακαλώ διευκρινίστε ποιο άτομο εννοείτε."
-    if len(labels) == 1:
-        return f"Εννοείτε {labels[0]};"
-    if len(labels) == 2:
-        return f"Εννοείτε {labels[0]} ή {labels[1]};"
-    return f"Εννοείτε {', '.join(labels[:-1])} ή {labels[-1]};"
 
 
 def _stems_similar(left: str, right: str) -> bool:
@@ -430,22 +415,6 @@ def _query_tokens(text: str) -> list[str]:
     return [token for token in tokens if token not in stop]
 
 
-def _singular_person_request(text: str) -> bool:
-    folded = f" {_fold_text(text)} "
-    if any(hint in folded for hint in _GROUP_FOCUS_HINTS):
-        return False
-    singular_markers = (
-        " του ", " της ", " τον ", " την ", " τον/την ",
-        " την καρτα ", " την κάρτα ", " τον καρτα ",
-    )
-    # Markers already folded, so κάρτα → καρτα
-    singular_markers = (
-        " του ", " της ", " τον ", " την ",
-        " την καρτα ", " τον καρτα ",
-    )
-    return any(marker in folded for marker in singular_markers)
-
-
 def _first_name_stem(value: str) -> str:
     text = _fold_text(value)
     if not text:
@@ -478,81 +447,6 @@ def _first_name_in_text(text: str, first_name: str) -> bool:
         if stem in token or token in stem:
             return True
     return False
-
-
-def _ambiguous_name_candidates(
-    text: str,
-    employees: list[dict[str, Any]],
-    store_id: int | None,
-    selected_afms: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    """Return near-duplicate employees when a surname query is not unique."""
-    pool = [
-        emp for emp in employees
-        if store_id is None or emp.get("store_id") == store_id
-    ]
-    tokens = _query_tokens(text)
-    selected = {str(afm).strip() for afm in (selected_afms or []) if str(afm or "").strip()}
-    candidates: list[dict[str, Any]] = []
-
-    def add(emp: dict[str, Any]) -> None:
-        afm = str(emp.get("afm") or "").strip()
-        if not afm:
-            return
-        if any(str(item.get("afm") or "") == afm for item in candidates):
-            return
-        candidates.append(emp)
-
-    for emp in pool:
-        surname, first = _name_parts(emp)
-        if not surname:
-            continue
-        for token in tokens:
-            if _employee_surname_matches_token(surname, token):
-                add(emp)
-                break
-            if first and _fold_text(first) == _fold_text(token):
-                add(emp)
-                break
-
-    # Expand selected people with same/similar surname siblings.
-    for emp in pool:
-        afm = str(emp.get("afm") or "").strip()
-        if afm not in selected:
-            continue
-        surname, _ = _name_parts(emp)
-        stem = _surname_stem(surname)
-        for other in pool:
-            other_surname, _ = _name_parts(other)
-            if _stems_similar(stem, _surname_stem(other_surname)):
-                add(other)
-
-    if len(candidates) < 2:
-        return []
-
-    # If the user already named a unique first name among candidates, no ambiguity.
-    named = [
-        emp for emp in candidates
-        if _first_name_in_text(text, _name_parts(emp)[1])
-    ]
-    if len(named) == 1:
-        return []
-
-    # Same exact surname (VLASENKO/VLASENKO) always clarify when singular.
-    surname_groups: dict[str, list[dict[str, Any]]] = {}
-    for emp in candidates:
-        key = _fold_text(_name_parts(emp)[0])
-        surname_groups.setdefault(key, []).append(emp)
-    exact_dupes = [group for group in surname_groups.values() if len(group) >= 2]
-    if exact_dupes:
-        return sorted(
-            [emp for group in exact_dupes for emp in group],
-            key=lambda item: str(item.get("name") or ""),
-        )
-
-    if _singular_person_request(text) or len(selected) <= 1:
-        return sorted(candidates, key=lambda item: str(item.get("name") or ""))
-    return []
 
 
 def _mentioned_store_ids(text: str, contexts: list[dict[str, Any]]) -> list[int]:
@@ -597,24 +491,7 @@ def _mentioned_afms(
             ):
                 hits.append(afm)
                 break
-    hits = list(dict.fromkeys(value for value in hits if value))
-    named_hits = []
-    for emp in employees:
-        if store_id is not None and emp.get("store_id") != store_id:
-            continue
-        afm = str(emp.get("afm") or "").strip()
-        if afm not in hits:
-            continue
-        _, first = _name_parts(emp)
-        if _first_name_in_text(raw, first):
-            named_hits.append(afm)
-    if len(set(named_hits)) == 1:
-        return [named_hits[0]]
-    ambiguous = _ambiguous_name_candidates(text, employees, store_id, hits)
-    if ambiguous:
-        # Keep all near-matches so validation can ask for a full choice list.
-        return [str(emp.get("afm") or "").strip() for emp in ambiguous if emp.get("afm")]
-    return hits
+    return list(dict.fromkeys(value for value in hits if value))
 
 
 def _afms_from_text(text: str, employees: list[dict[str, Any]], store_id: int | None) -> list[str]:
@@ -640,6 +517,17 @@ def _conversation_focus(
     if store_id not in allowed:
         named = _mentioned_store_ids(message_text, contexts)
         store_id = named[0] if len(named) == 1 else None
+    store_name = str((allowed.get(store_id) or {}).get("store_name") or "").strip() if store_id else ""
+    # After cancel, keep store only — do not inherit previous people.
+    if ctx.get("reset_conversation_focus") or str(ctx.get("notification_type") or "") == "assistant_cancelled":
+        return {
+            "locked": False,
+            "store_id": store_id,
+            "store_name": store_name or None,
+            "employee_afms": [],
+            "employee_names": [],
+            "source": "reset",
+        }
     inherited = ctx.get("employee_afms") if isinstance(ctx.get("employee_afms"), list) else []
     afms = [str(value).strip() for value in inherited if str(value or "").strip()]
     if ctx.get("employee_afm"):
@@ -653,7 +541,6 @@ def _conversation_focus(
         for emp in employees
         if emp.get("afm") == afm and (store_id is None or emp.get("store_id") == store_id)
     ]
-    store_name = str((allowed.get(store_id) or {}).get("store_name") or "").strip() if store_id else ""
     return {
         "locked": bool(ctx.get("focus_locked")),
         "store_id": store_id,
@@ -697,21 +584,25 @@ def _inherit_conversation_context(
         pending_clarification = reply_context.get("pending_clarification") or {}
         if not isinstance(pending_clarification, dict):
             pending_clarification = {}
-    mentioned_afms = _mentioned_afms(user_text, employees, store_id if store_id in allowed_store_ids else None)
-    group_query = any(hint in str(user_text or "").casefold() for hint in _GROUP_FOCUS_HINTS)
-    # Name-choice answers: trust the LLM pick; do not re-inherit both candidates
-    # from the clarification question text sitting in conversation_focus.
+    group_query = _is_group_or_criteria_query(user_text)
+    # Name-choice / group / explicit LLM picks: trust Gemini AFMs.
+    # Do not override with Python surname matching — the model owns name resolution.
     if pending_clarification.get("kind") == "name_choice" and parsed_afms:
         afms = parsed_afms
-    elif mentioned_afms:
-        afms = mentioned_afms
-    elif not group_query and focus.get("employee_afms"):
+    elif group_query:
+        afms = parsed_afms
+    elif parsed_afms:
+        afms = parsed_afms
+    elif focus.get("employee_afms"):
         afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]
     else:
-        afms = parsed_afms
+        afms = []
     if afms:
         parsed["employee_afms"] = list(dict.fromkeys(afms))
         parsed["employee_afm"] = parsed["employee_afms"][0] if len(parsed["employee_afms"]) == 1 else None
+    elif group_query:
+        parsed["employee_afms"] = []
+        parsed["employee_afm"] = None
 
     time_value = _normalize_clock_time(str(parsed.get("time") or ""))
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
@@ -776,49 +667,30 @@ def _validate_single_command(
         for employee in employees
         if employee["store_id"] == store_id and employee["afm"] == afm
     ]
-    pending_clarification = {}
-    if isinstance(reply_context, dict):
-        pending_clarification = reply_context.get("pending_clarification") or {}
-        if not isinstance(pending_clarification, dict):
-            pending_clarification = {}
-    candidate_afms = {
-        str(afm).strip()
-        for afm in (pending_clarification.get("candidate_afms") or [])
-        if str(afm or "").strip()
-    }
-    name_choice_resolved = (
-        pending_clarification.get("kind") == "name_choice"
-        and len(afms) == 1
-        and (not candidate_afms or afms[0] in candidate_afms)
-    )
-    ambiguous = [] if name_choice_resolved else _ambiguous_name_candidates(
-        user_text, employees, store_id, afms,
-    )
-    if intent not in {"unknown", *_INFO_INTENTS} and len(ambiguous) >= 2:
-        named_unique = [
-            emp for emp in ambiguous
-            if _first_name_in_text(user_text, _name_parts(emp)[1])
-        ]
-        if len(named_unique) != 1:
-            errors.append(_format_name_choices(ambiguous))
-            parsed["ambiguous_employee_afms"] = [
-                str(emp.get("afm") or "").strip() for emp in ambiguous if emp.get("afm")
-            ]
-            parsed["employee_afms"] = []
-            parsed["employee_afm"] = None
-            matches = []
-            afms = []
-        else:
-            afms = [str(named_unique[0].get("afm") or "").strip()]
-            parsed["employee_afms"] = afms
-            parsed["employee_afm"] = afms[0]
-            matches = named_unique
-            parsed.pop("ambiguous_employee_afms", None)
-    if name_choice_resolved:
+    # Name resolution is Gemini's job (guide). Python only checks AFMs exist in-store.
+    if intent == "unknown":
+        question = str(parsed.get("clarification_question") or "")
+        if "εννοειτε" in _fold_text(question):
+            raw_ambiguous = parsed.get("ambiguous_employee_afms")
+            if not isinstance(raw_ambiguous, list) or not raw_ambiguous:
+                raw_ambiguous = afms
+            ambiguous_afms = []
+            for value in raw_ambiguous:
+                afm = str(value or "").strip()
+                if not afm or afm in ambiguous_afms:
+                    continue
+                if any(emp["store_id"] == store_id and emp["afm"] == afm for emp in employees):
+                    ambiguous_afms.append(afm)
+            if ambiguous_afms:
+                parsed["ambiguous_employee_afms"] = ambiguous_afms
+                parsed["employee_afms"] = []
+                parsed["employee_afm"] = None
+                afms = []
+                matches = []
+    else:
         parsed.pop("ambiguous_employee_afms", None)
     if intent not in {"unknown", *_INFO_INTENTS} and (not afms or len(matches) != len(afms)):
-        if not any("Εννοείτε " in item for item in errors):
-            errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
+        errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
     if intent not in {"unknown", *_INFO_INTENTS} and not _is_iso_date(date):

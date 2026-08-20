@@ -276,8 +276,10 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             {"inline_keyboard": [[{"text": "Επιβεβαίωση με PIN", "callback_data": f"assistant_confirm:{task_id}"}]]}
             if status == "draft" else None
         )
+        reset_focus = bool(result.get("reset_conversation_focus"))
         notification_type = (
-            "assistant_pin" if status == "draft"
+            "assistant_cancelled" if reset_focus
+            else "assistant_pin" if status == "draft"
             else "assistant_reply" if status == "answered"
             else "assistant_clarification"
         )
@@ -286,8 +288,9 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             "notification_reference_id": str(task_id),
             "recipient_id": selected_recipient,
             "store_id": parsed.get("store_id"),
-            "employee_afm": parsed.get("employee_afm"),
-            "employee_afms": parsed.get("employee_afms") or [],
+            "employee_afm": None if reset_focus else parsed.get("employee_afm"),
+            "employee_afms": [] if reset_focus else (parsed.get("employee_afms") or []),
+            "reset_conversation_focus": reset_focus,
         }, reply_markup=reply_markup)
         record_audit_event(
             action="assistant.message", success=True, entity_type="assistant_task",

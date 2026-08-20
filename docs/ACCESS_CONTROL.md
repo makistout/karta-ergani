@@ -60,6 +60,8 @@
   - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
 - Ψηφιακό ωράριο: `schedule.view`, `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`, `schedule.submit_leave`, `schedule.export`
 - Πραγματική απασχόληση: `work_log.view`, `work_log.sync`, `work_log.export`
+  - Απολογιστική ωρομέτρηση Excel (συγκεντρωτικό + πλήρης ανάλυση): `work_log.view`
+    (ίδιο με το preview· διαθέσιμο και σε `viewer` / `store_viewer`)
 - Πρωτόκολλα (`/ui/protocols`, `/api/protocols/*`): ίδια `work_log.view` / `work_log.sync`
   (λίστα για όσους βλέπουν πραγματική· sync μόνο admin)
 - Ελλιπή χτυπήματα: `missing_cards.view`, `missing_cards.close_one`, `missing_cards.close_all`, `missing_cards.sync_refresh`

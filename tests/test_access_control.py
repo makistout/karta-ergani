@@ -171,6 +171,14 @@ def test_work_card_sync_uses_separate_permission():
     assert permission_for_path("/api/work-log/sync", "POST") == "work_log.sync"
 
 
+def test_timekeeping_excel_exports_use_view_permission():
+    """Viewer can download calculated timekeeping Excel (summary + detailed)."""
+    assert permission_for_path("/api/apologistic/timekeeping/export", "POST") == "work_log.view"
+    assert permission_for_path("/api/apologistic/timekeeping/export-detailed", "POST") == "work_log.view"
+    assert "work_log.view" in permissions_for_role("viewer")
+    assert "work_log.view" in permissions_for_role("store_viewer")
+
+
 def test_non_admin_work_card_sync_only_allows_today():
     app = Flask(__name__)
     app.secret_key = "test-secret"

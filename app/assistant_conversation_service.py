@@ -78,17 +78,48 @@ def _result(
     validation: dict[str, Any] | None = None,
     proposed: str = "",
     recipient_id: int | None = None,
+    reset_conversation_focus: bool = False,
 ) -> dict[str, Any]:
+    payload = dict(parsed or {})
+    if reset_conversation_focus:
+        payload["employee_afms"] = []
+        payload["employee_afm"] = None
+        payload.pop("ambiguous_employee_afms", None)
     return {
         "task_id": task_id,
         "status": status,
         "task_status": task_status,
         "answer": answer,
-        "parsed": parsed or {},
+        "parsed": payload,
         "validation": validation or {"valid": True, "errors": [], "execution_enabled": False},
         "proposed": proposed,
         "recipient_id": recipient_id,
+        "reset_conversation_focus": bool(reset_conversation_focus),
     }
+
+
+def _cancelled_answer(task_id: int | None = None, *, cancelled_ids: list[int] | None = None) -> str:
+    ids = [int(value) for value in (cancelled_ids or []) if value]
+    if task_id and int(task_id) not in ids:
+        ids = [int(task_id), *ids]
+    if len(ids) > 1:
+        listed = ", ".join(f"#{item}" for item in ids)
+        return (
+            f"Ακυρώθηκαν οι ανοιχτές εντολές {listed}. "
+            "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ. "
+            "Μπορείτε να δώσετε νέα εντολή από την αρχή."
+        )
+    if ids:
+        return (
+            f"Ακυρώθηκε η εντολή #{ids[0]}. "
+            "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ. "
+            "Μπορείτε να δώσετε νέα εντολή από την αρχή."
+        )
+    return (
+        "Ακυρώθηκε η ανοιχτή εντολή. "
+        "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ. "
+        "Μπορείτε να δώσετε νέα εντολή από την αρχή."
+    )
 
 
 def _resolve_pending_clarification(
@@ -116,10 +147,7 @@ def _resolve_pending_clarification(
     if _offers_cancel(question) and _is_affirmative(text):
         cancel_assistant_task(task_id, reason="user_cancelled_clarification")
         mark_inbound(inbound_id, "clarification_cancelled")
-        answer = (
-            f"Ακυρώθηκε η εντολή #{task_id}. "
-            "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
-        )
+        answer = _cancelled_answer(task_id)
         return _result(
             task_id=task_id,
             status="answered",
@@ -128,6 +156,7 @@ def _resolve_pending_clarification(
             parsed=pending.get("payload") if isinstance(pending.get("payload"), dict) else {},
             proposed=answer,
             recipient_id=recipient_id,
+            reset_conversation_focus=True,
         )
 
     if _offers_cancel(question) and _is_negative(text):
@@ -224,10 +253,7 @@ def _resolve_pending_clarification(
     if isinstance(parsed, dict) and str(parsed.get("intent") or "") == "cancel_pending":
         cancel_assistant_task(task_id, reason="user_cancelled")
         mark_inbound(inbound_id, "user_cancelled")
-        answer = (
-            f"Ακυρώθηκε η εντολή #{task_id}. "
-            "Δεν έγινε καμία αποστολή στο ΕΡΓΑΝΗ."
-        )
+        answer = _cancelled_answer(task_id)
         return _result(
             task_id=task_id,
             status="answered",
@@ -236,6 +262,7 @@ def _resolve_pending_clarification(
             parsed=parsed,
             proposed=answer,
             recipient_id=recipient_id,
+            reset_conversation_focus=True,
         )
 
     if isinstance(parsed, dict):
@@ -298,6 +325,7 @@ def process_assistant_command(
     office_user: str | None = None, chat_id: str | None = None,
 ) -> dict[str, Any]:
     from app.repo_telegram_assistant import (
+        cancel_open_assistant_tasks,
         create_task,
         latest_pending_clarification,
         mark_inbound,
@@ -324,6 +352,45 @@ def process_assistant_command(
     parsed, employees, llm_metadata = parse_command(
         text=text, contexts=contexts, reply_context=dict(reply_context or {}),
     )
+
+    # Fresh cancel (e.g. «άκυρο» while a draft awaits confirmation): close opens + reset focus.
+    if str(parsed.get("intent") or "") == "cancel_pending":
+        cancelled_ids = cancel_open_assistant_tasks(
+            store_id=store_id,
+            office_user=office_user,
+            chat_id=None if office_user else chat_id,
+            reason="user_cancelled",
+        )
+        mark_inbound(inbound_id, "user_cancelled")
+        # Newest first (ORDER BY id DESC) — cite the command the user just saw.
+        primary = cancelled_ids[0] if cancelled_ids else 0
+        if primary:
+            answer = _cancelled_answer(primary, cancelled_ids=cancelled_ids)
+            task_id = primary
+        else:
+            # No open task — still acknowledge and clear focus.
+            task_id = create_task(
+                inbound_id=inbound_id,
+                recipient_id=recipient_id,
+                store_id=store_id,
+                parsed={"intent": "cancel_pending", "employee_afms": [], "confidence": 1.0},
+                status="cancelled",
+                validation={"valid": True, "errors": [], "execution_enabled": False},
+                proposed_action=_cancelled_answer(),
+                llm_metadata=llm_metadata,
+            )
+            answer = _cancelled_answer()
+        return _result(
+            task_id=task_id,
+            status="answered",
+            task_status="cancelled",
+            answer=answer,
+            parsed={"intent": "cancel_pending", "employee_afms": [], "store_id": store_id},
+            proposed=answer,
+            recipient_id=recipient_id,
+            reset_conversation_focus=True,
+        )
+
     status, validation, proposed = validate_and_describe(
         parsed, contexts=contexts, employees=employees,
         reply_context=dict(reply_context or {}), user_text=text,
@@ -361,4 +428,5 @@ def process_assistant_command(
         "task_id": task_id, "status": status, "task_status": task_status,
         "answer": answer, "parsed": parsed, "validation": validation,
         "proposed": proposed, "recipient_id": selected_recipient,
+        "reset_conversation_focus": False,
     }

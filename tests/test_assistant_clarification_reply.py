@@ -53,6 +53,8 @@ def test_yes_to_cancel_clarification_closes_same_task(monkeypatch):
     assert result["task_id"] == 51
     assert result["status"] == "answered"
     assert result["task_status"] == "cancelled"
+    assert result["reset_conversation_focus"] is True
+    assert result["parsed"].get("employee_afms") == []
     assert "Ακυρώθηκε η εντολή #51" in result["answer"]
     assert cancelled["id"] == 51
 
@@ -116,9 +118,84 @@ def test_gemini_cancel_pending_aborts_open_clarification(monkeypatch):
     assert captured["text"] == "γαμα το μην το κανεις"
     assert result["task_id"] == 52
     assert result["task_status"] == "cancelled"
+    assert result["reset_conversation_focus"] is True
+    assert result["parsed"].get("employee_afms") == []
     assert "Ακυρώθηκε η εντολή #52" in result["answer"]
     assert "Εννοείτε" not in result["answer"]
     assert cancelled["id"] == 52
+
+
+def test_cancel_pending_without_clarification_clears_focus(monkeypatch):
+    """«Άκυρο» on a draft (no clarification) cancels opens and restarts conversation."""
+    cancelled_open = {}
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_open_assistant_tasks",
+        lambda **kwargs: cancelled_open.update(kwargs) or [88],
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {"intent": "cancel_pending", "employee_afms": [], "store_id": 4, "confidence": 1.0},
+            [],
+            {},
+        ),
+    )
+
+    result = process_assistant_command(
+        text="άκυρο",
+        contexts=[{"store_id": 4, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
+        inbound_id=200,
+        store_id=4,
+        confirmation_mode="ui",
+        office_user="admin",
+    )
+    assert cancelled_open.get("office_user") == "admin"
+    assert cancelled_open.get("store_id") == 4
+    assert result["task_id"] == 88
+    assert result["task_status"] == "cancelled"
+    assert result["reset_conversation_focus"] is True
+    assert result["parsed"].get("employee_afms") == []
+    assert "Ακυρώθηκε η εντολή #88" in result["answer"]
+
+
+def test_cancel_pending_cites_newest_open_task(monkeypatch):
+    """If several opens exist, the reply cites the newest id first (not a leftover old one)."""
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_open_assistant_tasks",
+        lambda **kwargs: [60, 50],
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {"intent": "cancel_pending", "employee_afms": [], "store_id": 4, "confidence": 1.0},
+            [],
+            {},
+        ),
+    )
+
+    result = process_assistant_command(
+        text="ακυρο",
+        contexts=[{"store_id": 4, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
+        inbound_id=201,
+        store_id=4,
+        confirmation_mode="ui",
+        office_user="admin",
+    )
+    assert result["task_id"] == 60
+    assert "#60" in result["answer"]
+    assert result["answer"].index("#60") < result["answer"].index("#50")
+    assert "Ακυρώθηκαν οι ανοιχτές εντολές #60, #50" in result["answer"]
 
 
 def test_followup_answer_updates_same_clarification_task(monkeypatch):
