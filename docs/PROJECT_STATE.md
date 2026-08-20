@@ -221,22 +221,26 @@
 - Ενεργοποίηση ανά κατάστημα: `karta_store_config.ai_agent_enabled` (ρυθμίσεις στο
   `/ui/stores/notify`).
 - Πλευρικό chat στο office UI και Telegram replies από εξουσιοδοτημένους λήπτες.
-- **Gemini prompt** περιλαμβάνει:
+- **Gemini prompt** (`app/telegram_assistant_service.py`, συμπυκνωμένο `guide`):
   - `allowed_employees` — μόνο **ενεργοί** εργαζόμενοι του καταστήματος
     (`list_active_employees_for_store`, `karta_employment.active = 1`);
-  - **`today_home`** — snapshot Αρχικής **μόνο για σήμερα** (ονόματα, ψηφ. ωράριο,
-    χτυπήματα κάρτας, status) από `build_card_status_report()` /
-    `app/assistant_home_context.py` (ομαδικές εντολές και ερωτήσεις `today_info`).
-  - **`conversation_focus`** — τρέχον κατάστημα και ονόματα της συνομιλίας·
-    διατηρούνται μέχρι ρητή αλλαγή. Reply σε ειδοποίηση/εντολή κλειδώνει και τα δύο.
-  - greeklish διαβάζεται ως ελληνικά με φωνητική αντιστοίχιση ονομάτων.
+  - **`today_home`** — snapshot Αρχικής **μόνο για σήμερα**, και **μόνο όταν**
+    χρειάζεται (ερωτήσεις σήμερα / ομαδικά)· αλλιώς παραλείπεται για ταχύτητα
+    (`app/assistant_home_context.py`);
+  - **`conversation_focus`** / `pending_clarification` — πλαίσιο συνομιλίας και
+    απαντήσεις σε «Εννοείτε…» / ακύρωση στο ίδιο `#N`·
+  - greeklish και φωνητική αντιστοίχιση ονομάτων· παραδείγματα στο prompt **όχι**
+    δεσμευτικά (π.χ. `cancel_pending` σημασιολογικά)·
+  - χρόνος κάρτας: χωρίς ώρα = τώρα· «πριν Ν λεπτά» = retro από `now`· «στις Χ» =
+    ρητή ώρα.
 - **Validation / εκτέλεση κάρτας**: ίδιοι κανόνες με Αρχική / `work_card_guards.py`
   (`new_card_punch_blocked_reason`):
   - έξοδος μόνο με είσοδο και **χωρίς** ήδη δηλωμένη έξοδο·
   - είσοδος μόνο αν **δεν** έχει ήδη δηλωθεί είσοδος·
   - μελλοντική ημερομηνία/ώρα κίνησης απορρίπτεται στον guard και στο payload,
     όχι στο Gemini prompt·
-  - σε ομαδικές εντολές οι μη επιλέξιμοι παραλείπονται με «Παραλείφθηκαν: …».
+  - σε ομαδικές εντολές οι μη επιλέξιμοι παραλείπονται με «Παραλείφθηκαν: …»·
+  - safety-net ασάφειας παρόμοιων επωνύμων στην αρχική εντολή.
 - Επιβεβαίωση: κουμπί στο UI ή PIN στο Telegram → `_submit_work_card` / WTODaily / WTOLeave.
 - Τεκμηρίωση: `docs/TELEGRAM_ASSISTANT.md`.
 

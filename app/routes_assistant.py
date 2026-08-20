@@ -75,11 +75,16 @@ def message():
             text=text, contexts=[_context(store)], inbound_id=inbound_id,
             store_id=store_id, confirmation_mode="ui",
             reply_context=dict(reply_ctx),
+            office_user=_user(),
         )
         record_ui_outbound_message(
             office_user=_user(), store_id=store_id, text=result["answer"],
             context={
-                "notification_type": "assistant_reply",
+                "notification_type": (
+                    "assistant_clarification" if result.get("status") == "needs_clarification"
+                    else "assistant_confirmation" if result.get("status") == "draft"
+                    else "assistant_reply"
+                ),
                 "notification_reference_id": str(result["task_id"]),
                 "store_id": result["parsed"].get("store_id") or store_id,
                 "employee_afm": result["parsed"].get("employee_afm"),

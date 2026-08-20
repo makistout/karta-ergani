@@ -29,9 +29,10 @@ ALLOWED_INTENTS = {
     "rest_day",
     "leave",
     "today_info",
+    "cancel_pending",
     "unknown",
 }
-_INFO_INTENTS = {"today_info"}
+_INFO_INTENTS = {"today_info", "cancel_pending"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
 _GEMINI_FALLBACK_ATTEMPTS = 2
@@ -120,6 +121,42 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
+def _needs_today_home(text: str, reply_context: dict[str, Any] | None) -> bool:
+    """Skip building/sending today_home unless the message likely needs it."""
+    ctx = dict(reply_context or {})
+    pending = ctx.get("pending_clarification")
+    if isinstance(pending, dict) and pending.get("kind") == "name_choice":
+        return False
+    folded = _fold_text(text)
+    if not folded:
+        return False
+    needles = (
+        "ποιοι", "ποιος", "ποια", "τι ωρα",
+        "τελειων", "αρχιζ", "οσοι", "οσους", "οσες",
+        "ολους ", "ολες ", "ανοιχτ", "σε εργασια", "στη δουλεια",
+        "ποιος εχει", "εικον εργασ", "χτυπημ",
+        "οσοι τελειων", "οσους τελειων",
+    )
+    return any(needle in folded for needle in needles)
+
+
+def _assistant_prompt_guide() -> list[str]:
+    """Compact, non-duplicated guidance (token-cheap). Examples are non-binding."""
+    return [
+        "Parser εντολών erganiOS (όχι chatbot). Ελληνικά/greeklish → JSON. Μην γράφεις meta («το διορθώνω»).",
+        "Μόνο store_id/ΑΦΜ από allowed_*. Ονόματα φωνητικά (dionisi→ΔΙΟΝΥΣΙΟΣ, fotopoulou→ΦΩΤΟΠΟΥΛΟΣ). Greeklish=ελληνικά.",
+        "Ίδια/παρόμοια επώνυμα χωρίς διακριτό όνομα → unknown + «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου).",
+        "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· ένα ΑΦΜ από candidate_*· κληρονόμησε preserve_*.",
+        "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
+        "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν 10 λεπτά» = *_retro από now. «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
+        "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
+        "today_home μόνο σήμερα· για today_info / ομαδικά («όσους τελειώνουν…»). Αν today_home απόν, μην επινοείς εικόνα εργασίας.",
+        "Έξοδος: μόνο ανοιχτές κάρτες. Είσοδος: χωρίς ήδη είσοδο. *_now: at_work/needs_checkout ή needs_checkin/late_arrival.",
+        "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
+        "conversation_focus/reply_context κληρονομούνται σε σύντομες απαντήσεις. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
+    ]
+
+
 def parse_command(
     *, text: str, contexts: list[dict[str, Any]], reply_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
@@ -127,7 +164,6 @@ def parse_command(
         raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY")
     now = datetime.now(ZoneInfo("Europe/Athens"))
     employees = _employee_catalog(contexts)
-    today_home = build_today_home_context(contexts)
     stores = [
         {"id": int(c["store_id"]), "name": str(c.get("store_name") or "")}
         for c in contexts
@@ -144,57 +180,30 @@ def parse_command(
             focused_store_id = mentioned[0]
     if focused_store_id:
         employees = [e for e in employees if e["store_id"] == focused_store_id]
-        today_stores = today_home.get("stores") or []
-        today_home = {
-            **today_home,
-            "stores": [s for s in today_stores if int(s.get("store_id") or 0) == focused_store_id],
-        }
 
-    prompt = {
-        "role": (
-            "Μετατροπή ελληνικού ή greeklish μηνύματος σε δομημένη draft εντολή εργασίας, "
-            "ή απάντηση ερώτησης από την εικόνα εργασίας σήμερα."
-        ),
-        "rules": [
-            "Επίλεξε μόνο store_id και ΑΦΜ που υπάρχουν στους δοσμένους καταλόγους.",
-            "Βάλε ΟΛΟΥΣ τους εργαζομένους που ζητά ο χρήστης στα employee_afms και employee_references, με ίδια σειρά.",
-            "Για έναν εργαζόμενο πάλι χρησιμοποίησε employee_afms με ένα στοιχείο. Μην συγχωνεύεις πολλαπλά ονόματα.",
-            "Επέστρεψε μία εγγραφή στο commands για κάθε διαφορετική ενέργεια/ημερομηνία/ώρα. Επιτρέπονται πολλές διαφορετικές εντολές και πολλοί εργαζόμενοι στο ίδιο μήνυμα.",
-            "Αν πολλοί εργαζόμενοι έχουν ακριβώς την ίδια ενέργεια, ημερομηνία και ώρα, μπορούν να βρίσκονται μαζί στην ίδια εγγραφή commands.",
-            "Διάβασε greeklish ως ελληνικά (π.χ. ti ora=τι ώρα, klise karta=κλείσε κάρτα, masoura=ΜΑΣΟΥΡΑ) και αντιστοίχισε ονόματα φωνητικά στον κατάλογο.",
-            "Αν έστω ένα ζητούμενο όνομα (ελληνικά ή greeklish) δεν αντιστοιχεί μοναδικά στον κατάλογο, επέστρεψε unknown και ζήτησε διευκρίνιση.",
-            "Το τώρα σημαίνει την τρέχουσα ώρα Europe/Athens.",
-            "Το today_home περιέχει την Αρχική μόνο για ΣΗΜΕΡΑ: ονόματα, ψηφιακό ωράριο, χτυπήματα κάρτας και status.",
-            "Αν ο χρήστης ρωτά για την εικόνα εργασίας σήμερα (ποιοι τελειώνουν στις ΧΧ:ΧΧ, τι ώρα τελειώνει ο Χ, ποιος έχει ανοιχτή κάρτα, ποιος είναι σε εργασία) χρησιμοποίησε intent today_info.",
-            "Για today_info βάλε την πλήρη απάντηση στα ελληνικά στο clarification_question, μόνο από today_home. employee_afms μπορεί να είναι κενό. Μην ζητάς επιβεβαίωση ενέργειας αν δεν ζητήθηκε ενέργεια.",
-            "Για ομαδικές εντολές (π.χ. «κλείσε όσους τελειώνουν στις 15:30») χρησιμοποίησε today_home για να βρεις τους σωστούς ΑΦΜ.",
-            "Η ώρα λήξης ωραρίου είναι το schedule_to ή το τελευταίο intervals[].to.",
-            "Για «κλείσε τώρα» διάλεξε μόνο εργαζόμενους με status at_work ή needs_checkout που ταιριάζουν στο κριτήριο.",
-            "Για έξοδο κάρτας: μόνο ανοιχτές κάρτες (είσοδος χωρίς έξοδο) — όχι ήδη κλεισμένες.",
-            "Για είσοδο κάρτας: μόνο όσοι δεν έχουν ήδη δήλωση εισόδου εκείνη την ημέρα.",
-            "Για «άνοιξε τώρα» διάλεξε εργαζόμενους με status needs_checkin ή late_arrival που ταιριάζουν στο κριτήριο.",
-            "Για εντολές «σήμερα» ή «τώρα» βάλε date=today_home.date.",
-            "Μην χρησιμοποιείς today_home για ημερομηνίες εκτός σήμερας.",
-            "Για πριν/στις ΧΧ:ΧΧ ή σχετικό χρόνο όπως '10 λεπτά πριν' χρησιμοποίησε retro intent και υπολόγισε ακριβή ώρα HH:MM από το now.",
-            "Για άνοιγμα ή κλείσιμο κάρτας 'βάσει ωραρίου/προγράμματος' χρησιμοποίησε αντίστοιχα card_check_in_schedule ή card_check_out_schedule. Μην επινοήσεις ώρα.",
-            "Για αλλαγή ωραρίου δώσε hour_from και hour_to.",
-            "Για ρεπό χρησιμοποίησε rest_day. Για άδεια χρησιμοποίησε leave.",
-            "Το conversation_focus είναι το τρέχον κατάστημα και τα τρέχοντα ονόματα της συνομιλίας. Διατήρησέ τα μέχρι ο χρήστης να ζητήσει ρητά άλλο κατάστημα ή άλλα ονόματα.",
-            "Αν το μήνυμα είναι απάντηση (reply) σε ειδοποίηση/εντολή με κατάστημα και όνομα, και τα δύο είναι δεδομένα. Μην τα ξαναρωτήσεις.",
-            "Αν το reply_context έχει store_id, employee_afm, employee_afms ή message_text από προηγούμενη εντολή/ειδοποίηση, κληρονόμησέ τα. Μην τα αγνοήσεις επειδή το νέο μήνυμα είναι σύντομο.",
-            "«Κλειστόν», «κλείσε», «κλείσε την/την κάρτα» χωρίς άλλο όνομα = κλείσιμο κάρτας των εργαζομένων στο conversation_focus.",
-            "Ώρες τύπου 17.00 ή 17,00 είναι 17:00.",
-            "Αν κάτι είναι ασαφές επέστρεψε unknown και σύντομη clarification_question στα ελληνικά.",
-            "Μην επινοήσεις εργαζόμενο, ΑΦΜ, κατάστημα, ημερομηνία ή ώρα εκτός conversation_focus/reply_context.",
-        ],
+    include_home = _needs_today_home(text, reply_context)
+    today_home: dict[str, Any] | None = None
+    if include_home:
+        today_home = build_today_home_context(contexts)
+        if focused_store_id:
+            today_stores = today_home.get("stores") or []
+            today_home = {
+                **today_home,
+                "stores": [s for s in today_stores if int(s.get("store_id") or 0) == focused_store_id],
+            }
+
+    prompt: dict[str, Any] = {
+        "role": "erganiOS command parser → structured JSON draft or today_info answer.",
+        "guide": _assistant_prompt_guide(),
         "now": now.isoformat(timespec="minutes"),
-        "today_home": today_home,
         "message": str(text)[:4096],
         "reply_context": reply_context or {},
         "conversation_focus": focus,
         "allowed_stores": stores,
         "allowed_employees": employees,
     }
+    if today_home is not None:
+        prompt["today_home"] = today_home
     started_at = time.monotonic()
     request_body = {
             "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
@@ -282,7 +291,268 @@ _GROUP_FOCUS_HINTS = (
 
 def _fold_text(value: str) -> str:
     text = unicodedata.normalize("NFD", str(value or "").casefold())
-    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    # Greek casefold maps capital Σ to final ς; normalize to σ for matching.
+    return text.replace("ς", "σ")
+
+
+def _edit_distance(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for i, a in enumerate(left, start=1):
+        current = [i]
+        for j, b in enumerate(right, start=1):
+            insert = current[j - 1] + 1
+            delete = previous[j] + 1
+            replace = previous[j - 1] + (a != b)
+            current.append(min(insert, delete, replace))
+        previous = current
+    return previous[-1]
+
+
+def _surname_stem(value: str) -> str:
+    text = _fold_text(value)
+    if not text:
+        return ""
+    endings = (
+        "πουλου", "πουλος", "οπουλος", "οπουλου", "ιδης", "ιδου", "αδης", "αδου",
+        "ος", "ου", "ας", "ης", "ων", "ις",
+    )
+    for ending in endings:
+        folded_ending = _fold_text(ending)
+        if len(text) > len(folded_ending) + 2 and text.endswith(folded_ending):
+            return text[: -len(folded_ending)]
+    if len(text) > 3 and text[-1] in "αηω":
+        return text[:-1]
+    return text
+
+
+def _name_parts(employee: dict[str, Any]) -> tuple[str, str]:
+    name = str(employee.get("name") or "").strip()
+    parts = [part for part in name.split() if part]
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def _is_female_name(first_name: str, surname: str = "") -> bool:
+    first = _fold_text(first_name)
+    if first.endswith(("α", "η", "ω")) or first.endswith(_fold_text("ου")):
+        if not (
+            first.endswith(_fold_text("ας"))
+            or first.endswith(_fold_text("ης"))
+            or first.endswith(_fold_text("ος"))
+        ):
+            return True
+    female_tokens = {
+        "ελενη", "μαρια", "αικατερινη", "σοφια", "αννα", "ευα", "ιωαννα", "χριστινα",
+        "γεωργια", "δημητρα", "παρασκευη", "βασιλικη", "αλεξανδρα", "ολγα", "ειρηνη",
+    }
+    return first in female_tokens
+
+
+def _genitive_first_name(first_name: str) -> str:
+    raw = str(first_name or "").strip()
+    if not raw:
+        return ""
+    folded = _fold_text(raw)
+    if folded.endswith(_fold_text("ος")) and len(folded) > 2:
+        return (folded[:-2] + "ου").upper()
+    if folded.endswith(_fold_text("ας")) and len(folded) > 2:
+        return (folded[:-2] + "α").upper()
+    if folded.endswith(_fold_text("ης")) and len(folded) > 2:
+        return (folded[:-2] + "η").upper()
+    if folded.endswith("η") and len(folded) > 1:
+        return (folded + "σ").upper()
+    if folded.endswith("α") and len(folded) > 1 and not folded.endswith("ια"):
+        return (folded + "σ").upper()
+    if folded.endswith("ια") and len(folded) > 2:
+        return (folded[:-1] + "ασ").upper()
+    return raw.upper()
+
+
+def _choice_label(employee: dict[str, Any]) -> str:
+    surname, first = _name_parts(employee)
+    article = "της" if _is_female_name(first, surname) else "του"
+    first_gen = _genitive_first_name(first) or str(employee.get("name") or employee.get("afm") or "").upper()
+    return f"{article} {first_gen.title()}"
+
+
+def _format_name_choices(candidates: list[dict[str, Any]]) -> str:
+    labels = [_choice_label(item) for item in candidates]
+    labels = [label for label in labels if label.strip()]
+    if not labels:
+        return "Παρακαλώ διευκρινίστε ποιο άτομο εννοείτε."
+    if len(labels) == 1:
+        return f"Εννοείτε {labels[0]};"
+    if len(labels) == 2:
+        return f"Εννοείτε {labels[0]} ή {labels[1]};"
+    return f"Εννοείτε {', '.join(labels[:-1])} ή {labels[-1]};"
+
+
+def _stems_similar(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if left.startswith(right) or right.startswith(left):
+        shorter, longer = (left, right) if len(left) <= len(right) else (right, left)
+        if len(shorter) >= 4 and len(longer) - len(shorter) <= 2:
+            return True
+    return _edit_distance(left, right) <= 1 and min(len(left), len(right)) >= 4
+
+
+def _employee_surname_matches_token(surname: str, token: str) -> bool:
+    last = _fold_text(surname)
+    needle = _fold_text(token)
+    if not last or not needle or len(needle) < 4:
+        return False
+    if needle in last or last in needle:
+        return True
+    return _stems_similar(_surname_stem(last), _surname_stem(needle))
+
+
+def _query_tokens(text: str) -> list[str]:
+    folded = _fold_text(text)
+    stop = {
+        "ανοιξε", "κλεισε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τους", "τις",
+        "τωρα", "σημερα", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
+        "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today",
+    }
+    tokens = re.findall(r"[a-zα-ω]{4,}", folded)
+    return [token for token in tokens if token not in stop]
+
+
+def _singular_person_request(text: str) -> bool:
+    folded = f" {_fold_text(text)} "
+    if any(hint in folded for hint in _GROUP_FOCUS_HINTS):
+        return False
+    singular_markers = (
+        " του ", " της ", " τον ", " την ", " τον/την ",
+        " την καρτα ", " την κάρτα ", " τον καρτα ",
+    )
+    # Markers already folded, so κάρτα → καρτα
+    singular_markers = (
+        " του ", " της ", " τον ", " την ",
+        " την καρτα ", " τον καρτα ",
+    )
+    return any(marker in folded for marker in singular_markers)
+
+
+def _first_name_stem(value: str) -> str:
+    text = _fold_text(value)
+    if not text:
+        return ""
+    for ending in ("ου", "ος", "ας", "ης", "ων", "ις", "α", "η"):
+        folded_ending = _fold_text(ending)
+        if len(text) > len(folded_ending) + 2 and text.endswith(folded_ending):
+            return text[: -len(folded_ending)]
+    return text
+
+
+def _first_name_in_text(text: str, first_name: str) -> bool:
+    first = _fold_text(first_name)
+    if not first or len(first) < 3:
+        return False
+    folded = _fold_text(text)
+    if first in folded:
+        return True
+    genitive = _fold_text(_genitive_first_name(first_name))
+    if genitive and len(genitive) >= 3 and genitive in folded:
+        return True
+    stem = _first_name_stem(first_name)
+    if len(stem) < 4:
+        return False
+    for token in re.findall(r"[a-zα-ω]{3,}", folded):
+        token_stem = _first_name_stem(token)
+        if token_stem == stem or stem.startswith(token_stem) or token_stem.startswith(stem):
+            if min(len(stem), len(token_stem)) >= 4:
+                return True
+        if stem in token or token in stem:
+            return True
+    return False
+
+
+def _ambiguous_name_candidates(
+    text: str,
+    employees: list[dict[str, Any]],
+    store_id: int | None,
+    selected_afms: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return near-duplicate employees when a surname query is not unique."""
+    pool = [
+        emp for emp in employees
+        if store_id is None or emp.get("store_id") == store_id
+    ]
+    tokens = _query_tokens(text)
+    selected = {str(afm).strip() for afm in (selected_afms or []) if str(afm or "").strip()}
+    candidates: list[dict[str, Any]] = []
+
+    def add(emp: dict[str, Any]) -> None:
+        afm = str(emp.get("afm") or "").strip()
+        if not afm:
+            return
+        if any(str(item.get("afm") or "") == afm for item in candidates):
+            return
+        candidates.append(emp)
+
+    for emp in pool:
+        surname, first = _name_parts(emp)
+        if not surname:
+            continue
+        for token in tokens:
+            if _employee_surname_matches_token(surname, token):
+                add(emp)
+                break
+            if first and _fold_text(first) == _fold_text(token):
+                add(emp)
+                break
+
+    # Expand selected people with same/similar surname siblings.
+    for emp in pool:
+        afm = str(emp.get("afm") or "").strip()
+        if afm not in selected:
+            continue
+        surname, _ = _name_parts(emp)
+        stem = _surname_stem(surname)
+        for other in pool:
+            other_surname, _ = _name_parts(other)
+            if _stems_similar(stem, _surname_stem(other_surname)):
+                add(other)
+
+    if len(candidates) < 2:
+        return []
+
+    # If the user already named a unique first name among candidates, no ambiguity.
+    named = [
+        emp for emp in candidates
+        if _first_name_in_text(text, _name_parts(emp)[1])
+    ]
+    if len(named) == 1:
+        return []
+
+    # Same exact surname (VLASENKO/VLASENKO) always clarify when singular.
+    surname_groups: dict[str, list[dict[str, Any]]] = {}
+    for emp in candidates:
+        key = _fold_text(_name_parts(emp)[0])
+        surname_groups.setdefault(key, []).append(emp)
+    exact_dupes = [group for group in surname_groups.values() if len(group) >= 2]
+    if exact_dupes:
+        return sorted(
+            [emp for group in exact_dupes for emp in group],
+            key=lambda item: str(item.get("name") or ""),
+        )
+
+    if _singular_person_request(text) or len(selected) <= 1:
+        return sorted(candidates, key=lambda item: str(item.get("name") or ""))
+    return []
 
 
 def _mentioned_store_ids(text: str, contexts: list[dict[str, Any]]) -> list[int]:
@@ -306,16 +576,45 @@ def _mentioned_afms(
             continue
         afm = str(emp.get("afm") or "").strip()
         name = str(emp.get("name") or "").strip()
+        surname, first = _name_parts(emp)
         if afm and afm in raw:
             hits.append(afm)
             continue
         if name and len(name) >= 4 and _fold_text(name) in folded:
             hits.append(afm)
             continue
-        last = name.split()[0] if name else ""
-        if last and len(last) >= 4 and _fold_text(last) in folded:
+        if first and _first_name_in_text(raw, first):
             hits.append(afm)
-    return list(dict.fromkeys(value for value in hits if value))
+            continue
+        for token in _query_tokens(raw):
+            if _employee_surname_matches_token(surname, token):
+                hits.append(afm)
+                break
+            if first and (
+                _fold_text(first) == _fold_text(token)
+                or _first_name_stem(first) == _first_name_stem(token)
+                or _first_name_in_text(token, first)
+            ):
+                hits.append(afm)
+                break
+    hits = list(dict.fromkeys(value for value in hits if value))
+    named_hits = []
+    for emp in employees:
+        if store_id is not None and emp.get("store_id") != store_id:
+            continue
+        afm = str(emp.get("afm") or "").strip()
+        if afm not in hits:
+            continue
+        _, first = _name_parts(emp)
+        if _first_name_in_text(raw, first):
+            named_hits.append(afm)
+    if len(set(named_hits)) == 1:
+        return [named_hits[0]]
+    ambiguous = _ambiguous_name_candidates(text, employees, store_id, hits)
+    if ambiguous:
+        # Keep all near-matches so validation can ask for a full choice list.
+        return [str(emp.get("afm") or "").strip() for emp in ambiguous if emp.get("afm")]
+    return hits
 
 
 def _afms_from_text(text: str, employees: list[dict[str, Any]], store_id: int | None) -> list[str]:
@@ -393,9 +692,18 @@ def _inherit_conversation_context(
     if not isinstance(raw_afms, list):
         raw_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
     parsed_afms = [str(value).strip() for value in raw_afms if str(value or "").strip()]
+    pending_clarification = {}
+    if isinstance(reply_context, dict):
+        pending_clarification = reply_context.get("pending_clarification") or {}
+        if not isinstance(pending_clarification, dict):
+            pending_clarification = {}
     mentioned_afms = _mentioned_afms(user_text, employees, store_id if store_id in allowed_store_ids else None)
     group_query = any(hint in str(user_text or "").casefold() for hint in _GROUP_FOCUS_HINTS)
-    if mentioned_afms:
+    # Name-choice answers: trust the LLM pick; do not re-inherit both candidates
+    # from the clarification question text sitting in conversation_focus.
+    if pending_clarification.get("kind") == "name_choice" and parsed_afms:
+        afms = parsed_afms
+    elif mentioned_afms:
         afms = mentioned_afms
     elif not group_query and focus.get("employee_afms"):
         afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]
@@ -468,8 +776,49 @@ def _validate_single_command(
         for employee in employees
         if employee["store_id"] == store_id and employee["afm"] == afm
     ]
+    pending_clarification = {}
+    if isinstance(reply_context, dict):
+        pending_clarification = reply_context.get("pending_clarification") or {}
+        if not isinstance(pending_clarification, dict):
+            pending_clarification = {}
+    candidate_afms = {
+        str(afm).strip()
+        for afm in (pending_clarification.get("candidate_afms") or [])
+        if str(afm or "").strip()
+    }
+    name_choice_resolved = (
+        pending_clarification.get("kind") == "name_choice"
+        and len(afms) == 1
+        and (not candidate_afms or afms[0] in candidate_afms)
+    )
+    ambiguous = [] if name_choice_resolved else _ambiguous_name_candidates(
+        user_text, employees, store_id, afms,
+    )
+    if intent not in {"unknown", *_INFO_INTENTS} and len(ambiguous) >= 2:
+        named_unique = [
+            emp for emp in ambiguous
+            if _first_name_in_text(user_text, _name_parts(emp)[1])
+        ]
+        if len(named_unique) != 1:
+            errors.append(_format_name_choices(ambiguous))
+            parsed["ambiguous_employee_afms"] = [
+                str(emp.get("afm") or "").strip() for emp in ambiguous if emp.get("afm")
+            ]
+            parsed["employee_afms"] = []
+            parsed["employee_afm"] = None
+            matches = []
+            afms = []
+        else:
+            afms = [str(named_unique[0].get("afm") or "").strip()]
+            parsed["employee_afms"] = afms
+            parsed["employee_afm"] = afms[0]
+            matches = named_unique
+            parsed.pop("ambiguous_employee_afms", None)
+    if name_choice_resolved:
+        parsed.pop("ambiguous_employee_afms", None)
     if intent not in {"unknown", *_INFO_INTENTS} and (not afms or len(matches) != len(afms)):
-        errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
+        if not any("Εννοείτε " in item for item in errors):
+            errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
     if intent not in {"unknown", *_INFO_INTENTS} and not _is_iso_date(date):
@@ -594,10 +943,13 @@ def _validate_single_command(
         "rest_day": "Δήλωση ρεπό",
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
         "today_info": "Πληροφορία σήμερα",
+        "cancel_pending": "Ακύρωση εντολής",
         "unknown": "Μη αναγνωρισμένη εντολή",
     }
     if intent == "today_info":
         proposed = str(parsed.get("clarification_question") or "").strip()
+    elif intent == "cancel_pending":
+        proposed = str(parsed.get("clarification_question") or "Ακυρώθηκε η εντολή.").strip()
     elif intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
         proposed = "\n".join(
             f"{match.get('name') or match.get('afm')} · {display_date} · {labels[intent]} {schedule_times.get(str(match.get('afm') or ''), '—')}"

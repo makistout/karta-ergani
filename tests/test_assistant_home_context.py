@@ -71,7 +71,7 @@ class AssistantHomeContextTests(unittest.TestCase):
         self.assertEqual(snapshot["stores"][0]["store_id"], 4)
         self.assertEqual(snapshot["stores"][0]["employees"][0]["schedule_to"], "15:30")
 
-    def test_parse_command_includes_today_home_in_gemini_prompt(self):
+    def test_parse_command_includes_today_home_when_group_query(self):
         contexts = [{
             "store_id": 4,
             "store_name": "ERATO",
@@ -117,18 +117,58 @@ class AssistantHomeContextTests(unittest.TestCase):
 
         with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
              patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
-             patch("app.telegram_assistant_service.build_today_home_context", return_value=today_home), \
+             patch("app.telegram_assistant_service.build_today_home_context", return_value=today_home) as build_home, \
              patch("app.telegram_assistant_service.requests.post", side_effect=fake_post):
             parsed, _, _ = parse_command(
                 text="κλείσε τώρα όσους τελειώνουν στις 15:30",
                 contexts=contexts,
             )
+        build_home.assert_called_once()
         self.assertIn("today_home", captured["prompt"])
         self.assertEqual(captured["prompt"]["today_home"]["stores"][0]["employees"][0]["schedule_to"], "15:30")
-        self.assertTrue(any("greeklish" in str(rule).casefold() for rule in captured["prompt"]["rules"]))
-        self.assertTrue(any("today_info" in str(rule) for rule in captured["prompt"]["rules"]))
+        guide = " ".join(captured["prompt"]["guide"])
+        self.assertIn("greeklish", guide.casefold())
+        self.assertIn("today_info", guide)
         intent = parsed.get("intent") or (parsed.get("commands") or [{}])[0].get("intent")
         self.assertEqual(intent, "card_check_out_now")
+
+    def test_parse_command_skips_today_home_for_named_card_open(self):
+        contexts = [{
+            "store_id": 4,
+            "store_name": "ERATO",
+            "employer_afm": "123456789",
+            "branch_aa": "0",
+        }]
+        employees = [{"store_id": 4, "afm": "111222333", "name": "HOXHA ARBEN"}]
+        captured: dict = {}
+
+        def fake_post(url, **kwargs):
+            captured["prompt"] = json.loads(kwargs["json"]["contents"][0]["parts"][0]["text"])
+            response = unittest.mock.MagicMock(ok=True, status_code=200)
+            response.json.return_value = {
+                "modelVersion": "gemini-test",
+                "candidates": [{"content": {"parts": [{"text": json.dumps({
+                    "commands": [{
+                        "intent": "card_check_in_now",
+                        "store_id": 4,
+                        "employee_afms": ["111222333"],
+                        "employee_references": ["HOXHA"],
+                        "date": "2026-08-18",
+                        "confidence": 0.99,
+                    }],
+                }, ensure_ascii=False)}]}}],
+                "usageMetadata": {"totalTokenCount": 10},
+            }
+            return response
+
+        with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
+             patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
+             patch("app.telegram_assistant_service.build_today_home_context") as build_home, \
+             patch("app.telegram_assistant_service.requests.post", side_effect=fake_post):
+            parse_command(text="άνοιξε την κάρτα του HOXHA", contexts=contexts)
+        build_home.assert_not_called()
+        self.assertNotIn("today_home", captured["prompt"])
+        self.assertIn("guide", captured["prompt"])
 
 
 if __name__ == "__main__":

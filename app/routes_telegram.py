@@ -265,6 +265,7 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
             text=text, contexts=contexts, inbound_id=inbound_id,
             recipient_id=recipient_id, store_id=store_id,
             reply_context=reply_ctx, confirmation_mode="pin",
+            chat_id=str(chat_id),
         )
         task_id = result["task_id"]
         status = result["status"]

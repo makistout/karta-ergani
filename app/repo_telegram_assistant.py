@@ -244,6 +244,141 @@ def reply_context(chat_id: str, message_id: int | None) -> dict[str, Any] | None
     return row
 
 
+def latest_pending_clarification(
+    *,
+    store_id: int | None = None,
+    office_user: str | None = None,
+    chat_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Latest task waiting for a user answer to a clarification question."""
+    if office_user and store_id is not None:
+        where = """
+            t.task_status=N'needs_clarification'
+            AND t.store_id=?
+            AND i.channel=N'ui'
+            AND i.office_user=?
+        """
+        params: tuple[Any, ...] = (int(store_id), str(office_user)[:128])
+    elif chat_id:
+        where = """
+            t.task_status=N'needs_clarification'
+            AND i.chat_id=?
+        """
+        params = (str(chat_id),)
+        if store_id is not None:
+            where += " AND t.store_id=?"
+            params = (str(chat_id), int(store_id))
+    else:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP (1) t.id, t.recipient_id, t.store_id, t.task_status, t.intent,
+                   t.proposed_action_text, t.payload_json, t.validation_json,
+                   i.chat_id, i.office_user, i.channel,
+                   (
+                       SELECT TOP (1) o.message_text
+                       FROM dbo.karta_telegram_outbound_message o
+                       WHERE TRY_CONVERT(bigint, o.notification_reference_id)=t.id
+                       ORDER BY o.sent_at DESC, o.id DESC
+                   ) AS clarification_text
+            FROM dbo.karta_assistant_task t
+            JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
+            WHERE {where}
+            ORDER BY t.created_at DESC, t.id DESC
+            """,
+            params,
+        )
+        rows = rows_to_dicts(cur)
+    if not rows:
+        return None
+    row = rows[0]
+    for key in ("payload_json", "validation_json"):
+        raw = row.get(key)
+        parsed_key = "payload" if key == "payload_json" else "validation"
+        try:
+            row[parsed_key] = json.loads(raw or "{}")
+        except (TypeError, ValueError):
+            row[parsed_key] = {}
+        if not isinstance(row[parsed_key], dict):
+            row[parsed_key] = {}
+    return row
+
+
+def cancel_assistant_task(task_id: int, *, reason: str = "user_cancelled") -> bool:
+    """Close a clarification/draft task without Ergani submission."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_assistant_task
+            SET task_status=N'cancelled', updated_at=SYSDATETIMEOFFSET()
+            WHERE id=? AND task_status=N'needs_clarification'
+            """,
+            (int(task_id),),
+        )
+        cur.execute("SELECT @@ROWCOUNT")
+        changed = int(cur.fetchone()[0]) == 1
+        if changed:
+            cur.execute(
+                "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, ?, ?)",
+                (int(task_id), str(reason or "user_cancelled")[:64], "{}"),
+            )
+        return changed
+
+
+def update_assistant_task(
+    task_id: int,
+    *,
+    parsed: dict[str, Any],
+    status: str,
+    validation: dict[str, Any],
+    proposed_action: str,
+    llm_metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Replace payload/status of an existing clarification task after a follow-up answer."""
+    confidence = parsed.get("confidence")
+    try:
+        confidence = max(0.0, min(float(confidence), 1.0))
+    except (TypeError, ValueError):
+        confidence = None
+    employee_afms = parsed.get("employee_afms")
+    if not isinstance(employee_afms, list):
+        employee_afms = [parsed.get("employee_afm")] if parsed.get("employee_afm") else []
+    employee_afms = [str(value or "").strip() for value in employee_afms if str(value or "").strip()]
+    employee_afm = employee_afms[0] if len(employee_afms) == 1 else None
+    metadata = llm_metadata or {}
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_assistant_task
+            SET intent=?, task_status=?, employee_afm=?, work_date=TRY_CONVERT(date, ?),
+                payload_json=?, llm_response_json=?, confidence=?, validation_json=?,
+                proposed_action_text=?, updated_at=SYSDATETIMEOFFSET()
+            WHERE id=? AND task_status=N'needs_clarification'
+            """,
+            (
+                str(parsed.get("intent") or "unknown")[:64],
+                str(status)[:32],
+                employee_afm[:16] if employee_afm else None,
+                str(parsed.get("date") or "")[:10] or None,
+                _json(parsed),
+                _json(parsed),
+                confidence,
+                _json(validation),
+                str(proposed_action or "")[:2000],
+                int(task_id),
+            ),
+        )
+        cur.execute("SELECT @@ROWCOUNT")
+        changed = int(cur.fetchone()[0]) == 1
+        if changed:
+            cur.execute(
+                "INSERT INTO dbo.karta_assistant_task_event(task_id, event_type, event_json) VALUES (?, N'clarification_reply', ?)",
+                (int(task_id), _json({"status": status, "validation": validation, "llm": metadata})),
+            )
+        return changed
+
+
 def conversation_task(chat_id: str, reply_message_id: int | None = None) -> dict[str, Any] | None:
     """Resolve a pending task from a bot reply, or the latest pending chat task."""
     params: tuple[Any, ...]
