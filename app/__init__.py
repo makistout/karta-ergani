@@ -13,6 +13,7 @@ from app.routes_local import local_bp
 from app.routes_store import store_bp
 from app.routes_sync import sync_bp
 from app.routes_period_sync import period_sync_bp
+from app.routes_schedule_archive import schedule_archive_bp
 from app.routes_sync_log import sync_log_bp
 from app.routes_ui import register_ui_redirects, ui_bp
 from app.landing_seo import register_landing_seo_routes
@@ -59,6 +60,7 @@ def create_app() -> Flask:
     app.register_blueprint(ergani_bp)
     app.register_blueprint(sync_bp)
     app.register_blueprint(period_sync_bp)
+    app.register_blueprint(schedule_archive_bp)
     app.register_blueprint(sync_log_bp)
     app.register_blueprint(employees_bp)
     app.register_blueprint(schedule_bp)

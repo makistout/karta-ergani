@@ -230,6 +230,8 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/ergani/sync-all/status/*", "sync.view_progress"),
     RouteRule("POST", "/api/period-sync/run", "sync.run_period"),
     RouteRule("GET", "/api/period-sync/run/status/*", "sync.view_progress"),
+    RouteRule("POST", "/api/schedule-archive/new-store", "stores.manage"),
+    RouteRule("GET", "/api/schedule-archive/new-store/status/*", "sync.view_progress"),
     RouteRule("GET", "/api/sync-log/runs*", "logs.view_sync"),
     RouteRule("GET", "/api/sync-log/apologistic*", "logs.view_sync"),
     RouteRule("GET", "/api/sync-log/notifications*", "logs.view_notifications"),

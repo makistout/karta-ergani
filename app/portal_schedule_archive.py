@@ -292,3 +292,129 @@ def run_monthly_archive(
         except Exception as ex:
             results.append({"success": False, "reference_month": ref.isoformat(), "error": str(ex)})
     return results
+
+
+_MONTH_EL = (
+    "",
+    "Ιανουάριος",
+    "Φεβρουάριος",
+    "Μάρτιος",
+    "Απρίλιος",
+    "Μάιος",
+    "Ιούνιος",
+    "Ιούλιος",
+    "Αύγουστος",
+    "Σεπτέμβριος",
+    "Οκτώβριος",
+    "Νοέμβριος",
+    "Δεκέμβριος",
+)
+
+
+def archive_months_for_new_store(today: date | None = None) -> list[date]:
+    """
+    Μήνες αρχείου για νέο κατάστημα: 1/1 τρέχοντος έτους έως και 2 μήνες πριν.
+
+    Ιανουάριος/Φεβρουάριος → κενό (τίποτα να κατέβει ακόμη).
+    Π.χ. Αύγουστος 2026 → Ιαν–Ιούν 2026.
+    """
+    base = today or date.today()
+    if base.month <= 2:
+        return []
+    last_month = base.month - 2
+    return [date(base.year, m, 1) for m in range(1, last_month + 1)]
+
+
+def month_label_el(ref: date) -> str:
+    name = _MONTH_EL[ref.month] if 1 <= ref.month <= 12 else str(ref.month)
+    return f"{name} {ref.year}"
+
+
+def iter_new_store_schedule_archive_events(
+    store_cfg: dict[str, Any],
+    *,
+    run_id: str | None = None,
+    today: date | None = None,
+):
+    """
+    Progress events για αρχειοθέτηση ψηφιακής οργάνωσης κατά την είσοδο νέου καταστήματος.
+    """
+    log = KartaLogger(
+        "new_store_schedule_archive",
+        store_id=store_cfg.get("id"),
+        store_name=store_cfg.get("name"),
+        run_id=run_id,
+        register_run=run_id is None,
+    )
+    months = archive_months_for_new_store(today)
+    if not months:
+        msg = (
+            "Παράλειψη αρχείου ψηφιακής οργάνωσης "
+            "(είσοδος Ιανουαρίου/Φεβρουαρίου — δεν υπάρχουν μήνες έως 2 πριν)."
+        )
+        log.info(msg)
+        yield {"event": "progress", "message": msg, "step": 0, "total": 0}
+        yield {
+            "event": "done",
+            "success": True,
+            "message": msg,
+            "sync": {"skipped": True, "reason": "jan_or_feb", "months": []},
+        }
+        return
+
+    first = month_label_el(months[0])
+    last = month_label_el(months[-1])
+    total = len(months)
+    start_msg = f"Αρχείο ψηφιακής οργάνωσης ({first} – {last}, {total} μήνες)…"
+    log.info(start_msg, months=[m.isoformat() for m in months])
+    yield {"event": "progress", "message": start_msg, "step": 0, "total": total}
+
+    results: list[dict[str, Any]] = []
+    upserted_total = 0
+    for index, ref in enumerate(months, start=1):
+        label = month_label_el(ref)
+        progress_msg = f"Αρχείο ψηφιακής οργάνωσης: {label} ({index}/{total})…"
+        log.info(progress_msg)
+        yield {
+            "event": "progress",
+            "message": progress_msg,
+            "step": index,
+            "total": total,
+        }
+        try:
+            result = download_and_archive_month(store_cfg, ref, log=log)
+            results.append(result)
+            upserted_total += int(result.get("rows_upserted") or 0)
+        except Exception as ex:
+            err = str(ex)
+            log.error(f"Αποτυχία αρχείου {label}: {err}")
+            yield {
+                "event": "done",
+                "success": False,
+                "error": f"{label}: {err}",
+                "message": f"Αποτυχία αρχείου ψηφιακής οργάνωσης ({label})",
+                "sync": {
+                    "months": [m.isoformat() for m in months],
+                    "completed": results,
+                    "failed_month": ref.isoformat(),
+                    "rows_upserted": upserted_total,
+                },
+            }
+            return
+
+    done_msg = (
+        f"Ολοκληρώθηκε αρχείο ψηφιακής οργάνωσης: {first} – {last} "
+        f"({upserted_total} εγγραφές)."
+    )
+    log.info(done_msg, upserted=upserted_total)
+    yield {
+        "event": "done",
+        "success": True,
+        "message": done_msg,
+        "sync": {
+            "skipped": False,
+            "months": [m.isoformat() for m in months],
+            "results": results,
+            "rows_upserted": upserted_total,
+        },
+    }

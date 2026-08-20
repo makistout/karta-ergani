@@ -91,6 +91,8 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
   εβδομαδιαίο guard ώστε να εκτελούνται μία φορά ανά κατάστημα.
 - Sync logs από `/ui/sync-log`.
 - Post-sync Telegram/Email notifications καταγράφονται ως ξεχωριστή operation.
+- Νέο κατάστημα (wizard): επιλογή → period sync 30 ημερών → αρχείο ψηφιακής
+  οργάνωσης `1/1`–`2 μήνες πριν` (`new_store_schedule_archive`· παράλειψη Ιαν/Φεβ).
 
 ## Common Failure Checks
 

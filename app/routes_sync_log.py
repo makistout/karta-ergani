@@ -16,6 +16,8 @@ _OPERATION_LABELS = {
     "ergani_sync_all": "Συγχρονισμός Ergani",
     "schedule_sync": "Ψηφιακό ωράριο",
     "period_sync": "Συγχρονισμός περιόδου",
+    "new_store_schedule_archive": "Αρχείο ψηφιακής οργάνωσης (νέο κατάστημα)",
+    "scheduled_schedule_archive": "Μηνιαίο αρχείο ψηφιακής οργάνωσης",
     "work_log_sync": "Πραγματική απασχόληση",
     "employment_contract_sync": "Στοιχεία σύμβασης",
     "scheduled_today_sync": "Αυτόματος συγχρονισμός",

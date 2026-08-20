@@ -137,7 +137,7 @@ async function onSave() {
       if (wasNew && storeId) {
         Office.showMsg(
           "stepMsg",
-          "Αποθηκεύτηκε. Επιλογή καταστήματος και συγχρονισμός τελευταίου μήνα…",
+          "Αποθηκεύτηκε. Επιλογή, sync μήνα και αρχείο ψηφιακής οργάνωσης…",
           true
         );
         try {
@@ -179,8 +179,9 @@ function isoDaysAgo(days) {
 }
 
 async function activateNewStoreWithMonthSync(storeId) {
+  const wizardSteps = 3;
   Office.invalidateActiveStoreCache();
-  Office.showLoading("stepMsg", "Επιλογή νέου καταστήματος…", 0, 2);
+  Office.showLoading("stepMsg", "Επιλογή νέου καταστήματος…", 0, wizardSteps);
 
   const selectRes = await fetch("/api/store/select", {
     method: "POST",
@@ -208,7 +209,7 @@ async function activateNewStoreWithMonthSync(storeId) {
     "stepMsg",
     `Συγχρονισμός τελευταίου μήνα (${from} → ${to})…`,
     1,
-    2
+    wizardSteps
   );
 
   const periodRes = await fetch("/api/period-sync/run", {
@@ -227,6 +228,35 @@ async function activateNewStoreWithMonthSync(storeId) {
   const polledPeriod = await Office.pollSyncJob(periodStatus, "stepMsg");
   if (!polledPeriod.success) {
     throw new Error(polledPeriod.error || "Αποτυχία συγχρονισμού τελευταίου μήνα");
+  }
+
+  Office.showLoading(
+    "stepMsg",
+    "Αρχείο ψηφιακής οργάνωσης από Ergani (1/1 έτους έως 2 μήνες πριν)…",
+    2,
+    wizardSteps
+  );
+
+  const archiveRes = await fetch("/api/schedule-archive/new-store", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const archiveStart = await Office.parseJson(archiveRes);
+  if (!archiveRes.ok || !archiveStart.job_id) {
+    throw new Error(
+      archiveStart.error ||
+        archiveStart._parseError ||
+        "Αποτυχία εκκίνησης αρχείου ψηφιακής οργάνωσης"
+    );
+  }
+
+  const archiveStatus = `/api/schedule-archive/new-store/status/${encodeURIComponent(
+    archiveStart.job_id
+  )}`;
+  const polledArchive = await Office.pollSyncJob(archiveStatus, "stepMsg");
+  if (!polledArchive.success) {
+    throw new Error(polledArchive.error || "Αποτυχία αρχείου ψηφιακής οργάνωσης");
   }
 
   await Office.loadActiveStore({ refresh: true });

@@ -7,6 +7,8 @@
 ## Βασικά Modules
 
 - `app/portal_schedule_sync.py`: ψηφιακό ωράριο.
+- `app/portal_schedule_archive.py`: αρχειοθέτηση «Τρέχουσας Κατάστασης» στο
+  `karta_portal_schedule_archive` (μηνιαίο scheduled + backfill νέου καταστήματος).
 - `app/portal_work_log_sync.py`: πραγματική απασχόληση.
 - `app/portal_card_protocol_sync.py`: πρωτόκολλα χτυπημάτων κάρτας (WorkCardSearch Excel).
 - `app/repo_ergani_protocol.py`: persist / upsert στο `karta_ergani_protocol`.
