@@ -197,36 +197,33 @@ HOXHA DASHURI · Επιτυχία · Πρωτόκολλο: AK-OP684763
 ΒΗΧΟΣ ΙΩΑΝΝΗΣ · Επιτυχία · Πρωτόκολλο: AK-KAP431237
 ```
 
-## Gemini / τοπικό LLM και failover
+## Gemini / OpenAI και failover
 
 ```env
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash-lite
 GEMINI_FALLBACK_MODEL=gemini-3.5-flash
 
-LOCAL_LLM_ENABLED=1
-LOCAL_LLM_BASE_URL=http://127.0.0.1:11434
-LOCAL_LLM_MODEL=qwen2.5:3b-instruct
-LOCAL_LLM_TIMEOUT_SEC=25
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.5
+OPENAI_TIMEOUT_SEC=20
+OPENAI_STORE=0
 
-# Πρωτεύον / εφεδρικό — εναλλαγή από .env:
-#   gemini,local   → Gemini πρώτα, Ollama μετά
-#   local,gemini   → Ollama πρώτα, Gemini μετά
-#   local          → μόνο τοπικό
-#   gemini         → μόνο Gemini
-ASSISTANT_LLM_ORDER=gemini,local
+# gemini,openai (default) · openai,gemini · ή μόνο ένα
+ASSISTANT_LLM_ORDER=gemini,openai
 ASSISTANT_RULE_FALLBACK_ENABLED=1
 
 TELEGRAM_ASSISTANT_ENABLED=1
 AI_AGENT_CONTACT_PHONE=ΧΧΧΧΧΧΧ
 ```
 
-Μετά τα LLM (αν αποτύχουν όλα), το rule-based `today_info` καλύπτει απλές
-ερωτήσεις (ανοιχτές κάρτες / ποιοι εργάζονται) από `today_home`.
+Parser: **Gemini** πρώτα (~1–2s). Αν αποτύχει → **OpenAI** Responses API
+(`gpt-5.5`). Αν αποτύχουν και τα δύο → rule-based `today_info` για απλές
+ερωτήσεις (ανοιχτές κάρτες / ποιοι εργάζονται).
 
 Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το Gemini parsing έχει
 σκληρό χρονικό budget (~8s). Το `today_home` κρατάται σε cache ~45s ανά κατάστημα.
-Το API key δεν αποθηκεύεται στη βάση ή στο Git. Μετά από αλλαγή `.env`
+Τα API keys δεν αποθηκεύονται στη βάση ή στο Git. Μετά από αλλαγή `.env`
 απαιτείται restart / recycle IIS.
 
 ## Πίνακες και migrations

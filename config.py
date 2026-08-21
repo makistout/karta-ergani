@@ -70,22 +70,18 @@ class Config:
     GEMINI_FALLBACK_MODEL = (
         os.environ.get("GEMINI_FALLBACK_MODEL") or "gemini-3.5-flash"
     ).strip()
-    # Σειρά LLM parsers: gemini | local (κόμμα-χωριστά). Π.χ. local,gemini για πρωτεύον Ollama.
+    # Σειρά parsers: gemini,openai (default). Π.χ. openai,gemini ή μόνο ένα.
     ASSISTANT_LLM_ORDER = (
-        os.environ.get("ASSISTANT_LLM_ORDER") or "gemini,local"
+        os.environ.get("ASSISTANT_LLM_ORDER") or "gemini,openai"
     ).strip()
-    # Τοπικό LLM (Ollama).
-    LOCAL_LLM_ENABLED = _env_flag("LOCAL_LLM_ENABLED", default=True)
-    LOCAL_LLM_BASE_URL = (
-        os.environ.get("LOCAL_LLM_BASE_URL") or "http://127.0.0.1:11434"
-    ).strip()
-    LOCAL_LLM_MODEL = (
-        os.environ.get("LOCAL_LLM_MODEL") or "qwen2.5:3b-instruct"
-    ).strip()
-    LOCAL_LLM_TIMEOUT_SEC = float(
-        (os.environ.get("LOCAL_LLM_TIMEOUT_SEC") or "25").strip() or "25"
+    # OpenAI Responses API — εφεδρικό όταν το Gemini αποτύχει.
+    OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    OPENAI_MODEL = (os.environ.get("OPENAI_MODEL") or "gpt-5.5").strip()
+    OPENAI_TIMEOUT_SEC = float(
+        (os.environ.get("OPENAI_TIMEOUT_SEC") or "20").strip() or "20"
     )
-    # Rule-based today_info μετά τα LLM (τελευταία γραμμή άμυνας).
+    OPENAI_STORE = _env_flag("OPENAI_STORE", default=False)
+    # Rule-based today_info όταν αποτύχουν τα LLM (απλές ερωτήσεις σήμερα).
     ASSISTANT_RULE_FALLBACK_ENABLED = _env_flag(
         "ASSISTANT_RULE_FALLBACK_ENABLED", default=True
     )

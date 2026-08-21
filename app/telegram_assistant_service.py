@@ -226,8 +226,8 @@ def _assistant_prompt_guide() -> list[str]:
 def parse_command(
     *, text: str, contexts: list[dict[str, Any]], reply_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
-    if not Config.GEMINI_API_KEY and not Config.LOCAL_LLM_ENABLED:
-        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε τοπικό LLM")
+    if not Config.GEMINI_API_KEY and not (Config.OPENAI_API_KEY or "").strip():
+        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε OPENAI_API_KEY")
     now = datetime.now(ZoneInfo("Europe/Athens"))
     employees = _employee_catalog(contexts)
     stores = [
@@ -293,41 +293,40 @@ def parse_command(
             errors.append(f"gemini: {ex}")
             return None
 
-    def _try_local() -> tuple[dict[str, Any], dict[str, Any]] | None:
+    def _try_openai() -> tuple[dict[str, Any], dict[str, Any]] | None:
         try:
-            from app.local_llm_client import generate_json, local_llm_enabled
+            from app.openai_assistant_client import generate_json, openai_enabled
 
-            if not local_llm_enabled():
-                errors.append("local_llm: disabled")
+            if not openai_enabled():
+                errors.append("openai: disabled")
                 return None
             raw, llm_metadata = generate_json(
                 prompt_obj=prompt,
-                schema=_SCHEMA,
-                timeout_sec=float(Config.LOCAL_LLM_TIMEOUT_SEC or 25),
+                timeout_sec=float(Config.OPENAI_TIMEOUT_SEC or 20),
             )
             return _normalize_parsed_command(raw), llm_metadata
         except Exception as ex:
-            errors.append(f"local_llm: {ex}")
+            errors.append(f"openai: {ex}")
             return None
 
     providers = {
         "gemini": _try_gemini,
-        "local": _try_local,
+        "openai": _try_openai,
     }
-    order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,local")
+    order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,openai")
     order: list[str] = []
     for token in order_raw.replace(";", ",").split(","):
         name = token.strip().casefold()
         if name in {"gemini", "google"}:
             name = "gemini"
-        elif name in {"local", "ollama", "local_llm"}:
-            name = "local"
+        elif name in {"openai", "gpt"}:
+            name = "openai"
         else:
             continue
         if name not in order:
             order.append(name)
     if not order:
-        order = ["gemini", "local"]
+        order = ["gemini", "openai"]
 
     for name in order:
         runner = providers.get(name)
@@ -341,7 +340,7 @@ def parse_command(
             llm_metadata["llm_used"] = name
             return parsed, employees, llm_metadata
 
-    # Rule-based today_info — τελευταία γραμμή άμυνας χωρίς κανένα LLM
+    # Rule-based today_info — τελευταία γραμμή άμυνας χωρίς LLM
     if Config.ASSISTANT_RULE_FALLBACK_ENABLED:
         try:
             from app.assistant_rule_fallback import rule_based_parse
@@ -373,7 +372,7 @@ def parse_command(
 
     detail = " | ".join(errors)[:400] if errors else "χωρίς λεπτομέρειες"
     raise RuntimeError(
-        "Προσωρινή αδυναμία ανάλυσης εντολής (Gemini/τοπικό LLM). "
+        "Προσωρινή αδυναμία ανάλυσης εντολής (Gemini/OpenAI). "
         f"Δοκιμάστε ξανά σε λίγο. [{detail}]"
     )
 

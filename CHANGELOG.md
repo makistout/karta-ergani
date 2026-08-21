@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-08-21 — OpenAI ως εφεδρικό LLM (Responses API)
+
+- Μετά το Gemini: `OPENAI_API_KEY` + μοντέλο `gpt-5.5` μέσω `/v1/responses`.
+- `ASSISTANT_LLM_ORDER=gemini,openai` (εναλλάξιμο από `.env`).
+- `OPENAI_STORE=0` by default (δεν αποθηκεύονται συνομιλίες στο OpenAI).
+- Rule fallback παραμένει τελευταία γραμμή άμυνας για απλές `today_info`.
+
+---
+
+## 2026-08-21 — Αφαίρεση τοπικού Ollama
+
+- Το τοπικό LLM (Ollama / `LOCAL_LLM_*`) αφαιρέθηκε: στο CPU ~40–90s ανά εντολή —
+  μη αποδεκτό για παραγωγή.
+- Αντικαταστάθηκε από OpenAI cloud failover (βλ. παραπάνω) + rule fallback.
+
+---
+
 ## 2026-08-21 — AI Agent: επίλυση καταστήματος (λίστα όταν πολλά)
 
 - Telegram: κινητό/`chat_id` → επιτρεπόμενα καταστήματα.
