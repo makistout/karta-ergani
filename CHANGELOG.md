@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-08-21 — AI Agent: ανάκτηση `schedule_change` από από–έως
+
+- Αν το LLM επιστρέψει `unknown` ή invented label (`change_schedule` κ.λπ.) αλλά
+  υπάρχουν εργαζόμενος + `hour_from`/`hour_to`, η εντολή γίνεται αυτόματα
+  `schedule_change` (π.χ. «Μουρατίδου 15:00 έως 21:40 αλλαγή ωραρίου»).
+- Ενημέρωση prompt guide για ρητό mapping αλλαγής ωραρίου → `schedule_change`.
+
+---
+
 ## 2026-08-21 — OpenAI ως εφεδρικό LLM (Responses API)
 
 - Μετά το Gemini: `OPENAI_API_KEY` + μοντέλο `gpt-5.5` μέσω `/v1/responses`.

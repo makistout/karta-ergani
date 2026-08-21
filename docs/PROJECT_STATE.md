@@ -259,7 +259,9 @@
   - πολλά καταστήματα χωρίς όνομα στο μήνυμα → λίστα επιλογής (`store_choice`) και
     επανάληψη του αρχικού μηνύματος μετά την επιλογή·
   - εφεδρικό **OpenAI** (`OPENAI_API_KEY`, `gpt-5.5`, `ASSISTANT_LLM_ORDER=gemini,openai`)
-    όταν πέφτει το Gemini· rule fallback για απλές `today_info`.
+    όταν πέφτει το Gemini· rule fallback για απλές `today_info`·
+  - `schedule_change`: αν το LLM δώσει `unknown`/alias αλλά υπάρχουν από–έως ώρες
+    + εργαζόμενος, η εντολή ανακτάται αυτόματα ως αλλαγή ωραρίου.
 - Επιβεβαίωση: κουμπί στο UI ή PIN στο Telegram → `_submit_work_card` / WTODaily / WTOLeave.
 - Today-alert Telegram: με AI Agent = ON → «Απαντήστε στο μήνυμα για ενέργεια.»
   (χωρίς `today-hit` URL)· με OFF → «Προχωρήστε σε ενέργεια:» + σύνδεσμος.

@@ -214,6 +214,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Όσο υπάρχει pending_clarification, το message αφορά ΠΑΝΤΑ την ίδια τρέχουσα εντολή. Συμπλήρωσε ή διόρθωσε μόνο όσα ζητά ο χρήστης και κληρονόμησε όλα τα υπόλοιπα preserve_*· νέα ανεξάρτητη εντολή δεν δημιουργείται μέχρι εκτέλεση/ακύρωση/τερματισμό.",
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν 10 λεπτά» = *_retro από now. «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
+        "Αλλαγή ωραρίου / νέο ωράριο / από–έως (π.χ. «15:00 έως 21:40», «αλλαγή ωραρίου») → intent=schedule_change με hour_from+hour_to. ΜΗΝ βάζεις unknown όταν υπάρχουν ώρες από–έως.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
         "today_home είναι ΠΑΝΤΑ παρόν (εικόνα Αρχικής σήμερα: ωράρια/status/κάρτες). Ερωτήσεις σήμερα («ποιοι δουλεύουν στις 12», «ποιος έχει ανοιχτή κάρτα») → today_info και βάλε την πλήρη απάντηση στο clarification_question. Μην επινοείς δεδομένα εκτός today_home.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home βάσει ωραρίου/status.",
@@ -740,11 +741,47 @@ def _inherit_conversation_context(
         parsed["time"] = time_value
 
     intent = str(parsed.get("intent") or "unknown")
-    folded = str(user_text or "").casefold()
-    if intent == "unknown" and (parsed.get("employee_afms") or parsed.get("employee_afm")):
-        if any(token in folded for token in ("κλειστ", "κλείσε", "close", "checkout", "έξοδ")):
+    # Common LLM aliases → canonical intents
+    intent_aliases = {
+        "change_schedule": "schedule_change",
+        "schedule_update": "schedule_change",
+        "update_schedule": "schedule_change",
+        "modify_schedule": "schedule_change",
+        "wto_daily": "schedule_change",
+        "wtodaily": "schedule_change",
+        "ωραριο": "schedule_change",
+        "αλλαγη_ωραριου": "schedule_change",
+        "αλλαγηωραριου": "schedule_change",
+    }
+    alias_key = _fold_text(intent).replace(" ", "_").replace("-", "_")
+    if alias_key in intent_aliases:
+        intent = intent_aliases[alias_key]
+        parsed["intent"] = intent
+
+    for field in ("hour_from", "hour_to"):
+        hv = _normalize_clock_time(str(parsed.get(field) or ""))
+        if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hv):
+            parsed[field] = hv
+        elif parsed.get(field) not in (None, ""):
+            # try extract from user text for that field later if needed
+            pass
+
+    folded = _fold_text(user_text)
+    has_employee = bool(parsed.get("employee_afms") or parsed.get("employee_afm"))
+    hf = str(parsed.get("hour_from") or "")
+    ht = str(parsed.get("hour_to") or "")
+    has_schedule_hours = bool(
+        re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hf)
+        and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ht)
+    )
+    if intent == "unknown" and has_employee and has_schedule_hours:
+        # Από–έως με πρόσωπο = αλλαγή ωραρίου (όχι κάρτα· η κάρτα χρησιμοποιεί time).
+        parsed["intent"] = "schedule_change"
+        intent = "schedule_change"
+    elif intent == "unknown" and has_employee:
+        if any(token in folded for token in ("κλειστ", "κλεισε", "close", "checkout", "εξοδ")):
             parsed["intent"] = "card_check_out_retro" if parsed.get("time") else "card_check_out_now"
-        elif any(token in folded for token in ("άνοιξε", "ανοιξε", "open", "checkin", "είσοδ", "εισοδ")):
+        elif any(token in folded for token in ("ανοιξε", "ανοίξε", "open", "checkin", "εισοδ")):
             parsed["intent"] = "card_check_in_retro" if parsed.get("time") else "card_check_in_now"
     if str(parsed.get("intent") or "unknown") not in {"unknown", "today_info"} and not str(parsed.get("date") or "").strip():
         parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
@@ -768,6 +805,17 @@ def _validate_single_command(
     ):
         intent = pending_intent
         parsed["intent"] = intent
+    if intent not in ALLOWED_INTENTS:
+        # LLM sometimes invents labels; recover schedule_change from hours.
+        hf = str(parsed.get("hour_from") or "")
+        ht = str(parsed.get("hour_to") or "")
+        if (
+            re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hf)
+            and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ht)
+            and (parsed.get("employee_afms") or parsed.get("employee_afm"))
+        ):
+            intent = "schedule_change"
+            parsed["intent"] = intent
     if intent not in ALLOWED_INTENTS:
         intent = "unknown"
         parsed["intent"] = intent
