@@ -1744,7 +1744,7 @@ function renderResultBadge(row) {
     } else {
       const hasExchangeOptions = (row.exchange_options || []).length > 0;
       const actionTitle = hasExchangeOptions
-        ? "Κλικ: αυτόματη επιλογή ανταλλαγής και αποδοχή ως Μ*"
+        ? "Κλικ: έγκριση μόνο αυτής της ημέρας ως Μ* (οι ανταλλαγές επιλέγονται χωριστά)"
         : "Κλικ: OK με την πρόταση";
       acceptButton = `<button type="button" class="status-badge apologistic-status--review apologistic-accept-review-btn${pending ? " is-pending" : ""}" ` +
         `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
@@ -1802,6 +1802,23 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
   if (acceptReviewPending.has(key)) return;
   const row = reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate);
   if (!row || row.status !== "review") return;
+  if ((row.exchange_options || []).length) {
+    const exchangeDates = row.exchange_options.slice()
+      .sort((left, right) => compareWorkDates(left.replacement_work_date, right.replacement_work_date))
+      .map((option) => option.replacement_work_date)
+      .join(", ");
+    const onlyThisDay = await Office.confirm(
+      `Υπάρχουν διαθέσιμες ανταλλαγές με: ${exchangeDates}.\n\n` +
+      `Θέλετε να εγκριθεί μόνο η ${workDate}, χωρίς να αλλάξει άλλη ημέρα; ` +
+      `Για ανταλλαγή πατήστε «Επιλογή ανταλλαγής» και μετά επιλέξτε τη συγκεκριμένη κάρτα από κάτω.`,
+      {
+        title: "Έγκριση χωρίς ανταλλαγή",
+        confirmText: "Μόνο αυτή η ημέρα",
+        cancelText: "Επιλογή ανταλλαγής",
+      },
+    );
+    if (!onlyThisDay) return;
+  }
   acceptReviewPending.add(key);
   if (button) {
     button.disabled = true;
@@ -1809,32 +1826,6 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
     button.title = "Αποθήκευση…";
   }
   try {
-    if ((row.exchange_options || []).length) {
-      const candidates = row.exchange_options.slice().sort((left, right) =>
-        compareWorkDates(left.replacement_work_date, right.replacement_work_date)
-      );
-      let applied = null;
-      let lastError = "Δεν βρέθηκε διαθέσιμη ημέρα ανταλλαγής";
-      for (const option of candidates) {
-        const result = await submitExchangeChoice(row, option.replacement_work_date);
-        if (!result.ok) {
-          lastError = result.error;
-          continue;
-        }
-        applied = { replacementWorkDate: option.replacement_work_date, data: result.data };
-        break;
-      }
-      if (!applied) throw new Error(`${lastError}. Η γραμμή παρέμεινε σε Έλεγχο.`);
-      mergeExchangeRows(applied.data.rows || []);
-      refreshSummaryCounts();
-      renderVisibleRows();
-      Office.showMsg(
-        "apologisticSubmitMsg",
-        `Η ανταλλαγή ${workDate} ↔ ${applied.replacementWorkDate} επιλέχθηκε αυτόματα και αποθηκεύτηκε ως δύο μεταβολές (Μ*).`,
-        true,
-      );
-      return;
-    }
     const res = await fetch("/api/apologistic/accept-review", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
