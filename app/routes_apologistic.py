@@ -316,7 +316,7 @@ def _merge_timekeeping_days(
             annual_after_by_employee.get(afm) or 0
         )
     return {
-        "calculation_version": "timekeeping-v5-partial-overtime-120-month",
+        "calculation_version": "timekeeping-v6-break-basis-month",
         "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
         "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
         "counts": {"days": len(days), "employees": len(employees)},

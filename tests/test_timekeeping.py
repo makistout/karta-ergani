@@ -170,11 +170,45 @@ def test_partial_employment_never_generates_40_or_60_overtime():
     assert day["overtime_120"] == 0
 
 
-def test_break_is_contiguous_and_prefers_first_non_premium_point():
-    day = build_timekeeping_report([_row(declared="21:00–23:00", break_minutes=30)])["days"][0]
+def test_outside_break_is_contiguous_deducted_and_does_not_extend_basis():
+    day = build_timekeeping_report([_row(
+        declared="21:00–23:00", break_minutes=30, break_in_work=0,
+        outside_break_minutes=30,
+    )])["days"][0]
     assert day["break_interval"] == "21:01–21:31"
+    assert day["recognized_span_minutes"] == 120
+    assert day["recognized_work_minutes"] == 90
     assert day["premium_minutes"]["day"] == 30
     assert day["premium_minutes"]["night"] == 60
+
+
+def test_inside_break_does_not_reduce_clean_recognized_basis():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", break_minutes=30, break_in_work=1,
+        outside_break_minutes=0,
+    )])["days"][0]
+    assert day["recognized_span_minutes"] == 480
+    assert day["recognized_work_minutes"] == 480
+    assert day["break_minutes"] == 0
+    assert day["break_interval"] is None
+
+
+def test_unknown_break_position_does_not_reduce_clean_basis():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", break_minutes=30, break_in_work=None,
+    )])["days"][0]
+    assert day["recognized_work_minutes"] == 480
+
+
+def test_change_uses_proposal_before_applying_outside_break():
+    day = build_timekeeping_report([_row(
+        status="change", declared="09:00–17:00", proposed="10:00–19:00",
+        break_minutes=30, break_in_work=0, outside_break_minutes=30,
+    )])["days"][0]
+    assert day["effective_declared"] == "10:00–19:00"
+    assert day["basis_label"] == "10:00–19:00"
+    assert day["recognized_span_minutes"] == 540
+    assert day["recognized_work_minutes"] == 510
 
 
 def test_overnight_sunday_and_night_overlap_are_partitioned():

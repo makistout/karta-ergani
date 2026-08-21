@@ -248,12 +248,16 @@ def build_recognized_day(
 ) -> dict[str, Any]:
     label, basis_source = _row_basis_label(row)
     intervals = parse_intervals(label, str(row.get("work_date") or ""))
-    outside_break = max(0, int(row.get("outside_break_minutes") or 0))
-    if intervals and outside_break:
-        start, end = intervals[-1]
-        intervals[-1] = (start, end + timedelta(minutes=outside_break))
     physical_minutes = _interval_minutes(intervals)
-    break_duration = max(0, int(row.get("break_minutes") or 0))
+    declared_break = max(0, int(row.get("break_minutes") or 0))
+    break_in_work = row.get("break_in_work")
+    outside_break = max(0, int(row.get("outside_break_minutes") or 0))
+    is_outside_break = break_in_work in (0, False, "0")
+    # A break reduces the clean basis only when explicitly outside working
+    # time.  An in-work or unknown break leaves the recognized basis intact.
+    break_duration = outside_break if is_outside_break else 0
+    if is_outside_break and not outside_break:
+        break_duration = declared_break
     # Sundays always use the recognized basis.  On an official holiday, a store
     # without Sunday operation creates premiums only when a punch exists.
     premium_holidays = holidays if sunday_work_enabled or int(row.get("punch_count") or 0) > 0 else set()
@@ -278,6 +282,8 @@ def build_recognized_day(
         "basis_source": basis_source,
         "basis_label": " · ".join(_display_interval(start, end) for start, end in intervals),
         "recognized_span_minutes": len(physical_minutes),
+        "declared_break_minutes": declared_break,
+        "break_in_work": break_in_work,
         "break_minutes": len(break_set),
         "break_interval": break_label,
         "recognized_work_minutes": len(physical_minutes) - len(break_set),
@@ -575,7 +581,7 @@ def build_timekeeping_report(
         day.pop("_partial_overtime_120_breakdown", None)
 
     return {
-        "calculation_version": "timekeeping-v5-partial-overtime-120",
+        "calculation_version": "timekeeping-v6-break-basis",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},
