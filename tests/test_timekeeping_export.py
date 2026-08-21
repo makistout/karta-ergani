@@ -1,6 +1,4 @@
 from io import BytesIO
-from datetime import timedelta
-
 from openpyxl import load_workbook
 
 from app.timekeeping_export import (
@@ -36,10 +34,10 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
     workbook = load_workbook(BytesIO(content), data_only=False)
     assert workbook.sheetnames == ["Σύνοψη", "Ανά ημέρα"]
     assert workbook["Σύνοψη"]["B4"].value == "012345678"
-    assert workbook["Σύνοψη"]["C4"].value == timedelta(hours=8)
-    assert workbook["Σύνοψη"]["C4"].number_format == "[h]:mm"
-    assert workbook["Σύνοψη"]["P3"].value == "Υπερωρία 40% – Ημέρας"
-    assert workbook["Σύνοψη"]["P4"].value == timedelta(minutes=30)
+    assert workbook["Σύνοψη"]["C4"].value == 8
+    assert workbook["Σύνοψη"]["C4"].number_format == "0.##"
+    assert workbook["Σύνοψη"]["P3"].value == "Υπερωρία 40% – Ημέρας (ώρες)"
+    assert workbook["Σύνοψη"]["P4"].value == 0.5
     assert workbook["Ανά ημέρα"]["F4"].value == "14:00–22:00"
 
 
@@ -75,7 +73,7 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
     assert sheet["I5"].value.strftime("%d/%m/%Y") == "17/08/2026"
     assert sheet["J5"].value == "09:00–15:00"
     assert sheet["K5"].value == "09:00–15:00"
-    assert sheet["O5"].value == timedelta(hours=6)
-    assert sheet["X5"].value == timedelta(hours=2)
-    assert sheet["X5"].number_format == "[h]:mm"
+    assert sheet["O5"].value == 6
+    assert sheet["X5"].value == 2
+    assert sheet["X5"].number_format == "0.##"
     assert sheet["AB5"].value == "13:00–15:00"

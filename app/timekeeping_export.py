@@ -20,7 +20,7 @@ _BREAKDOWN_LABELS = ("Ημέρας", "Νύχτας", "Κυρ/Αργίας", "Ν�
 
 
 def _duration(minutes: Any) -> float:
-    return max(0, int(minutes or 0)) / 1440
+    return max(0, int(minutes or 0)) / 60
 
 
 def _breakdown_values(item: dict[str, Any], field: str) -> list[float]:
@@ -29,7 +29,7 @@ def _breakdown_values(item: dict[str, Any], field: str) -> list[float]:
 
 
 def _family_headers(prefix: str) -> list[str]:
-    return [f"{prefix} – {label}" for label in _BREAKDOWN_LABELS]
+    return [f"{prefix} – {label} (ώρες)" for label in _BREAKDOWN_LABELS]
 
 
 def _style_sheet(ws, *, title: str, meta: str, headers: list[str], widths: list[int]) -> int:
@@ -65,7 +65,7 @@ def _finish_table(ws, header_row: int, duration_from: int, duration_to: int) -> 
             for cell in ws[row]:
                 cell.fill = PatternFill("solid", fgColor=_LIGHT)
         for col in range(duration_from, duration_to + 1):
-            ws.cell(row, col).number_format = "[h]:mm"
+            ws.cell(row, col).number_format = "0.##"
             ws.cell(row, col).alignment = Alignment(horizontal="right")
         for cell in ws[row]:
             cell.border = Border(bottom=_BORDER)
@@ -90,7 +90,7 @@ def build_timekeeping_export_xlsx(
 
     summary = wb.active
     summary.title = "Σύνοψη"
-    summary_headers = ["Εργαζόμενος", "ΑΦΜ", "Αναγνωρισμένη βάση"] + _family_headers("Βάση")
+    summary_headers = ["Εργαζόμενος", "ΑΦΜ", "Αναγνωρισμένη βάση (ώρες)"] + _family_headers("Βάση")
     for label, _ in families:
         summary_headers += _family_headers(label)
     summary_headers += ["Ετήσιες νόμιμες υπερωρίες μετά την περίοδο"]
@@ -115,7 +115,7 @@ def build_timekeeping_export_xlsx(
     daily = wb.create_sheet("Ανά ημέρα")
     daily_headers = [
         "Ημερομηνία", "Εργαζόμενος", "ΑΦΜ", "Κατάσταση", "Πηγή βάσης",
-        "Αναγνωρισμένο ωράριο", "Διάλειμμα", "Καθαρή βάση",
+        "Αναγνωρισμένο ωράριο", "Διάλειμμα", "Καθαρή βάση (ώρες)",
     ] + _family_headers("Βάση")
     for label, _ in families:
         daily_headers += _family_headers(label)
@@ -164,7 +164,7 @@ def build_timekeeping_detailed_export_xlsx(
         "Εργοδότης ΑΦΜ", "Κωδικός υποκ/τος", "Υποκατάστημα",
         "Επώνυμο", "Όνομα", "ΑΦΜ εργαζομένου", "Μερική απασχόληση",
         "Ημέρα", "Ημερομηνία", "Δηλωμένο ωράριο", "Αναγνωρισμένο ωράριο",
-        "Κινήσεις κάρτας", "Μικτή διάρκεια", "Διάλειμμα", "Καθαρή βάση",
+        "Κινήσεις κάρτας", "Μικτή διάρκεια (ώρες)", "Διάλειμμα", "Καθαρή βάση (ώρες)",
         "Ώρες ημέρας", "Ώρες νύχτας 25%", "Ώρες Κυρ/Αργίας 75%",
         "Ώρες νύχτας + Κυρ/Αργίας",
     ]
@@ -247,7 +247,7 @@ def build_timekeeping_detailed_export_xlsx(
                 cell.fill = PatternFill("solid", fgColor=_LIGHT)
         ws.cell(row, 9).number_format = "dd/mm/yyyy"
         for col in duration_columns:
-            ws.cell(row, col).number_format = "[h]:mm"
+            ws.cell(row, col).number_format = "0.##"
             ws.cell(row, col).alignment = Alignment(horizontal="right", vertical="top")
         for cell in ws[row]:
             cell.border = Border(bottom=_BORDER)

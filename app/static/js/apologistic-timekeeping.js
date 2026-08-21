@@ -7,7 +7,10 @@ let timekeepingData = null;
 function esc(value) { return Office.escapeHtml(String(value ?? "")); }
 function duration(minutes) {
   const value = Math.max(0, Number(minutes || 0));
-  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+  return new Intl.NumberFormat("el-GR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value / 60);
 }
 function displayDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
@@ -139,7 +142,7 @@ function renderRows(rows) {
     `<th colspan="4">${esc(label)}</th>`
   ).join("");
   const zoneHeaders = zones.map(([, label]) => `<th>${esc(label)}</th>`).join("");
-  const detailHeaders = `<th>Βάση</th>${zoneHeaders}${families.map(() => zoneHeaders).join("")}`;
+  const detailHeaders = `<th>Βάση (ώρες)</th>${zoneHeaders}${families.map(() => zoneHeaders).join("")}`;
   const breakdownCells = (row, field) => zones.map(([key]) =>
     `<td>${duration(row[field]?.[key])}</td>`
   ).join("");
