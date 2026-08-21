@@ -15,6 +15,8 @@ SESSION_SUPER_ADMIN = "office_super_admin"
 
 ADMIN_NAV_ROLES = {"super_admin", "admin", "backoffice_admin"}
 ADMIN_ONLY_NAVS = {"sync", "settings", "synclog", "missingcards"}
+# Accountant βλέπει Ελλειπή + Ρυθμίσεις (μόνο αργίες) χωρίς πλήρη admin.
+ACCOUNTANT_ALLOWED_ADMIN_NAVS = {"settings", "missingcards"}
 
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
@@ -36,6 +38,8 @@ MANAGED_PERMISSION_CODES: set[str] = {
     "settings.edit",
     "settings.secrets.manage",
     "settings.scheduler.manage",
+    "settings.holidays.view",
+    "settings.holidays.edit",
 }
 
 
@@ -73,6 +77,12 @@ OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
 
 STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS)
 
+# Λογιστής: λειτουργικές οθόνες χωρίς Καταστήματα/Sync/Logs/Users· Ρυθμίσεις = μόνο αργίες.
+ACCOUNTANT_PERMISSIONS: set[str] = (OFFICE_OPERATOR_PERMISSIONS - {"stores.view"}) | {
+    "settings.holidays.view",
+    "settings.holidays.edit",
+}
+
 BACKOFFICE_ADMIN_PERMISSIONS: set[str] = STORE_MANAGER_PERMISSIONS | {
     "sync.view",
     "sync.run_store",
@@ -93,6 +103,8 @@ BACKOFFICE_ADMIN_PERMISSIONS: set[str] = STORE_MANAGER_PERMISSIONS | {
     "stores.api_env.manage",
     "settings.view",
     "settings.scheduler.manage",
+    "settings.holidays.view",
+    "settings.holidays.edit",
 }
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
@@ -101,6 +113,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "backoffice_admin": BACKOFFICE_ADMIN_PERMISSIONS,
     "office_manager": STORE_MANAGER_PERMISSIONS,
     "office": OFFICE_OPERATOR_PERMISSIONS,
+    "accountant": ACCOUNTANT_PERMISSIONS,
     "store_viewer": VIEWER_PERMISSIONS,
     "viewer": VIEWER_PERMISSIONS,
     "notifications_manager": {
@@ -121,13 +134,15 @@ ROLE_ALIASES = {
     "office manager": "office_manager",
     "store-viewer": "store_viewer",
     "store viewer": "store_viewer",
+    "λογιστης": "accountant",
+    "λογιστής": "accountant",
 }
 
 UI_PERMISSIONS: dict[str, str] = {
     "/ui/": "dashboard.view",
     "/ui/stores": "stores.view",
     "/ui/stores/credentials": "stores.credentials.manage",
-    "/ui/stores/notify": "settings.view",
+    "/ui/stores/notify": "settings.holidays.view",
     "/ui/stores/branch": "stores.manage",
     "/ui/stores/mappings": "stores.manage",
     "/ui/employees": "employees.view",
@@ -160,7 +175,7 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
     {"href": "/ui/employees", "nav": "employees", "label": "Εργαζόμενοι", "permission": "employees.view"},
     {"href": "/ui/stores", "nav": "stores", "label": "Καταστήματα", "permission": "stores.view"},
-    {"href": "/ui/stores/notify", "nav": "settings", "label": "Ρυθμίσεις", "permission": "settings.view"},
+    {"href": "/ui/stores/notify", "nav": "settings", "label": "Ρυθμίσεις", "permission": "settings.holidays.view"},
     {"href": "/ui/sync-log", "nav": "synclog", "label": "Καταγραφές", "permission": "logs.view"},
     {"href": "/ui/users", "nav": "users", "label": "Χρήστες", "permission": "users.view"},
 )
@@ -171,11 +186,11 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/employees/*", "employees.view"),
     RouteRule("POST", "/api/employees/contract/sync", "employees.sync"),
     RouteRule("GET", "/api/employees/contract/sync/status/*", "employees.view"),
-    RouteRule("GET", "/api/store/list", "stores.view"),
+    RouteRule("GET", "/api/store/list", "stores.select"),
     RouteRule("GET", "/api/assistant/*", "stores.view"),
     RouteRule("POST", "/api/assistant/*", "stores.view"),
-    RouteRule("GET", "/api/store/active", "stores.view"),
-    RouteRule("GET", "/api/store/select/status/*", "stores.view"),
+    RouteRule("GET", "/api/store/active", "stores.select"),
+    RouteRule("GET", "/api/store/select/status/*", "stores.select"),
     RouteRule("GET", "/api/store/*/notify-recipients", "notifications.view"),
     RouteRule("PUT", "/api/store/*/notify-recipients", "notifications.recipients.manage"),
     RouteRule("GET", "/api/store/*/action-settings", "settings.view"),
@@ -183,6 +198,13 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/store/*/card-listener-settings", "settings.view"),
     RouteRule("PUT", "/api/store/*/card-listener-settings", "settings.scheduler.manage"),
     RouteRule("POST", "/api/store/*/card-listener/*", "settings.scheduler.manage"),
+    # Αργίες — πριν το generic /api/store/*
+    RouteRule("GET", "/api/store/holidays", "settings.holidays.view"),
+    RouteRule("POST", "/api/store/holidays", "settings.holidays.edit"),
+    RouteRule("DELETE", "/api/store/holidays/*", "settings.holidays.edit"),
+    RouteRule("GET", "/api/store/*/holidays", "settings.holidays.view"),
+    RouteRule("PUT", "/api/store/*/holidays/override", "settings.holidays.edit"),
+    RouteRule("DELETE", "/api/store/*/holidays/override", "settings.holidays.edit"),
     RouteRule("GET", "/api/store/*", "stores.credentials.manage"),
     RouteRule("POST", "/api/store/verify-*", "stores.credentials.manage"),
     RouteRule("POST", "/api/store/credentials", "stores.credentials.manage"),
@@ -280,9 +302,17 @@ def has_permission(permission: str | None, *, role: str | None = None) -> bool:
         session_permissions = session.get(SESSION_PERMISSIONS)
         if isinstance(session_permissions, list):
             permissions = {str(x) for x in session_permissions}
-            return "*" in permissions or permission in permissions
-    permissions = permissions_for_role(role if role is not None else current_role())
-    return "*" in permissions or permission in permissions
+        else:
+            permissions = permissions_for_role(current_role())
+    else:
+        permissions = permissions_for_role(role)
+    if "*" in permissions or permission in permissions:
+        return True
+    # Full settings access implies holidays.
+    if permission in {"settings.holidays.view", "settings.holidays.edit"}:
+        if "settings.view" in permissions or "settings.edit" in permissions:
+            return True
+    return False
 
 
 def current_permissions() -> set[str]:
@@ -303,7 +333,9 @@ def is_admin_role(role: str | None = None) -> bool:
 def nav_item_allowed(item: dict[str, str]) -> bool:
     nav = str(item.get("nav") or "")
     if nav in ADMIN_ONLY_NAVS and not is_admin_role():
-        return False
+        role = normalize_role(current_role())
+        if not (role == "accountant" and nav in ACCOUNTANT_ALLOWED_ADMIN_NAVS):
+            return False
     return has_permission(item.get("permission"))
 
 

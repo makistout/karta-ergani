@@ -127,6 +127,7 @@ const PERMISSION_ACTIONS = {
 };
 
 const ROLE_LABELS = {
+  accountant: "accountant",
   admin: "admin",
   backoffice_admin: "backoffice",
   notifications_manager: "notif.",

@@ -261,7 +261,9 @@ async function selectStore(storeId, pushUrl) {
 }
 
 function initNotifyRecipientButtons() {
-  document.getElementById("btnAddNotifyRecipient").onclick = () => {
+  const addBtn = document.getElementById("btnAddNotifyRecipient");
+  if (!addBtn) return;
+  addBtn.onclick = () => {
     if (!currentStoreId) return;
     notifyRecipients.push({
       name: "",
@@ -482,7 +484,9 @@ async function copyListenerPairingValue(inputId) {
 }
 
 function initCardListenerButtons() {
-  document.getElementById("btnTogglePairListener").onclick = toggleListenerPairingPanel;
+  const toggleBtn = document.getElementById("btnTogglePairListener");
+  if (!toggleBtn) return;
+  toggleBtn.onclick = toggleListenerPairingPanel;
   document.getElementById("btnSaveListenerSettings").onclick = saveCardListenerSettings;
   document.getElementById("btnPairListener").onclick = pairCardListener;
   document.querySelectorAll("[data-listener-copy]").forEach((button) => {
@@ -561,7 +565,9 @@ function collectActionSettingsFromDom() {
 }
 
 function initActionSettingsButtons() {
-  document.getElementById("btnSaveActionSettings").onclick = () => saveActionSettings();
+  const saveActionBtn = document.getElementById("btnSaveActionSettings");
+  if (!saveActionBtn) return;
+  saveActionBtn.onclick = () => saveActionSettings();
   document.getElementById("btnSaveApologisticSettings").onclick = () => saveActionSettings({
     successMessage: "Οι ρυθμίσεις απολογιστικού αποθηκεύτηκαν.",
   });

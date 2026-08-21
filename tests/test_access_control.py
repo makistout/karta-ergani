@@ -148,6 +148,63 @@ def test_office_manager_menu_hides_admin_only_items_even_with_permissions():
     assert "Ελλειπή Χτυπήματα" not in html
 
 
+def test_accountant_menu_shows_ops_hides_admin_and_stores():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    register_access_context(app)
+    app.add_url_rule(
+        "/ui/",
+        "home",
+        lambda: render_template_string("""
+        {% for item in office_nav_items %}
+          {% if office_nav_item_allowed(item) %}{{ item.label }}|{% endif %}
+        {% endfor %}
+        """),
+    )
+    client = app.test_client()
+
+    with client.session_transaction() as session:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = "accountant1"
+        session[SESSION_ROLE] = "accountant"
+        session[SESSION_SUPER_ADMIN] = False
+        session[SESSION_PERMISSIONS] = sorted(permissions_for_role("accountant"))
+
+    html = client.get("/ui/").get_data(as_text=True)
+
+    for label in (
+        "Αρχική",
+        "Ψηφιακό ωράριο",
+        "Πραγματική απασχόληση",
+        "Πρωτόκολλα",
+        "Απολογιστικό",
+        "Ελλειπή Χτυπήματα",
+        "Ψηφιακή κάρτα",
+        "Εργαζόμενοι",
+        "Ρυθμίσεις",
+    ):
+        assert label in html
+    for label in ("Συγχρονισμός", "Καταστήματα", "Καταγραφές", "Χρήστες"):
+        assert label not in html
+
+
+def test_accountant_permissions_and_holiday_api_rules():
+    perms = permissions_for_role("accountant")
+    assert "settings.holidays.view" in perms
+    assert "settings.holidays.edit" in perms
+    assert "settings.view" not in perms
+    assert "stores.view" not in perms
+    assert "stores.select" in perms
+    assert "sync.view" not in perms
+    assert "users.view" not in perms
+    assert "logs.view" not in perms
+    assert normalize_role("λογιστής") == "accountant"
+    assert permission_for_path("/ui/stores/notify", "GET") == "settings.holidays.view"
+    assert permission_for_path("/api/store/1/holidays", "GET") == "settings.holidays.view"
+    assert permission_for_path("/api/store/holidays", "POST") == "settings.holidays.edit"
+    assert permission_for_path("/api/store/list", "GET") == "stores.select"
+
+
 def test_role_aliases_do_not_fallback_to_super_admin():
     assert normalize_role("office manager") == "office_manager"
     assert normalize_role("office-manager") == "office_manager"
