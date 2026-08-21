@@ -95,6 +95,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       acceptReviewRow(acceptReviewButton.dataset.employeeAfm || "", acceptReviewButton.dataset.workDate || "", acceptReviewButton);
       return;
     }
+    const rejectReviewButton = event.target.closest(".apologistic-reject-review-btn");
+    if (rejectReviewButton) {
+      event.stopPropagation();
+      rejectReviewRow(rejectReviewButton.dataset.employeeAfm || "", rejectReviewButton.dataset.workDate || "", rejectReviewButton);
+      return;
+    }
     const exportButton = event.target.closest(".apologistic-export-btn");
     if (exportButton) {
       event.stopPropagation();
@@ -983,7 +989,7 @@ function updateRestoreChangeBar() {
   const restorableRows = visibleReportRows().filter(changeFromReview);
   const visible = restorableRows.length > 0;
   const hintText = visible
-    ? `${restorableRows.length} εγγραφές Μ* από Έλεγχο · επαναφορά στην αρχική κατάσταση Ε` +
+    ? `${restorableRows.length} αποφάσεις Μ*/Σ* · επαναφορά στην αρχική κατάσταση` +
       (isAllDaysSelected() ? "" : ` · ${reportPeriodLabel()}`)
     : "";
   for (const bar of bars) {
@@ -1108,7 +1114,7 @@ async function restoreAllChanges() {
     return;
   }
   if (!await Office.confirm(
-    `Να επανέλθουν ${targetRows.length} εγγραφές Μ* στην αρχική κατάσταση Ε;`,
+    `Να επανέλθουν ${targetRows.length} αποφάσεις Μ*/Σ* στην αρχική τους κατάσταση;`,
     { title: "Επαναφορά αλλαγών", confirmText: "Επαναφορά", danger: true },
   )) return;
   setRestoreChangeButtonsLoading(true);
@@ -1713,13 +1719,13 @@ function changeFromReview(row) {
 }
 
 function statusLabel(status, row) {
-  if (status === "ok") return "Σύμφωνο";
+  if (status === "ok") return changeFromReview(row) ? "Σύμφωνο (μετά από απόρριψη)" : "Σύμφωνο";
   if (status === "change") return changeFromReview(row) ? "Μεταβολή (από Έλεγχο)" : "Μεταβολή";
   return "Έλεγχος";
 }
 
 function statusShortLabel(status, row) {
-  if (status === "ok") return "Σ";
+  if (status === "ok") return changeFromReview(row) ? "Σ*" : "Σ";
   if (status === "change") return changeFromReview(row) ? "Μ*" : "Μ";
   return "Ε";
 }
@@ -1727,21 +1733,36 @@ function statusShortLabel(status, row) {
 function renderResultBadge(row) {
   const title = statusLabel(row.status, row);
   if (row.status === "review") {
-    const unevenGroup = row.uneven_distribution_group;
-    if (unevenGroup?.group_id) {
-      return `<button type="button" class="status-badge apologistic-status--review apologistic-uneven-accept-btn" ` +
-        `data-employee-afm="${attr(row.employee_afm)}" data-group-id="${attr(unevenGroup.group_id)}" ` +
-        `title="Έγκριση ολόκληρης της ομάδας ανισομερούς κατανομής">${statusShortLabel(row.status, row)}</button>`;
-    }
     const key = `${row.employee_afm}|${row.work_date}`;
     const pending = acceptReviewPending.has(key);
-    const hasExchangeOptions = (row.exchange_options || []).length > 0;
-    const actionTitle = hasExchangeOptions
-      ? "Κλικ: αποδοχή της πρότασης ως Μ* χωρίς ανταλλαγή"
-      : "Κλικ: OK με την πρόταση";
-    return `<button type="button" class="status-badge apologistic-status--review apologistic-accept-review-btn${pending ? " is-pending" : ""}" ` +
+    const unevenGroup = row.uneven_distribution_group;
+    let acceptButton;
+    if (unevenGroup?.group_id) {
+      acceptButton = `<button type="button" class="status-badge apologistic-status--review apologistic-uneven-accept-btn" ` +
+        `data-employee-afm="${attr(row.employee_afm)}" data-group-id="${attr(unevenGroup.group_id)}" ` +
+        `title="Έγκριση ολόκληρης της ομάδας ανισομερούς κατανομής">${statusShortLabel(row.status, row)}</button>`;
+    } else {
+      const hasExchangeOptions = (row.exchange_options || []).length > 0;
+      const actionTitle = hasExchangeOptions
+        ? "Κλικ: αυτόματη επιλογή ανταλλαγής και αποδοχή ως Μ*"
+        : "Κλικ: OK με την πρόταση";
+      acceptButton = `<button type="button" class="status-badge apologistic-status--review apologistic-accept-review-btn${pending ? " is-pending" : ""}" ` +
+        `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
+        `title="${attr(pending ? "Αποθήκευση…" : actionTitle)}"${pending ? " disabled" : ""}>${statusShortLabel(row.status, row)}</button>`;
+    }
+    const rejectButton = `<button type="button" class="status-badge apologistic-status--reject apologistic-reject-review-btn${pending ? " is-pending" : ""}" ` +
       `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
-      `title="${attr(pending ? "Αποθήκευση…" : actionTitle)}"${pending ? " disabled" : ""}>${statusShortLabel(row.status, row)}</button>`;
+      `title="${attr(pending ? "Αποθήκευση…" : "Α: Απόρριψη της πρότασης και μετατροπή σε Σ*")}"${pending ? " disabled" : ""}>Α</button>`;
+    return `<span class="apologistic-review-actions">${acceptButton}${rejectButton}</span>`;
+  }
+  if (row.status === "change" && !changeFromReview(row)) {
+    const key = `${row.employee_afm}|${row.work_date}`;
+    const pending = acceptReviewPending.has(key);
+    return `<span class="apologistic-review-actions">` +
+      `<span class="status-badge apologistic-status--change">${statusShortLabel(row.status, row)}</span>` +
+      `<button type="button" class="status-badge apologistic-status--reject apologistic-reject-review-btn${pending ? " is-pending" : ""}" ` +
+      `data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" ` +
+      `title="${attr(pending ? "Αποθήκευση…" : "Α: Απόρριψη της μεταβολής και μετατροπή σε Σ*")}"${pending ? " disabled" : ""}>Α</button></span>`;
   }
   return `<span class="status-badge apologistic-status--${row.status}">${statusShortLabel(row.status, row)}</span>`;
 }
@@ -1788,6 +1809,32 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
     button.title = "Αποθήκευση…";
   }
   try {
+    if ((row.exchange_options || []).length) {
+      const candidates = row.exchange_options.slice().sort((left, right) =>
+        compareWorkDates(left.replacement_work_date, right.replacement_work_date)
+      );
+      let applied = null;
+      let lastError = "Δεν βρέθηκε διαθέσιμη ημέρα ανταλλαγής";
+      for (const option of candidates) {
+        const result = await submitExchangeChoice(row, option.replacement_work_date);
+        if (!result.ok) {
+          lastError = result.error;
+          continue;
+        }
+        applied = { replacementWorkDate: option.replacement_work_date, data: result.data };
+        break;
+      }
+      if (!applied) throw new Error(`${lastError}. Η γραμμή παρέμεινε σε Έλεγχο.`);
+      mergeExchangeRows(applied.data.rows || []);
+      refreshSummaryCounts();
+      renderVisibleRows();
+      Office.showMsg(
+        "apologisticSubmitMsg",
+        `Η ανταλλαγή ${workDate} ↔ ${applied.replacementWorkDate} επιλέχθηκε αυτόματα και αποθηκεύτηκε ως δύο μεταβολές (Μ*).`,
+        true,
+      );
+      return;
+    }
     const res = await fetch("/api/apologistic/accept-review", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1807,6 +1854,39 @@ async function acceptReviewRow(employeeAfm, workDate, button) {
   }
 }
 
+async function rejectReviewRow(employeeAfm, workDate, button) {
+  const key = `${employeeAfm}|${workDate}`;
+  if (acceptReviewPending.has(key)) return;
+  const row = reportState.rows.find((item) => item.employee_afm === employeeAfm && item.work_date === workDate);
+  if (!row || !(
+    row.status === "review" || (row.status === "change" && !changeFromReview(row))
+  )) return;
+  acceptReviewPending.add(key);
+  if (button) {
+    button.disabled = true;
+    button.classList.add("is-pending");
+  }
+  try {
+    const res = await fetch("/api/apologistic/reject-review", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ week_from: weekFromForRow(row), employee_afm: employeeAfm, work_date: workDate }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    row.status = data.status || "ok";
+    row.change_from_review = true;
+    if (data.reason) row.reason = data.reason;
+    refreshSummaryCounts();
+    renderVisibleRows();
+    Office.showMsg("apologisticSubmitMsg", "Η πρόταση απορρίφθηκε και η εγγραφή μετατράπηκε σε Σ*.", true);
+  } catch (error) {
+    Office.showMsg("apologisticSubmitMsg", error.message || String(error), false);
+  } finally {
+    acceptReviewPending.delete(key);
+  }
+}
+
 async function restoreReviewRow(employeeAfm, workDate, button) {
   const key = `${employeeAfm}|${workDate}`;
   if (restoreReviewPending.has(key)) return;
@@ -1816,7 +1896,7 @@ async function restoreReviewRow(employeeAfm, workDate, button) {
   const detail = linked
     ? " Θα επανέλθουν μαζί και όλες οι συνδεδεμένες ημέρες της ίδιας μεταβολής."
     : "";
-  if (!await Office.confirm(`Να διαγραφεί η Μεταβολή και να επανέλθει η αρχική κατάσταση Ελέγχου;${detail}`, { title: "Επαναφορά μεταβολής", confirmText: "Επαναφορά", danger: true })) return;
+  if (!await Office.confirm(`Να διαγραφεί η απόφαση ${statusShortLabel(row.status, row)} και να επανέλθει η αρχική αποθηκευμένη κατάσταση;${detail}`, { title: "Επαναφορά απόφασης", confirmText: "Επαναφορά", danger: true })) return;
   restoreReviewPending.add(key);
   if (button) button.disabled = true;
   try {
@@ -2761,7 +2841,7 @@ function renderRows(rows, store) {
       `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></button>` +
       `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status, row))}">${renderResultBadge(row)}` +
-      (changeFromReview(row) ? `<button type="button" class="apologistic-restore-review-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" aria-label="Επαναφορά στην αρχική κατάσταση Ε" title="Διαγραφή μεταβολής και επαναφορά σε Ε"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></button>` : "") +
+      (changeFromReview(row) ? `<button type="button" class="apologistic-restore-review-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" aria-label="Επαναφορά στην αρχική κατάσταση" title="Διαγραφή απόφασης ${statusShortLabel(row.status, row)} και επαναφορά στην αρχική κατάσταση"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></button>` : "") +
       `<button type="button" class="apologistic-info-btn" data-explanation-id="${attr(explanationId)}" aria-expanded="false" aria-label="Λεπτομέρειες αποτελέσματος"><i class="bi bi-info-circle" aria-hidden="true"></i></button></td>` +
       (canSubmitErgani ? `<td class="apologistic-ergani-cell">${renderErganiActions(row)}</td>` : "") +
       `</tr>`;

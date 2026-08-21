@@ -702,9 +702,61 @@ def accept_review(*, store_id: int, week_from: date, employee_afm: str,
     }
 
 
+def reject_review(*, store_id: int, week_from: date, employee_afm: str,
+                  work_date: date, changed_by: str | None) -> dict[str, Any]:
+    """Reject a review or ordinary change and persist it as compliant (S*)."""
+    with cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT d.id, d.override_json, d.effective_json, r.id, r.status, r.effective_report_json
+            FROM dbo.karta_apologistic_day d WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.karta_apologistic_run r ON r.id=d.run_id
+            WHERE r.store_id=? AND r.week_from=? AND d.employee_afm=? AND d.work_date=?
+        """, (int(store_id), week_from, employee_afm, work_date))
+        row = cur.fetchone()
+        if not row:
+            raise LookupError("Δεν βρέθηκε αποθηκευμένο ημερήσιο αποτέλεσμα")
+        if str(row[4]) == "locked":
+            raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
+        day_id, run_id = int(row[0]), int(row[3])
+        override = json.loads(row[1]) if row[1] else {}
+        effective = json.loads(row[2])
+        old_status = str(effective.get("status") or "")
+        if old_status not in {"review", "change"} or (old_status == "change" and effective.get("change_from_review")):
+            raise ValueError("Η εγγραφή δεν είναι κατάσταση Έλεγχος ή απλή Μεταβολή")
+        reason = ("Απορρίφθηκε η πρόταση — μετατράπηκε από Έλεγχο σε Σύμφωνο"
+                  if old_status == "review"
+                  else "Απορρίφθηκε η μεταβολή — μετατράπηκε σε Σύμφωνο")
+        override.update({"status": "ok", "change_from_review": True})
+        effective.update({"status": "ok", "change_from_review": True, "reason": reason})
+        report = json.loads(row[5])
+        for item in report.get("days") or []:
+            if (str(item.get("employee_afm") or "") == employee_afm
+                    and str(item.get("work_date") or "") == work_date.strftime("%d/%m/%Y")):
+                item.update({"status": "ok", "change_from_review": True, "reason": reason})
+                break
+        if isinstance(report.get("counts"), dict):
+            counts = report["counts"]
+            counts[old_status] = max(0, int(counts.get(old_status) or 0) - 1)
+            counts["ok"] = int(counts.get("ok") or 0) + 1
+        cur.execute("""
+            UPDATE dbo.karta_apologistic_day SET override_json=?, effective_json=?,
+                override_reason=N'Απόρριψη πρότασης από Έλεγχο', updated_by=?,
+                override_updated_at=SYSDATETIMEOFFSET(), updated_at=SYSDATETIMEOFFSET()
+            WHERE id=?
+        """, (_json(override), _json(effective), changed_by, day_id))
+        cur.execute("""
+            INSERT dbo.karta_apologistic_change(day_id, field_name, old_value, new_value, changed_by)
+            VALUES (?, N'status', ?, ?, ?)
+        """, (day_id, old_status, "ok", changed_by))
+        cur.execute("UPDATE dbo.karta_apologistic_run SET effective_report_json=?, updated_at=SYSDATETIMEOFFSET() WHERE id=?",
+                    (_json(report), run_id))
+    return {"status": "ok", "change_from_review": True, "changed": True,
+            "reason": reason, "counts": report.get("counts")}
+
+
 def restore_review_change(*, store_id: int, week_from: date, employee_afm: str,
                           work_date: date, changed_by: str | None) -> dict[str, Any]:
-    """Remove an E→M* override and restore the original generated row(s)."""
+    """Remove an E→M* or E→S* override and restore the generated row(s)."""
     with cursor(commit=True) as cur:
         cur.execute("""
             SELECT d.id, d.work_date, d.generated_json, d.effective_json,
@@ -720,12 +772,14 @@ def restore_review_change(*, store_id: int, week_from: date, employee_afm: str,
             raise PermissionError("Η εβδομάδα είναι κλειδωμένη")
 
         selected_effective = json.loads(selected[3])
-        if str(selected_effective.get("status") or "") != "change" or not selected_effective.get("change_from_review"):
-            raise ValueError("Η εγγραφή δεν είναι μεταβολή που προήλθε από Έλεγχο")
+        if (str(selected_effective.get("status") or "") not in {"change", "ok"}
+                or not selected_effective.get("change_from_review")):
+            raise ValueError("Η εγγραφή δεν είναι απόφαση που προήλθε από Έλεγχο")
 
         run_id = int(selected[4])
-        exchange_id = str((selected_effective.get("exchange_pair") or {}).get("id") or "")
-        uneven_group_id = str((selected_effective.get("uneven_distribution_group") or {}).get("group_id") or "")
+        restore_linked = str(selected_effective.get("status") or "") == "change"
+        exchange_id = str((selected_effective.get("exchange_pair") or {}).get("id") or "") if restore_linked else ""
+        uneven_group_id = str((selected_effective.get("uneven_distribution_group") or {}).get("group_id") or "") if restore_linked else ""
         if exchange_id:
             cur.execute("""
                 SELECT id, work_date, generated_json, effective_json
@@ -767,7 +821,7 @@ def restore_review_change(*, store_id: int, week_from: date, employee_afm: str,
             cur.execute("""
                 UPDATE dbo.karta_apologistic_day
                 SET override_json=NULL, effective_json=?,
-                    override_reason=N'Επαναφορά μεταβολής στην αρχική κατάσταση',
+                    override_reason=N'Επαναφορά απόφασης στην αρχική κατάσταση',
                     updated_by=?, override_updated_at=SYSDATETIMEOFFSET(),
                     updated_at=SYSDATETIMEOFFSET()
                 WHERE id=?

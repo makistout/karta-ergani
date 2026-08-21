@@ -267,6 +267,36 @@ def test_restore_review_returns_original_rows(monkeypatch):
     assert captured["work_date"] == date(2026, 8, 13)
 
 
+def test_reject_review_returns_ok_from_review(monkeypatch):
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    captured = {}
+    monkeypatch.setattr(
+        routes_apologistic, "reject_review",
+        lambda **kwargs: captured.update(kwargs) or {
+            "status": "ok",
+            "change_from_review": True,
+            "changed": True,
+            "reason": "Απορρίφθηκε η πρόταση",
+            "counts": {"review": 0, "ok": 1},
+        },
+    )
+    app = _app()
+    app.secret_key = "test"
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["office_user"] = "tester"
+    response = client.put("/api/apologistic/reject-review", json={
+        "week_from": "2026-08-10",
+        "employee_afm": "123456789",
+        "work_date": "13/08/2026",
+    })
+
+    assert response.status_code == 200
+    assert response.json["status"] == "ok"
+    assert response.json["change_from_review"] is True
+    assert captured["work_date"] == date(2026, 8, 13)
+
+
 def test_exchange_returns_both_changed_rows(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     captured = {}

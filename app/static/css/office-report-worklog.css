@@ -1106,6 +1106,10 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-result-cell { white-space:nowrap; padding-left:.2rem!important; padding-right:.2rem!important; min-width:3.2rem; overflow:visible!important; }
 .apologistic-result-cell .status-badge { vertical-align:middle; flex-shrink:0; }
 .apologistic-accept-review-btn { border:0; padding:.12rem .28rem; cursor:pointer; font:inherit; font-weight:700; border-radius:999px; line-height:1.2; }
+.apologistic-review-actions { display:inline-flex; align-items:center; gap:.18rem; }
+.apologistic-reject-review-btn { border:0; padding:.12rem .28rem; cursor:pointer; font:inherit; font-weight:700; border-radius:999px; line-height:1.2; color:#176b3a; background:#dff4e7; }
+.apologistic-reject-review-btn:hover:not(:disabled) { filter:brightness(.95); box-shadow:0 0 0 2px color-mix(in srgb,#2d8a52 22%,transparent); }
+.apologistic-reject-review-btn.is-pending { opacity:.65; cursor:wait; }
 .apologistic-accept-review-btn:hover:not(:disabled) { filter:brightness(.95); box-shadow:0 0 0 2px color-mix(in srgb,var(--err) 22%,transparent); }
 .apologistic-accept-review-btn.is-pending { opacity:.65; cursor:wait; }
 .apologistic-info-btn { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:.1rem .15rem; margin-left:.1rem; vertical-align:middle; line-height:1; flex-shrink:0; }
