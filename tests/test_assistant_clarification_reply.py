@@ -4,14 +4,301 @@ from app.assistant_conversation_service import (
     _offers_cancel,
     process_assistant_command,
 )
+import json
 
 
-def test_affirmative_and_cancel_helpers():
-    assert _is_affirmative("ναι")
-    assert _is_affirmative("Ναι ακύρωσε")
-    assert _is_affirmative("ok")
-    assert _is_negative("όχι")
-    assert _offers_cancel("Θα θέλατε να ακυρώσω την εντολή για τους εργαζομένους;")
+def test_named_store_ignores_pending_from_other_store(monkeypatch):
+    """«Στο Ερατο…» δεν συνεχίζει ανοιχτή εντολή Training Room."""
+    calls: list[dict] = []
+
+    def fake_pending(**kwargs):
+        calls.append(dict(kwargs))
+        # Chat-scoped pending points at Training Room; message names ERATO.
+        return {
+            "id": 44,
+            "store_id": 4,
+            "recipient_id": 8,
+            "task_status": "needs_clarification",
+            "proposed_action_text": "Εννοείτε…",
+            "payload": {"store_id": 4, "intent": "card_check_in_now"},
+        }
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        fake_pending,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.create_task",
+        lambda **kwargs: 900,
+    )
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+    ]
+
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {
+                "intent": "today_info",
+                "store_id": 9,
+                "employee_afms": [],
+                "clarification_question": "Στο ERATO ανοιχτές: …",
+                "confidence": 1.0,
+            },
+            [],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: ("answered", {"valid": True, "errors": [], "execution_enabled": False}, "Στο ERATO ανοιχτές: …"),
+    )
+
+    result = process_assistant_command(
+        text="Στο Ερατο ποιες κάρτες είναι ανοιχτές",
+        contexts=contexts,
+        inbound_id=200,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+    )
+
+    assert calls and calls[0].get("chat_id") == "6809632515"
+    assert result["task_id"] == 900
+    assert result["status"] == "answered"
+    assert "ERATO" in result["answer"]
+
+
+def test_multi_store_asks_list_when_message_has_no_store(monkeypatch):
+    created: dict = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return 501
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
+
+    def boom(**kwargs):
+        raise AssertionError("LLM must not run before store choice")
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", boom)
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+    ]
+    result = process_assistant_command(
+        text="ποιοι εργάζονται ακόμα",
+        contexts=contexts,
+        inbound_id=201,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+    )
+    assert result["status"] == "needs_clarification"
+    assert "Επιλέξτε κατάστημα" in result["answer"]
+    assert "1. Training Room" in result["answer"]
+    assert "2. ERATO" in result["answer"]
+    assert created["parsed"]["clarification_kind"] == "store_choice"
+    assert created["parsed"]["original_message"] == "ποιοι εργάζονται ακόμα"
+    assert created["store_id"] is None
+
+
+def test_store_choice_reply_replays_original_message(monkeypatch):
+    updated: dict = {}
+    pending = {
+        "id": 77,
+        "store_id": None,
+        "recipient_id": None,
+        "task_status": "needs_clarification",
+        "proposed_action_text": "Επιλέξτε κατάστημα…",
+        "original_message_text": "ποιοι εργάζονται ακόμα",
+        "payload": {
+            "clarification_kind": "store_choice",
+            "original_message": "ποιοι εργάζονται ακόμα",
+            "candidate_store_ids": [4, 9],
+            "intent": "unknown",
+            "employee_afms": [],
+        },
+    }
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: pending,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+
+    def fake_update(task_id, **kwargs):
+        updated["task_id"] = task_id
+        updated.update(kwargs)
+        return True
+
+    monkeypatch.setattr("app.repo_telegram_assistant.update_assistant_task", fake_update)
+
+    def fake_parse(**kwargs):
+        assert kwargs["text"] == "ποιοι εργάζονται ακόμα"
+        assert kwargs["reply_context"]["store_id"] == 9
+        return (
+            {
+                "intent": "today_info",
+                "store_id": 9,
+                "employee_afms": [],
+                "clarification_question": "Στο ERATO: HOXHA",
+                "confidence": 1.0,
+            },
+            [],
+            {"llm_used": "gemini"},
+        )
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: (
+            "answered",
+            {"valid": True, "errors": [], "execution_enabled": False},
+            "Στο ERATO: HOXHA",
+        ),
+    )
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+    ]
+    result = process_assistant_command(
+        text="2",
+        contexts=contexts,
+        inbound_id=202,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+    )
+    assert result["status"] == "answered"
+    assert result["task_id"] == 77
+    assert result["parsed"]["store_id"] == 9
+    assert result["recipient_id"] == 36
+    assert updated["task_id"] == 77
+    assert updated["recipient_id"] == 36
+
+
+def test_mentioned_store_proceeds_without_list(monkeypatch):
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", lambda **kwargs: 910)
+
+    def fake_parse(**kwargs):
+        assert kwargs["reply_context"]["store_id"] == 9
+        return (
+            {
+                "intent": "today_info",
+                "store_id": 9,
+                "employee_afms": [],
+                "clarification_question": "ok",
+                "confidence": 1.0,
+            },
+            [],
+            {},
+        )
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: ("answered", {"valid": True, "errors": [], "execution_enabled": False}, "ok"),
+    )
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+    ]
+    result = process_assistant_command(
+        text="Στο Ερατο ποιοι εργάζονται ακόμα",
+        contexts=contexts,
+        inbound_id=203,
+        chat_id="1",
+        confirmation_mode="pin",
+    )
+    assert result["status"] == "answered"
+    assert result["task_id"] == 910
+
+
+def test_mentioned_store_beats_conversation_focus_for_today_home(monkeypatch):
+    from app.telegram_assistant_service import parse_command
+
+    captured = {}
+
+    class _Resp:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "text": (
+                                '{"intent":"today_info","store_id":9,"employee_afms":[],'
+                                '"clarification_question":"ok","confidence":1}'
+                            )
+                        }]
+                    }
+                }]
+            }
+
+    def fake_post(_url, **kwargs):
+        body = kwargs.get("json") or {}
+        parts = (((body.get("contents") or [{}])[0]).get("parts") or [{}])
+        prompt = json.loads(parts[0].get("text") or "{}")
+        captured["today_home"] = prompt.get("today_home")
+        return _Resp()
+
+    monkeypatch.setattr("app.telegram_assistant_service.requests.post", fake_post)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.build_today_home_context",
+        lambda contexts: {
+            "date": "2026-08-20",
+            "stores": [
+                {"store_id": 4, "name": "Training Room", "employees": [{"afm": "1"}]},
+                {"store_id": 9, "name": "ERATO", "employees": [{"afm": "2"}]},
+            ],
+        },
+    )
+    monkeypatch.setattr("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "app.telegram_assistant_service._employee_catalog",
+        lambda contexts: [
+            {"store_id": 4, "afm": "1", "name": "A"},
+            {"store_id": 9, "afm": "2", "name": "B"},
+        ],
+    )
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0"},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0"},
+    ]
+    parse_command(
+        text="Στο Ερατο ποιοι εργάζονται ακόμα",
+        contexts=contexts,
+        reply_context={"store_id": 4, "employee_afm": "1"},
+    )
+    stores = (captured.get("today_home") or {}).get("stores") or []
+    assert [int(s["store_id"]) for s in stores] == [9]
+
+
+def test_erato_greek_matches_latin_store_name():
+    from app.telegram_assistant_service import _mentioned_store_ids
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον"},
+        {"store_id": 9, "store_name": "ERATO"},
+    ]
+    assert _mentioned_store_ids("Στο Ερατο ποιες κάρτες", contexts) == [9]
+    assert _mentioned_store_ids("Στο Ερατοσθένους ανοιχτές", contexts) == [9]
 
 def test_yes_to_cancel_clarification_closes_same_task(monkeypatch):
     pending = {
@@ -550,3 +837,50 @@ def test_name_choice_greeklish_answer_uses_gemini(monkeypatch):
     assert updates["parsed"]["date"] == "2026-08-20"
     assert result["status"] == "draft"
     assert updates["parsed"]["employee_afms"] == ["222222222"]
+
+
+def test_is_cancel_command_phrases():
+    from app.assistant_conversation_service import _is_cancel_command
+
+    assert _is_cancel_command("άκυρο")
+    assert _is_cancel_command("ΑΚΥΡΟ!")
+    assert _is_cancel_command("ακύρωσε")
+    assert _is_cancel_command("cancel")
+    assert not _is_cancel_command("άνοιξε κάρτα")
+    assert not _is_cancel_command("στο Ερατο ποιοι δουλεύουν")
+
+
+def test_akyro_cancels_without_gemini(monkeypatch):
+    """«άκυρο» δεν καλεί Gemini — ακυρώνει ανοιχτές τοπικά."""
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_open_assistant_tasks",
+        lambda **kwargs: [55],
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+
+    def boom(*_a, **_k):
+        raise AssertionError("Gemini must not be called for άκυρο")
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", boom)
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        boom,
+    )
+
+    result = process_assistant_command(
+        text="άκυρο",
+        contexts=[{
+            "store_id": 9,
+            "store_name": "ERATO",
+            "employer_afm": "091065232",
+            "branch_aa": "0",
+        }],
+        inbound_id=301,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+    )
+    assert result["status"] == "answered"
+    assert result["task_status"] == "cancelled"
+    assert result["task_id"] == 55
+    assert result["reset_conversation_focus"] is True
+    assert "Ακυρώθηκε" in result["answer"]

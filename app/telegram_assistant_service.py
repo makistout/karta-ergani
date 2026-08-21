@@ -117,8 +117,12 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I)
     parsed = json.loads(text)
+    return _normalize_parsed_command(parsed)
+
+
+def _normalize_parsed_command(parsed: Any) -> dict[str, Any]:
     if not isinstance(parsed, dict):
-        raise ValueError("Το Gemini δεν επέστρεψε JSON object")
+        raise ValueError("Ο parser δεν επέστρεψε JSON object")
     commands = parsed.get("commands")
     if isinstance(commands, list):
         valid_commands = [command for command in commands if isinstance(command, dict)]
@@ -126,6 +130,77 @@ def _extract_json(data: dict[str, Any]) -> dict[str, Any]:
             return valid_commands[0]
         parsed["commands"] = valid_commands
     return parsed
+
+
+def _call_gemini(prompt: dict[str, Any], *, deadline: float) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Gemini με failover μοντέλων + σύντομα retries σε 503/429."""
+    request_body = {
+        "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
+        "generationConfig": {
+            "temperature": 0,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": _SCHEMA,
+        },
+    }
+    models = [Config.GEMINI_MODEL]
+    fallback_model = str(Config.GEMINI_FALLBACK_MODEL or "").strip()
+    if fallback_model and fallback_model not in models:
+        models.append(fallback_model)
+
+    response = None
+    last_network_error: requests.RequestException | None = None
+    last_http_error = ""
+    used_model = models[0]
+    started_at = time.monotonic()
+
+    for model in models:
+        for _attempt in range(2):
+            remaining = deadline - time.monotonic()
+            if remaining < (_GEMINI_CONNECT_TIMEOUT + 2.0):
+                break
+            read_timeout = min(6.0, max(2.0, remaining - 0.25))
+            used_model = model
+            try:
+                response = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    headers={
+                        "x-goog-api-key": Config.GEMINI_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    json=request_body,
+                    timeout=(_GEMINI_CONNECT_TIMEOUT, read_timeout),
+                )
+            except requests.RequestException as exc:
+                last_network_error = exc
+                response = None
+                time.sleep(min(0.6, max(0.2, remaining / 10)))
+                continue
+            if response.ok:
+                break
+            last_http_error = f"HTTP {response.status_code}: {response.text[:300]}"
+            if response.status_code not in _GEMINI_RETRY_STATUSES:
+                break
+            time.sleep(min(0.8, max(0.25, remaining / 8)))
+        if response is not None and response.ok:
+            break
+
+    duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
+    if response is None:
+        detail = str(last_network_error or last_http_error or "χωρίς απόκριση")
+        raise RuntimeError(f"Gemini network error μετά από failover: {detail[:300]}")
+    if not response.ok:
+        raise RuntimeError(f"Gemini {last_http_error or response.status_code}")
+    response_data = response.json()
+    usage_metadata = response_data.get("usageMetadata") or {}
+    if not isinstance(usage_metadata, dict):
+        usage_metadata = {}
+    llm_metadata = {
+        "model": str(response_data.get("modelVersion") or used_model)[:128],
+        "duration_ms": duration_ms,
+        "provider": "gemini",
+        "usage_metadata": usage_metadata,
+    }
+    return _extract_json(response_data), llm_metadata
 
 
 def _assistant_prompt_guide() -> list[str]:
@@ -151,8 +226,8 @@ def _assistant_prompt_guide() -> list[str]:
 def parse_command(
     *, text: str, contexts: list[dict[str, Any]], reply_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
-    if not Config.GEMINI_API_KEY:
-        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY")
+    if not Config.GEMINI_API_KEY and not Config.LOCAL_LLM_ENABLED:
+        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε τοπικό LLM")
     now = datetime.now(ZoneInfo("Europe/Athens"))
     employees = _employee_catalog(contexts)
     stores = [
@@ -174,13 +249,13 @@ def parse_command(
                 "διάλεξε ΑΦΜ μόνο από today_home / allowed_employees βάσει κριτηρίου."
             ),
         }
+    # Explicit store in the message beats sticky conversation focus (other stores).
     focused_store_id: int | None = None
-    if focus.get("store_id") and int(focus["store_id"]) in {int(c["store_id"]) for c in contexts}:
+    mentioned = _mentioned_store_ids(text, contexts)
+    if len(mentioned) == 1:
+        focused_store_id = mentioned[0]
+    elif focus.get("store_id") and int(focus["store_id"]) in {int(c["store_id"]) for c in contexts}:
         focused_store_id = int(focus["store_id"])
-    if not focused_store_id:
-        mentioned = _mentioned_store_ids(text, contexts)
-        if len(mentioned) == 1:
-            focused_store_id = mentioned[0]
     if focused_store_id:
         employees = [e for e in employees if e["store_id"] == focused_store_id]
 
@@ -204,63 +279,103 @@ def parse_command(
         "allowed_employees": employees,
         "today_home": today_home,
     }
-    started_at = time.monotonic()
-    deadline = started_at + _GEMINI_TOTAL_BUDGET_SEC
-    request_body = {
-            "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
-            "generationConfig": {
-                "temperature": 0,
-                "responseMimeType": "application/json",
-                "responseJsonSchema": _SCHEMA,
-            },
-        }
-    models = [Config.GEMINI_MODEL]
-    fallback_model = str(Config.GEMINI_FALLBACK_MODEL or "").strip()
-    # Heavy fallback (e.g. flash) often exceeds the 10s UX budget alone — only
-    # keep it when it is a distinct model and we still have time after a fast fail.
-    if fallback_model and fallback_model not in models:
-        models.append(fallback_model)
-    response = None
-    last_network_error: requests.RequestException | None = None
-    used_model = models[0]
-    for model_index, model in enumerate(models):
-        remaining = deadline - time.monotonic()
-        # Need connect + at least ~2s read; otherwise stop within budget.
-        if remaining < (_GEMINI_CONNECT_TIMEOUT + 2.0):
-            break
-        read_timeout = min(6.0, max(2.0, remaining - 0.25))
-        used_model = model
+
+    errors: list[str] = []
+
+    def _try_gemini() -> tuple[dict[str, Any], dict[str, Any]] | None:
+        if not Config.GEMINI_API_KEY:
+            errors.append("gemini: no API key")
+            return None
         try:
-            response = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                headers={"x-goog-api-key": Config.GEMINI_API_KEY, "Content-Type": "application/json"},
-                json=request_body,
-                timeout=(_GEMINI_CONNECT_TIMEOUT, read_timeout),
+            deadline = time.monotonic() + _GEMINI_TOTAL_BUDGET_SEC
+            return _call_gemini(prompt, deadline=deadline)
+        except Exception as ex:
+            errors.append(f"gemini: {ex}")
+            return None
+
+    def _try_local() -> tuple[dict[str, Any], dict[str, Any]] | None:
+        try:
+            from app.local_llm_client import generate_json, local_llm_enabled
+
+            if not local_llm_enabled():
+                errors.append("local_llm: disabled")
+                return None
+            raw, llm_metadata = generate_json(
+                prompt_obj=prompt,
+                schema=_SCHEMA,
+                timeout_sec=float(Config.LOCAL_LLM_TIMEOUT_SEC or 25),
             )
-        except requests.RequestException as exc:
-            last_network_error = exc
-            response = None
-            continue
-        if response.ok or response.status_code not in _GEMINI_RETRY_STATUSES:
-            break
-        # Retryable HTTP from this model — try next model only if budget remains.
-        continue
-    duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
-    if response is None:
-        detail = str(last_network_error or "χωρίς απόκριση")
-        raise RuntimeError(f"Gemini network error μετά από model failover: {detail[:300]}")
-    if not response.ok:
-        raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:500]}")
-    response_data = response.json()
-    usage_metadata = response_data.get("usageMetadata") or {}
-    if not isinstance(usage_metadata, dict):
-        usage_metadata = {}
-    llm_metadata = {
-        "model": str(response_data.get("modelVersion") or used_model)[:128],
-        "duration_ms": duration_ms,
-        "usage_metadata": usage_metadata,
+            return _normalize_parsed_command(raw), llm_metadata
+        except Exception as ex:
+            errors.append(f"local_llm: {ex}")
+            return None
+
+    providers = {
+        "gemini": _try_gemini,
+        "local": _try_local,
     }
-    return _extract_json(response_data), employees, llm_metadata
+    order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,local")
+    order: list[str] = []
+    for token in order_raw.replace(";", ",").split(","):
+        name = token.strip().casefold()
+        if name in {"gemini", "google"}:
+            name = "gemini"
+        elif name in {"local", "ollama", "local_llm"}:
+            name = "local"
+        else:
+            continue
+        if name not in order:
+            order.append(name)
+    if not order:
+        order = ["gemini", "local"]
+
+    for name in order:
+        runner = providers.get(name)
+        if not runner:
+            continue
+        result = runner()
+        if result is not None:
+            parsed, llm_metadata = result
+            llm_metadata = dict(llm_metadata or {})
+            llm_metadata["llm_order"] = order
+            llm_metadata["llm_used"] = name
+            return parsed, employees, llm_metadata
+
+    # Rule-based today_info — τελευταία γραμμή άμυνας χωρίς κανένα LLM
+    if Config.ASSISTANT_RULE_FALLBACK_ENABLED:
+        try:
+            from app.assistant_rule_fallback import rule_based_parse
+
+            store_name = ""
+            if focused_store_id is not None:
+                store_name = next(
+                    (str(s["name"]) for s in stores if int(s["id"]) == int(focused_store_id)),
+                    "",
+                )
+            ruled = rule_based_parse(
+                text=text,
+                store_id=focused_store_id,
+                store_name=store_name,
+                today_home=today_home,
+            )
+            if ruled:
+                return ruled, employees, {
+                    "model": "rule_fallback",
+                    "duration_ms": 0,
+                    "provider": "rules",
+                    "llm_order": order,
+                    "llm_used": "rules",
+                    "usage_metadata": {},
+                    "errors": errors,
+                }
+        except Exception as ex:
+            errors.append(f"rules: {ex}")
+
+    detail = " | ".join(errors)[:400] if errors else "χωρίς λεπτομέρειες"
+    raise RuntimeError(
+        "Προσωρινή αδυναμία ανάλυσης εντολής (Gemini/τοπικό LLM). "
+        f"Δοκιμάστε ξανά σε λίγο. [{detail}]"
+    )
 
 
 def _nested_context(reply_context: dict[str, Any] | None) -> dict[str, Any]:
@@ -297,6 +412,19 @@ def _fold_text(value: str) -> str:
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     # Greek casefold maps capital Σ to final ς; normalize to σ for matching.
     return text.replace("ς", "σ")
+
+
+_GREEK_TO_LATIN = str.maketrans({
+    "α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "i",
+    "θ": "th", "ι": "i", "κ": "k", "λ": "l", "μ": "m", "ν": "n", "ξ": "x",
+    "ο": "o", "π": "p", "ρ": "r", "σ": "s", "τ": "t", "υ": "i", "φ": "f",
+    "χ": "ch", "ψ": "ps", "ω": "o",
+})
+
+
+def _greeklish_fold(value: str) -> str:
+    """Fold + approximate Greek→Latin so «Ερατο» matches store name ERATO."""
+    return _fold_text(value).translate(_GREEK_TO_LATIN)
 
 
 def _is_group_or_criteria_query(text: str) -> bool:
@@ -439,10 +567,19 @@ def _first_name_in_text(text: str, first_name: str) -> bool:
 
 def _mentioned_store_ids(text: str, contexts: list[dict[str, Any]]) -> list[int]:
     folded = _fold_text(text)
+    greeklish = _greeklish_fold(text)
     hits: list[int] = []
     for row in contexts:
         name = str(row.get("store_name") or "").strip()
-        if name and _fold_text(name) in folded:
+        if not name:
+            continue
+        name_fold = _fold_text(name)
+        name_gl = _greeklish_fold(name)
+        if (name_fold and name_fold in folded) or (name_gl and name_gl in greeklish):
+            hits.append(int(row["store_id"]))
+            continue
+        # Short latin store codes (ERATO) vs Greek speech (Ερατο / Ερατοσθένους).
+        if name_gl and len(name_gl) >= 4 and name_gl in greeklish:
             hits.append(int(row["store_id"]))
     return list(dict.fromkeys(hits))
 

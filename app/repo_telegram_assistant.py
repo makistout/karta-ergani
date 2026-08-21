@@ -11,6 +11,8 @@ from app.notify_pin import verify_notify_pin_for_recipient
 from app.row_util import rows_to_dicts
 
 _MAX_PIN_ATTEMPTS = 5
+# Ανοιχτές εντολές (διευκρίνιση / PIN) λήγουν μετά από αδράνεια.
+OPEN_ASSISTANT_TASK_TTL_SEC = 180
 
 
 def _json(value: Any) -> str:
@@ -258,6 +260,58 @@ def reply_context(chat_id: str, message_id: int | None) -> dict[str, Any] | None
     return row
 
 
+def expire_stale_open_assistant_tasks(
+    *,
+    chat_id: str | None = None,
+    office_user: str | None = None,
+    store_id: int | None = None,
+    older_than_sec: int | None = None,
+    reason: str = "expired_idle",
+) -> list[int]:
+    """Ακυρώνει ανοιχτές εντολές με updated_at παλαιότερο από το TTL (default 3 λεπτά)."""
+    ttl = int(OPEN_ASSISTANT_TASK_TTL_SEC if older_than_sec is None else older_than_sec)
+    if ttl < 0:
+        ttl = 0
+    if office_user and store_id is not None:
+        where = """
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
+            AND t.store_id=?
+            AND i.channel=N'ui'
+            AND i.office_user=?
+            AND t.updated_at < DATEADD(second, -?, SYSDATETIMEOFFSET())
+        """
+        params: tuple[Any, ...] = (int(store_id), str(office_user)[:128], ttl)
+    elif chat_id:
+        where = """
+            t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
+            AND i.chat_id=?
+            AND t.updated_at < DATEADD(second, -?, SYSDATETIMEOFFSET())
+        """
+        params = (str(chat_id), ttl)
+        if store_id is not None:
+            where += " AND t.store_id=?"
+            params = (str(chat_id), ttl, int(store_id))
+    else:
+        return []
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT t.id
+            FROM dbo.karta_assistant_task t
+            JOIN dbo.karta_telegram_inbound_message i ON i.id=t.inbound_message_id
+            WHERE {where}
+            ORDER BY t.id DESC
+            """,
+            params,
+        )
+        ids = [int(row[0]) for row in cur.fetchall()]
+    cancelled: list[int] = []
+    for task_id in ids:
+        if cancel_assistant_task(task_id, reason=reason):
+            cancelled.append(task_id)
+    return cancelled
+
+
 def latest_pending_clarification(
     *,
     store_id: int | None = None,
@@ -265,6 +319,12 @@ def latest_pending_clarification(
     chat_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Latest non-terminal task; every reply belongs to it until it is closed."""
+    expire_stale_open_assistant_tasks(
+        store_id=store_id,
+        office_user=office_user,
+        chat_id=chat_id,
+        reason="expired_idle",
+    )
     if office_user and store_id is not None:
         where = """
             t.task_status IN (N'needs_clarification', N'awaiting_ui_confirmation', N'awaiting_pin')
@@ -396,6 +456,7 @@ def update_assistant_task(
     validation: dict[str, Any],
     proposed_action: str,
     llm_metadata: dict[str, Any] | None = None,
+    recipient_id: int | None = None,
 ) -> bool:
     """Replace payload/status of an existing clarification task after a follow-up answer."""
     confidence = parsed.get("confidence")
@@ -409,11 +470,19 @@ def update_assistant_task(
     employee_afms = [str(value or "").strip() for value in employee_afms if str(value or "").strip()]
     employee_afm = employee_afms[0] if len(employee_afms) == 1 else None
     metadata = llm_metadata or {}
+    store_id = parsed.get("store_id")
+    try:
+        store_id = int(store_id) if store_id is not None else None
+    except (TypeError, ValueError):
+        store_id = None
     with cursor() as cur:
         cur.execute(
             """
             UPDATE dbo.karta_assistant_task
-            SET intent=?, task_status=?, employee_afm=?, work_date=TRY_CONVERT(date, ?),
+            SET intent=?, task_status=?,
+                store_id=COALESCE(?, store_id),
+                recipient_id=COALESCE(?, recipient_id),
+                employee_afm=?, work_date=TRY_CONVERT(date, ?),
                 payload_json=?, llm_response_json=?, confidence=?, validation_json=?,
                 proposed_action_text=?, updated_at=SYSDATETIMEOFFSET()
             WHERE id=? AND task_status IN (
@@ -423,6 +492,8 @@ def update_assistant_task(
             (
                 str(parsed.get("intent") or "unknown")[:64],
                 str(status)[:32],
+                store_id,
+                int(recipient_id) if recipient_id is not None else None,
                 employee_afm[:16] if employee_afm else None,
                 str(parsed.get("date") or "")[:10] or None,
                 _json(parsed),
@@ -445,6 +516,7 @@ def update_assistant_task(
 
 def conversation_task(chat_id: str, reply_message_id: int | None = None) -> dict[str, Any] | None:
     """Resolve a pending task from a bot reply, or the latest pending chat task."""
+    expire_stale_open_assistant_tasks(chat_id=str(chat_id), reason="expired_idle")
     params: tuple[Any, ...]
     reply_filter = ""
     if reply_message_id is not None:
