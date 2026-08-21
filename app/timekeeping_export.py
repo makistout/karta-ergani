@@ -82,7 +82,6 @@ def build_timekeeping_export_xlsx(
     families = (
         ("Υπερεργασία 20%", "overwork_breakdown"),
         ("Πρόσθετη μερικής 12%", "partial_additional_12_breakdown"),
-        ("Μερική 120%", "partial_120_breakdown"),
         ("Υπερωρία 40%", "overtime_40_breakdown"),
         ("Υπερωρία 60%", "overtime_60_breakdown"),
         ("Υπερωρία 120%", "overtime_120_breakdown"),
@@ -171,7 +170,6 @@ def build_timekeeping_detailed_export_xlsx(
     ]
     headers += _family_headers("Υπερεργασία 20%")
     headers += _family_headers("Πρόσθετη μερικής 12%") + ["Διάστημα πρόσθετης μερικής"]
-    headers += _family_headers("Μερική 120%")
     headers += _family_headers("Υπερωρία 40%")
     headers += _family_headers("Υπερωρία 60%")
     headers += _family_headers("Υπερωρία 120%")
@@ -180,10 +178,9 @@ def build_timekeeping_detailed_export_xlsx(
     groups = [
         (1, 3, "Επιχείρηση"), (4, 7, "Εργαζόμενος"), (8, 15, "Ημερήσια στοιχεία"),
         (16, 19, "Προσαυξήσεις βάσης"), (20, 23, "Υπερεργασία 20%"),
-        (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Μερική 120%"),
-        (33, 36, "Υπερωρία 40%"), (37, 40, "Υπερωρία 60%"),
-        (41, 44, "Υπερωρία 120%"), (45, 49, "6η ημέρα 30%"),
-        (50, 52, "Έλεγχος"),
+        (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Υπερωρία 40%"),
+        (33, 36, "Υπερωρία 60%"), (37, 40, "Υπερωρία 120%"),
+        (41, 45, "6η ημέρα 30%"), (46, 48, "Έλεγχος"),
     ]
     for start, end, label in groups:
         ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
@@ -228,7 +225,6 @@ def build_timekeeping_detailed_export_xlsx(
             *_breakdown_values(item, "overwork_breakdown"),
             *_breakdown_values(item, "partial_additional_12_breakdown"),
             " · ".join(str(value) for value in item.get("partial_additional_12_intervals") or []),
-            *_breakdown_values(item, "partial_120_breakdown"),
             *_breakdown_values(item, "overtime_40_breakdown"),
             *_breakdown_values(item, "overtime_60_breakdown"),
             *_breakdown_values(item, "overtime_120_breakdown"),
@@ -238,13 +234,13 @@ def build_timekeeping_detailed_export_xlsx(
         ])
 
     widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 22, 24, 25, 15, 18, 15,
-              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 20 + [18, 18, 20, 42]
+              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 16 + [18, 18, 20, 42]
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "J5"
     if ws.max_row > 4:
         ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
-    duration_columns = {13} | set(range(15, 28)) | set(range(29, 50))
+    duration_columns = {13} | set(range(15, 28)) | set(range(29, 46))
     for row in range(5, ws.max_row + 1):
         if row % 2:
             for cell in ws[row]:
@@ -257,7 +253,7 @@ def build_timekeeping_detailed_export_xlsx(
             cell.border = Border(bottom=_BORDER)
             cell.font = Font(name="Aptos", size=9)
             if cell.column not in duration_columns:
-                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 52))
+                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 48))
     ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
     ws.print_title_rows = "1:4"
     ws.sheet_properties.pageSetUpPr.fitToPage = True

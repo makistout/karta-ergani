@@ -150,10 +150,12 @@ def test_rotating_extra_day_splits_12_and_120_and_keeps_zones_exclusive():
     assert sunday["rotation_extra_day"] is True
     assert saturday["rotation_extra_day"] is True
     assert sunday["partial_additional_12"] == 480
-    assert sunday["partial_120"] == 120
+    assert sunday["partial_overtime_120_minutes"] == 120
+    assert sunday["overtime_120"] == 120
     assert sum(sunday["premium_minutes"].values()) == 0
     assert sum(sunday["partial_additional_12_breakdown"].values()) == 480
-    assert sum(sunday["partial_120_breakdown"].values()) == 120
+    assert sum(sunday["overtime_120_breakdown"].values()) == 120
+    assert sunday["partial_base_integrity_minutes"] == 480
     assert sunday["base_allocation_integrity_minutes"] == 600
 
 
@@ -381,11 +383,18 @@ def test_partial_extra_fallback_uses_last_workday_then_moves_backwards():
     assert days["23/08/2026"]["partial_additional_12_intervals"] == ["09:00–13:00"]
 
 
-def test_partial_above_full_daily_cap_is_120():
+def test_partial_above_full_daily_cap_is_overtime_120_outside_partial_base():
     rows = [_row(contract_kind="Μερική", weekly_days=5, contract_weekly_minutes=1200,
                  declared="09:00–18:00")]
     day = build_timekeeping_report(rows)["days"][0]
-    assert day["partial_120"] == 60
+    assert day["partial_overtime_120_minutes"] == 60
+    assert day["overtime_120"] == 60
+    # With only one recognized day the weekly 20-hour contract is not exceeded,
+    # so the 12% weekly gate remains closed; only the tail above 8:00 is 120%.
+    assert day["partial_additional_12"] == 0
+    assert day["partial_base_integrity_minutes"] == 480
+    assert day["base_allocation_integrity_minutes"] == 540
+    assert sum(day["premium_minutes"].values()) + day["partial_additional_12"] == 480
 
 
 def test_special_arrangement_does_not_finalize_overtime_category():

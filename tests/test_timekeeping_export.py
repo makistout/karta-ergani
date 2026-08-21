@@ -17,7 +17,7 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
             "sunday_holiday": 0, "night_sunday_holiday": 0,
             "partial_additional_12": 0, "sixth_day_minutes": 0,
             "overtime_40": 30, "overtime_60": 0, "overtime_120": 0,
-            "partial_120": 0, "annual_legal_overtime_minutes_after_period": 300,
+            "annual_legal_overtime_minutes_after_period": 300,
             "overtime_40_breakdown": {"day": 30, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         }],
         "days": [{
@@ -27,7 +27,7 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
             "break_interval": "", "recognized_work_minutes": 480,
             "premium_minutes": {"day": 420, "night": 60, "sunday_holiday": 0, "night_sunday_holiday": 0},
             "partial_additional_12": 0, "sixth_day_minutes": 0,
-            "overtime_40": 30, "overtime_60": 0, "overtime_120": 0, "partial_120": 0,
+            "overtime_40": 30, "overtime_60": 0, "overtime_120": 0,
             "overtime_40_breakdown": {"day": 30, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
             "warnings": [],
         }],
@@ -38,8 +38,8 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
     assert workbook["Σύνοψη"]["B4"].value == "012345678"
     assert workbook["Σύνοψη"]["C4"].value == timedelta(hours=8)
     assert workbook["Σύνοψη"]["C4"].number_format == "[h]:mm"
-    assert workbook["Σύνοψη"]["T3"].value == "Υπερωρία 40% – Ημέρας"
-    assert workbook["Σύνοψη"]["T4"].value == timedelta(minutes=30)
+    assert workbook["Σύνοψη"]["P3"].value == "Υπερωρία 40% – Ημέρας"
+    assert workbook["Σύνοψη"]["P4"].value == timedelta(minutes=30)
     assert workbook["Ανά ημέρα"]["F4"].value == "14:00–22:00"
 
 
@@ -52,11 +52,10 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
         "punch_recorded": "09:01–15:02", "recognized_span_minutes": 360,
         "recognized_work_minutes": 360, "break_interval": "",
         "premium_minutes": {"day": 360, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
-        "overwork_minutes": 0, "partial_additional_12": 120, "partial_120": 0,
+        "overwork_minutes": 0, "partial_additional_12": 120,
         "partial_additional_12_intervals": ["13:00–15:00"],
         "overwork_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         "partial_additional_12_breakdown": {"day": 120, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
-        "partial_120_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         "overtime_40": 0, "overtime_60": 0, "overtime_120": 0,
         "overtime_40_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         "overtime_60_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},

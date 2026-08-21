@@ -130,7 +130,6 @@ function renderRows(rows) {
   const families = [
     ["overwork_breakdown", "Υπερεργασία 20%"],
     ["partial_additional_12_breakdown", "Μερική 12%"],
-    ["partial_120_breakdown", "Μερική 120%"],
     ["overtime_40_breakdown", "Υπερωρία 40%"],
     ["overtime_60_breakdown", "Υπερωρία 60%"],
     ["overtime_120_breakdown", "Υπερωρία 120%"],
