@@ -811,7 +811,14 @@ def run_auto_close_prev_day_for_store(
                 )
                 time.sleep(delay_seconds)
         event_date = str(item.get("event_date_iso") or item["reference_date"]).strip()[:10]
-        event_at = f"{event_date}T{item['retro_time']}:00"
+        from app.punch_batch_stagger import apply_batch_stagger_to_clock_hm
+
+        retro_hm = apply_batch_stagger_to_clock_hm(
+            str(item.get("retro_time") or ""),
+            punch_index=idx - 1,
+            punch_total=len(plan),
+        )
+        event_at = f"{event_date}T{retro_hm}:00"
         event = str(item.get("event") or "check_out").strip() or "check_out"
         if event_at_is_future(parse_event_at(event_at, str(item["reference_date"]))):
             skipped.append({**item, "reason": FUTURE_EVENT_AT_ERROR, "event_at": event_at})

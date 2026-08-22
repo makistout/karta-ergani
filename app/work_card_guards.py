@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.date_util import format_date_for_ergani
-from app.repo_card import card_event_exists
+from app.repo_card import card_event_exists, latest_card_event_time_hm
 from app.repo_work_log_core import (
     work_log_has_hour_from,
     work_log_has_open_entry,
@@ -254,6 +254,13 @@ def checkout_requires_entry_error() -> dict[str, Any]:
     }
 
 
+def _time_at_suffix(time_hm: str | None) -> str:
+    hm = str(time_hm or "").strip()[:5]
+    if hm and _clock_to_minutes(hm) is not None:
+        return f" στις {hm}"
+    return ""
+
+
 def new_card_punch_blocked_reason(
     *,
     intent: str,
@@ -300,7 +307,12 @@ def new_card_punch_blocked_reason(
                 event_at=event_use,
             )
         if card_event_exists(emp, ref_use, "1"):
-            return "Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)"
+            exit_time = latest_card_event_time_hm(emp, ref_use, "1")
+            return (
+                "Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου"
+                + _time_at_suffix(exit_time)
+                + "."
+            )
         if not has_entry_for_checkout(
             employer_afm=employer_afm,
             branch_aa=branch_aa,
@@ -308,12 +320,17 @@ def new_card_punch_blocked_reason(
             reference_date_iso=ref_use,
             event_at=event_use,
         ):
-            return "Δεν επιτρέπεται έξοδος χωρίς είσοδο"
+            return "Δεν γίνεται κλείσιμο — δεν υπάρχει δήλωση εισόδου για αυτή την ημέρα."
         return None
 
     if "check_in" in key:
         if card_event_exists(emp, ref, "0"):
-            return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+            entry_time = latest_card_event_time_hm(emp, ref, "0")
+            return (
+                "Δεν γίνεται άνοιγμα — υπάρχει ήδη δήλωση εισόδου"
+                + _time_at_suffix(entry_time)
+                + "."
+            )
         # Αρχική may show «σε εργασία» from open πραγματική even before a local
         # WRKCardSE row exists — treat that as already open for a new check-in.
         try:
@@ -323,7 +340,17 @@ def new_card_punch_blocked_reason(
                 emp,
                 format_date_for_ergani(ref),
             ):
-                return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+                entry_time = work_log_open_hour_from(
+                    employer_afm,
+                    branch_aa,
+                    emp,
+                    format_date_for_ergani(ref),
+                )
+                return (
+                    "Δεν γίνεται άνοιγμα — υπάρχει ήδη ανοιχτή είσοδος στην πραγματική απασχόληση"
+                    + _time_at_suffix(entry_time)
+                    + "."
+                )
         except WorkCardPayloadError:
             pass
         return None

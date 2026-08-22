@@ -309,6 +309,7 @@ def _submit_work_card(
     ref_date = (body.get("reference_date") or "").strip()[:10]
     if not ref_date:
         ref_date = datetime.now(tz_athens()).date().isoformat()
+    explicit_event_at = bool(str(body.get("event_at") or "").strip())
     event_at_str = str(body.get("event_at") or "").strip() or None
     correction_mode = bool(body.get("correction_mode"))
     employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
@@ -364,6 +365,21 @@ def _submit_work_card(
     submitted_at = datetime.now(tz_athens())
     if not event_at_str:
         event_at_str = submitted_at.isoformat(timespec="seconds")
+    try:
+        batch_index = int(body.get("batch_index") or 0)
+        batch_total = int(body.get("batch_total") or 0)
+    except (TypeError, ValueError):
+        batch_index = 0
+        batch_total = 0
+    if batch_total > 1 and batch_index >= 1 and explicit_event_at:
+        from app.punch_batch_stagger import apply_batch_stagger_to_event_at
+
+        event_at_str = apply_batch_stagger_to_event_at(
+            event_at_str,
+            reference_date=ref_date,
+            punch_index=batch_index - 1,
+            punch_total=batch_total,
+        )
     aitiologia_raw = aitiologia_for_wrk_card_submit(
         f_type=resolved_type,
         reference_date=ref_date,

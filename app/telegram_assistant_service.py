@@ -213,6 +213,7 @@ def _assistant_prompt_guide() -> list[str]:
         "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· επίλεξε ένα ΑΦΜ από candidate_* και κληρονόμησε preserve_*. Αν preserve_intent λείπει/είναι unknown (παλιό task), ανάκτησε την ενέργεια από original_message και κράτησέ την στο intent.",
         "Όσο υπάρχει pending_clarification, το message αφορά ΠΑΝΤΑ την ίδια τρέχουσα εντολή. Συμπλήρωσε ή διόρθωσε μόνο όσα ζητά ο χρήστης και κληρονόμησε όλα τα υπόλοιπα preserve_*· νέα ανεξάρτητη εντολή δεν δημιουργείται μέχρι εκτέλεση/ακύρωση/τερματισμό.",
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
+        "Κάρτα — ΚΡΙΣΙΜΟ: μην αντιστρέφεις ποτέ είσοδο/έξοδο. Ρητή λεξηλογία: άνοιξε/open/clock in/check in/checkin/είσοδος → card_check_in_*· κλείσε/close/clock out/check out/checkout/έξοδος → card_check_out_*. «Άνοιξε κάρτα» ΠΟΤΕ check_out. «Κλείσε κάρτα» ΠΟΤΕ check_in. Αν το μήνυμα έχει ρήμα άνοιγματος, το intent ΠΡΕΠΕΙ να περιέχει check_in.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν Χ λεπτά» / «Χ λεπτά πριν» = *_retro από το now (τώρα − Χ)· ΠΟΤΕ όχι από την ώρα εισόδου/εξόδου της κάρτας. Αν εννοεί offset από χτύπημα, πρέπει να το πει ρητά («Χ λεπτά πριν την είσοδο/έξοδο»). «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Αλλαγή ωραρίου / νέο ωράριο / από–έως (π.χ. «15:00 έως 21:40», «αλλαγή ωραρίου») → intent=schedule_change με hour_from+hour_to. ΜΗΝ βάζεις unknown όταν υπάρχουν ώρες από–έως.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
@@ -779,10 +780,17 @@ def _inherit_conversation_context(
         parsed["intent"] = "schedule_change"
         intent = "schedule_change"
     elif intent == "unknown" and has_employee:
-        if any(token in folded for token in ("κλειστ", "κλεισε", "close", "checkout", "εξοδ")):
+        from app.assistant_card_intent import card_action_direction_from_text
+
+        direction = card_action_direction_from_text(user_text)
+        if direction == "check_out":
             parsed["intent"] = "card_check_out_retro" if parsed.get("time") else "card_check_out_now"
-        elif any(token in folded for token in ("ανοιξε", "ανοίξε", "open", "checkin", "εισοδ")):
+        elif direction == "check_in":
             parsed["intent"] = "card_check_in_retro" if parsed.get("time") else "card_check_in_now"
+    else:
+        from app.assistant_card_intent import correct_card_intent_from_text
+
+        correct_card_intent_from_text(parsed, user_text)
     if str(parsed.get("intent") or "unknown") not in {"unknown", "today_info"} and not str(parsed.get("date") or "").strip():
         parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
 
@@ -969,11 +977,7 @@ def _validate_single_command(
             label = f"{match.get('name') or afm}: {reason}"
             # Soft skips: already open/closed / no entry — continue with others.
             # Hard errors (e.g. future time): block as clarification.
-            soft = (
-                "έχει ήδη ανοίξει" in reason
-                or "έχει ήδη κλείσει" in reason
-                or "χωρίς είσοδο" in reason
-            )
+            soft = reason.startswith("Δεν γίνεται ")
             if soft:
                 skipped_card.append(label)
             else:
@@ -1035,12 +1039,14 @@ def _validate_single_command(
     elif intent == "cancel_pending":
         proposed = str(parsed.get("clarification_question") or "Ακυρώθηκε η εντολή.").strip()
     elif parsed.get("card_action_all_skipped"):
-        action = "άνοιγμα" if "check_in" in intent else "κλείσιμο"
-        proposed = (
-            f"Κανένας εργαζόμενος δεν είναι επιλέξιμος για {action} κάρτας.\n"
-            "Παραλείφθηκαν:\n"
-            + "\n".join(f"• {item}" for item in skipped_card)
-        )
+        action_noun = "άνοιγμα" if "check_in" in intent else "κλείσιμο"
+        if len(skipped_card) == 1:
+            proposed = skipped_card[0]
+        else:
+            proposed = (
+                f"Δεν είναι δυνατό το {action_noun} κάρτας:\n"
+                + "\n".join(f"• {item}" for item in skipped_card)
+            )
     elif intent in {"card_check_in_schedule", "card_check_out_schedule"} and matches:
         proposed = "\n".join(
             f"{match.get('name') or match.get('afm')} · {display_date} · {labels[intent]} {schedule_times.get(str(match.get('afm') or ''), '—')}"

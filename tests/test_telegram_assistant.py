@@ -142,7 +142,7 @@ def test_checkout_validation_skips_already_closed_cards():
 
     def fake_guard(*, employee_afm, **kwargs):
         if employee_afm == "444555666":
-            return "Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)"
+            return "Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου στις 17:00."
         return None
 
     with patch("app.work_card_guards.new_card_punch_blocked_reason", side_effect=fake_guard):
@@ -161,7 +161,7 @@ def test_checkout_validation_skips_already_closed_cards():
     assert parsed["employee_afms"] == ["111222333"]
     assert "Παραλείφθηκαν" in proposed
     assert "CLOSED TWO" in proposed
-    assert "ήδη κλείσει" in proposed
+    assert "Δεν γίνεται κλείσιμο" in proposed
 
 
 def test_checkin_validation_skips_already_open_cards():
@@ -179,7 +179,7 @@ def test_checkin_validation_skips_already_open_cards():
 
     def fake_guard(*, employee_afm, **kwargs):
         if employee_afm == "444555666":
-            return "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+            return "Δεν γίνεται άνοιγμα — υπάρχει ήδη δήλωση εισόδου στις 12:40."
         return None
 
     with patch("app.work_card_guards.new_card_punch_blocked_reason", side_effect=fake_guard):
@@ -198,7 +198,7 @@ def test_checkin_validation_skips_already_open_cards():
     assert parsed["employee_afms"] == ["111222333"]
     assert "Παραλείφθηκαν" in proposed
     assert "OPEN TWO" in proposed
-    assert "ήδη ανοίξει" in proposed
+    assert "Δεν γίνεται άνοιγμα" in proposed
 
 
 def test_card_action_all_skipped_is_answered_not_clarification():
@@ -215,7 +215,7 @@ def test_card_action_all_skipped_is_answered_not_clarification():
 
     with patch(
         "app.work_card_guards.new_card_punch_blocked_reason",
-        return_value="Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)",
+        return_value="Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου στις 18:00.",
     ):
         status, validation, proposed = validate_and_describe(
             parsed,
@@ -230,9 +230,8 @@ def test_card_action_all_skipped_is_answered_not_clarification():
     assert status == "answered"
     assert validation["valid"] is True
     assert parsed.get("employee_afms") == []
-    assert "Κανένας εργαζόμενος δεν είναι επιλέξιμος" in proposed
-    assert "Παραλείφθηκαν" in proposed
-    assert "ήδη κλείσει" in proposed
+    assert "Δεν είναι δυνατό το κλείσιμο κάρτας" in proposed
+    assert "Δεν γίνεται κλείσιμο" in proposed
 
 
 def test_employee_catalog_only_includes_active_store_employees():
@@ -696,7 +695,7 @@ def test_gemini_transient_503_is_retried_then_succeeds():
     assert post.call_count == 2
     assert "gemini-3.5-flash-lite" in post.call_args_list[0].args[0]
     assert "gemini-3.5-flash" in post.call_args_list[1].args[0]
-    sleep.assert_not_called()
+    sleep.assert_called_once()
     assert parsed["intent"] == "card_check_in_now"
     assert returned_employees == employees
     assert metadata["usage_metadata"]["totalTokenCount"] == 25

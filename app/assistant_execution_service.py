@@ -88,6 +88,7 @@ def _submit_leave(store: dict[str, Any], bearer: str, client: Any, employee: dic
 
 def _execute_command(
     store: dict[str, Any], bearer: str, client: Any, parsed: dict[str, Any], *, source: str,
+    punch_index_offset: int = 0, punch_total: int = 1,
 ) -> list[dict[str, Any]]:
     store_id = int(parsed.get("store_id") or store.get("id") or 0)
     afms = [str(value or "").strip() for value in (parsed.get("employee_afms") or []) if str(value or "").strip()]
@@ -98,6 +99,7 @@ def _execute_command(
     results: list[dict[str, Any]] = []
     for index, employee in enumerate(employees, start=1):
         name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
+        global_batch_index = punch_index_offset + index
         if intent.startswith("card_check_"):
             from app.routes_work_card import _submit_work_card
             from app.work_card_guards import new_card_punch_blocked_reason
@@ -129,7 +131,8 @@ def _execute_command(
                 "employee_afm": employee.get("afm"), "eponymo": employee.get("eponymo"),
                 "onoma": employee.get("onoma"), "employee_name": name, "event": event,
                 "reference_date": parsed.get("date"), "source": source,
-                "batch_index": index, "batch_total": len(employees),
+                "batch_index": global_batch_index,
+                "batch_total": max(punch_total, len(employees)),
             }
             if event_time:
                 body["event_at"] = f"{parsed.get('date')}T{event_time}:00"
@@ -185,9 +188,24 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
         store["api_base_url"] = client.base_url
         results: list[dict[str, Any]] = []
         commands = parsed.get("commands") if isinstance(parsed.get("commands"), list) else [parsed]
-        for command in commands:
-            if isinstance(command, dict):
-                results.extend(_execute_command(store, bearer, client, command, source=source))
+        from app.punch_batch_stagger import count_card_punches_in_commands
+
+        normalized_commands = [command for command in commands if isinstance(command, dict)]
+        punch_total = count_card_punches_in_commands(normalized_commands) or 1
+        punch_offset = 0
+        for command in normalized_commands:
+            results.extend(
+                _execute_command(
+                    store, bearer, client, command, source=source,
+                    punch_index_offset=punch_offset, punch_total=punch_total,
+                )
+            )
+            intent = str(command.get("intent") or "")
+            if intent.startswith("card_check_"):
+                afms = command.get("employee_afms")
+                if not isinstance(afms, list):
+                    afms = [command.get("employee_afm")] if command.get("employee_afm") else []
+                punch_offset += len([str(a or "").strip() for a in afms if str(a or "").strip()])
         success = bool(results) and all(bool(row.get("success")) for row in results)
         result = {"success": success, "results": results}
     except Exception as exc:

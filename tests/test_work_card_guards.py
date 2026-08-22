@@ -145,6 +145,7 @@ def test_new_card_punch_blocked_reason_rejects_closed_card_checkout(monkeypatch)
         lambda emp, day, f_type: f_type == "1",
     )
     monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "18:30")
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_out_now",
         employer_afm="123",
@@ -152,7 +153,7 @@ def test_new_card_punch_blocked_reason_rejects_closed_card_checkout(monkeypatch)
         employee_afm="111222333",
         reference_date_iso="2026-08-18",
     )
-    assert reason == "Η κάρτα έχει ήδη κλείσει (δήλωση εξόδου)"
+    assert reason == "Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου στις 18:30."
 
 
 def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
@@ -162,6 +163,7 @@ def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
         lambda emp, day, f_type: f_type == "0",
     )
     monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: False)
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "12:40")
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_in_now",
         employer_afm="123",
@@ -169,13 +171,14 @@ def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
         employee_afm="111222333",
         reference_date_iso="2026-08-18",
     )
-    assert reason == "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+    assert reason == "Δεν γίνεται άνοιγμα — υπάρχει ήδη δήλωση εισόδου στις 12:40."
 
 
 def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monkeypatch):
     """Πραγματική ανοιχτή (χωρίς WRKCardSE) μετράει ως ήδη ανοιχτή κάρτα."""
     monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
     monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: True)
+    monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: "09:15")
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_in_retro",
         employer_afm="123",
@@ -184,7 +187,10 @@ def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monke
         reference_date_iso="2026-08-20",
         event_at="2026-08-20T11:50:00",
     )
-    assert reason == "Η κάρτα έχει ήδη ανοίξει (δήλωση εισόδου)"
+    assert (
+        reason
+        == "Δεν γίνεται άνοιγμα — υπάρχει ήδη ανοιχτή είσοδος στην πραγματική απασχόληση στις 09:15."
+    )
 
 
 def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):

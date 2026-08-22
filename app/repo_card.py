@@ -282,6 +282,38 @@ def card_event_exists(employee_afm: str, reference_date: str, f_type: str) -> bo
         return bool(row and row[0] > 0)
 
 
+def latest_card_event_time_hm(
+    employee_afm: str,
+    reference_date: str,
+    f_type: str,
+) -> str | None:
+    """Τελευταία επιτυχημένη δήλωση κάρτας (είσοδος/έξοδος) — ώρα HH:MM."""
+    from app.date_util import format_f_date_time
+
+    emp = norm_afm(employee_afm)
+    ref = str(reference_date or "").strip()[:10]
+    ft = str(f_type or "").strip()
+    if not emp or not ref or ft not in ("0", "1"):
+        return None
+    sql = """
+        SELECT TOP 1 e.f_date
+        FROM dbo.karta_card_event e
+        INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+        WHERE e.f_afm = ? AND e.f_reference_date = ? AND e.f_type = ?
+          AND d.success = 1
+        ORDER BY e.id DESC
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql, (emp, ref, ft))
+        row = cur.fetchone()
+    if not row or not row[0]:
+        return None
+    hm = format_f_date_time(str(row[0]))
+    if len(hm) >= 5:
+        return hm[:5]
+    return hm or None
+
+
 def list_card_events_for_store_date(
     employer_afm: str,
     branch_aa: str,
