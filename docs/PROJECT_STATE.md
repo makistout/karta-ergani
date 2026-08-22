@@ -128,6 +128,9 @@
 
 - Υποβολή live και προγενέστερης καταχώρησης από `/ui/work-card` και `/ui/retro-hit` (Telegram link).
 - **Έξοδος μόνο με είσοδο**: απαιτείται κάρτα `f_type=0` ή `Από` στην πραγματική (`app/work_card_guards.py`).
+- **Απόρριψη ήδη κλειστής**: έξοδος μπλοκάρεται αν υπάρχει ήδη `f_type=1` (WRKCardSE)
+  **ή** πραγματική με Από+Έως (`work_log_closed_hour_to`) — ακόμα κι αν λείπει
+  πρωτόκολλο εξόδου κάρτας.
 - **Overnight / νυχτερινή έξοδος (< 03:00)**: `normalize_overnight_checkout_reference` —
   `f_reference_date` = μέρα εργασίας (είσοδος), `event_at` = ημερολογιακή ώρα εξόδου → ίδια γραμμή Ergani με `*`.
   Ισχύει σε auto-close, Κλείστε όλα, χειροκίνητη κάρτα, Telegram/API. UI σημείωση σε work-card / retro-hit / today-hit.
