@@ -9,6 +9,7 @@ const employeesState = {
   allRows: [],
   store: null,
   openPunchesMonthLabel: "",
+  normalLeaveLatestMonth: null,
   activeCount: 0,
   inactiveCount: 0,
   filter: "active",
@@ -67,6 +68,7 @@ async function loadEmployees() {
     employeesState.allRows = data.employees || [];
     employeesState.store = data.store || null;
     employeesState.openPunchesMonthLabel = data.open_punches_month_label || "";
+    employeesState.normalLeaveLatestMonth = data.normal_leave_latest_month || null;
     const counts = getEmployeeCounts();
     employeesState.activeCount = counts.active;
     employeesState.inactiveCount = counts.inactive;
@@ -171,6 +173,7 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
     "Όνομα",
     "Σύμβαση",
     "Ευελ. (λεπτά)",
+    "Άδεια",
     openPunchesHeader,
     "Κατάσταση",
     "__monthly__",
@@ -197,6 +200,11 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
       th.title = openPunchesMonthLabel
         ? `Ανοιχτά χτυπήματα ${openPunchesMonthLabel}`
         : "Ανοιχτά χτυπήματα";
+    } else if (h === "Άδεια") {
+      th.className = "col-normal-leave";
+      th.innerHTML = `<span>Άδεια</span>` +
+        (employeesState.normalLeaveLatestMonth ? `<small>${Office.escapeHtml(employeesState.normalLeaveLatestMonth)}</small>` : "");
+      th.title = "Ημέρες κανονικής άδειας που έχουν ληφθεί / δικαιούμενες ημέρες";
     } else if (h === "Κατάσταση") {
       th.className = "col-status";
       th.textContent = h;
@@ -255,6 +263,18 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
     tdFlex.className = "col-flex";
     tdFlex.textContent = Office.formatFlexMinutes(emp.flex_arrival_minutes);
     tr.appendChild(tdFlex);
+
+    const leaveTaken = emp.normal_leave_days_taken;
+    const leaveEntitled = emp.normal_leave_entitled_days;
+    const tdLeave = document.createElement("td");
+    tdLeave.className = "col-normal-leave";
+    tdLeave.textContent = leaveTaken == null || leaveEntitled == null
+      ? "—"
+      : `${Number(leaveTaken)}/${Number(leaveEntitled)}`;
+    tdLeave.title = leaveTaken == null || leaveEntitled == null
+      ? "Δεν υπάρχουν διαθέσιμα στοιχεία κανονικής άδειας για το τρέχον έτος"
+      : `${leaveTaken} ημέρες κανονικής άδειας από ${leaveEntitled} δικαιούμενες`;
+    tr.appendChild(tdLeave);
 
     const openCount = Number(emp.open_punches_month) || 0;
     const tdOpen = document.createElement("td");

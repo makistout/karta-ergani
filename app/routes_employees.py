@@ -23,6 +23,10 @@ from app.repo_apologistic import enrich_employee_month_days, list_employee_days
 from app.apologistic import build_weekly_report
 from app.date_util import iso_to_ergani_dates
 from app.repo_schedule import list_schedule_for_range
+from app.repo_employee_leave import (
+    load_current_year_normal_leave,
+    load_schedule_archive_latest_month,
+)
 from app.repo_work_log import (
     count_incomplete_punches_by_employee_for_month,
     list_work_log_for_range,
@@ -53,6 +57,18 @@ def _contract_summary(contract: dict | None) -> str | None:
     if days:
         return f"{kind} · {days}ημ."
     return kind
+
+
+def _annual_normal_leave_entitlement(contract: dict | None) -> int | None:
+    """Annual normal-leave entitlement used by the employee list (5-day/6-day)."""
+    if not contract:
+        return None
+    days_raw = str(contract.get("weekly_work_days") or "")
+    if "6" in days_raw:
+        return 26
+    if "5" in days_raw:
+        return 22
+    return None
 
 
 def _iso_rows(rows: list[dict]) -> list[dict]:
@@ -98,11 +114,26 @@ def employees_list():
         contracts_by_afm = {}
     open_punches = count_incomplete_punches_by_employee_for_month(employer_afm, branch_aa)
     today = date.today()
+    employee_afms = [
+        norm_afm(str(row.get("afm") or "")) for row in rows
+        if norm_afm(str(row.get("afm") or ""))
+    ]
+    try:
+        normal_leave = load_current_year_normal_leave(
+            store_id=int(ctx["id"]), employee_afms=employee_afms, today=today,
+        )
+        leave_latest_month = load_schedule_archive_latest_month(store_id=int(ctx["id"]))
+    except pyodbc.Error:
+        normal_leave = {}
+        leave_latest_month = None
     for row in rows:
         afm = norm_afm(str(row.get("afm") or ""))
         contract = contracts_by_afm.get(afm)
         row["contract_label"] = _contract_summary(contract)
         row["open_punches_month"] = int(open_punches.get(afm) or 0)
+        leave = normal_leave.get(afm)
+        row["normal_leave_days_taken"] = int(leave["days_taken"]) if leave else None
+        row["normal_leave_entitled_days"] = _annual_normal_leave_entitlement(contract)
     _iso_rows(rows)
     active_count = sum(1 for row in rows if row.get("active") not in (False, 0))
     return jsonify({
@@ -119,6 +150,9 @@ def employees_list():
         "inactive_count": len(rows) - active_count,
         "employees": rows,
         "open_punches_month_label": f"{today.strftime('%m/%Y')}",
+        "normal_leave_latest_month": (
+            leave_latest_month.strftime("%m/%Y") if leave_latest_month else None
+        ),
         "hint": (
             "Οι εργαζόμενοι συνδέονται με εργοδότη μέσω karta_employment "
             "(όχι απευθείας στο karta_employee). Η λίστα φιλτράρεται από το ενεργό σημείο."

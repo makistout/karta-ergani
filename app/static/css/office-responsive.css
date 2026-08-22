@@ -653,6 +653,27 @@ body.login-page {
   font-size: 0.88rem;
 }
 
+#employeesWrap table.employees-list-table th.col-normal-leave,
+#employeesWrap table.employees-list-table td.col-normal-leave {
+  width: 4.5rem;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+#employeesWrap table.employees-list-table th.col-normal-leave span,
+#employeesWrap table.employees-list-table th.col-normal-leave small {
+  display: block;
+  line-height: 1.15;
+}
+
+#employeesWrap table.employees-list-table th.col-normal-leave small {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
 #employeesWrap table.employees-list-table th.col-open-punches span,
 #employeesWrap table.employees-list-table th.col-open-punches small {
   display: block;
