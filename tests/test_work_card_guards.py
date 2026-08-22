@@ -146,14 +146,42 @@ def test_new_card_punch_blocked_reason_rejects_closed_card_checkout(monkeypatch)
     )
     monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
     monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "18:30")
+    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
+    monkeypatch.setattr(
+        guards,
+        "normalize_overnight_checkout_reference",
+        lambda **k: (k["reference_date_iso"], k.get("event_at")),
+    )
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_out_now",
-        employer_afm="123",
+        employer_afm="123456789",
         branch_aa="0",
         employee_afm="111222333",
         reference_date_iso="2026-08-18",
     )
     assert reason == "Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου στις 18:30."
+
+
+def test_new_card_punch_blocked_reason_rejects_work_log_already_closed(monkeypatch):
+    """Πραγματική με Από+Έως · χωρίς WRKCardSE out → απορρίπτεται το κλείσιμο."""
+    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: "20:00")
+    monkeypatch.setattr(
+        guards,
+        "normalize_overnight_checkout_reference",
+        lambda **k: (k["reference_date_iso"], k.get("event_at")),
+    )
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_out_retro",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-22",
+        event_at="2026-08-22T23:00:00",
+    )
+    assert reason == (
+        "Δεν γίνεται κλείσιμο — υπάρχει ήδη έξοδος στην πραγματική απασχόληση στις 20:00."
+    )
 
 
 def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
@@ -196,6 +224,7 @@ def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monke
 def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):
     monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
     monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
+    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
     monkeypatch.setattr(
         guards,
         "normalize_overnight_checkout_reference",

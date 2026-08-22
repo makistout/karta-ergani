@@ -164,6 +164,47 @@ def test_checkout_validation_skips_already_closed_cards():
     assert "Δεν γίνεται κλείσιμο" in proposed
 
 
+def test_close_all_open_cards_replaces_llm_list_with_open_only():
+    """«κλείσε όλες στις 23:00» → μόνο ανοιχτές, όχι ήδη κλειστές όπως ΤΟΥΜΑΡΑΣ."""
+    parsed = {
+        "intent": "card_check_out_retro",
+        "store_id": 12,
+        "employee_afms": ["111", "222", "333"],  # LLM επινόησε και κλειστούς
+        "date": "2026-08-22",
+        "time": "23:00",
+    }
+    employees = [
+        {"store_id": 12, "afm": "111", "name": "OPEN A"},
+        {"store_id": 12, "afm": "222", "name": "OPEN B"},
+        {"store_id": 12, "afm": "333", "name": "TOUMARAS CLOSED"},
+    ]
+    open_matches = [
+        {"store_id": 12, "afm": "111", "name": "OPEN A"},
+        {"store_id": 12, "afm": "222", "name": "OPEN B"},
+    ]
+    with patch(
+        "app.telegram_assistant_service._open_checkout_matches_for_date",
+        return_value=open_matches,
+    ), patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 12,
+                "store_name": "APERIO",
+                "employer_afm": "800994796",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+            user_text="κλείσε όλες στις 23.00",
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["employee_afms"] == ["111", "222"]
+    assert "OPEN A" in proposed
+    assert "OPEN B" in proposed
+    assert "TOUMARAS" not in proposed
+
+
 def test_checkin_validation_skips_already_open_cards():
     parsed = {
         "intent": "card_check_in_retro",

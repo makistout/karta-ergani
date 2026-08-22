@@ -9,6 +9,7 @@ from typing import Any
 from app.date_util import format_date_for_ergani
 from app.repo_card import card_event_exists, latest_card_event_time_hm
 from app.repo_work_log_core import (
+    work_log_closed_hour_to,
     work_log_has_hour_from,
     work_log_has_open_entry,
     work_log_open_hour_from,
@@ -311,6 +312,19 @@ def new_card_punch_blocked_reason(
             return (
                 "Δεν γίνεται κλείσιμο — υπάρχει ήδη δήλωση εξόδου"
                 + _time_at_suffix(exit_time)
+                + "."
+            )
+        # Πραγματική με Από+Έως μετράει ως ήδη κλειστή (ακόμα κι αν λείπει WRKCardSE out).
+        closed_to = work_log_closed_hour_to(
+            employer_afm,
+            branch_aa,
+            emp,
+            format_date_for_ergani(ref_use),
+        )
+        if closed_to:
+            return (
+                "Δεν γίνεται κλείσιμο — υπάρχει ήδη έξοδος στην πραγματική απασχόληση"
+                + _time_at_suffix(closed_to)
                 + "."
             )
         if not has_entry_for_checkout(

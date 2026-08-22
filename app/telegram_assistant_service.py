@@ -219,7 +219,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
         "today_home είναι ΠΑΝΤΑ παρόν: stores=σήμερα (πλήρες)· yesterday=μόνο ανοιχτές κάρτες χθες (overnight). Ερωτήσεις σήμερα → stores. Ερωτήσεις/κλείσιμο ανοιχτών «χθες»/εχθές → yesterday + date=yesterday_date. today_info: βάλε την πλήρη απάντηση στο clarification_question από τα πραγματικά δεδομένα. Μην λες «δεν υπάρχουν δεδομένα» αν υπάρχει yesterday· αν open_count=0 πες ρητά ότι δεν υπάρχουν ανοιχτές εκείνη την ημέρα.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
-        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ από yesterday.",
+        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
@@ -795,6 +795,49 @@ def _inherit_conversation_context(
         parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
 
 
+def _asks_close_all_open_cards(text: str) -> bool:
+    """«κλείσε όλες / όσους / ανοιχτές» χωρίς ρητά ονόματα → λίστα ανοιχτών."""
+    folded = _fold_text(text)
+    if not any(token in folded for token in ("κλεισ", "close", "checkout", "clockout", "clock out")):
+        return False
+    return any(
+        token in folded
+        for token in ("ολεσ", "ολουσ", "οσουσ", "οσα", "ολα", "ανοιχτ", "all")
+    )
+
+
+def _open_checkout_matches_for_date(
+    *,
+    store_context: dict[str, Any],
+    employees: list[dict[str, Any]],
+    store_id: int,
+    date_iso: str,
+) -> list[dict[str, Any]]:
+    """Εργαζόμενοι καταστήματος με ανοιχτή κάρτα την ημερομηνία (Αρχική/report)."""
+    from app.assistant_home_context import compact_home_employee_row, is_open_home_employee
+    from app.card_report import build_card_status_report
+
+    report = build_card_status_report(
+        str(store_context.get("employer_afm") or ""),
+        str(store_context.get("branch_aa") or "0"),
+        date_iso=date_iso,
+    )
+    open_afms: list[str] = []
+    for row in report.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        compact = compact_home_employee_row(row)
+        if is_open_home_employee(compact):
+            afm = str(compact.get("afm") or "").strip()
+            if afm:
+                open_afms.append(afm)
+    open_set = set(open_afms)
+    return [
+        emp for emp in employees
+        if emp.get("store_id") == store_id and str(emp.get("afm") or "").strip() in open_set
+    ]
+
+
 def _validate_single_command(
     parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
     reply_context: dict[str, Any] | None = None, user_text: str = "",
@@ -891,6 +934,10 @@ def _validate_single_command(
         intent not in {"unknown", *_INFO_INTENTS}
         and not ambiguous_afms
         and (not afms or len(matches) != len(afms))
+        and not (
+            intent.startswith("card_check_out")
+            and _asks_close_all_open_cards(user_text)
+        )
     ):
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
@@ -939,6 +986,29 @@ def _validate_single_command(
             else:
                 errors.append(f"Δεν βρέθηκε ώρα {'έναρξης' if field == 'hour_from' else 'λήξης'} στο ωράριο για {match.get('name') or afm}")
         parsed["resolved_schedule_times"] = schedule_times
+
+    # «κλείσε όλες» → μόνο πραγματικά ανοιχτές εκείνης της ημέρας (όχι επινόηση LLM).
+    if (
+        intent.startswith("card_check_out")
+        and store_id in allowed_store_ids
+        and _is_iso_date(date)
+        and not errors
+        and _asks_close_all_open_cards(user_text)
+    ):
+        store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+        matches = _open_checkout_matches_for_date(
+            store_context=store_context,
+            employees=employees,
+            store_id=int(store_id),
+            date_iso=date,
+        )
+        afms = [str(item.get("afm") or "") for item in matches if str(item.get("afm") or "")]
+        parsed["employee_afms"] = afms
+        parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
+        if not matches:
+            errors.append(
+                "Δεν υπάρχουν ανοιχτές κάρτες για κλείσιμο αυτή την ημερομηνία"
+            )
 
     skipped_card: list[str] = []
     if (

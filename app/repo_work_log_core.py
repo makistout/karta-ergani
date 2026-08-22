@@ -235,6 +235,41 @@ def work_log_open_hour_from(
     return str(row[0] or "").strip() or None
 
 
+def work_log_closed_hour_to(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    work_date: str,
+) -> str | None:
+    """Ώρα Έως κλειστής πραγματικής (Από+Έως), αλλιώς None."""
+    erg = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    emp = norm_afm(employee_afm)
+    wd = str(work_date or "").strip()
+    if not erg or not emp or not wd:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) hour_to
+            FROM dbo.karta_work_log
+            WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
+              AND (
+                work_date = ?
+                OR TRY_CONVERT(date, work_date, 103) = TRY_CONVERT(date, ?, 103)
+              )
+              AND NULLIF(LTRIM(RTRIM(ISNULL(hour_from, N''))), N'') IS NOT NULL
+              AND NULLIF(LTRIM(RTRIM(ISNULL(hour_to, N''))), N'') IS NOT NULL
+            ORDER BY id DESC
+            """,
+            (erg, aa, emp, wd, wd),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return str(row[0] or "").strip() or None
+
+
 def list_work_log_for_range(
     employer_afm: str,
     branch_aa: str,
