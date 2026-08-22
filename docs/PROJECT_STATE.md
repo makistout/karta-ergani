@@ -241,8 +241,10 @@
 - **Gemini prompt** (`app/telegram_assistant_service.py`, συμπυκνωμένο `guide`):
   - `allowed_employees` — μόνο **ενεργοί** εργαζόμενοι του καταστήματος
     (`list_active_employees_for_store`, `karta_employment.active = 1`);
-  - **`today_home`** — snapshot Αρχικής **μόνο για σήμερα**, στέλνεται **πάντα**
-    στο Gemini με cache ~45s (`app/assistant_home_context.py`)·
+  - **`today_home`** — snapshot Αρχικής **σήμερα (πλήρες) + χθες (μόνο ανοιχτές
+    κάρτες)** για overnight, στέλνεται **πάντα** στο Gemini με cache ~45s
+    (`app/assistant_home_context.py`)· ερωτήσεις/κλείσιμο «ανοιχτές χθες» από
+    `yesterday` / `yesterday_date`·
   - **`conversation_focus`** / `pending_clarification` — πλαίσιο συνομιλίας και
     απαντήσεις σε «Εννοείτε…» / ακύρωση στο ίδιο `#N`·
   - greeklish και φωνητική αντιστοίχιση ονομάτων· παραδείγματα στο prompt **όχι**
