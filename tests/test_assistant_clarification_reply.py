@@ -110,6 +110,71 @@ def test_multi_store_asks_list_when_message_has_no_store(monkeypatch):
     assert created["store_id"] is None
 
 
+def test_sticky_store_from_previous_today_info_without_reply(monkeypatch):
+    """Μετά «στο Ερατο ποιοι δουλεύουν», follow-up χωρίς reply κρατάει το Ερατο."""
+    created: dict = {}
+    parsed_seen: dict = {}
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+
+    def fake_create_task(**kwargs):
+        created.update(kwargs)
+        return 912
+
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create_task)
+
+    def fake_parse(**kwargs):
+        parsed_seen["reply_store"] = (kwargs.get("reply_context") or {}).get("store_id")
+        return (
+            {
+                "intent": "card_check_out_now",
+                "store_id": 9,
+                "employee_afms": ["111", "222"],
+                "date": "2026-08-22",
+                "confidence": 1.0,
+            },
+            [],
+            {},
+        )
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: (
+            "draft",
+            {"valid": True, "errors": [], "execution_enabled": True},
+            "Κλείσιμο κάρτας",
+        ),
+    )
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+        {"store_id": 10, "store_name": "APERIO", "employer_afm": "3", "branch_aa": "0", "recipient_id": 40},
+    ]
+    # latest_chat_context shape: store_id from previous answered today_info, no focus_locked
+    result = process_assistant_command(
+        text="κλείσε όσους τελειώνουν 19:40",
+        contexts=contexts,
+        inbound_id=204,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+        reply_context={
+            "store_id": 9,
+            "notification_type": "assistant_reply",
+            "message_text": "Στο ERATO εργάζονται ακόμα: …",
+            "context": {"store_id": 9},
+        },
+    )
+    assert result["status"] == "draft"
+    assert "Επιλέξτε κατάστημα" not in result["answer"]
+    assert parsed_seen["reply_store"] == 9
+    assert created.get("store_id") == 9
+
+
 def test_store_choice_reply_replays_original_message(monkeypatch):
     updated: dict = {}
     pending = {

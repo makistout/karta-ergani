@@ -236,6 +236,23 @@ def _match_store_choice_reply(
     return None
 
 
+def _store_id_from_reply_context(reply_context: dict[str, Any] | None) -> int | None:
+    """Store από reply ή τελευταίο outbound (top-level ή nested context)."""
+    reply = reply_context if isinstance(reply_context, dict) else {}
+    candidates: list[Any] = [reply.get("store_id")]
+    nested = reply.get("context")
+    if isinstance(nested, dict):
+        candidates.append(nested.get("store_id"))
+    for raw in candidates:
+        if raw is None or raw == "":
+            continue
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _resolve_access_store_id(
     *,
     text: str,
@@ -247,7 +264,7 @@ def _resolve_access_store_id(
     Phone/chat → allowed stores:
       1 store → that one
       many → unique name in message
-      reply with focus_locked → sticky store
+      sticky από reply / τελευταίο outbound (και χωρίς focus_locked)
       else → None (caller asks store list)
     """
     from app.telegram_assistant_service import _mentioned_store_ids
@@ -267,14 +284,9 @@ def _resolve_access_store_id(
     mentioned = _mentioned_store_ids(text, contexts)
     if len(mentioned) == 1 and mentioned[0] in allowed:
         return mentioned[0]
-    reply = reply_context if isinstance(reply_context, dict) else {}
-    if reply.get("focus_locked"):
-        try:
-            focus_sid = int(reply["store_id"]) if reply.get("store_id") is not None else None
-        except (TypeError, ValueError):
-            focus_sid = None
-        if focus_sid in allowed:
-            return focus_sid
+    focus_sid = _store_id_from_reply_context(reply_context)
+    if focus_sid in allowed:
+        return focus_sid
     return None
 
 
