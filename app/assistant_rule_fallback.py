@@ -1,4 +1,4 @@
-"""Rule-based fallback για απλές ερωτήσεις σήμερα — χωρίς κανένα LLM."""
+"""Rule-based fallback για απλές ερωτήσεις σήμερα/χθες — χωρίς κανένα LLM."""
 
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ _INFO_HINTS = (
     "καταστασ",
     "ωραριο",
     "βαρδια",
+    "χθεσ",
+    "εχθεσ",
 )
 
 
@@ -36,6 +38,11 @@ def looks_like_today_info(text: str) -> bool:
     if not folded:
         return False
     return any(hint in folded for hint in _INFO_HINTS)
+
+
+def _wants_yesterday(text: str) -> bool:
+    folded = _fold(text)
+    return "χθεσ" in folded or "εχθεσ" in folded or "yesterday" in folded
 
 
 def _open_card_rows(employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -58,6 +65,43 @@ def _working_rows(employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _pick_store(
+    stores: list[Any],
+    *,
+    store_id: int | None,
+) -> dict[str, Any] | None:
+    if store_id is not None:
+        for row in stores:
+            if isinstance(row, dict) and int(row.get("store_id") or 0) == int(store_id):
+                return row
+    if len(stores) == 1 and isinstance(stores[0], dict):
+        return stores[0]
+    return None
+
+
+def _format_open_lines(rows: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for row in rows:
+        label = str(row.get("name") or row.get("afm") or "—").strip()
+        card_in = str(row.get("card_in") or "").strip()[:5]
+        sched = ""
+        if row.get("schedule_from") or row.get("schedule_to"):
+            sched = f" ({row.get('schedule_from') or '—'}–{row.get('schedule_to') or '—'})"
+        entry = f"{label}"
+        if card_in:
+            entry += f" · είσοδος {card_in}"
+        entry += sched
+        lines.append(f"• {entry}")
+    return lines
+
+
+def _display_date(iso: str | None) -> str:
+    raw = str(iso or "").strip()[:10]
+    if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
+        return f"{raw[8:10]}/{raw[5:7]}/{raw[0:4]}"
+    return raw or "—"
+
+
 def build_today_info_answer(
     *,
     text: str,
@@ -65,15 +109,38 @@ def build_today_info_answer(
     store_name: str,
     today_home: dict[str, Any],
 ) -> str | None:
+    folded = _fold(text)
+    want_yesterday = _wants_yesterday(text)
+    want_open = "ανοιχτ" in folded
+    want_working = any(h in folded for h in ("εργαζ", "δουλευ", "ακομα"))
+
+    if want_yesterday:
+        yblock = today_home.get("yesterday") if isinstance(today_home.get("yesterday"), dict) else {}
+        ydate = str(yblock.get("date") or today_home.get("yesterday_date") or "").strip()[:10]
+        ystores = yblock.get("stores") if isinstance(yblock.get("stores"), list) else []
+        target = _pick_store(ystores, store_id=store_id)
+        if not isinstance(target, dict):
+            if store_name:
+                return (
+                    f"Δεν υπάρχουν διαθέσιμα δεδομένα ανοιχτών καρτών χθες "
+                    f"({_display_date(ydate)}) για το κατάστημα {store_name}."
+                )
+            return f"Δεν υπάρχουν διαθέσιμα δεδομένα ανοιχτών καρτών χθες ({_display_date(ydate)})."
+        name = str(target.get("name") or store_name or "κατάστημα").strip()
+        employees = [e for e in (target.get("employees") or []) if isinstance(e, dict)]
+        rows = _open_card_rows(employees)
+        if not rows:
+            return (
+                f"Στο κατάστημα {name} στις {_display_date(ydate)} "
+                f"δεν υπάρχουν ανοιχτές κάρτες."
+            )
+        return (
+            f"Στο {name}, ανοιχτές κάρτες χθες ({_display_date(ydate)}):\n"
+            + "\n".join(_format_open_lines(rows))
+        )
+
     stores = today_home.get("stores") or []
-    target = None
-    if store_id is not None:
-        for row in stores:
-            if int(row.get("store_id") or 0) == int(store_id):
-                target = row
-                break
-    elif len(stores) == 1:
-        target = stores[0]
+    target = _pick_store(stores if isinstance(stores, list) else [], store_id=store_id)
     if not isinstance(target, dict):
         if store_name:
             return f"Δεν υπάρχουν διαθέσιμα δεδομένα για το κατάστημα {store_name} σήμερα."
@@ -81,28 +148,12 @@ def build_today_info_answer(
 
     name = str(target.get("name") or store_name or "κατάστημα").strip()
     employees = [e for e in (target.get("employees") or []) if isinstance(e, dict)]
-    folded = _fold(text)
-
-    want_open = "ανοιχτ" in folded
-    want_working = any(h in folded for h in ("εργαζ", "δουλευ", "ακομα"))
 
     if want_open:
         rows = _open_card_rows(employees)
         if not rows:
             return f"Στο κατάστημα {name} δεν υπάρχουν ανοιχτές κάρτες αυτή τη στιγμή."
-        lines = []
-        for row in rows:
-            label = str(row.get("name") or row.get("afm") or "—").strip()
-            card_in = str(row.get("card_in") or "").strip()[:5]
-            sched = ""
-            if row.get("schedule_from") or row.get("schedule_to"):
-                sched = f" ({row.get('schedule_from') or '—'}–{row.get('schedule_to') or '—'})"
-            entry = f"{label}"
-            if card_in:
-                entry += f" · είσοδος {card_in}"
-            entry += sched
-            lines.append(f"• {entry}")
-        return f"Στο {name}, ανοιχτές κάρτες:\n" + "\n".join(lines)
+        return f"Στο {name}, ανοιχτές κάρτες:\n" + "\n".join(_format_open_lines(rows))
 
     if want_working or looks_like_today_info(text):
         rows = _working_rows(employees) if want_working else employees
@@ -123,7 +174,6 @@ def build_today_info_answer(
                     bit += f" · έως {to}"
                 lines.append(f"• {bit}")
             return f"Στο {name} εργάζονται ακόμα:\n" + "\n".join(lines)
-        # Generic snapshot
         summary = target.get("summary") if isinstance(target.get("summary"), dict) else {}
         at_work = int(summary.get("at_work") or 0)
         completed = int(summary.get("completed") or 0)
@@ -153,6 +203,12 @@ def rule_based_parse(
     )
     if not answer:
         return None
+    info_date = None
+    if _wants_yesterday(text):
+        info_date = str(today_home.get("yesterday_date") or "").strip()[:10] or None
+        if not info_date:
+            yblock = today_home.get("yesterday") if isinstance(today_home.get("yesterday"), dict) else {}
+            info_date = str(yblock.get("date") or "").strip()[:10] or None
     return {
         "intent": "today_info",
         "store_id": store_id,
@@ -160,7 +216,7 @@ def rule_based_parse(
         "employee_references": [],
         "employee_afm": None,
         "employee_reference": None,
-        "date": None,
+        "date": info_date,
         "time": None,
         "hour_from": None,
         "hour_to": None,

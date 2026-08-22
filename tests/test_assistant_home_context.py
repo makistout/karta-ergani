@@ -36,14 +36,14 @@ class AssistantHomeContextTests(unittest.TestCase):
         self.assertEqual(row["card_in"], "09:05")
         self.assertNotIn("card_out", row)
 
-    def test_build_today_home_context_uses_card_report_for_today(self):
+    def test_build_today_home_context_includes_today_and_yesterday_open(self):
         contexts = [{
             "store_id": 4,
             "store_name": "ERATO",
             "employer_afm": "123456789",
             "branch_aa": "0",
         }]
-        report = {
+        today_report = {
             "summary": {"total": 1, "at_work": 1},
             "rows": [{
                 "employee_afm": "111222333",
@@ -63,13 +63,50 @@ class AssistantHomeContextTests(unittest.TestCase):
                 },
             }],
         }
-        with patch("app.assistant_home_context.build_card_status_report", return_value=report) as build:
+        yesterday_report = {
+            "summary": {"total": 2, "at_work": 1, "completed": 1},
+            "rows": [
+                {
+                    "employee_afm": "111222333",
+                    "eponymo": "OPEN",
+                    "onoma": "YDAY",
+                    "status": "needs_checkout",
+                    "schedule": {"hour_from": "16:00", "hour_to": "01:00"},
+                    "card": {"check_in": "16:05", "has_check_in": True, "has_check_out": False},
+                },
+                {
+                    "employee_afm": "999888777",
+                    "eponymo": "CLOSED",
+                    "onoma": "YDAY",
+                    "status": "completed",
+                    "schedule": {"hour_from": "10:00", "hour_to": "18:00"},
+                    "card": {
+                        "check_in": "10:00",
+                        "check_out": "18:00",
+                        "has_check_in": True,
+                        "has_check_out": True,
+                    },
+                },
+            ],
+        }
+        calls: list[str] = []
+
+        def fake_report(_employer, _branch, date_iso=None):
+            calls.append(str(date_iso))
+            return today_report if len(calls) == 1 else yesterday_report
+
+        with patch("app.assistant_home_context.build_card_status_report", side_effect=fake_report):
             snapshot = build_today_home_context(contexts)
-        build.assert_called_once()
-        self.assertEqual(snapshot["scope"], "today_only")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(snapshot["scope"], "today_and_yesterday")
+        self.assertEqual(snapshot["date"], calls[0])
+        self.assertEqual(snapshot["yesterday_date"], calls[1])
         self.assertEqual(len(snapshot["stores"]), 1)
-        self.assertEqual(snapshot["stores"][0]["store_id"], 4)
         self.assertEqual(snapshot["stores"][0]["employees"][0]["schedule_to"], "15:30")
+        y_emps = snapshot["yesterday"]["stores"][0]["employees"]
+        self.assertEqual(len(y_emps), 1)
+        self.assertEqual(y_emps[0]["afm"], "111222333")
+        self.assertEqual(snapshot["yesterday"]["stores"][0]["open_count"], 1)
 
     def test_parse_command_includes_today_home_when_group_query(self):
         contexts = [{

@@ -77,7 +77,7 @@ Reply με `focus_locked` (απάντηση σε προηγούμενο μήνυ
 | `message` | Το κείμενο του χρήστη **ως έχει** (ελληνικά ή greeklish). |
 | `reply_context` / `conversation_focus` | Προηγούμενο πλαίσιο, ανοιχτή διευκρίνιση. |
 | `allowed_stores` / `allowed_employees` | Μόνο επιτρεπόμενα καταστήματα και **ενεργοί** εργαζόμενοι. |
-| `today_home` | Πάντα — snapshot Αρχικής σήμερα. |
+| `today_home` | Πάντα — σήμερα πλήρες + χθες μόνο ανοιχτές κάρτες. |
 
 ### Φιλοσοφία ονομάτων και διευκρινίσεων
 
@@ -120,16 +120,18 @@ Reply με `focus_locked` (απάντηση σε προηγούμενο μήνυ
 ### `today_home` (πάντα)
 
 Χτίζεται από `build_today_home_context` / `build_card_status_report()` σε **κάθε**
-μήνυμα προς το Gemini (οι περισσότερες εντολές/ερωτήσεις αφορούν σήμερα), με
-cache ~45 δευτερολέπτων ανά κατάστημα/ημέρα.
+μήνυμα προς το Gemini, με cache ~45 δευτερολέπτων ανά κατάστημα/ημέρα.
 
-Ερωτήσεις όπως «ποιοι δουλεύουν στις 12» → intent `today_info` και η απάντηση
-μπαινει στο `clarification_question` με βάση μόνο τα δεδομένα του `today_home`.
+- `stores`: πλήρης εικόνα **σήμερα**
+- `yesterday` / `yesterday_date`: **μόνο ανοιχτές κάρτες χθες** (overnight
+  βάρδιες — ερωτήσεις/κλείσιμο «ανοιχτές χθες»)
+
+Ερωτήσεις όπως «ποιοι δουλεύουν στις 12» → `today_info` από `stores`.  
+«Υπάρχουν ανοιχτές κάρτες χθες;» → από `yesterday` (όχι επινόηση / «δεν υπάρχουν δεδομένα»).
 
 Δομή ανά εργαζόμενο (κενά πεδία κόβονται): `afm`, `name`, `status`,
-`status_label`, `schedule_from` / `schedule_to`, `intervals`, `shift_type`,
+`schedule_from` / `schedule_to`, `intervals`, `shift_type`,
 `card_in` / `card_out`.
-
 ## Ανάλυση και πολλαπλές εντολές
 
 Το Gemini επιστρέφει structured JSON με `commands[]`. Κάθε command έχει δικό του
