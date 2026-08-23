@@ -82,6 +82,97 @@ def test_overwork_and_overtime_are_split_by_actual_premium_zone():
     }
 
 
+def test_full_time_nine_hour_declaration_identical_to_punch_is_capped_before_overwork():
+    day = build_timekeeping_report([_row(
+        declared="09:00–18:00", proposed="09:00–18:00",
+        actual="09:00–18:00", punch_recorded="09:00–18:00",
+        actual_minutes=540, contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+    )])["days"][0]
+
+    assert day["recognized_uncapped_work_minutes"] == 540
+    assert day["recognized_work_minutes"] == 480
+    assert day["basis_label"] == "09:00–17:00"
+    assert day["base_cap_applied_minutes"] == 60
+    assert day["premium_minutes"]["day"] == 480
+    assert day["overwork_breakdown"]["day"] == 60
+    assert day["base_allocation_integrity_minutes"] == 480
+
+
+def test_full_time_ten_hour_declaration_does_not_double_count_overwork_or_overtime():
+    day = build_timekeeping_report([_row(
+        declared="09:00–19:00", proposed="09:00–19:00",
+        actual="09:00–19:00", punch_recorded="09:00–19:00",
+        actual_minutes=600, contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+        overtime_minutes=60,
+        overtime_segments=[{
+            "date": "17/08/2026", "from": "18:00", "to": "19:00", "minutes": 60,
+        }],
+    )])["days"][0]
+
+    assert day["recognized_work_minutes"] == 480
+    assert day["basis_label"] == "09:00–17:00"
+    assert day["overwork_breakdown"]["day"] == 60
+    assert day["overtime_40_breakdown"]["day"] == 60
+    assert (
+        day["recognized_work_minutes"]
+        + day["overwork_minutes"]
+        + day["overtime_minutes"]
+    ) == 600
+
+
+def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_days():
+    day = build_timekeeping_report([_row(
+        declared="09:00–18:00", proposed="09:00–18:00",
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=400, overwork_minutes=80,
+        overtime_minutes=60,
+        overtime_segments=[{
+            "date": "17/08/2026", "from": "17:00", "to": "18:00", "minutes": 60,
+        }],
+    )])["days"][0]
+
+    assert day["recognized_work_minutes"] == 400
+    assert day["basis_label"] == "09:00–15:40"
+    assert day["overwork_breakdown"]["day"] == 80
+    assert day["overtime_40_breakdown"]["day"] == 60
+
+
+def test_actual_non_extra_night_premium_cannot_be_lost_by_declared_flex_basis():
+    day = build_timekeeping_report([_row(
+        declared="14:00–22:00", proposed="14:00–22:00",
+        actual="15:00–23:00", punch_recorded="15:00–23:00",
+        actual_minutes=480, contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480,
+    )])["days"][0]
+
+    assert day["recognized_work_minutes"] == 480
+    assert sum(day["premium_minutes"].values()) == 480
+    assert day["premium_minutes"]["night"] == 60
+    assert day["actual_base_premium_floor"]["night"] == 60
+
+
+def test_actual_premium_floor_excludes_overwork_and_overtime_intervals():
+    day = build_timekeeping_report([_row(
+        declared="13:00–21:00", proposed="13:00–21:00",
+        actual="13:00–23:00", punch_recorded="13:00–23:00",
+        actual_minutes=600, contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+        overtime_minutes=60,
+        overtime_segments=[{
+            "date": "17/08/2026", "from": "22:00", "to": "23:00", "minutes": 60,
+        }],
+    )])["days"][0]
+
+    # 21:00–22:00 is overwork and 22:00–23:00 overtime. Neither may leak into
+    # the ordinary base premium floor.
+    assert day["actual_base_premium_floor"]["night"] == 0
+    assert day["overwork_breakdown"]["night"] == 0
+    assert day["overtime_40_breakdown"]["night"] == 60
+    assert sum(day["premium_minutes"].values()) == 480
+
+
 def test_annual_150_hour_boundary_preserves_chronological_premium_breakdown():
     context = {"123456789": {
         "legal_overtime_minutes_before_period": 149 * 60 + 30, "data_complete": True,

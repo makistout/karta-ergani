@@ -113,6 +113,22 @@ def _categorize_timeline(timeline: Iterable[datetime], holidays: set[date]) -> d
     return result
 
 
+def _timeline_interval_labels(timeline: list[datetime]) -> list[str]:
+    """Return labels for every contiguous part of an ordered minute timeline."""
+    selected = sorted(set(timeline))
+    if not selected:
+        return []
+    groups: list[tuple[datetime, datetime]] = []
+    group_start = previous = selected[0]
+    for moment in selected[1:]:
+        if moment != previous + timedelta(minutes=1):
+            groups.append((group_start, previous + timedelta(minutes=1)))
+            group_start = moment
+        previous = moment
+    groups.append((group_start, previous + timedelta(minutes=1)))
+    return [_display_interval(group_start, group_end) for group_start, group_end in groups]
+
+
 def _breakdown_total(value: dict[str, int] | None) -> int:
     return sum(int((value or {}).get(key) or 0) for key in PREMIUM_KEYS)
 
@@ -183,6 +199,55 @@ def _overwork_timeline(
             )
     start = end - timedelta(minutes=minutes)
     return [start + timedelta(minutes=index) for index in range(minutes)]
+
+
+def _apply_actual_premium_floor(
+    *, source: dict[str, Any], day: dict[str, Any], holidays: set[date],
+    overwork_timeline: list[datetime], overtime_timeline: list[datetime],
+) -> None:
+    """Preserve premiums present in the actual non-extra part of a full-time day.
+
+    The recognized schedule may legitimately remain at the declared clock span
+    (for example inside flex), but that must not erase a night/Sunday premium
+    which exists in the card span before overwork, overtime, or the unlawful
+    tail.  Premium buckets remain exclusive and still add up to the clean base.
+    """
+    if str(day.get("contract_kind") or "") != "Πλήρης":
+        return
+    actual_intervals = parse_intervals(
+        str(source.get("actual") or ""), str(day.get("work_date") or "")
+    )
+    actual_timeline = _interval_minutes(actual_intervals)
+    if not actual_timeline:
+        return
+
+    outside_break = max(0, int(source.get("outside_break_minutes") or 0))
+    actual_break = _allocate_contiguous_break(actual_timeline, outside_break, holidays)
+    excluded = set(overwork_timeline) | set(overtime_timeline) | actual_break
+    actual_base = [minute for minute in actual_timeline if minute not in excluded]
+    unlawful = max(0, int(day.get("unlawful_overtime_minutes") or 0))
+    if unlawful:
+        actual_base = actual_base[:-unlawful] if unlawful < len(actual_base) else []
+
+    base_minutes = max(0, int(day.get("recognized_work_minutes") or 0))
+    if len(actual_base) > base_minutes:
+        actual_base = actual_base[:base_minutes]
+    actual_categories = _categorize_timeline(actual_base, holidays)
+    current = dict(day.get("premium_minutes") or _empty_breakdown())
+    protected_keys = ("night_sunday_holiday", "sunday_holiday", "night")
+    protected: dict[str, int] = {}
+    remaining = base_minutes
+    for key in protected_keys:
+        amount = min(remaining, max(int(current.get(key) or 0), int(actual_categories.get(key) or 0)))
+        protected[key] = amount
+        remaining -= amount
+    day["premium_minutes"] = {
+        "day": remaining,
+        "night": protected["night"],
+        "sunday_holiday": protected["sunday_holiday"],
+        "night_sunday_holiday": protected["night_sunday_holiday"],
+    }
+    day["actual_base_premium_floor"] = actual_categories
 
 
 def is_timekeeping_leave_row(row: dict[str, Any]) -> bool:
@@ -262,7 +327,35 @@ def build_recognized_day(
     # without Sunday operation creates premiums only when a punch exists.
     premium_holidays = holidays if sunday_work_enabled or int(row.get("punch_count") or 0) > 0 else set()
     break_set = _allocate_contiguous_break(physical_minutes, break_duration, premium_holidays)
-    recognized_timeline = [minute for minute in physical_minutes if minute not in break_set]
+    uncapped_recognized_timeline = [
+        minute for minute in physical_minutes if minute not in break_set
+    ]
+    # In full-time employment the final/approved schedule is evidence of the
+    # recognized temporal span, not permission to turn overwork or overtime
+    # into ordinary base time.  The retrospective engine has already selected
+    # the applicable clean daily basis (8:00, 6:40, or the contract basis when
+    # the declaration has another duration).  Apply that basis here as a hard
+    # payroll cap.  This is especially important when an incorrect declaration
+    # is identical to a 9+ hour card span.
+    daily_base = row.get("daily_overtime_basis_minutes")
+    base_cap = (
+        max(0, int(daily_base))
+        if str(row.get("contract_kind") or "") == "Πλήρης" and daily_base is not None
+        else None
+    )
+    recognized_timeline = (
+        uncapped_recognized_timeline[:base_cap]
+        if base_cap is not None else uncapped_recognized_timeline
+    )
+    if recognized_timeline:
+        # The displayed base is a temporal span.  Keep an outside-break
+        # extension inside that span even though its minutes are not clean work.
+        basis_end = recognized_timeline[-1]
+        basis_physical_timeline = [
+            minute for minute in physical_minutes if minute <= basis_end
+        ]
+    else:
+        basis_physical_timeline = []
     categories = _categorize_timeline(recognized_timeline, premium_holidays)
 
     break_label = None
@@ -280,13 +373,18 @@ def build_recognized_day(
         "work_date": str(row.get("work_date") or ""),
         "status": row.get("status"),
         "basis_source": basis_source,
-        "basis_label": " · ".join(_display_interval(start, end) for start, end in intervals),
+        "basis_label": " · ".join(_timeline_interval_labels(basis_physical_timeline)),
         "recognized_span_minutes": len(physical_minutes),
+        "recognized_uncapped_work_minutes": len(uncapped_recognized_timeline),
+        "daily_base_cap_minutes": base_cap,
+        "base_cap_applied_minutes": max(
+            0, len(uncapped_recognized_timeline) - len(recognized_timeline)
+        ),
         "declared_break_minutes": declared_break,
         "break_in_work": break_in_work,
         "break_minutes": len(break_set),
         "break_interval": break_label,
-        "recognized_work_minutes": len(physical_minutes) - len(break_set),
+        "recognized_work_minutes": len(recognized_timeline),
         "premium_minutes": categories,
         "_premium_holidays": premium_holidays,
         "warnings": warnings,
@@ -393,6 +491,11 @@ def build_timekeeping_report(
             day["warnings"].append(
                 "Δεν βρέθηκε πλήρες χρονικό διάστημα για τον επιμερισμό της υπερεργασίας σε προσαυξήσεις"
             )
+        _apply_actual_premium_floor(
+            source=source, day=day, holidays=holiday_dates,
+            overwork_timeline=overwork_timeline,
+            overtime_timeline=overtime_timeline,
+        )
         context = contexts.get(day["employee_afm"], {})
         if context and not context.get("data_complete", True):
             day["warnings"].append("Το ετήσιο ιστορικό υπερωριών δεν είναι πλήρες")
@@ -581,7 +684,7 @@ def build_timekeeping_report(
         day.pop("_partial_overtime_120_breakdown", None)
 
     return {
-        "calculation_version": "timekeeping-v6-break-basis",
+        "calculation_version": "timekeeping-v7-full-base-cap",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},
