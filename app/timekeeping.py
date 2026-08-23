@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 import re
+import unicodedata
 from typing import Any, Iterable
 
 
@@ -90,6 +91,51 @@ def _row_basis_label(row: dict[str, Any]) -> tuple[str, str]:
         return str(row.get("proposed") or row.get("declared") or ""), "effective_proposed"
     source = "declared_no_punch" if int(row.get("punch_count") or 0) == 0 else "declared_compliant"
     return str(row.get("declared") or ""), source
+
+
+def _recognized_basis_intervals(
+    row: dict[str, Any], label: str, work_date: str,
+) -> tuple[list[tuple[datetime, datetime]], str]:
+    """Place the recognized temporal basis according to card/schedule rules.
+
+    This chooses the clock span only.  The clean payroll cap is applied later
+    and must not shorten the displayed recognized span.
+    """
+    effective = parse_intervals(label, work_date)
+    declared = parse_intervals(str(row.get("declared") or ""), work_date)
+    actual = parse_intervals(str(row.get("actual") or ""), work_date)
+    outside_break = max(0, int(row.get("outside_break_minutes") or 0))
+
+    # Non-work markers, split schedules, missing/inferred boundaries and
+    # undeclared work already have their authoritative effective proposal.
+    if (
+        not effective
+        or len(declared) != 1
+        or len(actual) != 1
+        or " · " in str(label or "")
+        or str(row.get("punch_completeness") or "") == "Τεκμαρτό"
+    ):
+        intervals = list(effective)
+        if intervals and outside_break:
+            start, end = intervals[-1]
+            intervals[-1] = (start, end + timedelta(minutes=outside_break))
+        return intervals, "effective_schedule"
+
+    declared_start, declared_end = declared[0]
+    actual_start, actual_end = actual[0]
+    declared_span = declared_end - declared_start
+    span_with_break = declared_span + timedelta(minutes=outside_break)
+    declared_extended_end = declared_end + timedelta(minutes=outside_break)
+
+    if actual_start == declared_start:
+        return [(declared_start, declared_extended_end)], "same_start_declared_plus_break"
+    if actual_start < declared_start:
+        return [(actual_start, actual_start + span_with_break)], "early_start_forward"
+    if actual_end <= declared_extended_end:
+        return [(declared_start, declared_extended_end)], "late_within_declared_end"
+    if actual_end - actual_start < span_with_break:
+        return [(actual_end - span_with_break, actual_end)], "late_short_backward"
+    return [(actual_start, actual_start + span_with_break)], "late_long_forward"
 
 
 def _interval_minutes(intervals: Iterable[tuple[datetime, datetime]]) -> list[datetime]:
@@ -256,7 +302,14 @@ def is_timekeeping_leave_row(row: dict[str, Any]) -> bool:
         values = (row.get("proposed"),)
     else:
         values = (row.get("day_state"), row.get("declared"))
-    return any("ΑΔΕΙΑ" in str(value or "").strip().upper() for value in values)
+    def marker_text(value: Any) -> str:
+        upper = str(value or "").strip().upper()
+        return "".join(
+            char for char in unicodedata.normalize("NFD", upper)
+            if unicodedata.category(char) != "Mn"
+        )
+
+    return any("ΑΔΕΙΑ" in marker_text(value) for value in values)
 
 
 def _display_interval(start: datetime, end: datetime) -> str:
@@ -312,7 +365,9 @@ def build_recognized_day(
     row: dict[str, Any], holidays: set[date], *, sunday_work_enabled: bool,
 ) -> dict[str, Any]:
     label, basis_source = _row_basis_label(row)
-    intervals = parse_intervals(label, str(row.get("work_date") or ""))
+    intervals, recognized_basis_rule = _recognized_basis_intervals(
+        row, label, str(row.get("work_date") or "")
+    )
     physical_minutes = _interval_minutes(intervals)
     declared_break = max(0, int(row.get("break_minutes") or 0))
     break_in_work = row.get("break_in_work")
@@ -347,15 +402,6 @@ def build_recognized_day(
         uncapped_recognized_timeline[:base_cap]
         if base_cap is not None else uncapped_recognized_timeline
     )
-    if recognized_timeline:
-        # The displayed base is a temporal span.  Keep an outside-break
-        # extension inside that span even though its minutes are not clean work.
-        basis_end = recognized_timeline[-1]
-        basis_physical_timeline = [
-            minute for minute in physical_minutes if minute <= basis_end
-        ]
-    else:
-        basis_physical_timeline = []
     categories = _categorize_timeline(recognized_timeline, premium_holidays)
 
     break_label = None
@@ -373,7 +419,10 @@ def build_recognized_day(
         "work_date": str(row.get("work_date") or ""),
         "status": row.get("status"),
         "basis_source": basis_source,
-        "basis_label": " · ".join(_timeline_interval_labels(basis_physical_timeline)),
+        "basis_label": " · ".join(
+            _display_interval(start, end) for start, end in intervals
+        ),
+        "recognized_basis_rule": recognized_basis_rule,
         "recognized_span_minutes": len(physical_minutes),
         "recognized_uncapped_work_minutes": len(uncapped_recognized_timeline),
         "daily_base_cap_minutes": base_cap,
@@ -684,7 +733,7 @@ def build_timekeeping_report(
         day.pop("_partial_overtime_120_breakdown", None)
 
     return {
-        "calculation_version": "timekeeping-v7-full-base-cap",
+        "calculation_version": "timekeeping-v8-leave-normalization",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},

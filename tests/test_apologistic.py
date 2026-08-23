@@ -325,6 +325,68 @@ def test_rest_punch_becomes_change_when_no_missing_declared_day_exists():
     assert any("03/08/2026: 09:10–17:10" in line for line in row["status_explanation"])
 
 
+def test_non_work_to_work_full_short_punch_keeps_punch_duration():
+    schedules = [
+        sched(day="03/08/2026"),
+        sched(day="04/08/2026", start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"),
+    ]
+    punches = [
+        punch(day="03/08/2026", start="09:00", end="17:00"),
+        punch(day="04/08/2026", start="10:00", end="14:00"),
+    ]
+    row = next(item for item in build_weekly_report(
+        schedules, punches, [contract(flex=0, days="5")]
+    )["days"] if item["work_date"] == "04/08/2026")
+    assert row["proposed"] == "10:00–14:00"
+    assert row["non_work_to_work_duration_rule"] == "PUNCH_DURATION_BELOW_CONTRACT_BASE"
+
+
+def test_non_work_to_work_full_long_punch_uses_contract_base_and_extra_bands():
+    schedules = [
+        sched(day="03/08/2026"),
+        sched(day="04/08/2026", start=None, end=None, shift="ΜΗ ΕΡΓΑΣΙΑ"),
+    ]
+    punches = [
+        punch(day="03/08/2026", start="09:00", end="17:00"),
+        punch(day="04/08/2026", start="09:00", end="19:00"),
+    ]
+    row = next(item for item in build_weekly_report(
+        schedules, punches, [contract(flex=0, days="5")]
+    )["days"] if item["work_date"] == "04/08/2026")
+    assert row["proposed"] == "09:00–17:00"
+    assert row["overwork_minutes"] == 60
+    assert row["overtime_minutes"] == 60
+    assert row["non_work_to_work_duration_rule"] == "CONTRACT_BASE_WITH_EXTRA_CLASSIFICATION"
+
+
+def test_non_work_to_work_rotating_long_punch_uses_contract_base_without_overwork():
+    rotating = contract(flex=0, days="5")
+    rotating["characterization"] = "ΕΚ ΠΕΡΙΤΡΟΠΗΣ ΑΠΑΣΧΟΛΗΣΗ"
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
+        [punch(start="09:00", end="18:00")],
+        [rotating],
+    )["days"][0]
+    assert row["proposed"] == "09:00–17:00"
+    assert row["overwork_minutes"] == 0
+    assert row["overtime_minutes"] == 60
+    assert row["non_work_to_work_duration_rule"] == "CONTRACT_BASE_WITH_EXTRA_CLASSIFICATION"
+
+
+def test_non_work_to_work_partial_uses_punch_duration_with_full_day_cap():
+    partial = contract(flex=0, days="6")
+    partial["characterization"] = "ΜΕΡΙΚΗ ΑΠΑΣΧΟΛΗΣΗ"
+    partial["weekly_hours"] = 20
+    row = build_weekly_report(
+        [sched(start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")],
+        [punch(start="09:00", end="18:00")],
+        [partial],
+    )["days"][0]
+    assert row["proposed"] == "09:00–15:40"
+    assert row["overtime_minutes"] == 0
+    assert row["non_work_to_work_duration_rule"] == "PARTIAL_PUNCH_DURATION_CAPPED_AT_FULL_DAY"
+
+
 def test_five_day_rest_punch_with_missing_declared_day_requires_exchange_review():
     schedules = [
         sched(day="03/08/2026", start=None, end=None, shift="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"),

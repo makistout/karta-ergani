@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from typing import Any
+import unicodedata
 
 from app.apologistic_rules import (
     RuleDecision,
@@ -505,7 +506,11 @@ def _night_minutes(start: Any, end: Any) -> int:
 
 
 def _schedule_text(slots: list[dict[str, Any]]) -> str:
-    return " ".join(str(s.get("shift_type") or "").upper() for s in slots)
+    text = " ".join(str(s.get("shift_type") or "").upper() for s in slots)
+    return "".join(
+        char for char in unicodedata.normalize("NFD", text)
+        if unicodedata.category(char) != "Mn"
+    )
 
 
 def _day_state(slots: list[dict[str, Any]]) -> str:
@@ -894,6 +899,7 @@ def build_weekly_report(
         state = _day_state(slots)
         replacement_candidates: list[dict[str, Any]] = []
         exchange_options: list[dict[str, Any]] = []
+        non_work_to_work_duration_rule: str | None = None
         weekly_punch_details: list[dict[str, Any]] = []
         weekly_punch_days: int | None = None
         contract_required_days: int | None = _contract_weekly_days
@@ -1049,6 +1055,20 @@ def build_weekly_report(
             else:
                 status, rule_id = "change", "NON_WORK_DAY_BECOMES_WORK"
                 reason = f"Χτύπημα σε {state} χωρίς διαθέσιμη ημέρα ανταλλαγής"
+                full_day_cap = contract_daily_base_minutes(
+                    contract_kind, _contract_weekly_days
+                )
+                if contract_kind == "Μερική":
+                    non_work_to_work_duration_rule = (
+                        "PARTIAL_PUNCH_DURATION_CAPPED_AT_FULL_DAY"
+                    )
+                elif contract_kind in ("Πλήρης", "Εκ περιτροπής"):
+                    non_work_to_work_duration_rule = (
+                        "PUNCH_DURATION_BELOW_CONTRACT_BASE"
+                        if full_day_cap is not None
+                        and (effective_actual or 0) < full_day_cap
+                        else "CONTRACT_BASE_WITH_EXTRA_CLASSIFICATION"
+                    )
 
         max_span = 780 if _contract_weekly_days == 5 else 720 if _contract_weekly_days == 6 else None
         exceeds_daily_span = bool(
@@ -1197,6 +1217,7 @@ def build_weekly_report(
             "contract_required_days": contract_required_days,
             "replacement_candidates": replacement_candidates,
             "exchange_options": exchange_options,
+            "non_work_to_work_duration_rule": non_work_to_work_duration_rule,
             "weekly_punch_details": weekly_punch_details,
             "compensatory_rest_due": compensatory_rest_due,
             "compensatory_rest_target_week": (

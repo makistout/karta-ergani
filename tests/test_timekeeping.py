@@ -48,6 +48,16 @@ def test_leave_is_excluded_from_timekeeping_entirely():
     assert report["counts"] == {"days": 0, "employees": 0}
 
 
+def test_accented_ergani_leave_description_is_excluded_from_timekeeping():
+    report = build_timekeeping_report([_row(
+        day_state="Χωρίς δηλωμένο ωράριο",
+        declared="Κανονική άδεια Έτος Αναφοράς: 2026 Αρ. Δικαιούμενων ημερών: 21",
+        proposed="Κανονική άδεια Έτος Αναφοράς: 2026 Αρ. Δικαιούμενων ημερών: 21",
+        punch_count=0,
+    )])
+    assert report["days"] == []
+
+
 def test_approved_change_from_leave_to_work_is_included_by_effective_proposal():
     day = build_timekeeping_report([
         _row(status="change", day_state="Άδεια", declared="ΑΔΕΙΑ", proposed="09:00–17:00")
@@ -92,7 +102,7 @@ def test_full_time_nine_hour_declaration_identical_to_punch_is_capped_before_ove
 
     assert day["recognized_uncapped_work_minutes"] == 540
     assert day["recognized_work_minutes"] == 480
-    assert day["basis_label"] == "09:00–17:00"
+    assert day["basis_label"] == "09:00–18:00"
     assert day["base_cap_applied_minutes"] == 60
     assert day["premium_minutes"]["day"] == 480
     assert day["overwork_breakdown"]["day"] == 60
@@ -112,7 +122,7 @@ def test_full_time_ten_hour_declaration_does_not_double_count_overwork_or_overti
     )])["days"][0]
 
     assert day["recognized_work_minutes"] == 480
-    assert day["basis_label"] == "09:00–17:00"
+    assert day["basis_label"] == "09:00–19:00"
     assert day["overwork_breakdown"]["day"] == 60
     assert day["overtime_40_breakdown"]["day"] == 60
     assert (
@@ -134,7 +144,7 @@ def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_
     )])["days"][0]
 
     assert day["recognized_work_minutes"] == 400
-    assert day["basis_label"] == "09:00–15:40"
+    assert day["basis_label"] == "09:00–18:00"
     assert day["overwork_breakdown"]["day"] == 80
     assert day["overtime_40_breakdown"]["day"] == 60
 
@@ -261,16 +271,16 @@ def test_partial_employment_never_generates_40_or_60_overtime():
     assert day["overtime_120"] == 0
 
 
-def test_outside_break_is_contiguous_deducted_and_does_not_extend_basis():
+def test_outside_break_extends_temporal_basis_but_not_clean_work():
     day = build_timekeeping_report([_row(
         declared="21:00–23:00", break_minutes=30, break_in_work=0,
         outside_break_minutes=30,
     )])["days"][0]
     assert day["break_interval"] == "21:01–21:31"
-    assert day["recognized_span_minutes"] == 120
-    assert day["recognized_work_minutes"] == 90
-    assert day["premium_minutes"]["day"] == 30
-    assert day["premium_minutes"]["night"] == 60
+    assert day["basis_label"] == "21:00–23:30"
+    assert day["recognized_span_minutes"] == 150
+    assert day["recognized_work_minutes"] == 120
+    assert sum(day["premium_minutes"].values()) == 120
 
 
 def test_inside_break_does_not_reduce_clean_recognized_basis():
@@ -297,9 +307,54 @@ def test_change_uses_proposal_before_applying_outside_break():
         break_minutes=30, break_in_work=0, outside_break_minutes=30,
     )])["days"][0]
     assert day["effective_declared"] == "10:00–19:00"
-    assert day["basis_label"] == "10:00–19:00"
-    assert day["recognized_span_minutes"] == 540
-    assert day["recognized_work_minutes"] == 510
+    assert day["basis_label"] == "10:00–19:30"
+    assert day["recognized_span_minutes"] == 570
+    assert day["recognized_work_minutes"] == 540
+
+
+def test_recognized_basis_early_start_runs_forward_for_declared_span():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", proposed="08:00–16:00",
+        actual="08:00–14:00", status="change",
+    )])["days"][0]
+    assert day["basis_label"] == "08:00–16:00"
+    assert day["recognized_basis_rule"] == "early_start_forward"
+
+
+def test_recognized_basis_late_short_ending_after_declared_runs_backward():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", proposed="09:30–17:30",
+        actual="10:00–17:30", status="change", flex_minutes=60,
+    )])["days"][0]
+    assert day["basis_label"] == "09:30–17:30"
+    assert day["recognized_basis_rule"] == "late_short_backward"
+
+
+def test_recognized_basis_late_long_ending_after_declared_runs_forward():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", proposed="10:00–18:00",
+        actual="10:00–18:30", status="change", flex_minutes=60,
+    )])["days"][0]
+    assert day["basis_label"] == "10:00–18:00"
+    assert day["recognized_basis_rule"] == "late_long_forward"
+
+
+def test_recognized_basis_late_punch_ending_inside_declared_keeps_declaration():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", proposed="09:00–17:00",
+        actual="10:00–16:00",
+    )])["days"][0]
+    assert day["basis_label"] == "09:00–17:00"
+    assert day["recognized_basis_rule"] == "late_within_declared_end"
+
+
+def test_recognized_basis_overnight_uses_absolute_timeline():
+    day = build_timekeeping_report([_row(
+        work_date="17/08/2026", declared="18:00–02:00", proposed="19:00–03:00",
+        actual="19:00–03:30", status="change",
+    )])["days"][0]
+    assert day["basis_label"] == "19:00–03:00 (+1)"
+    assert day["recognized_basis_rule"] == "late_long_forward"
 
 
 def test_overnight_sunday_and_night_overlap_are_partitioned():

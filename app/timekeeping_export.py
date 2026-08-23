@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+import re
 from typing import Any
 
 from openpyxl import Workbook
@@ -17,6 +18,7 @@ _LIGHT = "EAF2F8"
 _BORDER = Side(style="thin", color="D9E2E9")
 _BREAKDOWN_KEYS = ("day", "night", "sunday_holiday", "night_sunday_holiday")
 _BREAKDOWN_LABELS = ("Ημέρας", "Νύχτας", "Κυρ/Αργίας", "Νύχτας/Κυρ-Αργίας")
+_HOURS_RE = re.compile(r"\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}")
 
 
 def _duration(minutes: Any) -> float:
@@ -30,6 +32,11 @@ def _breakdown_values(item: dict[str, Any], field: str) -> list[float]:
 
 def _family_headers(prefix: str) -> list[str]:
     return [f"{prefix} – {label} (ώρες)" for label in _BREAKDOWN_LABELS]
+
+
+def _hours_only(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if _HOURS_RE.search(text) else ""
 
 
 def _style_sheet(ws, *, title: str, meta: str, headers: list[str], widths: list[int]) -> int:
@@ -163,7 +170,8 @@ def build_timekeeping_detailed_export_xlsx(
     headers = [
         "Εργοδότης ΑΦΜ", "Κωδικός υποκ/τος", "Υποκατάστημα",
         "Επώνυμο", "Όνομα", "ΑΦΜ εργαζομένου", "Μερική απασχόληση",
-        "Ημέρα", "Ημερομηνία", "Δηλωμένο ωράριο", "Αναγνωρισμένο ωράριο",
+        "Ημέρα", "Ημερομηνία", "Δηλωμένο / προτεινόμενο ωράριο",
+        "Αναγνωρισμένο ωράριο",
         "Κινήσεις κάρτας", "Μικτή διάρκεια (ώρες)", "Διάλειμμα", "Καθαρή βάση (ώρες)",
         "Ώρες ημέρας", "Ώρες νύχτας 25%", "Ώρες Κυρ/Αργίας 75%",
         "Ώρες νύχτας + Κυρ/Αργίας",
@@ -216,7 +224,7 @@ def build_timekeeping_detailed_export_xlsx(
             str(store.get("name") or ""), item.get("eponymo") or "", item.get("onoma") or "",
             str(item.get("employee_afm") or ""), "ΝΑΙ" if str(item.get("contract_kind") or "") == "Μερική" else "ΟΧΙ",
             weekday_names[work_date.weekday()], work_date,
-            item.get("effective_declared") or item.get("declared") or "",
+            _hours_only(item.get("effective_declared") or item.get("declared")),
             item.get("basis_label") or "", item.get("punch_recorded") or item.get("actual") or "",
             _duration(item.get("recognized_span_minutes")), item.get("break_interval") or "",
             _duration(item.get("recognized_work_minutes")), _duration(premiums.get("day")),
@@ -233,7 +241,7 @@ def build_timekeeping_detailed_export_xlsx(
             item.get("basis_source") or "", " · ".join(str(value) for value in item.get("warnings") or []),
         ])
 
-    widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 22, 24, 25, 15, 18, 15,
+    widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 30, 24, 25, 15, 18, 15,
               15, 17, 19, 23] + [18] * 8 + [24] + [18] * 16 + [18, 18, 20, 42]
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(index)].width = width

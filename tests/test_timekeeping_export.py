@@ -2,9 +2,18 @@ from io import BytesIO
 from openpyxl import load_workbook
 
 from app.timekeeping_export import (
+    _hours_only,
     build_timekeeping_detailed_export_xlsx,
     build_timekeeping_export_xlsx,
 )
+
+
+def test_detailed_schedule_column_contains_only_clock_intervals():
+    assert _hours_only("09:00–17:00") == "09:00–17:00"
+    assert _hours_only("09:00–13:00 · 17:00–21:00") == "09:00–13:00 · 17:00–21:00"
+    assert _hours_only("ΑΝΑΠΑΥΣΗ/ΡΕΠΟ") == ""
+    assert _hours_only("ΜΗ ΕΡΓΑΣΙΑ") == ""
+    assert _hours_only("Κανονική άδεια Έτος Αναφοράς: 2026") == ""
 
 
 def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
@@ -71,6 +80,7 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
     sheet = workbook["Πλήρης ανάλυση"]
     assert sheet["F5"].value == "012345678"
     assert sheet["I5"].value.strftime("%d/%m/%Y") == "17/08/2026"
+    assert sheet["J4"].value == "Δηλωμένο / προτεινόμενο ωράριο"
     assert sheet["J5"].value == "09:00–15:00"
     assert sheet["K5"].value == "09:00–15:00"
     assert sheet["O5"].value == 6
