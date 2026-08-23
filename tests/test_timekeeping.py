@@ -102,7 +102,7 @@ def test_full_time_nine_hour_declaration_identical_to_punch_is_capped_before_ove
 
     assert day["recognized_uncapped_work_minutes"] == 540
     assert day["recognized_work_minutes"] == 480
-    assert day["basis_label"] == "09:00–18:00"
+    assert day["basis_label"] == "09:00–17:00"
     assert day["base_cap_applied_minutes"] == 60
     assert day["premium_minutes"]["day"] == 480
     assert day["overwork_breakdown"]["day"] == 60
@@ -122,7 +122,7 @@ def test_full_time_ten_hour_declaration_does_not_double_count_overwork_or_overti
     )])["days"][0]
 
     assert day["recognized_work_minutes"] == 480
-    assert day["basis_label"] == "09:00–19:00"
+    assert day["basis_label"] == "09:00–17:00"
     assert day["overwork_breakdown"]["day"] == 60
     assert day["overtime_40_breakdown"]["day"] == 60
     assert (
@@ -130,6 +130,32 @@ def test_full_time_ten_hour_declaration_does_not_double_count_overwork_or_overti
         + day["overwork_minutes"]
         + day["overtime_minutes"]
     ) == 600
+
+
+def test_visible_full_time_cap_keeps_outside_break_extension():
+    day = build_timekeeping_report([_row(
+        declared="09:00–18:00", proposed="09:00–18:00", actual="09:00–18:30",
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480,
+        break_minutes=30, break_in_work=0, outside_break_minutes=30,
+        overwork_minutes=30,
+    )])["days"][0]
+    assert day["recognized_work_minutes"] == 480
+    assert day["basis_label"] == "09:00–17:30"
+    assert day["recognized_span_minutes"] == 570
+
+
+def test_visible_rotating_basis_uses_contract_cap():
+    day = build_timekeeping_report([_row(
+        declared="09:00–18:00", proposed="09:00–18:00", actual="09:00–18:00",
+        contract_kind="Εκ περιτροπής", weekly_days=5,
+        daily_overtime_basis_minutes=480, overtime_minutes=60,
+        overtime_segments=[{
+            "date": "17/08/2026", "from": "17:00", "to": "18:00", "minutes": 60,
+        }],
+    )])["days"][0]
+    assert day["recognized_work_minutes"] == 480
+    assert day["basis_label"] == "09:00–17:00"
 
 
 def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_days():
@@ -144,7 +170,7 @@ def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_
     )])["days"][0]
 
     assert day["recognized_work_minutes"] == 400
-    assert day["basis_label"] == "09:00–18:00"
+    assert day["basis_label"] == "09:00–15:40"
     assert day["overwork_breakdown"]["day"] == 80
     assert day["overtime_40_breakdown"]["day"] == 60
 

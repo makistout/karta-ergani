@@ -395,13 +395,23 @@ def build_recognized_day(
     daily_base = row.get("daily_overtime_basis_minutes")
     base_cap = (
         max(0, int(daily_base))
-        if str(row.get("contract_kind") or "") == "Πλήρης" and daily_base is not None
+        if str(row.get("contract_kind") or "") in ("Πλήρης", "Εκ περιτροπής")
+        and daily_base is not None
         else None
     )
     recognized_timeline = (
         uncapped_recognized_timeline[:base_cap]
         if base_cap is not None else uncapped_recognized_timeline
     )
+    if recognized_timeline:
+        # The visible recognized span follows the same clean cap as payroll,
+        # while retaining any outside-break extension inside the clock span.
+        basis_end = recognized_timeline[-1]
+        visible_basis_timeline = [
+            minute for minute in physical_minutes if minute <= basis_end
+        ]
+    else:
+        visible_basis_timeline = []
     categories = _categorize_timeline(recognized_timeline, premium_holidays)
 
     break_label = None
@@ -419,9 +429,7 @@ def build_recognized_day(
         "work_date": str(row.get("work_date") or ""),
         "status": row.get("status"),
         "basis_source": basis_source,
-        "basis_label": " · ".join(
-            _display_interval(start, end) for start, end in intervals
-        ),
+        "basis_label": " · ".join(_timeline_interval_labels(visible_basis_timeline)),
         "recognized_basis_rule": recognized_basis_rule,
         "recognized_span_minutes": len(physical_minutes),
         "recognized_uncapped_work_minutes": len(uncapped_recognized_timeline),
@@ -733,7 +741,7 @@ def build_timekeeping_report(
         day.pop("_partial_overtime_120_breakdown", None)
 
     return {
-        "calculation_version": "timekeeping-v8-leave-normalization",
+        "calculation_version": "timekeeping-v9-visible-base-cap",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},
