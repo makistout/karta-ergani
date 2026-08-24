@@ -49,6 +49,17 @@ def test_schedule_without_punch_is_ok_and_does_not_infer_actual_work():
     assert row["requires_confirmation"] is False
 
 
+def test_declared_leave_without_punch_is_omitted_from_report():
+    result = build_weekly_report(
+        [sched(start=None, end=None, shift="Κανονική άδεια")],
+        [],
+        [contract()],
+    )
+
+    assert result["days"] == []
+    assert result["counts"] == {"all": 0, "ok": 0, "change": 0, "review": 0}
+
+
 def test_exact_eight_hour_declaration_changes_daily_basis_not_six_day_contract():
     schedules, punches = [], []
     for index in range(5):

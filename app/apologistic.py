@@ -807,6 +807,10 @@ def build_weekly_report(
     daily: list[dict[str, Any]] = []
     for afm, work_date in sorted(set(schedules) | set(punches), key=lambda k: (datetime.strptime(k[1], "%d/%m/%Y"), names.get(k[0], ("", "")), k[0])):
         slots, day_punches = schedules.get((afm, work_date), []), punches.get((afm, work_date), [])
+        # A declared leave day without card activity is already self-explanatory:
+        # it requires neither retrospective action nor an informational row.
+        if slots and not day_punches and _day_state(slots) == "Άδεια":
+            continue
         excluded_overnight_punches = excluded_by_previous_overnight.get((afm, work_date), [])
         carried_overnight_punches = carried_into_previous.get((afm, work_date), [])
         work_slots = _working_slots(slots)
