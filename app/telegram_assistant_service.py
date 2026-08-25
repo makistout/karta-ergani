@@ -35,9 +35,12 @@ ALLOWED_INTENTS = {
 _INFO_INTENTS = {"today_info", "cancel_pending"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
-# Hard wall-clock budget for all Gemini attempts so the chat stays ≤ ~10s.
-_GEMINI_TOTAL_BUDGET_SEC = 8.0
+# Gemini attempts within one provider slot (not stacked with OpenAI).
+_GEMINI_TOTAL_BUDGET_SEC = 5.0
 _GEMINI_CONNECT_TIMEOUT = 2.0
+# Συνολικό wall-clock για ΟΛΑ τα LLM μαζί — ποτέ Gemini+GPT σε σειρά έως 30s.
+_ASSISTANT_LLM_WALL_SEC = 8.0
+_MIN_LLM_PROVIDER_SEC = 2.5
 
 
 def _is_iso_date(value: str) -> bool:
@@ -258,6 +261,8 @@ def parse_command(
         focused_store_id = mentioned[0]
     elif focus.get("store_id") and int(focus["store_id"]) in {int(c["store_id"]) for c in contexts}:
         focused_store_id = int(focus["store_id"])
+    elif len(stores) == 1:
+        focused_store_id = int(stores[0]["id"])
     if focused_store_id:
         employees = [e for e in employees if e["store_id"] == focused_store_id]
 
@@ -283,38 +288,47 @@ def parse_command(
     }
 
     errors: list[str] = []
+    store_name = ""
+    if focused_store_id is not None:
+        store_name = next(
+            (str(s["name"]) for s in stores if int(s["id"]) == int(focused_store_id)),
+            "",
+        )
 
-    def _try_gemini() -> tuple[dict[str, Any], dict[str, Any]] | None:
-        if not Config.GEMINI_API_KEY:
-            errors.append("gemini: no API key")
+    def _try_rules(*, used_label: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        if not Config.ASSISTANT_RULE_FALLBACK_ENABLED:
             return None
         try:
-            deadline = time.monotonic() + _GEMINI_TOTAL_BUDGET_SEC
-            return _call_gemini(prompt, deadline=deadline)
-        except Exception as ex:
-            errors.append(f"gemini: {ex}")
-            return None
+            from app.assistant_rule_fallback import rule_based_parse
 
-    def _try_openai() -> tuple[dict[str, Any], dict[str, Any]] | None:
-        try:
-            from app.openai_assistant_client import generate_json, openai_enabled
-
-            if not openai_enabled():
-                errors.append("openai: disabled")
-                return None
-            raw, llm_metadata = generate_json(
-                prompt_obj=prompt,
-                timeout_sec=float(Config.OPENAI_TIMEOUT_SEC or 20),
+            ruled = rule_based_parse(
+                text=text,
+                store_id=focused_store_id,
+                store_name=store_name,
+                today_home=today_home,
             )
-            return _normalize_parsed_command(raw), llm_metadata
+            if not ruled:
+                return None
+            return ruled, {
+                "model": "rule_fallback",
+                "duration_ms": 0,
+                "provider": "rules",
+                "llm_used": used_label,
+                "usage_metadata": {},
+                "errors": list(errors),
+            }
         except Exception as ex:
-            errors.append(f"openai: {ex}")
+            errors.append(f"rules: {ex}")
             return None
 
-    providers = {
-        "gemini": _try_gemini,
-        "openai": _try_openai,
-    }
+    # Απλά today_info («ποιοι εργάζονται», ανοιχτές κάρτες): χωρίς LLM.
+    if focused_store_id is not None:
+        early = _try_rules(used_label="rules_first")
+        if early is not None:
+            parsed, llm_metadata = early
+            llm_metadata["llm_order"] = ["rules_first"]
+            return parsed, employees, llm_metadata
+
     order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,openai")
     order: list[str] = []
     for token in order_raw.replace(";", ",").split(","):
@@ -330,51 +344,73 @@ def parse_command(
     if not order:
         order = ["gemini", "openai"]
 
+    wall_sec = float(getattr(Config, "ASSISTANT_LLM_WALL_SEC", None) or _ASSISTANT_LLM_WALL_SEC)
+    wall_deadline = time.monotonic() + max(3.0, wall_sec)
+
+    def _remaining() -> float:
+        return wall_deadline - time.monotonic()
+
+    def _try_gemini(budget: float) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        if not Config.GEMINI_API_KEY:
+            errors.append("gemini: no API key")
+            return None
+        try:
+            deadline = time.monotonic() + min(_GEMINI_TOTAL_BUDGET_SEC, max(0.5, budget))
+            return _call_gemini(prompt, deadline=deadline)
+        except Exception as ex:
+            errors.append(f"gemini: {ex}")
+            return None
+
+    def _try_openai(budget: float) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        try:
+            from app.openai_assistant_client import generate_json, openai_enabled
+
+            if not openai_enabled():
+                errors.append("openai: disabled")
+                return None
+            configured = float(Config.OPENAI_TIMEOUT_SEC or 6)
+            timeout_sec = min(configured, max(0.5, budget))
+            raw, llm_metadata = generate_json(
+                prompt_obj=prompt,
+                timeout_sec=timeout_sec,
+            )
+            return _normalize_parsed_command(raw), llm_metadata
+        except Exception as ex:
+            errors.append(f"openai: {ex}")
+            return None
+
+    providers = {
+        "gemini": _try_gemini,
+        "openai": _try_openai,
+    }
+
     for name in order:
+        remaining = _remaining()
+        if remaining < _MIN_LLM_PROVIDER_SEC:
+            errors.append(f"{name}: skipped (llm wall {wall_sec:.0f}s)")
+            continue
         runner = providers.get(name)
         if not runner:
             continue
-        result = runner()
+        result = runner(remaining)
         if result is not None:
             parsed, llm_metadata = result
             llm_metadata = dict(llm_metadata or {})
             llm_metadata["llm_order"] = order
             llm_metadata["llm_used"] = name
+            llm_metadata["llm_wall_sec"] = wall_sec
             return parsed, employees, llm_metadata
 
-    # Rule-based today_info — τελευταία γραμμή άμυνας χωρίς LLM
-    if Config.ASSISTANT_RULE_FALLBACK_ENABLED:
-        try:
-            from app.assistant_rule_fallback import rule_based_parse
-
-            store_name = ""
-            if focused_store_id is not None:
-                store_name = next(
-                    (str(s["name"]) for s in stores if int(s["id"]) == int(focused_store_id)),
-                    "",
-                )
-            ruled = rule_based_parse(
-                text=text,
-                store_id=focused_store_id,
-                store_name=store_name,
-                today_home=today_home,
-            )
-            if ruled:
-                return ruled, employees, {
-                    "model": "rule_fallback",
-                    "duration_ms": 0,
-                    "provider": "rules",
-                    "llm_order": order,
-                    "llm_used": "rules",
-                    "usage_metadata": {},
-                    "errors": errors,
-                }
-        except Exception as ex:
-            errors.append(f"rules: {ex}")
+    # Μετά τα LLM: κανόνες για today_info (χωρίς άλλη αναμονή).
+    late = _try_rules(used_label="rules")
+    if late is not None:
+        parsed, llm_metadata = late
+        llm_metadata["llm_order"] = order
+        return parsed, employees, llm_metadata
 
     detail = " | ".join(errors)[:400] if errors else "χωρίς λεπτομέρειες"
     raise RuntimeError(
-        "Προσωρινή αδυναμία ανάλυσης εντολής (Gemini/OpenAI). "
+        "Προσωρινή αδυναμία ανάλυσης εντολής. "
         f"Δοκιμάστε ξανά σε λίγο. [{detail}]"
     )
 

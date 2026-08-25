@@ -219,23 +219,26 @@ GEMINI_FALLBACK_MODEL=gemini-3.5-flash
 
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.5
-OPENAI_TIMEOUT_SEC=20
+OPENAI_TIMEOUT_SEC=6
 OPENAI_STORE=0
 
 # gemini,openai (default) · openai,gemini · ή μόνο ένα
 ASSISTANT_LLM_ORDER=gemini,openai
+ASSISTANT_LLM_WALL_SEC=8
 ASSISTANT_RULE_FALLBACK_ENABLED=1
 
 TELEGRAM_ASSISTANT_ENABLED=1
 AI_AGENT_CONTACT_PHONE=ΧΧΧΧΧΧΧ
 ```
 
-Parser: **Gemini** πρώτα (~1–2s). Αν αποτύχει → **OpenAI** Responses API
-(`gpt-5.5`). Αν αποτύχουν και τα δύο → rule-based `today_info` για απλές
-ερωτήσεις (ανοιχτές κάρτες / ποιοι εργάζονται).
+Parser latency:
+- Απλά `today_info` (ποιοι εργάζονται / ανοιχτές κάρτες) → **κανόνες πρώτα**, χωρίς LLM.
+- Αλλιώς **Gemini** (~1–2s) με budget ~5s μέσα σε κοινό wall `ASSISTANT_LLM_WALL_SEC` (8s).
+- **OpenAI** μόνο αν μένει ≥~2,5s στο wall μετά το Gemini — ποτέ στοίβαγμα 8s+20s.
+- Αν αποτύχουν τα LLM → rule-based `today_info` όπου καλύπτει.
 
-Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το Gemini parsing έχει
-σκληρό χρονικό budget (~8s). Το `today_home` κρατάται σε cache ~45s ανά κατάστημα.
+Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το `today_home` κρατάται σε
+cache ~45s ανά κατάστημα.
 Τα API keys δεν αποθηκεύονται στη βάση ή στο Git. Μετά από αλλαγή `.env`
 απαιτείται restart / recycle IIS.
 

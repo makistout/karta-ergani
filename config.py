@@ -71,17 +71,21 @@ class Config:
         os.environ.get("GEMINI_FALLBACK_MODEL") or "gemini-3.5-flash"
     ).strip()
     # Σειρά parsers: gemini,openai (default). Π.χ. openai,gemini ή μόνο ένα.
+    # Δεν στοιβάζονται σε πλήρη timeouts — κοινό wall ASSISTANT_LLM_WALL_SEC.
     ASSISTANT_LLM_ORDER = (
         os.environ.get("ASSISTANT_LLM_ORDER") or "gemini,openai"
     ).strip()
-    # OpenAI Responses API — εφεδρικό όταν το Gemini αποτύχει.
+    ASSISTANT_LLM_WALL_SEC = float(
+        (os.environ.get("ASSISTANT_LLM_WALL_SEC") or "8").strip() or "8"
+    )
+    # OpenAI Responses API — εφεδρικό μόνο αν μένει χρόνος στο wall μετά το Gemini.
     OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
     OPENAI_MODEL = (os.environ.get("OPENAI_MODEL") or "gpt-5.5").strip()
     OPENAI_TIMEOUT_SEC = float(
-        (os.environ.get("OPENAI_TIMEOUT_SEC") or "20").strip() or "20"
+        (os.environ.get("OPENAI_TIMEOUT_SEC") or "6").strip() or "6"
     )
     OPENAI_STORE = _env_flag("OPENAI_STORE", default=False)
-    # Rule-based today_info όταν αποτύχουν τα LLM (απλές ερωτήσεις σήμερα).
+    # Rule-based today_info ΠΡΙΝ από LLM (και μετά αν αποτύχουν).
     ASSISTANT_RULE_FALLBACK_ENABLED = _env_flag(
         "ASSISTANT_RULE_FALLBACK_ENABLED", default=True
     )
