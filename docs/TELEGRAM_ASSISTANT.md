@@ -233,9 +233,11 @@ AI_AGENT_CONTACT_PHONE=ΧΧΧΧΧΧΧ
 
 Parser latency:
 - Απλά `today_info` (ποιοι εργάζονται / ανοιχτές κάρτες) → **κανόνες πρώτα**, χωρίς LLM.
+- Απλά χτυπήματα (`άνοιξε/κλείσε κάρτα`, `clock in/out`, `είσοδος/έξοδος`) →
+  **κανόνες πρώτα** (ονόματα / όλες / retro ώρα / focus / ομώνυμα).
 - Αλλιώς **Gemini** (~1–2s) με budget ~5s μέσα σε κοινό wall `ASSISTANT_LLM_WALL_SEC` (8s).
 - **OpenAI** μόνο αν μένει ≥~2,5s στο wall μετά το Gemini — ποτέ στοίβαγμα 8s+20s.
-- Αν αποτύχουν τα LLM → rule-based `today_info` όπου καλύπτει.
+- Αν αποτύχουν τα LLM → rule-based `today_info`/κάρτα όπου καλύπτει.
 
 Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το `today_home` κρατάται σε
 cache ~45s ανά κατάστημα.

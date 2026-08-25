@@ -306,6 +306,9 @@ def parse_command(
                 store_id=focused_store_id,
                 store_name=store_name,
                 today_home=today_home,
+                employees=employees,
+                resolve_afms=_afms_from_text,
+                focus_afms=list(focus.get("employee_afms") or []),
             )
             if not ruled:
                 return None
@@ -321,7 +324,7 @@ def parse_command(
             errors.append(f"rules: {ex}")
             return None
 
-    # Απλά today_info («ποιοι εργάζονται», ανοιχτές κάρτες): χωρίς LLM.
+    # Απλά today_info / άνοιξε-κλείσε κάρτα: χωρίς LLM.
     if focused_store_id is not None:
         early = _try_rules(used_label="rules_first")
         if early is not None:
