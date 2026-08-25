@@ -71,14 +71,14 @@ class Config:
         os.environ.get("GEMINI_FALLBACK_MODEL") or "gemini-3.5-flash"
     ).strip()
     # Σειρά parsers: gemini,openai (default). Π.χ. openai,gemini ή μόνο ένα.
-    # Δεν στοιβάζονται σε πλήρη timeouts — κοινό wall ASSISTANT_LLM_WALL_SEC.
+    # Gemini έχει wall· μετά από αποτυχία το OpenAI δοκιμάζεται πάντα.
     ASSISTANT_LLM_ORDER = (
         os.environ.get("ASSISTANT_LLM_ORDER") or "gemini,openai"
     ).strip()
     ASSISTANT_LLM_WALL_SEC = float(
-        (os.environ.get("ASSISTANT_LLM_WALL_SEC") or "8").strip() or "8"
+        (os.environ.get("ASSISTANT_LLM_WALL_SEC") or "14").strip() or "14"
     )
-    # OpenAI Responses API — εφεδρικό μόνο αν μένει χρόνος στο wall μετά το Gemini.
+    # OpenAI Responses API — εφεδρικό μετά από αποτυχία Gemini (πάντα).
     OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
     OPENAI_MODEL = (os.environ.get("OPENAI_MODEL") or "gpt-5.5").strip()
     OPENAI_TIMEOUT_SEC = float(

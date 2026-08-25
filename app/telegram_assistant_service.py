@@ -35,11 +35,11 @@ ALLOWED_INTENTS = {
 _INFO_INTENTS = {"today_info", "cancel_pending"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
-# Gemini attempts within one provider slot (not stacked with OpenAI).
+# Gemini attempts within one provider slot.
 _GEMINI_TOTAL_BUDGET_SEC = 5.0
 _GEMINI_CONNECT_TIMEOUT = 2.0
-# Συνολικό wall-clock για ΟΛΑ τα LLM μαζί — ποτέ Gemini+GPT σε σειρά έως 30s.
-_ASSISTANT_LLM_WALL_SEC = 8.0
+# Wall για Gemini· το OpenAI μετά από αποτυχία τρέχει πάντα με το δικό του timeout.
+_ASSISTANT_LLM_WALL_SEC = 14.0
 _MIN_LLM_PROVIDER_SEC = 2.5
 
 
@@ -364,15 +364,14 @@ def parse_command(
             errors.append(f"gemini: {ex}")
             return None
 
-    def _try_openai(budget: float) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    def _try_openai(_budget: float) -> tuple[dict[str, Any], dict[str, Any]] | None:
         try:
             from app.openai_assistant_client import generate_json, openai_enabled
 
             if not openai_enabled():
                 errors.append("openai: disabled")
                 return None
-            configured = float(Config.OPENAI_TIMEOUT_SEC or 6)
-            timeout_sec = min(configured, max(0.5, budget))
+            timeout_sec = max(0.5, float(Config.OPENAI_TIMEOUT_SEC or 6))
             raw, llm_metadata = generate_json(
                 prompt_obj=prompt,
                 timeout_sec=timeout_sec,
@@ -388,14 +387,18 @@ def parse_command(
     }
 
     for name in order:
-        remaining = _remaining()
-        if remaining < _MIN_LLM_PROVIDER_SEC:
-            errors.append(f"{name}: skipped (llm wall {wall_sec:.0f}s)")
-            continue
         runner = providers.get(name)
         if not runner:
             continue
-        result = runner(remaining)
+        if name == "openai":
+            # Μετά από αποτυχία προηγούμενου provider → πάντα δοκιμή OpenAI.
+            result = runner(float(Config.OPENAI_TIMEOUT_SEC or 6))
+        else:
+            remaining = _remaining()
+            if remaining < _MIN_LLM_PROVIDER_SEC:
+                errors.append(f"{name}: skipped (llm wall {wall_sec:.0f}s)")
+                continue
+            result = runner(remaining)
         if result is not None:
             parsed, llm_metadata = result
             llm_metadata = dict(llm_metadata or {})

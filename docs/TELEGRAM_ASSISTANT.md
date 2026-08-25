@@ -224,7 +224,7 @@ OPENAI_STORE=0
 
 # gemini,openai (default) · openai,gemini · ή μόνο ένα
 ASSISTANT_LLM_ORDER=gemini,openai
-ASSISTANT_LLM_WALL_SEC=8
+ASSISTANT_LLM_WALL_SEC=14
 ASSISTANT_RULE_FALLBACK_ENABLED=1
 
 TELEGRAM_ASSISTANT_ENABLED=1
@@ -235,9 +235,9 @@ Parser latency:
 - Απλά `today_info` (ποιοι εργάζονται / ανοιχτές κάρτες) → **κανόνες πρώτα**, χωρίς LLM.
 - Απλά χτυπήματα (`άνοιξε/κλείσε κάρτα`, `clock in/out`, `είσοδος/έξοδος`) →
   **κανόνες πρώτα** (ονόματα / όλες / retro ώρα / focus / ομώνυμα).
-- Αλλιώς **Gemini** (~1–2s) με budget ~5s μέσα σε κοινό wall `ASSISTANT_LLM_WALL_SEC` (8s).
-- **OpenAI** μόνο αν μένει ≥~2,5s στο wall μετά το Gemini — ποτέ στοίβαγμα 8s+20s.
-- Αν αποτύχουν τα LLM → rule-based `today_info`/κάρτα όπου καλύπτει.
+- Αλλιώς **Gemini** (~1–2s, budget ~5s, wall default 14s).
+- Αν αποτύχει το Gemini → **OpenAI πάντα** με `OPENAI_TIMEOUT_SEC` (default 6s).
+- Αν αποτύχουν και τα δύο → rule-based όπου καλύπτει.
 
 Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το `today_home` κρατάται σε
 cache ~45s ανά κατάστημα.

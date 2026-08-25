@@ -112,7 +112,7 @@ def test_rules_first_skips_llm_for_today_info(monkeypatch):
     assert "A" in (parsed.get("clarification_question") or "")
 
 
-def test_openai_skipped_when_gemini_burns_wall(monkeypatch):
+def test_openai_always_after_gemini_failure(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(
@@ -122,6 +122,10 @@ def test_openai_skipped_when_gemini_burns_wall(monkeypatch):
     monkeypatch.setattr(
         "app.telegram_assistant_service.Config.ASSISTANT_LLM_WALL_SEC",
         3.0,
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.Config.OPENAI_TIMEOUT_SEC",
+        6.0,
     )
     monkeypatch.setattr(
         "app.telegram_assistant_service.Config.GEMINI_API_KEY",
@@ -153,21 +157,25 @@ def test_openai_skipped_when_gemini_burns_wall(monkeypatch):
 
     def fake_openai(*, prompt_obj, timeout_sec=20.0):
         calls.append("openai")
-        return {"intent": "unknown"}, {"model": "gpt", "provider": "openai", "duration_ms": 1}
+        return {
+            "intent": "card_check_in_now",
+            "employee_afms": ["1"],
+            "employee_references": [],
+            "confidence": 0.9,
+            "store_id": 9,
+        }, {"model": "gpt", "provider": "openai", "duration_ms": 1}
 
     monkeypatch.setattr("app.telegram_assistant_service._call_gemini", slow_fail_gemini)
     monkeypatch.setattr("app.openai_assistant_client.openai_enabled", lambda: True)
     monkeypatch.setattr("app.openai_assistant_client.generate_json", fake_openai)
 
-    try:
-        parse_command(
-            text="άνοιξε κάρτα του Α",
-            contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
-        )
-        assert False, "expected RuntimeError"
-    except RuntimeError as ex:
-        assert "Προσωρινή αδυναμία" in str(ex)
-    assert calls == ["gemini"]
+    parsed, _emps, meta = parse_command(
+        text="άνοιξε κάρτα του Α",
+        contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
+    )
+    assert calls == ["gemini", "openai"]
+    assert meta["llm_used"] == "openai"
+    assert parsed["intent"] == "card_check_in_now"
 
 
 def test_extract_openai_output_text():
