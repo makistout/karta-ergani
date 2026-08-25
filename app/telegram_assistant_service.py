@@ -325,13 +325,6 @@ def parse_command(
             errors.append(f"rules: {ex}")
             return None
 
-    # Απλά today_info / άνοιξε-κλείσε κάρτα / «ποιος τελειώνει στις…»: χωρίς LLM.
-    early = _try_rules(used_label="rules_first")
-    if early is not None:
-        parsed, llm_metadata = early
-        llm_metadata["llm_order"] = ["rules_first"]
-        return parsed, employees, llm_metadata
-
     order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,openai")
     order: list[str] = []
     for token in order_raw.replace(";", ",").split(","):
@@ -407,11 +400,11 @@ def parse_command(
             llm_metadata["llm_wall_sec"] = wall_sec
             return parsed, employees, llm_metadata
 
-    # Μετά τα LLM: κανόνες για today_info (χωρίς άλλη αναμονή).
+    # Τελευταία επιλογή: κανόνες (μόνο αν απέτυχαν όλα τα LLM).
     late = _try_rules(used_label="rules")
     if late is not None:
         parsed, llm_metadata = late
-        llm_metadata["llm_order"] = order
+        llm_metadata["llm_order"] = order + ["rules"]
         return parsed, employees, llm_metadata
 
     detail = " | ".join(errors)[:400] if errors else "χωρίς λεπτομέρειες"

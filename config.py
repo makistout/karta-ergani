@@ -85,7 +85,7 @@ class Config:
         (os.environ.get("OPENAI_TIMEOUT_SEC") or "10").strip() or "10"
     )
     OPENAI_STORE = _env_flag("OPENAI_STORE", default=False)
-    # Rule-based today_info ΠΡΙΝ από LLM (και μετά αν αποτύχουν).
+    # Rule-based fallback μόνο ΑΦΟΥ αποτύχουν τα LLM.
     ASSISTANT_RULE_FALLBACK_ENABLED = _env_flag(
         "ASSISTANT_RULE_FALLBACK_ENABLED", default=True
     )

@@ -1,4 +1,4 @@
-"""Rule-based parse για απλά today_info και άνοιγμα/κλείσιμο κάρτας — χωρίς LLM."""
+"""Rule-based fallback για today_info / κάρτα — μόνο μετά από αποτυχία LLM."""
 
 from __future__ import annotations
 

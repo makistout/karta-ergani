@@ -63,9 +63,13 @@ def test_llm_order_openai_after_gemini_failure(monkeypatch):
     assert parsed["intent"] == "card_check_in_now"
 
 
-def test_rules_first_skips_llm_for_today_info(monkeypatch):
+def test_rules_last_after_all_llm_fail(monkeypatch):
     calls: list[str] = []
 
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.Config.ASSISTANT_LLM_ORDER",
+        "gemini,openai",
+    )
     monkeypatch.setattr(
         "app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED",
         True,
@@ -73,6 +77,10 @@ def test_rules_first_skips_llm_for_today_info(monkeypatch):
     monkeypatch.setattr(
         "app.telegram_assistant_service.Config.GEMINI_API_KEY",
         "test-key",
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.Config.OPENAI_API_KEY",
+        "sk-test",
     )
     monkeypatch.setattr(
         "app.telegram_assistant_service._employee_catalog",
@@ -98,16 +106,22 @@ def test_rules_first_skips_llm_for_today_info(monkeypatch):
 
     def boom_gemini(*_a, **_k):
         calls.append("gemini")
-        raise RuntimeError("should not run")
+        raise RuntimeError("503")
+
+    def boom_openai(*, prompt_obj, timeout_sec=20.0):
+        calls.append("openai")
+        raise RuntimeError("timeout")
 
     monkeypatch.setattr("app.telegram_assistant_service._call_gemini", boom_gemini)
+    monkeypatch.setattr("app.openai_assistant_client.openai_enabled", lambda: True)
+    monkeypatch.setattr("app.openai_assistant_client.generate_json", boom_openai)
 
     parsed, _emps, meta = parse_command(
         text="ποιοι εργάζονται ακόμα",
         contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
     )
-    assert calls == []
-    assert meta["llm_used"] == "rules_first"
+    assert calls == ["gemini", "openai"]
+    assert meta["llm_used"] == "rules"
     assert parsed["intent"] == "today_info"
     assert "A" in (parsed.get("clarification_question") or "")
 
