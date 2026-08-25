@@ -36,10 +36,11 @@ _INFO_INTENTS = {"today_info", "cancel_pending"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
 # Gemini attempts within one provider slot.
-_GEMINI_TOTAL_BUDGET_SEC = 5.0
+_GEMINI_TOTAL_BUDGET_SEC = 8.0
 _GEMINI_CONNECT_TIMEOUT = 2.0
+_GEMINI_READ_TIMEOUT_CAP_SEC = 10.0
 # Wall για Gemini· το OpenAI μετά από αποτυχία τρέχει πάντα με το δικό του timeout.
-_ASSISTANT_LLM_WALL_SEC = 14.0
+_ASSISTANT_LLM_WALL_SEC = 20.0
 _MIN_LLM_PROVIDER_SEC = 2.5
 
 
@@ -161,7 +162,7 @@ def _call_gemini(prompt: dict[str, Any], *, deadline: float) -> tuple[dict[str, 
             remaining = deadline - time.monotonic()
             if remaining < (_GEMINI_CONNECT_TIMEOUT + 2.0):
                 break
-            read_timeout = min(6.0, max(2.0, remaining - 0.25))
+            read_timeout = min(_GEMINI_READ_TIMEOUT_CAP_SEC, max(2.0, remaining - 0.25))
             used_model = model
             try:
                 response = requests.post(
@@ -324,13 +325,12 @@ def parse_command(
             errors.append(f"rules: {ex}")
             return None
 
-    # Απλά today_info / άνοιξε-κλείσε κάρτα: χωρίς LLM.
-    if focused_store_id is not None:
-        early = _try_rules(used_label="rules_first")
-        if early is not None:
-            parsed, llm_metadata = early
-            llm_metadata["llm_order"] = ["rules_first"]
-            return parsed, employees, llm_metadata
+    # Απλά today_info / άνοιξε-κλείσε κάρτα / «ποιος τελειώνει στις…»: χωρίς LLM.
+    early = _try_rules(used_label="rules_first")
+    if early is not None:
+        parsed, llm_metadata = early
+        llm_metadata["llm_order"] = ["rules_first"]
+        return parsed, employees, llm_metadata
 
     order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,openai")
     order: list[str] = []
@@ -371,7 +371,7 @@ def parse_command(
             if not openai_enabled():
                 errors.append("openai: disabled")
                 return None
-            timeout_sec = max(0.5, float(Config.OPENAI_TIMEOUT_SEC or 6))
+            timeout_sec = max(0.5, float(Config.OPENAI_TIMEOUT_SEC or 10))
             raw, llm_metadata = generate_json(
                 prompt_obj=prompt,
                 timeout_sec=timeout_sec,
@@ -392,7 +392,7 @@ def parse_command(
             continue
         if name == "openai":
             # Μετά από αποτυχία προηγούμενου provider → πάντα δοκιμή OpenAI.
-            result = runner(float(Config.OPENAI_TIMEOUT_SEC or 6))
+            result = runner(float(Config.OPENAI_TIMEOUT_SEC or 10))
         else:
             remaining = _remaining()
             if remaining < _MIN_LLM_PROVIDER_SEC:

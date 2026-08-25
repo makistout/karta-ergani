@@ -76,13 +76,13 @@ class Config:
         os.environ.get("ASSISTANT_LLM_ORDER") or "gemini,openai"
     ).strip()
     ASSISTANT_LLM_WALL_SEC = float(
-        (os.environ.get("ASSISTANT_LLM_WALL_SEC") or "14").strip() or "14"
+        (os.environ.get("ASSISTANT_LLM_WALL_SEC") or "20").strip() or "20"
     )
     # OpenAI Responses API — εφεδρικό μετά από αποτυχία Gemini (πάντα).
     OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
     OPENAI_MODEL = (os.environ.get("OPENAI_MODEL") or "gpt-5.5").strip()
     OPENAI_TIMEOUT_SEC = float(
-        (os.environ.get("OPENAI_TIMEOUT_SEC") or "6").strip() or "6"
+        (os.environ.get("OPENAI_TIMEOUT_SEC") or "10").strip() or "10"
     )
     OPENAI_STORE = _env_flag("OPENAI_STORE", default=False)
     # Rule-based today_info ΠΡΙΝ από LLM (και μετά αν αποτύχουν).

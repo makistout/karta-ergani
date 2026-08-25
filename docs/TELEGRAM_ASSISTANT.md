@@ -219,12 +219,12 @@ GEMINI_FALLBACK_MODEL=gemini-3.5-flash
 
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.5
-OPENAI_TIMEOUT_SEC=6
+OPENAI_TIMEOUT_SEC=10
 OPENAI_STORE=0
 
 # gemini,openai (default) · openai,gemini · ή μόνο ένα
 ASSISTANT_LLM_ORDER=gemini,openai
-ASSISTANT_LLM_WALL_SEC=14
+ASSISTANT_LLM_WALL_SEC=20
 ASSISTANT_RULE_FALLBACK_ENABLED=1
 
 TELEGRAM_ASSISTANT_ENABLED=1
@@ -232,11 +232,12 @@ AI_AGENT_CONTACT_PHONE=ΧΧΧΧΧΧΧ
 ```
 
 Parser latency:
-- Απλά `today_info` (ποιοι εργάζονται / ανοιχτές κάρτες) → **κανόνες πρώτα**, χωρίς LLM.
+- Απλά `today_info` (ποιοι εργάζονται / ανοιχτές κάρτες / **ποιος τελειώνει στις…**) →
+  **κανόνες πρώτα**, χωρίς LLM.
 - Απλά χτυπήματα (`άνοιξε/κλείσε κάρτα`, `clock in/out`, `είσοδος/έξοδος`) →
   **κανόνες πρώτα** (ονόματα / όλες / retro ώρα / focus / ομώνυμα).
-- Αλλιώς **Gemini** (~1–2s, budget ~5s, wall default 14s).
-- Αν αποτύχει το Gemini → **OpenAI πάντα** με `OPENAI_TIMEOUT_SEC` (default 6s).
+- Αλλιώς **Gemini** (~1–2s, budget ~8s, read έως 10s, wall 20s).
+- Αν αποτύχει το Gemini → **OpenAI πάντα** με `OPENAI_TIMEOUT_SEC` (default 10s).
 - Αν αποτύχουν και τα δύο → rule-based όπου καλύπτει.
 
 Χρησιμοποιούνται συγκεκριμένα model IDs, όχι aliases. Το `today_home` κρατάται σε

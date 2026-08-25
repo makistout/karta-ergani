@@ -232,3 +232,30 @@ def test_card_punch_focus_afms():
     assert parsed is not None
     assert parsed["intent"] == "card_check_out_now"
     assert parsed["employee_afms"] == ["1"]
+
+
+def test_who_finishes_at_time():
+    today_home = {
+        "stores": [{
+            "store_id": 9,
+            "name": "ERATO",
+            "employees": [
+                {"name": "A", "afm": "1", "status": "at_work", "schedule_from": "14:00", "schedule_to": "19:40"},
+                {"name": "B", "afm": "2", "status": "at_work", "schedule_from": "12:00", "schedule_to": "18:40"},
+                {"name": "C", "afm": "3", "status": "at_work", "schedule_from": "15:00", "schedule_to": "19:40"},
+            ],
+        }]
+    }
+    parsed = rule_based_parse(
+        text="ποιος τελειώνει στις 19.40",
+        store_id=9,
+        store_name="ERATO",
+        today_home=today_home,
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "today_info"
+    answer = parsed["clarification_question"]
+    assert "19:40" in answer
+    assert "A" in answer
+    assert "C" in answer
+    assert "B" not in answer

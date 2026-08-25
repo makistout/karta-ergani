@@ -36,6 +36,10 @@ _INFO_HINTS = (
     "βαρδια",
     "χθεσ",
     "εχθεσ",
+    "τελειων",
+    "ξεκινα",
+    "ληγ",
+    "αρχιζ",
 )
 
 _ATHENS = ZoneInfo("Europe/Athens")
@@ -351,6 +355,98 @@ def build_card_punch_command(
     )
 
 
+def _normalize_hhmm(text: str) -> str | None:
+    raw = str(text or "").strip().replace(",", ":").replace(".", ":")
+    if re.fullmatch(r"\d:[0-5]\d", raw):
+        raw = f"0{raw}"
+    if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", raw):
+        return raw
+    return None
+
+
+def _clock_from_info_text(text: str) -> str | None:
+    match = re.search(r"(\d{1,2})[:\.]([0-5]\d)", str(text or ""))
+    if not match:
+        return None
+    return _normalize_hhmm(f"{match.group(1)}:{match.group(2)}")
+
+
+def _employee_end_times(row: dict[str, Any]) -> list[str]:
+    times: list[str] = []
+    to = _normalize_hhmm(str(row.get("schedule_to") or ""))
+    if to:
+        times.append(to)
+    for item in row.get("intervals") or []:
+        if not isinstance(item, dict):
+            continue
+        end = _normalize_hhmm(str(item.get("to") or item.get("hour_to") or ""))
+        if end:
+            times.append(end)
+    return list(dict.fromkeys(times))
+
+
+def _employee_start_times(row: dict[str, Any]) -> list[str]:
+    times: list[str] = []
+    start = _normalize_hhmm(str(row.get("schedule_from") or ""))
+    if start:
+        times.append(start)
+    for item in row.get("intervals") or []:
+        if not isinstance(item, dict):
+            continue
+        begin = _normalize_hhmm(str(item.get("from") or item.get("hour_from") or ""))
+        if begin:
+            times.append(begin)
+    return list(dict.fromkeys(times))
+
+
+def _schedule_criteria_answer(
+    *,
+    text: str,
+    store_name: str,
+    employees: list[dict[str, Any]],
+) -> str | None:
+    """«ποιος τελειώνει/ξεκινά στις 19.40» από schedule_* στο today_home."""
+    folded = _fold(text)
+    hhmm = _clock_from_info_text(text)
+    if not hhmm:
+        return None
+    want_end = any(token in folded for token in ("τελειων", "ληγ", "finish", "ends"))
+    want_start = any(token in folded for token in ("ξεκινα", "αρχιζ", "starts", "begin"))
+    if not want_end and not want_start:
+        # «στις 19:40» με ποιος/ποιες χωρίς ρήμα → τέλος βάρδιας.
+        if any(token in folded for token in ("ποιος", "ποιοι", "ποια", "ποιες")):
+            want_end = True
+        else:
+            return None
+
+    matched: list[dict[str, Any]] = []
+    for row in employees:
+        times = _employee_end_times(row) if want_end else _employee_start_times(row)
+        if hhmm in times:
+            matched.append(row)
+
+    name = store_name or "κατάστημα"
+    verb = "τελειώνουν" if want_end else "ξεκινούν"
+    if not matched:
+        return f"Στο {name} κανείς δεν {verb} στις {hhmm}."
+    lines = []
+    for row in matched:
+        label = str(row.get("name") or row.get("afm") or "—").strip()
+        if want_end:
+            end = next(iter(_employee_end_times(row)), hhmm)
+            start = next(iter(_employee_start_times(row)), "")
+            bit = label
+            if start and end:
+                bit += f" ({start}–{end})"
+            else:
+                bit += f" · έως {end}"
+        else:
+            start = next(iter(_employee_start_times(row)), hhmm)
+            bit = f"{label} · από {start}"
+        lines.append(f"• {bit}")
+    return f"Στο {name} {verb} στις {hhmm}:\n" + "\n".join(lines)
+
+
 def build_today_info_answer(
     *,
     text: str,
@@ -397,6 +493,12 @@ def build_today_info_answer(
 
     name = str(target.get("name") or store_name or "κατάστημα").strip()
     employees = [e for e in (target.get("employees") or []) if isinstance(e, dict)]
+
+    schedule_answer = _schedule_criteria_answer(
+        text=text, store_name=name, employees=employees,
+    )
+    if schedule_answer:
+        return schedule_answer
 
     if want_open:
         rows = _open_card_rows(employees)

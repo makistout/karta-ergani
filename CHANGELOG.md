@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-08-25 — AI: «ποιος τελειώνει στις…» χωρίς LLM + μεγαλύτερα timeouts
+
+- Κανόνας για τελειώνει/ξεκινά στις HH:MM (και `19.40`) από `today_home`.
+- Timeouts: Gemini budget/read ~8–10s, wall 20s, OpenAI 10s — λιγότερα διπλά timeout.
+
+---
+
 ## 2026-08-25 — AI: OpenAI πάντα μετά από αποτυχία Gemini
 
 - Αν πέσει το Gemini, το OpenAI δοκιμάζεται **πάντα** (δικό του timeout 6s)·
