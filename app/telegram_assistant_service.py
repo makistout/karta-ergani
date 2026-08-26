@@ -132,6 +132,10 @@ def _normalize_parsed_command(parsed: Any) -> dict[str, Any]:
         valid_commands = [command for command in commands if isinstance(command, dict)]
         if len(valid_commands) == 1:
             return valid_commands[0]
+        if not valid_commands:
+            # LLM συχνά βάζει commands:[] μαζί με top-level intent (π.χ. today_info).
+            parsed.pop("commands", None)
+            return parsed
         parsed["commands"] = valid_commands
     return parsed
 
@@ -1169,16 +1173,20 @@ def validate_and_describe(
     reply_context: dict[str, Any] | None = None, user_text: str = "",
 ) -> tuple[str, dict[str, Any], str]:
     commands = parsed.get("commands")
-    if not isinstance(commands, list):
+    if isinstance(commands, list):
+        normalized = [command for command in commands if isinstance(command, dict)]
+        if not normalized:
+            # Κενό commands[] αλλά υπάρχει top-level intent → μία εντολή.
+            parsed.pop("commands", None)
+            return _validate_single_command(
+                parsed, contexts=contexts, employees=employees,
+                reply_context=reply_context, user_text=user_text,
+            )
+    else:
         return _validate_single_command(
             parsed, contexts=contexts, employees=employees,
             reply_context=reply_context, user_text=user_text,
         )
-
-    normalized = [command for command in commands if isinstance(command, dict)]
-    if not normalized:
-        validation = {"valid": False, "errors": ["Δεν αναγνωρίστηκε καμία εντολή"], "execution_enabled": False}
-        return "needs_clarification", validation, "Μη αναγνωρισμένη εντολή"
 
     proposed_lines: list[str] = []
     errors: list[str] = []

@@ -761,3 +761,31 @@ def test_gemini_timeout_fails_over_to_secondary_model():
     assert post.call_count == 2
     assert parsed["intent"] == "card_check_in_schedule"
     assert metadata["model"] == "gemini-3.5-flash"
+
+
+def test_empty_commands_array_with_today_info_is_answered():
+    """OpenAI συχνά γυρνά commands:[] μαζί με top-level today_info — δεν είναι «καμία εντολή»."""
+    from app.telegram_assistant_service import _normalize_parsed_command
+
+    raw = {
+        "commands": [],
+        "intent": "today_info",
+        "store_id": 10,
+        "employee_afms": [],
+        "employee_references": [],
+        "confidence": 0.9,
+        "clarification_question": "Στο SALTY εργάζονται ακόμα:\n• A · έως 19:00",
+    }
+    parsed = _normalize_parsed_command(raw)
+    assert "commands" not in parsed
+    assert parsed["intent"] == "today_info"
+    status, validation, proposed = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 10, "store_name": "SALTY"}],
+        employees=[],
+        user_text="Ποιοι δουλεύουν τώρα στο salty",
+    )
+    assert status == "answered"
+    assert validation["valid"] is True
+    assert "SALTY" in proposed
+    assert "Δεν αναγνωρίστηκε καμία εντολή" not in (validation.get("errors") or [])
