@@ -25,8 +25,8 @@
         <h2 class="employee-detail-section-title">Ενεργό διάστημα εργασίας</h2>
         <p class="page-desc">Οι ημερομηνίες χρησιμοποιούνται στην ωρομέτρηση για πρόσληψη ή αποχώρηση μέσα στην εβδομάδα.</p>
         <form id="employeeEmploymentDatesForm" class="actions" style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
-          <label>Ημερομηνία πρόσληψης<br><input id="employeeHireDate" type="date"></label>
-          <label>Ημερομηνία αποχώρησης<br><input id="employeeDepartureDate" type="date"></label>
+          <label class="dp-field"><span class="dp-field-label">Ημερομηνία πρόσληψης</span><input id="employeeHireDate" type="text" placeholder="ηη/μμ/εεεε"></label>
+          <label class="dp-field"><span class="dp-field-label">Ημερομηνία αποχώρησης</span><input id="employeeDepartureDate" type="text" placeholder="ηη/μμ/εεεε"></label>
           <button class="btn btn-primary" type="submit">Αποθήκευση</button>
           <span id="employeeEmploymentDatesStatus" class="page-desc"></span>
         </form>
@@ -38,5 +38,6 @@
       </section>
 {% endblock %}
 {% block scripts %}
+  <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
   <script src="/static/js/employee-detail.js?v=20260826employmentdates1"></script>
 {% endblock %}

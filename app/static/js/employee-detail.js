@@ -178,13 +178,15 @@ async function setupEmploymentDates(afm) {
   const hire = document.getElementById("employeeHireDate");
   const departure = document.getElementById("employeeDepartureDate");
   const status = document.getElementById("employeeEmploymentDatesStatus");
+  const hirePicker = Office.attachGreekDateField({inputEl: hire, allowEmpty: true});
+  const departurePicker = Office.attachGreekDateField({inputEl: departure, allowEmpty: true});
   try {
     const res = await fetch("/api/employees/list?limit=5000", {cache: "no-store"});
     const data = await res.json();
     const row = (data.employees || []).find((item) => String(item.afm || "") === afm);
     if (row) {
-      hire.value = row.hire_date || "";
-      departure.value = row.departure_date || "";
+      hirePicker?.setIso(row.hire_date || "", true);
+      departurePicker?.setIso(row.departure_date || "", true);
     }
   } catch (_) {}
   form.addEventListener("submit", async (event) => {
@@ -192,7 +194,11 @@ async function setupEmploymentDates(afm) {
     status.textContent = "Αποθήκευση…";
     const res = await fetch("/api/employees/employment-dates", {
       method: "PATCH", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({employee_afm: afm, hire_date: hire.value, departure_date: departure.value}),
+      body: JSON.stringify({
+        employee_afm: afm,
+        hire_date: hirePicker?.getIso() || "",
+        departure_date: departurePicker?.getIso() || "",
+      }),
     });
     const data = await res.json();
     status.textContent = res.ok ? "Αποθηκεύτηκε" : (data.error || "Αποτυχία αποθήκευσης");

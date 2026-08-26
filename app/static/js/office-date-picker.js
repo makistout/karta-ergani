@@ -198,12 +198,22 @@
     const popup = fieldEl.querySelector(".dp-cal-popup");
     if (!textInput || !popup) return null;
 
-    let iso = opts.initialIso || isoToday();
+    const allowEmpty = opts.allowEmpty === true;
+    let iso = opts.initialIso || (allowEmpty ? "" : isoToday());
     const minIso = opts.minIso || null;
     const maxIso = opts.maxIso || null;
 
     function setIso(next, silent) {
       const prev = iso;
+      if (!next && allowEmpty) {
+        iso = "";
+        textInput.value = "";
+        textInput.dataset.iso = "";
+        if (!silent && iso !== prev && typeof opts.onChange === "function") {
+          opts.onChange(iso);
+        }
+        return;
+      }
       iso = clampIso(next || isoToday(), minIso, maxIso);
       textInput.value = isoToGr(iso);
       textInput.dataset.iso = iso;
@@ -213,6 +223,10 @@
     }
 
     function readText() {
+      if (allowEmpty && !String(textInput.value || "").trim()) {
+        setIso("");
+        return;
+      }
       const parsed = grToIso(textInput.value);
       if (parsed) {
         if (parsed !== iso) setIso(parsed);
@@ -315,6 +329,9 @@
     const input = opts.inputEl || document.getElementById(opts.inputId);
     if (!input) return null;
 
+    const originalType = input.type;
+    const originalValue = input.value;
+
     let fieldEl = input.closest(".dp-date-field");
     if (!fieldEl) {
       const parent = input.parentNode;
@@ -345,14 +362,15 @@
 
     const initial =
       opts.initialIso ||
-      grToIso(input.value) ||
-      (input.type === "date" ? input.value : null) ||
-      isoToday();
+      grToIso(originalValue) ||
+      (originalType === "date" ? originalValue : null) ||
+      (opts.allowEmpty ? "" : isoToday());
 
     return bindGreekDateField(fieldEl, {
       initialIso: initial,
       minIso: resolveBound(opts.minDate),
       maxIso: resolveBound(opts.maxDate),
+      allowEmpty: opts.allowEmpty,
       onChange: opts.onChange,
       getRangeHighlight: opts.getRangeHighlight,
     });
