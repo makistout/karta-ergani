@@ -7,6 +7,14 @@ from flask import Flask, jsonify
 from app.assistant_execution_service import execute_confirmed_task, execution_answer
 
 
+class _AuthResponse:
+    ok = True
+    status_code = 200
+
+    def json(self):
+        return {"accessToken": "cached-token", "accessTokenExpired": 600}
+
+
 def test_confirmed_schedule_card_submits_real_time_and_returns_protocol():
     app = Flask(__name__)
     task = {
@@ -25,6 +33,7 @@ def test_confirmed_schedule_card_submits_real_time_and_returns_protocol():
          patch("app.assistant_execution_service.get_action_settings", return_value={"ai_agent_enabled": True}), \
          patch("app.assistant_execution_service._authenticate", return_value=("token", client)), \
          patch("app.assistant_execution_service._employees", return_value=[employee]), \
+         patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None), \
          patch("app.routes_work_card._submit_work_card", return_value=(
              jsonify({"success": True, "protocol": "P-123"}), 200,
          )) as submit, \
@@ -112,6 +121,33 @@ def test_batch_executes_every_command_and_collects_every_protocol():
          patch("app.assistant_execution_service._execute_command", side_effect=[first, second]) as execute, \
          patch("app.repo_telegram_assistant.finish_task_execution") as finish:
         result = execute_confirmed_task(task, source="assistant_telegram")
-    assert result == {"success": True, "results": first + second}
+    assert result["success"] is True
+    assert result["results"] == first + second
+    assert set(result["timings_ms"]) == {"authentication", "commands", "total"}
     assert execute.call_count == 2
     finish.assert_called_once_with(10, success=True, result=result)
+
+
+def test_ergani_authentication_token_is_reused(monkeypatch):
+    from app import assistant_execution_service as service
+
+    service._clear_auth_cache()
+    client = SimpleNamespace(base_url="https://example.invalid/", authenticate=lambda *_a: _AuthResponse())
+    calls = {"authenticate": 0}
+
+    def authenticate(*_args):
+        calls["authenticate"] += 1
+        return _AuthResponse()
+
+    client.authenticate = authenticate
+    monkeypatch.setattr("app.ergani_env.client_for_store", lambda _store: client)
+    monkeypatch.setattr("app.ergani_env.api_login_credentials", lambda _store: ("user", "secret", "01"))
+    monkeypatch.setattr("app.http_helpers.json_or_text", lambda response: response.json())
+    store = {"id": 4, "ergani_env": "production"}
+
+    first_token, _ = service._authenticate(store)
+    second_token, _ = service._authenticate(store)
+
+    assert first_token == second_token == "cached-token"
+    assert calls["authenticate"] == 1
+    service._clear_auth_cache()

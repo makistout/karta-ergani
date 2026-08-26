@@ -509,6 +509,54 @@ def _submit_work_card(
                         "Card-listener aitiologia retry dispatch failed"
                     )
 
+            if (
+                queued
+                and listener_job
+                and str(listener_job.get("status")) == "failed"
+                and aitiologia_raw
+                and not explicit_aitiologia
+                and _ergani_forbids_aitiologia(
+                    listener_job.get("result_data")
+                    or {"error": listener_job.get("error_summary")}
+                )
+            ):
+                # Clock/minute-boundary safety: if Ergani still considers the
+                # event within 15', repeat through the same listener without a reason.
+                retry_payload = build_payload(None, include_null_aitiologia=True)
+                retry_canonical = json.dumps(
+                    {"store_id": int(store_id), "payload": retry_payload},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                retry_idempotency_key = hashlib.sha256(
+                    retry_canonical.encode("utf-8")
+                ).hexdigest()
+                try:
+                    retry_queued = enqueue_job(
+                        store_id=int(store_id),
+                        idempotency_key=retry_idempotency_key,
+                        employee_afm=emp_afm,
+                        f_type=resolved_type,
+                        reference_date=ref_date,
+                        event_at=event_at_str,
+                        payload=retry_payload,
+                        ergani_api_base_url=str(api_base_url or Config.ERGANI_API_BASE_URL),
+                        fallback_seconds=timeout_seconds,
+                    )
+                    retry_job = wait_for_job(
+                        retry_queued["job_uuid"], int(store_id), timeout_seconds
+                    )
+                    queued = retry_queued
+                    listener_job = retry_job
+                    payload = retry_payload
+                    aitiologia_raw = None
+                    listener_aitiologia_retry = True
+                except Exception:
+                    current_app.logger.exception(
+                        "Card-listener removal-of-aitiologia retry dispatch failed"
+                    )
+
             if listener_job and listener_job.get("status") in {"succeeded", "failed", "needs_review"}:
                 job_status = str(listener_job.get("status"))
                 listener_ok = job_status == "succeeded"

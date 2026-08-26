@@ -236,9 +236,11 @@ AI_AGENT_CONTACT_PHONE=ΧΧΧΧΧΧΧ
 ```
 
 Parser latency:
-- **Πάντα LLM πρώτα:** Gemini → αν αποτύχει OpenAI (`OPENAI_TIMEOUT_SEC`, default 10s).
-- **Τελευταία επιλογή:** τοπικοί κανόνες (`today_info`, άνοιξε/κλείσε κάρτα,
-  ποιος τελειώνει/ξεκινά στις…) μόνο αν πέσουν και τα δύο LLM.
+- **Fast path πριν από LLM:** σαφείς εντολές κάρτας με server-side επιλυμένο
+  εργαζόμενο αναλύονται τοπικά και περνούν από το ίδιο validation.
+- Για τις υπόλοιπες εντολές: Gemini → αν αποτύχει OpenAI (`OPENAI_TIMEOUT_SEC`, default 10s).
+- **Τελευταία επιλογή:** οι τοπικοί κανόνες (`today_info`, άνοιξε/κλείσε κάρτα,
+  ποιος τελειώνει/ξεκινά στις…) χρησιμοποιούνται ξανά μόνο αν πέσουν και τα δύο LLM.
 - Gemini budget ~8s (read έως 10s), wall 20s.
 - Κενό `commands: []` + top-level intent → επικύρωση ως μία εντολή (όχι «καμία εντολή»).
 
@@ -246,6 +248,10 @@ Parser latency:
 cache ~45s ανά κατάστημα.
 Τα API keys δεν αποθηκεύονται στη βάση ή στο Git. Μετά από αλλαγή `.env`
 απαιτείται restart / recycle IIS.
+
+Κατά την εκτέλεση, το access token ΕΡΓΑΝΗ κρατιέται σε process-local cache ανά
+κατάστημα/περιβάλλον/credentials μέχρι λίγο πριν από το expiration. Το task result
+αποθηκεύει `timings_ms` για authentication, commands και συνολικό χρόνο.
 
 ## Πίνακες και migrations
 

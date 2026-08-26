@@ -18,70 +18,94 @@ class WorkCardAitiologiaTests(unittest.TestCase):
     def setUp(self):
         self.today = datetime.now(tz_athens()).date().isoformat()
 
-    def test_check_in_on_time_no_aitiologia(self):
+    def test_check_in_submitted_within_limit_no_aitiologia(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T10:00:00",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
             requested_aitiologia="001",
             schedule_hour_from="10:00",
             flex_arrival_minutes=15,
+            submitted_at=event + timedelta(minutes=10),
         )
         self.assertIsNone(ait)
 
-    def test_check_in_within_flex_no_aitiologia(self):
+    def test_submission_within_fifteen_minutes_has_no_aitiologia(self):
+        submitted = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T10:15:00",
+            reference_date=submitted.date().isoformat(),
+            event_at=(submitted - timedelta(minutes=15)).isoformat(),
             requested_aitiologia=None,
-            schedule_hour_from="10:00",
-            flex_arrival_minutes=15,
+            schedule_hour_from="01:00",
+            flex_arrival_minutes=0,
+            submitted_at=submitted,
         )
         self.assertIsNone(ait)
 
-    def test_check_in_late_requires_aitiologia(self):
+    def test_submission_after_fifteen_minutes_requires_aitiologia(self):
+        submitted = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T10:20:00",
+            reference_date=submitted.date().isoformat(),
+            event_at=(submitted - timedelta(minutes=15, seconds=1)).isoformat(),
             requested_aitiologia=None,
-            schedule_hour_from="10:00",
-            flex_arrival_minutes=15,
+            schedule_hour_from="23:00",
+            flex_arrival_minutes=120,
+            submitted_at=submitted,
         )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
 
-    def test_check_in_slightly_early_no_aitiologia(self):
+    def test_ten_minutes_ago_never_sends_aitiologia_regardless_of_schedule(self):
+        submitted = datetime(2026, 8, 26, 19, 28, tzinfo=tz_athens())
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T09:45:00",
-            requested_aitiologia=None,
-            schedule_hour_from="10:00",
-            flex_arrival_minutes=15,
+            reference_date="2026-08-26",
+            event_at="2026-08-26T19:18:00+03:00",
+            requested_aitiologia="001",
+            schedule_hour_from="09:00",
+            flex_arrival_minutes=0,
+            submitted_at=submitted,
         )
         self.assertIsNone(ait)
 
-    def test_check_in_too_early_requires_aitiologia(self):
+    def test_schedule_difference_does_not_add_aitiologia_within_limit(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T09:44:00",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
+            requested_aitiologia=None,
+            schedule_hour_from="23:00",
+            flex_arrival_minutes=0,
+            submitted_at=event + timedelta(minutes=10),
+        )
+        self.assertIsNone(ait)
+
+    def test_check_in_submitted_after_limit_requires_aitiologia(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
+        ait = resolve_wrk_card_aitiologia(
+            f_type="0",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
             requested_aitiologia=None,
             schedule_hour_from="10:00",
-            flex_arrival_minutes=15,
+            flex_arrival_minutes=120,
+            submitted_at=event + timedelta(minutes=16),
         )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
 
-    def test_check_in_before_shift_within_flex_no_aitiologia(self):
-        """08:56 με ωράριο 09:00 — εντός ευελιξίας, όχι αιτιολογία (σφάλμα Ergani)."""
+    def test_flex_does_not_control_aitiologia(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="0",
-            reference_date=self.today,
-            event_at=f"{self.today}T08:56:00",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
             requested_aitiologia="001",
             schedule_hour_from="09:00",
             flex_arrival_minutes=15,
+            submitted_at=event + timedelta(minutes=5),
         )
         self.assertIsNone(ait)
 
@@ -112,31 +136,35 @@ class WorkCardAitiologiaTests(unittest.TestCase):
         )
         self.assertIsNone(ait)
 
-    def test_check_out_on_time_no_aitiologia(self):
+    def test_check_out_submitted_within_limit_no_aitiologia(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="1",
-            reference_date=self.today,
-            event_at=f"{self.today}T18:00:00",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
             requested_aitiologia="001",
             schedule_hour_from="10:00",
             schedule_hour_to="18:00",
             flex_arrival_minutes=15,
+            submitted_at=event + timedelta(minutes=10),
         )
         self.assertIsNone(ait)
 
-    def test_check_out_early_requires_aitiologia(self):
+    def test_check_out_submitted_after_limit_requires_aitiologia(self):
+        event = datetime.now(tz_athens()).replace(second=0, microsecond=0)
         ait = resolve_wrk_card_aitiologia(
             f_type="1",
-            reference_date=self.today,
-            event_at=f"{self.today}T17:40:00",
+            reference_date=event.date().isoformat(),
+            event_at=event.isoformat(),
             requested_aitiologia=None,
             schedule_hour_from="10:00",
             schedule_hour_to="18:00",
             flex_arrival_minutes=15,
+            submitted_at=event + timedelta(minutes=16),
         )
         self.assertEqual(ait, RETRO_AITIOLOGIA_INTERNET)
 
-    def test_previous_day_always_aitiologia(self):
+    def test_previous_day_requires_aitiologia_when_more_than_fifteen_minutes_old(self):
         self.assertTrue(
             wrk_card_needs_aitiologia(
                 f_type="0",

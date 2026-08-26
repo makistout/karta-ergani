@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import threading
+import time
 from typing import Any
 
 from app.repo_store import get_action_settings, get_store_config
+
+
+_AUTH_CACHE_LOCK = threading.RLock()
+_AUTH_CACHE: dict[tuple[Any, ...], tuple[str, float]] = {}
+_AUTH_CACHE_DEFAULT_TTL_SEC = 300.0
+_AUTH_CACHE_EXPIRY_MARGIN_SEC = 30.0
 
 
 def _payload(task: dict[str, Any]) -> dict[str, Any]:
@@ -25,12 +34,43 @@ def _authenticate(store: dict[str, Any]) -> tuple[str, Any]:
 
     client = client_for_store(store)
     username, password, usertype = api_login_credentials(store)
+    password_fingerprint = hashlib.sha256(str(password).encode("utf-8")).hexdigest()
+    cache_key = (
+        int(store.get("id") or 0),
+        str(store.get("ergani_env") or ""),
+        str(client.base_url),
+        str(username),
+        str(usertype),
+        password_fingerprint,
+    )
+    now_mono = time.monotonic()
+    with _AUTH_CACHE_LOCK:
+        cached = _AUTH_CACHE.get(cache_key)
+        if cached and cached[1] > now_mono:
+            return cached[0], client
+        if cached:
+            _AUTH_CACHE.pop(cache_key, None)
+
     response = client.authenticate(username, password, usertype)
     data = json_or_text(response)
     token = str(data.get("accessToken") or "").strip() if response.ok and isinstance(data, dict) else ""
     if not token:
         raise RuntimeError(f"Αποτυχία σύνδεσης στο ΕΡΓΑΝΗ (HTTP {response.status_code})")
+    try:
+        reported_ttl = float(data.get("accessTokenExpired") or _AUTH_CACHE_DEFAULT_TTL_SEC)
+    except (TypeError, ValueError):
+        reported_ttl = _AUTH_CACHE_DEFAULT_TTL_SEC
+    cache_ttl = max(0.0, reported_ttl - _AUTH_CACHE_EXPIRY_MARGIN_SEC)
+    if cache_ttl > 0:
+        with _AUTH_CACHE_LOCK:
+            _AUTH_CACHE[cache_key] = (token, now_mono + cache_ttl)
     return token, client
+
+
+def _clear_auth_cache() -> None:
+    """Clear process-local Ergani tokens (tests/reconfiguration)."""
+    with _AUTH_CACHE_LOCK:
+        _AUTH_CACHE.clear()
 
 
 def _employees(store: dict[str, Any], afms: list[str]) -> list[dict[str, Any]]:
@@ -183,8 +223,11 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
         finish_task_execution(task_id, success=False, result=result)
         return result
 
+    execution_started = time.monotonic()
     try:
+        auth_started = time.monotonic()
         bearer, client = _authenticate(store)
+        auth_ms = int((time.monotonic() - auth_started) * 1000)
         store["api_base_url"] = client.base_url
         results: list[dict[str, Any]] = []
         commands = parsed.get("commands") if isinstance(parsed.get("commands"), list) else [parsed]
@@ -193,6 +236,7 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
         normalized_commands = [command for command in commands if isinstance(command, dict)]
         punch_total = count_card_punches_in_commands(normalized_commands) or 1
         punch_offset = 0
+        commands_started = time.monotonic()
         for command in normalized_commands:
             results.extend(
                 _execute_command(
@@ -207,9 +251,22 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
                     afms = [command.get("employee_afm")] if command.get("employee_afm") else []
                 punch_offset += len([str(a or "").strip() for a in afms if str(a or "").strip()])
         success = bool(results) and all(bool(row.get("success")) for row in results)
-        result = {"success": success, "results": results}
+        result = {
+            "success": success,
+            "results": results,
+            "timings_ms": {
+                "authentication": auth_ms,
+                "commands": int((time.monotonic() - commands_started) * 1000),
+                "total": int((time.monotonic() - execution_started) * 1000),
+            },
+        }
     except Exception as exc:
-        result = {"success": False, "results": [], "error": str(exc)}
+        result = {
+            "success": False,
+            "results": [],
+            "error": str(exc),
+            "timings_ms": {"total": int((time.monotonic() - execution_started) * 1000)},
+        }
 
     finish_task_execution(task_id, success=bool(result.get("success")), result=result)
     return result

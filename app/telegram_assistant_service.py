@@ -236,8 +236,7 @@ def _assistant_prompt_guide() -> list[str]:
 def parse_command(
     *, text: str, contexts: list[dict[str, Any]], reply_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
-    if not Config.GEMINI_API_KEY and not (Config.OPENAI_API_KEY or "").strip():
-        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε OPENAI_API_KEY")
+    parse_started = time.monotonic()
     now = datetime.now(ZoneInfo("Europe/Athens"))
     employees = _employee_catalog(contexts)
     stores = [
@@ -319,7 +318,7 @@ def parse_command(
                 return None
             return ruled, {
                 "model": "rule_fallback",
-                "duration_ms": 0,
+                "duration_ms": int((time.monotonic() - parse_started) * 1000),
                 "provider": "rules",
                 "llm_used": used_label,
                 "usage_metadata": {},
@@ -328,6 +327,25 @@ def parse_command(
         except Exception as ex:
             errors.append(f"rules: {ex}")
             return None
+
+    # Fast path: σαφής εντολή κάρτας με server-side resolved εργαζόμενο.
+    # Ασαφείς/μη επιλύσιμες φράσεις συνεχίζουν κανονικά προς LLM.
+    fast = _try_rules(used_label="rules_fast")
+    if fast is not None:
+        fast_parsed, fast_metadata = fast
+        fast_intent = str(fast_parsed.get("intent") or "")
+        fast_afms = fast_parsed.get("employee_afms")
+        fast_ambiguous = fast_parsed.get("ambiguous_employee_afms")
+        if fast_intent.startswith("card_check_") and (
+            (isinstance(fast_afms, list) and bool(fast_afms))
+            or (isinstance(fast_ambiguous, list) and bool(fast_ambiguous))
+        ):
+            fast_metadata["fast_path"] = True
+            fast_metadata["llm_order"] = ["rules_fast"]
+            return fast_parsed, employees, fast_metadata
+
+    if not Config.GEMINI_API_KEY and not (Config.OPENAI_API_KEY or "").strip():
+        raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε OPENAI_API_KEY")
 
     order_raw = str(Config.ASSISTANT_LLM_ORDER or "gemini,openai")
     order: list[str] = []

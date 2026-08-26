@@ -17,15 +17,9 @@ AITIOLOGIA_CODES: dict[str, str] = {
     "003": "ΠΡΟΒΛΗΜΑ ΣΥΝΔΕΣΗΣ ΜΕ ΤΟ ΠΣ ΕΡΓΑΝΗ",
 }
 RETRO_AITIOLOGIA_INTERNET = "001"
-# Αν η ώρα κίνησης ≈ ώρα υποβολής (live ή retro με «σήμερα + τώρα»), χωρίς αιτιολογία.
-IMMEDIATE_PUNCH_TOLERANCE_SECONDS = 120
-
-
-def _is_immediate_punch(event_dt: datetime, *, submitted_at: datetime | None = None) -> bool:
-    """Ίδια λογική ανεξάρτητα από κανάλι: η κίνηση δηλώνεται «τώρα»."""
-    submitted = (submitted_at or datetime.now(tz_athens())).astimezone(tz_athens())
-    event_local = event_dt.astimezone(tz_athens()) if event_dt.tzinfo else event_dt.replace(tzinfo=tz_athens())
-    return abs((event_local - submitted).total_seconds()) <= IMMEDIATE_PUNCH_TOLERANCE_SECONDS
+# Επίσημος κανόνας ΕΡΓΑΝΗ: η δήλωση κάρτας είναι εμπρόθεσμη εντός 15'
+# από την καταγραφή του γεγονότος. Μόνο μετά το όριο απαιτείται αιτιολογία.
+WRK_CARD_ON_TIME_LIMIT_MINUTES = 15
 
 
 def ergani_forbids_aitiologia(parsed: Any) -> bool:
@@ -108,18 +102,6 @@ def event_at_is_future(dt: datetime, *, now: datetime | None = None) -> bool:
     return event_dt > current
 
 
-def _flex_tolerance_minutes(flex_arrival_minutes: int | None, *, default: int = 15) -> int:
-    from app.card_report import _flex_tolerance_minutes as _flex
-
-    return _flex(flex_arrival_minutes, default=default)
-
-
-def _hm_to_minutes(value: str | None) -> int | None:
-    from app.card_report import _hm_to_minutes as _hm
-
-    return _hm(value)
-
-
 def wrk_card_needs_aitiologia(
     *,
     f_type: str,
@@ -130,40 +112,23 @@ def wrk_card_needs_aitiologia(
     flex_arrival_minutes: int | None = None,
     submitted_at: datetime | None = None,
 ) -> bool:
-    """
-    Αν χρειάζεται f_aitiologia — μόνο από ΠΟΤΕ είναι το χτύπημα (όχι από κανάλι).
+    """True μόνο όταν η υποβολή γίνεται πάνω από 15' μετά την κίνηση.
 
-    1) Ημέρα αναφοράς ≠ σήμερα → πάντα αιτιολογία (εκπρόθεσμη δήλωση).
-    2) Ώρα κίνησης ≈ ώρα υποβολής → όχι (live ή retro «τώρα»).
-    3) Σήμερα, αλλού: έλεγχος έναντι ψηφιακού ωραρίου ± ευελιξία.
+    Τα στοιχεία ωραρίου/flex παραμένουν στην υπογραφή για συμβατότητα κλήσεων,
+    αλλά δεν επηρεάζουν την εκπρόθεσμη υποβολή WRKCardSE.
     """
-    today_iso = (submitted_at or datetime.now(tz_athens())).astimezone(tz_athens()).date().isoformat()
-    ref = str(reference_date or "").strip()[:10]
-    if not ref and event_at:
-        ref = str(event_at).strip()[:10]
-    if ref and ref != today_iso:
-        return True
     if not event_at:
         return False
-
-    dt = parse_event_at(event_at, ref or None)
-    if _is_immediate_punch(dt, submitted_at=submitted_at):
-        return False
-
-    punch_min = dt.hour * 60 + dt.minute
-    tol = _flex_tolerance_minutes(flex_arrival_minutes)
-    ft = str(f_type).strip()
-
-    if ft == "0":
-        s_start = _hm_to_minutes(schedule_hour_from)
-        if s_start is None:
-            return False
-        return punch_min < s_start - tol or punch_min > s_start + tol
-
-    s_end = _hm_to_minutes(schedule_hour_to)
-    if s_end is None:
-        return False
-    return punch_min < s_end - tol or punch_min > s_end + tol
+    ref = str(reference_date or "").strip()[:10] or str(event_at).strip()[:10]
+    event_dt = parse_event_at(event_at, ref or None)
+    submitted = (submitted_at or datetime.now(tz_athens())).astimezone(tz_athens())
+    event_local = (
+        event_dt.astimezone(tz_athens())
+        if event_dt.tzinfo
+        else event_dt.replace(tzinfo=tz_athens())
+    )
+    elapsed_seconds = (submitted - event_local).total_seconds()
+    return elapsed_seconds > WRK_CARD_ON_TIME_LIMIT_MINUTES * 60
 
 
 def resolve_wrk_card_aitiologia(
@@ -211,60 +176,13 @@ def aitiologia_for_wrk_card_submit(
     submitted_at: datetime | None = None,
 ) -> str | None:
     """Ενιαία απόφαση αιτιολογίας για κάθε κανάλι υποβολής WRKCardSE."""
-    from app.date_util import format_date_for_ergani
-
-    sched_ctx = lookup_punch_schedule_context(
-        employer_afm=employer_afm,
-        branch_aa=branch_aa,
-        employee_afm=employee_afm,
-        work_date_ergani=format_date_for_ergani(reference_date),
-    )
     return resolve_wrk_card_aitiologia(
         f_type=f_type,
         event_at=event_at,
         reference_date=reference_date,
         requested_aitiologia=requested_aitiologia,
-        schedule_hour_from=sched_ctx.get("schedule_hour_from"),
-        schedule_hour_to=sched_ctx.get("schedule_hour_to"),
-        flex_arrival_minutes=sched_ctx.get("flex_arrival_minutes"),
         submitted_at=submitted_at,
     )
-
-
-def lookup_punch_schedule_context(
-    *,
-    employer_afm: str,
-    branch_aa: str,
-    employee_afm: str,
-    work_date_ergani: str,
-) -> dict[str, Any]:
-    """Ψηφ. ωράριο + ευελιξία + πραγματική είσοδος για έλεγχο αιτιολογίας."""
-    from app.repo_entities import flex_arrival_map_for_employer
-    from app.repo_work_log import enrich_work_log_rows_with_schedule, list_work_log_for_store
-
-    wd = str(work_date_ergani or "").strip()
-    emp = norm_afm(employee_afm)
-    row: dict[str, Any] = {
-        "employee_afm": emp,
-        "work_date": wd,
-        "hour_from": None,
-        "hour_to": None,
-    }
-    wl_rows = list_work_log_for_store(employer_afm, branch_aa, wd, limit=20)
-    for wl in wl_rows:
-        if norm_afm(str(wl.get("employee_afm") or "")) == emp:
-            row["hour_from"] = wl.get("hour_from")
-            row["hour_to"] = wl.get("hour_to")
-            break
-    enrich_work_log_rows_with_schedule([row], employer_afm, branch_aa, [wd])
-    sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else {}
-    flex_map = flex_arrival_map_for_employer(employer_afm, branch_aa)
-    return {
-        "schedule_hour_from": str((sched or {}).get("hour_from") or "").strip() or None,
-        "schedule_hour_to": str((sched or {}).get("hour_to") or "").strip() or None,
-        "flex_arrival_minutes": flex_map.get(emp),
-        "work_hour_from": str(row.get("hour_from") or "").strip() or None,
-    }
 
 
 def normalize_aitiologia(raw: str | None) -> str | None:

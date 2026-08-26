@@ -202,3 +202,37 @@ def test_extract_openai_output_text():
         }],
     }
     assert _extract_output_text(data) == '{"intent":"today_info"}'
+
+
+def test_clear_named_card_command_uses_rules_fast_before_llm(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", True)
+    monkeypatch.setattr("app.telegram_assistant_service.Config.GEMINI_API_KEY", "")
+    monkeypatch.setattr("app.telegram_assistant_service.Config.OPENAI_API_KEY", "")
+    monkeypatch.setattr(
+        "app.telegram_assistant_service._employee_catalog",
+        lambda _contexts: [{"store_id": 9, "afm": "182666682", "name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ"}],
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.build_today_home_context",
+        lambda _contexts: {"stores": [{
+            "store_id": 9,
+            "name": "ERATO",
+            "employees": [{"afm": "182666682", "name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ", "status": "needs_checkin"}],
+        }]},
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service._call_gemini",
+        lambda *_a, **_k: calls.append("gemini"),
+    )
+
+    parsed, _employees, metadata = parse_command(
+        text="άνοιξε την κάρτα του Βήχου 10 λεπτά πριν",
+        contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
+    )
+
+    assert calls == []
+    assert parsed["intent"] == "card_check_in_retro"
+    assert parsed["employee_afms"] == ["182666682"]
+    assert metadata["llm_used"] == "rules_fast"
+    assert metadata["fast_path"] is True
