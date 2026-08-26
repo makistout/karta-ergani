@@ -276,6 +276,33 @@ def list_current_for_store(
         return rows_to_dicts(cur)
 
 
+def list_history_for_store(
+    employer_afm: str, branch_aa: str, limit: int = 20000,
+) -> list[dict[str, Any]]:
+    """All contract snapshots used to resolve the contract effective per day."""
+    lim = max(1, min(int(limit), 50000))
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP ({lim})
+                id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
+                specialty, characterization, step92, weekly_work_days, prior_service,
+                employment_relation, fixed_term_from, fixed_term_to, regime,
+                weekly_hours, salary, hourly_wage, total_weekly_hours,
+                fulltime_contract_weekly_hours, break_minutes, break_in_work,
+                flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
+                CAST(synced_at AS datetime2) AS synced_at, source
+            FROM dbo.karta_employment_contract
+            WHERE employer_afm=? AND branch_aa=?
+            ORDER BY employee_afm, synced_at, id
+            """,
+            (afm, aa),
+        )
+        return rows_to_dicts(cur)
+
+
 def list_history_for_employee(
     employer_afm: str,
     branch_aa: str,

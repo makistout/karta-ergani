@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any
 
 import pyodbc
@@ -51,7 +52,7 @@ def list_employees_for_employer(
     sql = f"""
         SELECT TOP ({lim})
             emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-            e.active, p.code_aa AS parartima_aa,
+            e.active, e.hire_date, e.departure_date, p.code_aa AS parartima_aa,
             p.description AS parartima_desc,
             em.afm AS employer_afm,
             em.eponimia AS employer_eponimia,
@@ -72,6 +73,30 @@ def list_employees_for_employer(
     with cursor(commit=False) as cur:
         cur.execute(sql, params)
         return rows_to_dicts(cur)
+
+
+def update_employment_dates(
+    employer_afm: str, branch_aa: str, employee_afm: str,
+    *, hire_date: date | None, departure_date: date | None,
+) -> None:
+    """Persist the editable active interval on the store employment card."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE e SET hire_date=?, departure_date=?,
+                active=CASE WHEN ? IS NULL OR ? >= CAST(GETDATE() AS date) THEN 1 ELSE 0 END,
+                updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+            WHERE em.afm=? AND emp.afm=? AND p.code_aa=?
+            """,
+            (hire_date, departure_date, departure_date, departure_date,
+             norm_afm(employer_afm), norm_afm(employee_afm), str(branch_aa or "0")),
+        )
+        if not cur.rowcount:
+            raise ValueError("Δεν βρέθηκε η εργασιακή σύνδεση του εργαζομένου στο κατάστημα")
 
 
 def upsert_employer(

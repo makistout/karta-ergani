@@ -87,6 +87,7 @@ async function loadEmployeeDetail() {
   }
   title.textContent = nameQ || `ΑΦΜ ${afm}`;
   meta.textContent = `ΑΦΜ ${afm}`;
+  setupEmploymentDates(afm);
 
   try {
     await Office.loadActiveStore();
@@ -170,4 +171,30 @@ async function loadEmployeeDetail() {
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
+}
+
+async function setupEmploymentDates(afm) {
+  const form = document.getElementById("employeeEmploymentDatesForm");
+  const hire = document.getElementById("employeeHireDate");
+  const departure = document.getElementById("employeeDepartureDate");
+  const status = document.getElementById("employeeEmploymentDatesStatus");
+  try {
+    const res = await fetch("/api/employees/list?limit=5000", {cache: "no-store"});
+    const data = await res.json();
+    const row = (data.employees || []).find((item) => String(item.afm || "") === afm);
+    if (row) {
+      hire.value = row.hire_date || "";
+      departure.value = row.departure_date || "";
+    }
+  } catch (_) {}
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    status.textContent = "Αποθήκευση…";
+    const res = await fetch("/api/employees/employment-dates", {
+      method: "PATCH", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({employee_afm: afm, hire_date: hire.value, departure_date: departure.value}),
+    });
+    const data = await res.json();
+    status.textContent = res.ok ? "Αποθηκεύτηκε" : (data.error || "Αποτυχία αποθήκευσης");
+  });
 }

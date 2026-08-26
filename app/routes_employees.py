@@ -15,7 +15,7 @@ from app.repo_employment_contract import (
     list_current_for_store,
     list_history_for_employee,
 )
-from app.repo_entities import list_employees_for_employer
+from app.repo_entities import list_employees_for_employer, update_employment_dates
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import start_async_portal_sync
 from app.work_card_payload import norm_afm
@@ -34,6 +34,13 @@ from app.repo_work_log import (
 )
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/api/employees")
+
+
+def _optional_iso_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return date.fromisoformat(text)
 
 
 def _contract_summary(contract: dict | None) -> str | None:
@@ -73,7 +80,7 @@ def _annual_normal_leave_entitlement(contract: dict | None) -> int | None:
 
 def _iso_rows(rows: list[dict]) -> list[dict]:
     for r in rows:
-        for key in ("updated_at", "synced_at"):
+        for key in ("updated_at", "synced_at", "hire_date", "departure_date"):
             if hasattr(r.get(key), "isoformat"):
                 r[key] = r[key].isoformat()
     return rows
@@ -160,6 +167,36 @@ def employees_list():
     })
 
 
+@employees_bp.patch("/employment-dates")
+def employee_employment_dates_update():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    payload = request.get_json(silent=True) or {}
+    employee_afm = norm_afm(payload.get("employee_afm") or "")
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+    try:
+        hire = _optional_iso_date(payload.get("hire_date"))
+        departure = _optional_iso_date(payload.get("departure_date"))
+    except ValueError:
+        return jsonify({"error": "Οι ημερομηνίες πρέπει να είναι YYYY-MM-DD"}), 400
+    if hire and departure and departure < hire:
+        return jsonify({"error": "Η αποχώρηση δεν μπορεί να είναι πριν από την πρόσληψη"}), 400
+    try:
+        update_employment_dates(
+            str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0"), employee_afm,
+            hire_date=hire, departure_date=departure,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    return jsonify({
+        "ok": True, "employee_afm": employee_afm,
+        "hire_date": hire.isoformat() if hire else None,
+        "departure_date": departure.isoformat() if departure else None,
+    })
+
+
 @employees_bp.get("/monthly-overview")
 def employee_monthly_overview():
     ctx = resolve_active_store()
@@ -200,6 +237,12 @@ def employee_monthly_overview():
         ) if norm_afm(row.get("employee_afm") or "") == employee_afm]
         contracts = [row for row in list_current_for_store(afm, branch)
                      if norm_afm(row.get("employee_afm") or "") == employee_afm]
+        employment = next((row for row in list_employees_for_employer(
+            afm, branch_aa=branch, active_only=False, limit=5000,
+        ) if norm_afm(row.get("afm") or "") == employee_afm), {})
+        for contract in contracts:
+            contract["hire_date"] = employment.get("hire_date")
+            contract["departure_date"] = employment.get("departure_date")
         preview = build_weekly_report(schedule, work_log, contracts)
         for item in preview.get("days") or []:
             work_date = datetime.strptime(item["work_date"], "%d/%m/%Y").date()

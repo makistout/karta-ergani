@@ -11,7 +11,8 @@ from app.date_util import iso_to_ergani_dates
 from app.karta_log import KartaLogger
 from app import repo_sync_log
 from app.repo_apologistic import mark_failed, save_report
-from app.repo_employment_contract import list_current_for_store
+from app.repo_employment_contract import list_history_for_store
+from app.repo_entities import list_employees_for_employer
 from app.repo_schedule import list_schedule_for_range
 from app.repo_holidays import get_effective_holidays_for_store
 from app.repo_store import get_action_settings, get_sunday_rest_transfer_enabled
@@ -42,7 +43,16 @@ def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -
             list_work_log_for_range(afm, branch, dates),
             employer_afm=afm, branch_aa=branch, ergani_dates=dates,
         )
-        contracts = list_current_for_store(afm, branch)
+        contracts = list_history_for_store(afm, branch)
+        employment_by_afm = {
+            str(row.get("afm") or "").zfill(9): row
+            for row in list_employees_for_employer(afm, branch_aa=branch, active_only=False)
+        }
+        for contract in contracts:
+            employment = employment_by_afm.get(str(contract.get("employee_afm") or "").zfill(9), {})
+            contract["hire_date"] = employment.get("hire_date")
+            contract["departure_date"] = employment.get("departure_date")
+            contract["effective_from"] = contract.get("ergani_updated_at")
         sunday_rest_transfer = get_sunday_rest_transfer_enabled(int(store["id"]))
         action_settings = get_action_settings(int(store["id"]))
         store_holidays = get_effective_holidays_for_store(int(store["id"]), week_from.year)

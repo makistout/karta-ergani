@@ -657,6 +657,39 @@ def _contract_weekly_minutes(contract: dict[str, Any] | None) -> int | None:
         return None
 
 
+def _contract_date(value: object) -> date | None:
+    text = str(value or "").strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _contract_for_day(candidates: list[dict[str, Any]], work_date: str) -> dict[str, Any] | None:
+    """Choose the contract segment effective on this specific day."""
+    target = datetime.strptime(work_date, "%d/%m/%Y").date()
+    matching = []
+    active_candidates = []
+    for contract in candidates:
+        hire = _contract_date(contract.get("hire_date"))
+        departure = _contract_date(contract.get("departure_date"))
+        if (hire is not None and target < hire) or (departure is not None and target > departure):
+            continue
+        start = _contract_date(contract.get("effective_from")) or hire
+        end = _contract_date(contract.get("effective_to")) or departure
+        rank = (start or date.min, int(contract.get("id") or 0), contract)
+        active_candidates.append(rank)
+        if (start is None or start <= target) and (end is None or target <= end):
+            matching.append(rank)
+    if matching:
+        return max(matching, key=lambda item: item[:2])[2]
+    # A first imported snapshot can post-date the requested period even though
+    # the employment was already active. Use the earliest known snapshot.
+    return min(active_candidates, key=lambda item: item[:2])[2] if active_candidates else None
+
+
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
@@ -751,7 +784,13 @@ def build_weekly_report(
 ) -> dict[str, Any]:
     schedules: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     punches: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    contracts_by_afm = {str(r.get("employee_afm") or "").zfill(9): r for r in contracts}
+    contract_segments_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for contract_row in contracts:
+        contract_segments_by_afm[str(contract_row.get("employee_afm") or "").zfill(9)].append(contract_row)
+    contracts_by_afm = {
+        afm: next((row for row in segments if row.get("is_current") in (True, 1, "1")), segments[-1])
+        for afm, segments in contract_segments_by_afm.items()
+    }
     names: dict[str, tuple[str, str]] = {}
     for source, target in ((schedule_rows, schedules), (work_rows, punches)):
         for row in source:
@@ -814,7 +853,7 @@ def build_weekly_report(
         excluded_overnight_punches = excluded_by_previous_overnight.get((afm, work_date), [])
         carried_overnight_punches = carried_into_previous.get((afm, work_date), [])
         work_slots = _working_slots(slots)
-        contract = contracts_by_afm.get(afm)
+        contract = _contract_for_day(contract_segments_by_afm.get(afm, []), work_date)
         contract_kind, _contract_weekly_days = _contract_kind(contract)
         max_inferred_overnight_minutes = (
             780 if _contract_weekly_days == 5 else 720 if _contract_weekly_days == 6 else None
@@ -843,9 +882,14 @@ def build_weekly_report(
                 boundary = extra_from or extra_to
                 corrected_extra_punches.append({"recorded": extra, "from": boundary, "to": boundary,
                                                 "corrected": f"{boundary}–{boundary}"})
-        weekly_days, weekly_days_source = weekly_system_by_afm.get(
-            afm, (_contract_weekly_days, "Τρέχουσα σύμβαση")
-        )
+        if _contract_weekly_days in (5, 6):
+            weekly_days, weekly_days_source = (
+                _contract_weekly_days, "Σύμβαση εργαζομένου"
+            )
+        else:
+            weekly_days, weekly_days_source = weekly_system_by_afm.get(
+                afm, (None, "Μη προσδιορισμένο στη σύμβαση")
+            )
         contract_flags = _contract_flags(contract)
         declared_minutes = sum(_minutes(s.get("hour_from"), s.get("hour_to")) or 0 for s in work_slots)
         daily_overtime_days, daily_overtime_basis_source = _daily_overtime_basis(
@@ -1173,6 +1217,10 @@ def build_weekly_report(
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
             "contract_weekly_minutes": _contract_weekly_minutes(contract),
+            "employment_start_date": contract.get("hire_date") if contract else None,
+            "employment_end_date": contract.get("departure_date") if contract else None,
+            "contract_effective_from": contract.get("effective_from") if contract else None,
+            "contract_effective_to": contract.get("effective_to") if contract else None,
             "weekly_days_source": weekly_days_source,
             "actual_start_minutes": ps,
             "declared_start_minutes": ds,

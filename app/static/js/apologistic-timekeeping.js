@@ -137,6 +137,7 @@ function renderRows(rows) {
     ["overtime_60_breakdown", "Υπερωρία 60%"],
     ["overtime_120_breakdown", "Υπερωρία 120%"],
     ["sixth_day_breakdown", "6η ημέρα 30%"],
+    ["exception_breakdown", "Κατ’ εξαίρεση"],
   ];
   const familyHeaders = families.map(([, label]) =>
     `<th colspan="4">${esc(label)}</th>`

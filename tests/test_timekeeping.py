@@ -451,11 +451,14 @@ def test_six_days_do_not_create_sixth_day_band():
     assert sum(day["sixth_day_minutes"] for day in report["days"]) == 0
 
 
-def test_seven_equal_days_mark_sunday_then_saturday_as_at_most_two_sixth_days():
+def test_seven_equal_days_put_sunday_in_exception_and_only_saturday_in_sixth_day():
     rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
     report = build_timekeeping_report(rows)
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
-    assert marked == ["22/08/2026", "23/08/2026"]
+    assert marked == ["22/08/2026"]
+    sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
+    assert sunday["sixth_day_minutes"] == 0
+    assert sunday["exception_minutes"] == 480
 
 
 def test_six_days_above_40_hours_mark_only_shortest_tie_priority_day():
@@ -473,7 +476,9 @@ def test_seven_days_choose_shortest_before_sunday_priority():
     ]
     report = build_timekeeping_report(rows)
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
-    assert marked == ["19/08/2026", "23/08/2026"]
+    assert marked == ["19/08/2026"]
+    sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
+    assert sunday["exception_minutes"] == 480
 
 
 def test_next_week_three_explicit_rests_suppress_any_sixth_day_when_sunday_over_five_hours():
@@ -522,7 +527,43 @@ def test_sixth_day_contains_only_clean_basis_not_overtime():
     report = build_timekeeping_report(rows)
     sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
     assert sixth["sixth_day_minutes"] == 480
-    assert sixth["overtime_40"] == 60
+    assert sixth["overtime_40"] == 0
+    assert sixth["exception_minutes"] == 60
+
+
+def test_midweek_part_time_departure_prorates_weekly_cap_by_recognized_days():
+    rows = [
+        _row(
+            work_date=f"{day:02d}/08/2026", declared="09:00–14:00",
+            contract_kind="Μερική", weekly_days=5,
+            contract_weekly_minutes=20 * 60,
+            employment_end_date="2026-08-19",
+        )
+        for day in range(17, 20)
+    ]
+    report = build_timekeeping_report(rows)
+    assert sum(day["partial_additional_12"] for day in report["days"]) == 180
+    assert {day["effective_contract_weekly_cap_minutes"] for day in report["days"]} == {720}
+    assert all(day["employment_week_prorated"] for day in report["days"])
+
+
+def test_midweek_part_time_hours_change_uses_each_days_contract_share():
+    rows = [
+        _row(
+            work_date="17/08/2026", declared="09:00–15:00", contract_kind="Μερική",
+            weekly_days=5, contract_weekly_minutes=20 * 60,
+            contract_effective_from="2026-08-17",
+        ),
+        _row(
+            work_date="18/08/2026", declared="09:00–15:00", contract_kind="Μερική",
+            weekly_days=5, contract_weekly_minutes=25 * 60,
+            contract_effective_from="2026-08-18",
+        ),
+    ]
+    report = build_timekeeping_report(rows)
+    # New cap: 4:00 for Monday + 5:00 for Tuesday = 9:00.
+    assert {day["effective_contract_weekly_cap_minutes"] for day in report["days"]} == {540}
+    assert sum(day["partial_additional_12"] for day in report["days"]) == 180
 
 
 def test_unknown_next_week_does_not_suppress_sixth_day():

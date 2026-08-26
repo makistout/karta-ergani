@@ -21,11 +21,22 @@
         </div>
       </section>
 
+      <section class="card employee-detail-card">
+        <h2 class="employee-detail-section-title">Ενεργό διάστημα εργασίας</h2>
+        <p class="page-desc">Οι ημερομηνίες χρησιμοποιούνται στην ωρομέτρηση για πρόσληψη ή αποχώρηση μέσα στην εβδομάδα.</p>
+        <form id="employeeEmploymentDatesForm" class="actions" style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
+          <label>Ημερομηνία πρόσληψης<br><input id="employeeHireDate" type="date"></label>
+          <label>Ημερομηνία αποχώρησης<br><input id="employeeDepartureDate" type="date"></label>
+          <button class="btn btn-primary" type="submit">Αποθήκευση</button>
+          <span id="employeeEmploymentDatesStatus" class="page-desc"></span>
+        </form>
+      </section>
+
       <section id="employeeContractHistorySection" class="card employee-detail-card hidden">
         <h2 class="employee-detail-section-title">Προηγούμενες εκδόσεις</h2>
         <div id="employeeContractHistoryWrap"></div>
       </section>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/employee-detail.js?v=20260808detailpage1"></script>
+  <script src="/static/js/employee-detail.js?v=20260826employmentdates1"></script>
 {% endblock %}
