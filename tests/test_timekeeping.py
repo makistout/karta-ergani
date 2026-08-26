@@ -458,7 +458,8 @@ def test_seven_equal_days_put_sunday_in_exception_and_only_saturday_in_sixth_day
     assert marked == ["22/08/2026"]
     sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
     assert sunday["sixth_day_minutes"] == 0
-    assert sunday["exception_minutes"] == 480
+    assert sunday["overtime_120"] == 480
+    assert sum(sunday["overtime_120_breakdown"].values()) == 480
 
 
 def test_six_days_above_40_hours_mark_only_shortest_tie_priority_day():
@@ -478,7 +479,7 @@ def test_seven_days_choose_shortest_before_sunday_priority():
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
     assert marked == ["19/08/2026"]
     sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
-    assert sunday["exception_minutes"] == 480
+    assert sunday["overtime_120"] == 480
 
 
 def test_next_week_three_explicit_rests_suppress_any_sixth_day_when_sunday_over_five_hours():
@@ -528,7 +529,7 @@ def test_sixth_day_contains_only_clean_basis_not_overtime():
     sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
     assert sixth["sixth_day_minutes"] == 480
     assert sixth["overtime_40"] == 0
-    assert sixth["exception_minutes"] == 60
+    assert sixth["overtime_120"] == 60
 
 
 def test_midweek_part_time_departure_prorates_weekly_cap_by_recognized_days():
