@@ -268,3 +268,19 @@ def test_minutes_ago_before_suffix():
     assert suffix == "_retro"
     assert time_value is not None
     assert len(time_value) == 5
+
+
+def test_one_hour_ago_is_retro_not_now():
+    from app.assistant_rule_fallback import _extract_punch_time
+
+    time_value, suffix = _extract_punch_time("κλείσε την κάρτα του hoxha μια ώρα πριν")
+    assert suffix == "_retro"
+    assert time_value is not None
+
+
+def test_before_another_event_is_not_silently_now():
+    from app.assistant_rule_fallback import _extract_punch_time
+
+    time_value, suffix = _extract_punch_time("κλείσε την κάρτα 10 λεπτά πριν την έξοδο")
+    assert suffix == "_unresolved"
+    assert time_value is None

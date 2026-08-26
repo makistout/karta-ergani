@@ -87,17 +87,45 @@ def _wants_schedule(text: str) -> bool:
     return any(token in folded for token in ("βασει ωραρι", "ωραριου", "κατα ωραριο", "schedule"))
 
 
+def _relative_ago_minutes(text: str) -> int | None:
+    """Parse «πριν Χ λεπτά/ώρες» and «Χ λεπτά/ώρες πριν» from now."""
+    folded = _fold(text)
+    if "πριν" not in folded:
+        return None
+    # «10 λεπτά πριν την είσοδο» has another anchor and must go to the LLM.
+    if re.search(r"πριν\s+(?:την?|τησ|το)\s+(?:εισοδ|εξοδ|χτυπημ|ωραρι)", folded):
+        return None
+
+    word_numbers = {
+        "μια": 1, "μιαν": 1, "ενα": 1, "εναν": 1,
+        "δυο": 2, "τρεισ": 3, "τεσσερισ": 4,
+    }
+
+    def _number(raw: str) -> int:
+        return int(raw) if raw.isdigit() else word_numbers.get(raw, 0)
+
+    hours = 0
+    minutes = 0
+    hour_match = re.search(r"(\d+|μιαν?|εναν?|δυο|τρεισ|τεσσερισ)\s+ωρ", folded)
+    minute_match = re.search(r"(\d+|μιαν?|εναν?|δυο|τρεισ|τεσσερισ)\s+λεπτ", folded)
+    if hour_match:
+        hours = _number(hour_match.group(1))
+    if minute_match:
+        minutes = _number(minute_match.group(1))
+    if re.search(r"μιση\s+ωρ", folded):
+        minutes += 30
+    total = hours * 60 + minutes
+    return total if total > 0 else None
+
+
 def _extract_punch_time(text: str) -> tuple[str | None, str]:
     """Επιστρέφει (HH:MM ή None, suffix _now|_retro|_schedule)."""
     if _wants_schedule(text):
         return None, "_schedule"
     folded = _fold(text)
-    # «πριν 10 λεπτά» ή «10 λεπτά πριν»
-    minutes_ago = re.search(r"πριν\s+(\d+)\s+λεπτ", folded)
-    if not minutes_ago:
-        minutes_ago = re.search(r"(\d+)\s+λεπτ\w*\s+πριν", folded)
-    if minutes_ago:
-        delta = timedelta(minutes=int(minutes_ago.group(1)))
+    ago_minutes = _relative_ago_minutes(text)
+    if ago_minutes is not None:
+        delta = timedelta(minutes=ago_minutes)
         when = datetime.now(_ATHENS) - delta
         return when.strftime("%H:%M"), "_retro"
     clock = re.search(
@@ -109,6 +137,9 @@ def _extract_punch_time(text: str) -> tuple[str | None, str]:
         minute = int(clock.group(2))
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             return f"{hour:02d}:{minute:02d}", "_retro"
+    # Never silently reinterpret an unparsed «πριν …» as «τώρα».
+    if "πριν" in folded:
+        return None, "_unresolved"
     return None, "_now"
 
 
@@ -251,6 +282,8 @@ def build_card_punch_command(
         return None
 
     time_value, suffix = _extract_punch_time(text)
+    if suffix == "_unresolved":
+        return None
     intent = f"card_{direction}{suffix}"
     want_yesterday = _wants_yesterday(text)
     # Έξοδος χθες (overnight) — είσοδος χθες δεν καλύπτεται εδώ.

@@ -236,3 +236,29 @@ def test_clear_named_card_command_uses_rules_fast_before_llm(monkeypatch):
     assert parsed["employee_afms"] == ["182666682"]
     assert metadata["llm_used"] == "rules_fast"
     assert metadata["fast_path"] is True
+
+
+def test_clear_named_card_one_hour_ago_uses_retro_fast_path(monkeypatch):
+    monkeypatch.setattr("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", True)
+    monkeypatch.setattr("app.telegram_assistant_service.Config.GEMINI_API_KEY", "")
+    monkeypatch.setattr("app.telegram_assistant_service.Config.OPENAI_API_KEY", "")
+    monkeypatch.setattr(
+        "app.telegram_assistant_service._employee_catalog",
+        lambda _contexts: [{"store_id": 9, "afm": "111", "name": "HOXHA DASHURI"}],
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.build_today_home_context",
+        lambda _contexts: {"stores": [{
+            "store_id": 9, "name": "ERATO",
+            "employees": [{"afm": "111", "name": "HOXHA DASHURI", "status": "at_work", "card_in": "10:00"}],
+        }]},
+    )
+
+    parsed, _employees, metadata = parse_command(
+        text="κλεισε την καρτα του hoxha μια ωρα πριν",
+        contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
+    )
+
+    assert parsed["intent"] == "card_check_out_retro"
+    assert parsed["time"] is not None
+    assert metadata["llm_used"] == "rules_fast"
