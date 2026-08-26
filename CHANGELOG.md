@@ -8,6 +8,14 @@
 
 ---
 
+## 2026-08-26 — AI: «10 λεπτά πριν» + rules crash + OpenAI disabled στο IIS
+
+- Αναγνώριση και «Χ λεπτά πριν» (όχι μόνο «πριν Χ λεπτά»).
+- Fix crash κανόνων (`int | None` σε type alias σε παλιότερο runtime).
+- OpenAI credentials ξαναδιαβάζονται από `.env` στο call (όχι μόνο στο import).
+
+---
+
 ## 2026-08-26 — AI: κενό commands[] δεν σκοτώνει today_info
 
 - Αν το LLM γυρίσει `commands: []` μαζί με top-level `today_info`/intent,

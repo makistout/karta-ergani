@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -15,8 +16,31 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 
+def _openai_credentials() -> tuple[str, str]:
+    key = (getattr(Config, "OPENAI_API_KEY", None) or os.environ.get("OPENAI_API_KEY") or "").strip()
+    model = (
+        getattr(Config, "OPENAI_MODEL", None) or os.environ.get("OPENAI_MODEL") or "gpt-5.5"
+    ).strip()
+    if key and model:
+        return key, model
+    # IIS / stale worker: ξαναφόρτωσε .env αν λείπει το key.
+    try:
+        from pathlib import Path
+
+        from dotenv import load_dotenv
+
+        root = Path(__file__).resolve().parents[1]
+        load_dotenv(root / ".env", override=True)
+    except Exception:
+        pass
+    key = (os.environ.get("OPENAI_API_KEY") or getattr(Config, "OPENAI_API_KEY", None) or "").strip()
+    model = (os.environ.get("OPENAI_MODEL") or getattr(Config, "OPENAI_MODEL", None) or "gpt-5.5").strip()
+    return key, model
+
+
 def openai_enabled() -> bool:
-    return bool((Config.OPENAI_API_KEY or "").strip() and (Config.OPENAI_MODEL or "").strip())
+    key, model = _openai_credentials()
+    return bool(key and model)
 
 
 def _extract_output_text(data: dict[str, Any]) -> str:
@@ -47,8 +71,7 @@ def generate_json(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not openai_enabled():
         raise RuntimeError("Το OpenAI δεν είναι ρυθμισμένο")
-    model = Config.OPENAI_MODEL.strip()
-    key = Config.OPENAI_API_KEY.strip()
+    key, model = _openai_credentials()
     body: dict[str, Any] = {
         "model": model,
         "store": bool(Config.OPENAI_STORE),

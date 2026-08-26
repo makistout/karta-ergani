@@ -440,6 +440,20 @@ def _clock_from_text(text: str) -> str:
     return _normalize_clock_time(match.group(0).replace(".", ":").replace(",", ":")) if match else ""
 
 
+def _minutes_ago_clock_from_text(text: str) -> str:
+    """«πριν 10 λεπτά» ή «10 λεπτά πριν» → HH:MM από τώρα."""
+    folded = _fold_text(text)
+    match = re.search(r"πριν\s+(\d+)\s+λεπτ", folded)
+    if not match:
+        match = re.search(r"(\d+)\s+λεπτ\w*\s+πριν", folded)
+    if not match:
+        return ""
+    from datetime import timedelta
+
+    when = datetime.now(ZoneInfo("Europe/Athens")) - timedelta(minutes=int(match.group(1)))
+    return when.strftime("%H:%M")
+
+
 _GROUP_FOCUS_HINTS = (
     "οσους", "οσοι", "οσες", "ολους", "ολες", "ολοι", "ολα",
     "τελειων", "ξεκινα", "δουλευ", "εργαζ", "ανοιχτ",
@@ -776,7 +790,7 @@ def _inherit_conversation_context(
 
     time_value = _normalize_clock_time(str(parsed.get("time") or ""))
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
-        time_value = _clock_from_text(user_text)
+        time_value = _minutes_ago_clock_from_text(user_text) or _clock_from_text(user_text)
     if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
         parsed["time"] = time_value
 

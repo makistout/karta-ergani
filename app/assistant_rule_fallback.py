@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from app.assistant_card_intent import card_action_direction_from_text
 
-ResolveAfmsFn = Callable[[str, list[dict[str, Any]], int | None], list[str]]
+ResolveAfmsFn = Callable[[str, list[dict[str, Any]], Optional[int]], list[str]]
 
 
 def _fold(text: str) -> str:
@@ -92,7 +92,10 @@ def _extract_punch_time(text: str) -> tuple[str | None, str]:
     if _wants_schedule(text):
         return None, "_schedule"
     folded = _fold(text)
+    # «πριν 10 λεπτά» ή «10 λεπτά πριν»
     minutes_ago = re.search(r"πριν\s+(\d+)\s+λεπτ", folded)
+    if not minutes_ago:
+        minutes_ago = re.search(r"(\d+)\s+λεπτ\w*\s+πριν", folded)
     if minutes_ago:
         delta = timedelta(minutes=int(minutes_ago.group(1)))
         when = datetime.now(_ATHENS) - delta

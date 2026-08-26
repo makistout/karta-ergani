@@ -259,3 +259,12 @@ def test_who_finishes_at_time():
     assert "A" in answer
     assert "C" in answer
     assert "B" not in answer
+
+
+def test_minutes_ago_before_suffix():
+    from app.assistant_rule_fallback import _extract_punch_time
+
+    time_value, suffix = _extract_punch_time("άνοιξε την κάρτα του βηχου 10 λεπτά πριν")
+    assert suffix == "_retro"
+    assert time_value is not None
+    assert len(time_value) == 5
