@@ -287,6 +287,16 @@ def _resolve_access_store_id(
     focus_sid = _store_id_from_reply_context(reply_context)
     if focus_sid in allowed:
         return focus_sid
+    # Older/generic notifications may not have persisted store_id in their
+    # outbound metadata, while their visible text still starts with e.g.
+    # ``erganiOS — VILLA SHARM``.  A Telegram reply must inherit that store
+    # before we decide to ask the user for a store again.
+    reply = reply_context if isinstance(reply_context, dict) else {}
+    reply_text = str(reply.get("message_text") or "").strip()
+    if reply_text:
+        reply_mentions = _mentioned_store_ids(reply_text, contexts)
+        if len(reply_mentions) == 1 and reply_mentions[0] in allowed:
+            return reply_mentions[0]
     return None
 
 
@@ -392,13 +402,17 @@ def _resolve_store_choice_pending(
         (row["recipient_id"] for row in stores if row["store_id"] == chosen),
         pending.get("recipient_id"),
     )
+    chosen_contexts = [
+        row for row in contexts
+        if int(row.get("store_id") or 0) == chosen
+    ]
     merged_reply = dict(reply_context or {})
     merged_reply["store_id"] = chosen
     merged_reply["focus_locked"] = True
     merged_reply.pop("pending_clarification", None)
 
     parsed, employees, llm_metadata = parse_command(
-        text=original, contexts=contexts, reply_context=merged_reply,
+        text=original, contexts=chosen_contexts, reply_context=merged_reply,
     )
     if isinstance(parsed, dict):
         parsed["store_id"] = chosen
@@ -420,7 +434,7 @@ def _resolve_store_choice_pending(
             )
 
     status, validation, proposed = validate_and_describe(
-        parsed, contexts=contexts, employees=employees,
+        parsed, contexts=chosen_contexts, employees=employees,
         reply_context=merged_reply, user_text=original,
     )
     task_status = (

@@ -252,6 +252,9 @@
     `yesterday` / `yesterday_date`·
   - **`conversation_focus`** / `pending_clarification` — πλαίσιο συνομιλίας και
     απαντήσεις σε «Εννοείτε…» / ακύρωση στο ίδιο `#N`·
+  - Telegram reply κληρονομεί κατάστημα από `store_id` ή, για παλιά notifications
+    χωρίς metadata, από το εμφανές όνομα στο `message_text`· μετά από επιλογή
+    καταστήματος ο parser/validation περιορίζεται μόνο σε αυτό το store context·
   - greeklish και φωνητική αντιστοίχιση ονομάτων· παραδείγματα στο prompt **όχι**
     δεσμευτικά (π.χ. `cancel_pending` σημασιολογικά)·
   - χρόνος κάρτας: χωρίς ώρα = τώρα· «πριν Ν λεπτά» = retro από το **τώρα**

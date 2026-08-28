@@ -110,6 +110,57 @@ def test_multi_store_asks_list_when_message_has_no_store(monkeypatch):
     assert created["store_id"] is None
 
 
+def test_reply_notification_text_selects_store_before_asking_list(monkeypatch):
+    """Reply σε παλιό notification κρατά store και χωρίς store_id metadata."""
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", lambda **kwargs: 911)
+
+    def fake_parse(**kwargs):
+        assert kwargs["reply_context"]["store_id"] == 5
+        return (
+            {
+                "intent": "today_info",
+                "store_id": 5,
+                "employee_afms": [],
+                "clarification_question": "Στο VILLA SHARM: ...",
+                "confidence": 1.0,
+            },
+            [],
+            {},
+        )
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: (
+            "answered",
+            {"valid": True, "errors": [], "execution_enabled": False},
+            "Στο VILLA SHARM: ...",
+        ),
+    )
+    contexts = [
+        {"store_id": 1, "store_name": "APERIO", "recipient_id": 10},
+        {"store_id": 5, "store_name": "VILLA SHARM", "recipient_id": 50},
+    ]
+    result = process_assistant_command(
+        text="Ποιοι δούλευαν χθες",
+        contexts=contexts,
+        inbound_id=205,
+        chat_id="1",
+        reply_context={
+            "message_text": "erganiOS — VILLA SHARM\nΤο αυτόματο κλείσιμο...",
+            "focus_locked": True,
+        },
+    )
+    assert result["status"] == "answered"
+    assert result["parsed"]["store_id"] == 5
+    assert "Επιλέξτε κατάστημα" not in result["answer"]
+
+
 def test_sticky_store_from_previous_today_info_without_reply(monkeypatch):
     """Μετά «στο Ερατο ποιοι δουλεύουν», follow-up χωρίς reply κρατάει το Ερατο."""
     created: dict = {}
@@ -209,6 +260,7 @@ def test_store_choice_reply_replays_original_message(monkeypatch):
     def fake_parse(**kwargs):
         assert kwargs["text"] == "ποιοι εργάζονται ακόμα"
         assert kwargs["reply_context"]["store_id"] == 9
+        assert {row["store_id"] for row in kwargs["contexts"]} == {9}
         return (
             {
                 "intent": "today_info",
@@ -222,13 +274,17 @@ def test_store_choice_reply_replays_original_message(monkeypatch):
         )
 
     monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
-    monkeypatch.setattr(
-        "app.telegram_assistant_service.validate_and_describe",
-        lambda *a, **k: (
+    def fake_validate(*args, **kwargs):
+        assert {row["store_id"] for row in kwargs["contexts"]} == {9}
+        return (
             "answered",
             {"valid": True, "errors": [], "execution_enabled": False},
             "Στο ERATO: HOXHA",
-        ),
+        )
+
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        fake_validate,
     )
 
     contexts = [
