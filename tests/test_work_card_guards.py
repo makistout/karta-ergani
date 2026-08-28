@@ -225,6 +225,7 @@ def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):
     monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
     monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
     monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "checkout_before_entry_blocked_reason", lambda **k: None)
     monkeypatch.setattr(
         guards,
         "normalize_overnight_checkout_reference",
@@ -238,6 +239,72 @@ def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):
         reference_date_iso="2026-08-18",
     )
     assert reason is None
+
+
+def test_checkout_before_entry_blocked_when_exit_before_entry(monkeypatch):
+    """Βήχος: άνοιγμα 22:07 → κλείσιμο 21:17 ίδια μέρα πρέπει να απορρίπτεται."""
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "22:07")
+    monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: None)
+    reason = guards.checkout_before_entry_blocked_reason(
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-27",
+        event_at="2026-08-27T21:17:00",
+    )
+    assert reason is not None
+    assert "22:07" in reason
+    assert "πριν" in reason
+
+
+def test_checkout_before_entry_allows_exit_after_entry(monkeypatch):
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "22:07")
+    monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: None)
+    reason = guards.checkout_before_entry_blocked_reason(
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-27",
+        event_at="2026-08-27T23:00:00",
+    )
+    assert reason is None
+
+
+def test_checkout_before_entry_allows_overnight_next_calendar_day(monkeypatch):
+    """Έξοδος 00:54 επόμενης μέρας μετά overnight normalize — έγκυρη."""
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "22:00")
+    monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: None)
+    reason = guards.checkout_before_entry_blocked_reason(
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-27",
+        event_at="2026-08-28T00:54:00",
+    )
+    assert reason is None
+
+
+def test_new_card_punch_blocked_reason_rejects_checkout_before_entry(monkeypatch):
+    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
+    monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
+    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "22:07")
+    monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: None)
+    monkeypatch.setattr(
+        guards,
+        "normalize_overnight_checkout_reference",
+        lambda **k: (k["reference_date_iso"], k.get("event_at")),
+    )
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_out_retro",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-08-27",
+        event_at="2026-08-27T21:17:00",
+    )
+    assert reason is not None
+    assert "22:07" in reason
 
 
 def test_new_card_punch_blocked_reason_rejects_future_date():

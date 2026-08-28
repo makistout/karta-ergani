@@ -248,11 +248,90 @@ def normalize_overnight_checkout_reference(
     return ref, event_at
 
 
+def _entry_time_hm_for_day(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    day_iso: str,
+) -> str | None:
+    """Ώρα εισόδου (HH:MM) από κάρτα ή ανοιχτή πραγματική."""
+    emp = norm_afm(employee_afm)
+    day = str(day_iso or "").strip()[:10]
+    if not emp or not day:
+        return None
+    card_hm = latest_card_event_time_hm(emp, day, "0")
+    if card_hm and _clock_to_minutes(card_hm) is not None:
+        return card_hm[:5]
+    wl_hm = work_log_open_hour_from(
+        employer_afm,
+        branch_aa,
+        emp,
+        format_date_for_ergani(day),
+    )
+    if wl_hm and _clock_to_minutes(wl_hm) is not None:
+        return str(wl_hm).strip()[:5]
+    return None
+
+
+def checkout_before_entry_blocked_reason(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date_iso: str,
+    event_at: str | None,
+) -> str | None:
+    """
+    Απόρριψη εξόδου αν η ώρα εξόδου είναι πριν ή ίδια με την είσοδο της μέρας εργασίας.
+    (Δεν αφορά overnight έξοδο ξημερωμάτων που δένει στην επόμενη ημερολογιακή μέρα.)
+    """
+    ref = str(reference_date_iso or "").strip()[:10]
+    if not ref or not event_at:
+        return None
+    entry_hm = _entry_time_hm_for_day(
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employee_afm=employee_afm,
+        day_iso=ref,
+    )
+    entry_min = _clock_to_minutes(entry_hm)
+    if entry_min is None:
+        return None
+    try:
+        exit_dt = parse_event_at(str(event_at), ref).astimezone(tz_athens())
+    except (WorkCardPayloadError, ValueError, TypeError):
+        return None
+    try:
+        entry_dt = datetime.strptime(
+            f"{ref} {entry_hm[:5]}", "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=tz_athens())
+    except ValueError:
+        return None
+    if exit_dt <= entry_dt:
+        return (
+            "Δεν γίνεται κλείσιμο — η ώρα εξόδου δεν μπορεί να είναι πριν "
+            "ή ίδια με την είσοδο"
+            + _time_at_suffix(entry_hm)
+            + "."
+        )
+    return None
+
+
 def checkout_requires_entry_error() -> dict[str, Any]:
     return {
         "error": "Δεν επιτρέπεται έξοδος χωρίς είσοδο (πραγματική ή χτύπημα κάρτας).",
         "code": "checkout_without_entry",
     }
+
+
+def checkout_before_entry_error(entry_hm: str | None = None) -> dict[str, Any]:
+    msg = (
+        "Δεν επιτρέπεται έξοδος πριν ή την ίδια ώρα με την είσοδο"
+        + _time_at_suffix(entry_hm)
+        + "."
+    )
+    return {"error": msg, "code": "checkout_before_entry"}
 
 
 def _time_at_suffix(time_hm: str | None) -> str:
@@ -335,6 +414,15 @@ def new_card_punch_blocked_reason(
             event_at=event_use,
         ):
             return "Δεν γίνεται κλείσιμο — δεν υπάρχει δήλωση εισόδου για αυτή την ημέρα."
+        before = checkout_before_entry_blocked_reason(
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            employee_afm=emp,
+            reference_date_iso=ref_use,
+            event_at=event_use,
+        )
+        if before:
+            return before
         return None
 
     if "check_in" in key:

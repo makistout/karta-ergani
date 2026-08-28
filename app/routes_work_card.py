@@ -316,6 +316,7 @@ def _submit_work_card(
 
     if resolved_type == "1":
         from app.work_card_guards import (
+            checkout_before_entry_blocked_reason,
             checkout_requires_entry_error,
             has_entry_for_checkout,
             normalize_overnight_checkout_reference,
@@ -341,6 +342,16 @@ def _submit_work_card(
             event_at=event_at_str,
         ):
             return jsonify(checkout_requires_entry_error()), 400
+
+        before = checkout_before_entry_blocked_reason(
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date_iso=ref_date,
+            event_at=event_at_str,
+        )
+        if before:
+            return jsonify({"error": before, "code": "checkout_before_entry"}), 400
 
     if card_event_exists(emp_afm, ref_date, resolved_type) and not correction_mode:
         existing_event = _latest_existing_card_event(
