@@ -291,6 +291,8 @@ BEGIN
         hire_date DATE NULL,
         departure_date DATE NULL,
         catering_override BIT NULL,
+        work_time_qr_data_url NVARCHAR(MAX) NULL,
+        work_time_qr_synced_at DATETIMEOFFSET(7) NULL,
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_employment_updated DEFAULT (SYSDATETIMEOFFSET()),
         CONSTRAINT FK_karta_employment_employer FOREIGN KEY (employer_id) REFERENCES dbo.karta_employer (id),
         CONSTRAINT FK_karta_employment_employee FOREIGN KEY (employee_id) REFERENCES dbo.karta_employee (id),

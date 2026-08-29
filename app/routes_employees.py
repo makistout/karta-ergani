@@ -18,6 +18,7 @@ from app.repo_employment_contract import (
 from app.repo_entities import (
     list_employees_for_employer, update_employment_dates,
     update_employment_catering_override,
+    get_employment_work_time_qr,
 )
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import start_async_portal_sync
@@ -167,6 +168,43 @@ def employees_list():
             "Οι εργαζόμενοι συνδέονται με εργοδότη μέσω karta_employment "
             "(όχι απευθείας στο karta_employee). Η λίστα φιλτράρεται από το ενεργό σημείο."
         ),
+    })
+
+
+@employees_bp.get("/work-time-qr")
+def employee_work_time_qr():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    employee_afm = norm_afm(request.args.get("employee_afm") or request.args.get("afm") or "")
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+    row = get_employment_work_time_qr(
+        str(ctx["employer_afm"]),
+        str(ctx.get("branch_aa") or "0"),
+        employee_afm,
+    )
+    if not row:
+        return jsonify({"error": "Δεν βρέθηκε εργαζόμενος στο ενεργό κατάστημα"}), 404
+    for key in ("work_time_qr_synced_at",):
+        if hasattr(row.get(key), "isoformat"):
+            row[key] = row[key].isoformat()
+    qr = str(row.get("work_time_qr_data_url") or "").strip()
+    return jsonify({
+        "employee": {
+            "afm": row.get("employee_afm"),
+            "eponymo": row.get("eponymo") or "",
+            "onoma": row.get("onoma") or "",
+        },
+        "business": {
+            "afm": row.get("employer_afm"),
+            "eponimia": row.get("employer_eponimia") or "",
+            "branch_aa": row.get("branch_aa") or "",
+            "branch_desc": row.get("branch_desc") or "",
+        },
+        "qr_data_url": qr or None,
+        "has_qr": bool(qr),
+        "synced_at": row.get("work_time_qr_synced_at"),
     })
 
 

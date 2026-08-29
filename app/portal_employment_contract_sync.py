@@ -31,6 +31,7 @@ from app.repo_entities import (
     link_employee_to_store,
     list_employees_for_employer,
     list_unlinked_activity_employees,
+    update_employment_work_time_qr,
     upsert_employee_by_afm,
 )
 from app.repo_schedule import list_schedule_employee_afms
@@ -141,7 +142,37 @@ def _fetch_contract_detail(
     r = session.get(detail_url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
     if "error.aspx" in r.url.lower() or "ΣΤΟΙΧΕΙΑ ΕΡΓΑΣΙΑΚΗΣ" not in r.text:
         raise RuntimeError(f"Αποτυχία φόρτωσης καρτέλας ΑΦΜ {employee_afm}")
-    return parse_employment_contract_html(r.text, employee_afm=employee_afm)
+    row = parse_employment_contract_html(r.text, employee_afm=employee_afm)
+    qr_src = str(row.get("work_time_qr_src") or "").strip()
+    if qr_src:
+        try:
+            row["work_time_qr_data_url"] = _qr_src_to_data_url(session, r.url, qr_src)
+        except requests.RequestException:
+            row["work_time_qr_data_url"] = None
+    return row
+
+
+def _qr_src_to_data_url(
+    session: requests.Session,
+    page_url: str,
+    src: str,
+) -> str | None:
+    """Μετατρέπει QR src του portal σε self-contained data URL για το UI."""
+    raw = (src or "").strip()
+    if not raw:
+        return None
+    if raw.lower().startswith("data:image/"):
+        return raw
+    url = urljoin(page_url, raw)
+    r = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+    r.raise_for_status()
+    content_type = (r.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    if not content_type.startswith("image/"):
+        return None
+    import base64
+
+    encoded = base64.b64encode(r.content).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
 
 
 def iter_employment_contract_sync_events(
@@ -240,6 +271,7 @@ def iter_employment_contract_sync_events(
     unchanged = 0
     errors: list[str] = []
     linked = 0
+    qr_synced = 0
 
     yield {
         "event": "progress",
@@ -286,6 +318,13 @@ def iter_employment_contract_sync_events(
             ):
                 linked += 1
                 log.info("Συνδέθηκε ορφανή δραστηριότητα με το κατάστημα", employee_afm=afm)
+            if update_employment_work_time_qr(
+                employer_afm,
+                branch_aa,
+                afm,
+                qr_data_url=row.get("work_time_qr_data_url"),
+            ):
+                qr_synced += 1
         except Exception as ex:  # noqa: BLE001 — συνέχεια με επόμενο εργαζόμενο
             err = f"{afm}: {ex}"
             errors.append(err)
@@ -298,6 +337,7 @@ def iter_employment_contract_sync_events(
         f", {len(target_afms)} στόχος"
         f", {len(all_ids)} στο Μητρώο)"
         + (f" — {linked} νέες συνδέσεις" if linked else "")
+        + (f" — {qr_synced} QR" if qr_synced else "")
         + (f" — {len(errors)} αποτυχίες" if errors else "")
     )
     result = {
@@ -312,6 +352,7 @@ def iter_employment_contract_sync_events(
         "registry_employees": len(all_ids),
         "unlinked_activity_employees": len(unlinked_afms),
         "linked_employees": linked,
+        "qr_synced": qr_synced,
         "skipped_not_in_target": len(all_ids) - total,
         "errors": errors[:30],
         "logs": log.tail(100),
@@ -325,6 +366,7 @@ def iter_employment_contract_sync_events(
         success=ok,
         inserted=inserted,
         unchanged=unchanged,
+        qr_synced=qr_synced,
         errors=len(errors),
     )
     if finalize_run:

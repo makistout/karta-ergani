@@ -611,6 +611,23 @@ body.login-page {
   color: var(--brand);
 }
 
+#employeesWrap .employees-action-button {
+  cursor: pointer;
+}
+
+#employeesWrap .employees-action-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+#employeesWrap .employees-action-btn:disabled:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
 #employeesWrap table.employees-list-table th.col-status,
 #employeesWrap table.employees-list-table td.col-status,
 #employeesWrap table.employees-list-table td.employees-status-cell {
@@ -747,6 +764,106 @@ body.login-page {
 
 .employee-contract-modal-panel {
   max-width: min(52rem, 96vw);
+}
+
+.employee-qr-modal-panel {
+  width: min(96vw, 980px);
+  max-height: min(92vh, 760px);
+}
+
+.employee-qr-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 3px solid #60a5fa;
+  padding-bottom: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.employee-qr-modal-head .office-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.employee-qr-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.78fr);
+  gap: 1.5rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.employee-qr-info h3 {
+  margin: 1.15rem 0 0.55rem;
+  font-size: 0.98rem;
+}
+
+.employee-qr-info h3:first-child {
+  margin-top: 0;
+}
+
+.employee-qr-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.employee-qr-field span {
+  display: block;
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 800;
+  margin-bottom: 0.2rem;
+}
+
+.employee-qr-field strong {
+  display: block;
+  min-height: 2.25rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.employee-qr-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18rem;
+}
+
+.employee-qr-image-wrap img {
+  display: block;
+  width: min(100%, 22rem);
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.employee-qr-loading,
+.employee-qr-error,
+.employee-qr-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.employee-qr-error {
+  color: var(--err);
+}
+
+@media (max-width: 820px) {
+  .employee-qr-modal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-qr-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 .employee-weekly-schedule-link:hover {

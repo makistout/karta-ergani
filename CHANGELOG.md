@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-08-30 — QR ψηφιακής οργάνωσης από ημερήσιο Μητρώο
+
+- Ο ημερήσιος συγχρονισμός στοιχείων σύμβασης (`scheduled_employment_contract_sync`)
+  διαβάζει πλέον και το QR της ενότητας **Ψηφιακή Οργάνωση Χρόνου Εργασίας** από την
+  καρτέλα εργαζομένου στο Ergani portal.
+- Το QR αποθηκεύεται στη σχέση εργαζόμενου-καταστήματος (`karta_employment`) ως
+  self-contained image data URL, ώστε να ανοίγει από το UI χωρίς δεύτερη κλήση στο portal.
+- Προστέθηκε migration `sql/alter_add_employment_work_time_qr.sql` και runner
+  `scripts/run_migration_employment_work_time_qr.py`.
+- Η λίστα εργαζομένων εμφανίζει νέο QR icon ανά εργαζόμενο όταν υπάρχει αποθηκευμένο QR.
+  Το icon ανοίγει modal με στοιχεία επιχείρησης, στοιχεία εργαζομένου και μεγάλο QR.
+- Προστέθηκε API `GET /api/employees/work-time-qr` για ανάγνωση του αποθηκευμένου QR του
+  εργαζομένου στο ενεργό κατάστημα.
+
+---
+
 ## 2026-08-28 — AI agent: σταθερό κατάστημα σε replies και επιλογές
 
 - Reply σε Telegram notification κληρονομεί το κατάστημα και από το εμφανές

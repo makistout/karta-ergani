@@ -53,6 +53,8 @@ def list_employees_for_employer(
         SELECT TOP ({lim})
             emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
             e.active, e.hire_date, e.departure_date, e.catering_override,
+            CASE WHEN NULLIF(e.work_time_qr_data_url, N'') IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS has_work_time_qr,
+            CAST(e.work_time_qr_synced_at AS datetime2) AS work_time_qr_synced_at,
             p.code_aa AS parartima_aa,
             p.description AS parartima_desc,
             em.afm AS employer_afm,
@@ -120,6 +122,76 @@ def update_employment_catering_override(
         )
         if not cur.rowcount:
             raise ValueError("Δεν βρέθηκε η εργασιακή σύνδεση του εργαζομένου στο κατάστημα")
+
+
+def update_employment_work_time_qr(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    *,
+    qr_data_url: str | None,
+) -> bool:
+    """Αποθηκεύει το QR ψηφιακής οργάνωσης στη σύνδεση εργαζόμενου-καταστήματος."""
+    data_url = (qr_data_url or "").strip()
+    if not data_url:
+        return False
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE e
+            SET work_time_qr_data_url=?,
+                work_time_qr_synced_at=SYSDATETIMEOFFSET(),
+                updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+            WHERE em.afm=? AND emp.afm=? AND p.code_aa=?
+            """,
+            (
+                data_url,
+                norm_afm(employer_afm),
+                norm_afm(employee_afm),
+                str(branch_aa or "0").strip()[:32] or "0",
+            ),
+        )
+        return bool(cur.rowcount)
+
+
+def get_employment_work_time_qr(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+) -> dict[str, Any] | None:
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    e_afm = norm_afm(employee_afm)
+    if not e_afm:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (1)
+                emp.afm AS employee_afm,
+                emp.eponymo,
+                emp.onoma,
+                em.afm AS employer_afm,
+                em.eponimia AS employer_eponimia,
+                p.code_aa AS branch_aa,
+                p.description AS branch_desc,
+                e.work_time_qr_data_url,
+                CAST(e.work_time_qr_synced_at AS datetime2) AS work_time_qr_synced_at
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+            WHERE em.afm=? AND emp.afm=? AND p.code_aa=?
+            ORDER BY e.active DESC, e.updated_at DESC
+            """,
+            (afm, e_afm, aa),
+        )
+        rows = rows_to_dicts(cur)
+        return rows[0] if rows else None
 
 
 def upsert_employer(

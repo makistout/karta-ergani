@@ -33,6 +33,14 @@
   `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
 - Migration: `sql/alter_add_karta_employment_contract.sql` /
   `python scripts/ensure_karta_employment_contract_table.py`.
+- Η ίδια καρτέλα περιέχει και την ενότητα **Ψηφιακή Οργάνωση Χρόνου Εργασίας**.
+  Ο συγχρονισμός διαβάζει το QR image, το μετατρέπει σε data URL όταν χρειάζεται και
+  το αποθηκεύει στη σχέση `karta_employment.work_time_qr_data_url`, μαζί με
+  `work_time_qr_synced_at`. Δεν υπάρχει ξεχωριστό QR job.
+- Migration QR: `sql/alter_add_employment_work_time_qr.sql` /
+  `python scripts/run_migration_employment_work_time_qr.py`.
+- UI: `/ui/employees` εμφανίζει QR icon μόνο όταν υπάρχει αποθηκευμένο QR και το
+  `GET /api/employees/work-time-qr` επιστρέφει τα στοιχεία για το modal.
 
 ## Πρωτόκολλα Χτυπημάτων (WorkCardSearch)
 

@@ -72,3 +72,19 @@ def test_parse_employment_contract_html_fields():
     assert row["break_in_work"] == 1
     assert row["flex_arrival_minutes"] == 120
     assert row["ergani_updated_at"] == "02/06/2025 00:00"
+
+
+def test_parse_employment_contract_html_extracts_work_time_qr():
+    html = SAMPLE_DETAIL.replace(
+        "</body>",
+        """
+        <div id="DigitalWorkTimeTab">
+          <h2>Ψηφιακή Οργάνωση Χρόνου Εργασίας</h2>
+          <label>Κάρτα Εργασίας</label><div>Ναι</div>
+          <img alt="QR Code" src="data:image/png;base64,QUJDRA==" />
+        </div>
+        </body>
+        """,
+    )
+    row = parse_employment_contract_html(html)
+    assert row["work_time_qr_src"] == "data:image/png;base64,QUJDRA=="

@@ -115,6 +115,36 @@ def extract_employee_name_afm(html: str) -> tuple[str, str, str]:
     return eponymo, onoma, afm
 
 
+def extract_work_time_qr_src(html: str) -> str:
+    """Best-effort εξαγωγή QR image από την καρτέλα ψηφιακής οργάνωσης χρόνου."""
+    text = unescape(html or "")
+    candidates: list[tuple[int, str]] = []
+    for match in re.finditer(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"'][^>]*>", text, re.I | re.S):
+        tag = match.group(0)
+        src = _clean_value(match.group(1))
+        if not src:
+            continue
+        nearby = text[max(0, match.start() - 4000):match.start()].upper()
+        tag_text = tag.upper()
+        score = 0
+        if "ΨΗΦΙΑΚ" in nearby and "ΟΡΓΑΝ" in nearby and "ΧΡΟΝ" in nearby:
+            score += 6
+        if "ΚΑΡΤΑ ΕΡΓΑΣΙΑΣ" in nearby:
+            score += 3
+        if "QR" in nearby or "QR" in tag_text:
+            score += 2
+        if "DATA:IMAGE" in src.upper():
+            score += 2
+        if any(token in src.lower() for token in ("qr", "barcode", "qrcode")):
+            score += 2
+        if score:
+            candidates.append((score, src))
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
 def parse_employment_contract_html(
     html: str,
     *,
@@ -154,6 +184,7 @@ def parse_employment_contract_html(
             fields.get("flex_arrival_minutes") or ""
         ),
         "ergani_updated_at": fields.get("ergani_updated_at") or None,
+        "work_time_qr_src": extract_work_time_qr_src(html) or None,
         "source": "portal",
     }
 

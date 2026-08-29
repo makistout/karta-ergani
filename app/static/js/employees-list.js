@@ -39,6 +39,18 @@ function createEmployeeActionLink({ href, icon, title, ariaLabel }) {
   return link;
 }
 
+function createEmployeeActionButton({ icon, title, ariaLabel, disabled = false, onClick }) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "employees-action-btn employees-action-button";
+  btn.title = title;
+  btn.setAttribute("aria-label", ariaLabel);
+  btn.disabled = Boolean(disabled);
+  btn.innerHTML = Office.icon(icon);
+  if (onClick && !disabled) btn.onclick = onClick;
+  return btn;
+}
+
 async function loadEmployees() {
   const wrap = document.getElementById("employeesWrap");
   const desc = document.getElementById("employeesDesc");
@@ -54,7 +66,7 @@ async function loadEmployees() {
       return;
     }
     desc.textContent = btnSync
-      ? "Συγχρονισμός και προβολή εργαζομένων Ergani για το ενεργό κατάστημα."
+      ? "Συγχρονισμός και προβολή εργαζομένων Ergani για το ενεργό κατάστημα. Τα QR ενημερώνονται από τον ημερήσιο συγχρονισμό Μητρώων."
       : "Προβολή εργαζομένων Ergani για το ενεργό κατάστημα.";
     if (btnSync) btnSync.disabled = false;
     await Office.loadActiveStore();
@@ -168,6 +180,7 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
   const hr = document.createElement("tr");
   [
     "__detail__",
+    "__qr__",
     "ΑΦΜ",
     "Επώνυμο",
     "Όνομα",
@@ -184,6 +197,9 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
     if (h === "__detail__") {
       th.className = "work-log-action-cell";
       th.setAttribute("aria-label", "Στοιχεία σύμβασης");
+    } else if (h === "__qr__") {
+      th.className = "work-log-action-cell";
+      th.setAttribute("aria-label", "QR ψηφιακής οργάνωσης");
     } else if (h === "__monthly__") {
       th.className = "work-log-action-cell";
       th.setAttribute("aria-label", "Μηνιαία εικόνα");
@@ -241,6 +257,24 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
       );
     }
     tr.appendChild(tdDetail);
+
+    const tdQr = document.createElement("td");
+    tdQr.className = "work-log-action-cell";
+    if (empAfm) {
+      const hasQr = Boolean(emp.has_work_time_qr);
+      tdQr.appendChild(
+        createEmployeeActionButton({
+          icon: "qr-code",
+          title: hasQr
+            ? "QR ψηφιακής οργάνωσης χρόνου εργασίας"
+            : "Δεν έχει συγχρονιστεί QR από το portal",
+          ariaLabel: `QR ψηφιακής οργάνωσης — ${empName}`,
+          disabled: !hasQr,
+          onClick: () => openEmployeeQrModal(empAfm),
+        })
+      );
+    }
+    tr.appendChild(tdQr);
 
     const tdAfm = document.createElement("td");
     tdAfm.textContent = emp.afm || "";
@@ -340,6 +374,92 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
   });
   fragment.appendChild(t);
   return fragment;
+}
+
+function ensureEmployeeQrModal() {
+  let modal = document.getElementById("employeeQrModal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "employeeQrModal";
+  modal.className = "office-modal hidden";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "employeeQrTitle");
+  modal.innerHTML =
+    `<div class="office-modal-backdrop" data-employee-qr-close></div>` +
+    `<div class="office-modal-panel employee-qr-modal-panel">` +
+      `<div class="employee-qr-modal-head">` +
+        `<div>` +
+          `<h2 class="office-modal-title" id="employeeQrTitle">Στοιχεια ψηφιακης οργανωσης χρονου εργασιας</h2>` +
+          `<p class="office-modal-sub" id="employeeQrSub"></p>` +
+        `</div>` +
+        `<button type="button" class="employees-action-btn" data-employee-qr-close aria-label="Κλείσιμο">${Office.icon("x-lg")}</button>` +
+      `</div>` +
+      `<div class="employee-qr-modal-body" id="employeeQrBody"></div>` +
+      `<div class="office-modal-actions">` +
+        `<button type="button" class="btn" data-employee-qr-close>Κλείσιμο</button>` +
+      `</div>` +
+    `</div>`;
+  modal.addEventListener("click", (event) => {
+    if (event.target.closest("[data-employee-qr-close]")) closeEmployeeQrModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      closeEmployeeQrModal();
+    }
+  });
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function closeEmployeeQrModal() {
+  document.getElementById("employeeQrModal")?.classList.add("hidden");
+}
+
+function qrField(label, value) {
+  return `<div class="employee-qr-field"><span>${Office.escapeHtml(label)}</span><strong>${Office.escapeHtml(value || "—")}</strong></div>`;
+}
+
+async function openEmployeeQrModal(employeeAfm) {
+  const modal = ensureEmployeeQrModal();
+  const sub = modal.querySelector("#employeeQrSub");
+  const body = modal.querySelector("#employeeQrBody");
+  sub.textContent = "";
+  body.innerHTML = `<p class="employee-qr-loading">${Office.icon("hourglass-split")} Φόρτωση QR…</p>`;
+  modal.classList.remove("hidden");
+  try {
+    const res = await fetch(`/api/employees/work-time-qr?employee_afm=${encodeURIComponent(employeeAfm)}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Αποτυχία φόρτωσης QR");
+    const employee = data.employee || {};
+    const business = data.business || {};
+    const employeeName = `${employee.eponymo || ""} ${employee.onoma || ""}`.trim();
+    sub.textContent = data.synced_at ? `Τελευταίος συγχρονισμός: ${data.synced_at}` : "";
+    body.innerHTML =
+      `<section class="employee-qr-info">` +
+        `<h3>Στοιχεια επιχειρησης</h3>` +
+        `<div class="employee-qr-fields">` +
+          qrField("ΑΑ", business.branch_aa || "") +
+          qrField("ΑΦΜ", business.afm || "") +
+          qrField("Επωνυμια", business.eponimia || business.branch_desc || "") +
+        `</div>` +
+        `<h3>Στοιχεια εργαζομενου</h3>` +
+        `<div class="employee-qr-fields">` +
+          qrField("ΑΦΜ", employee.afm || "") +
+          qrField("Επωνυμο", employee.eponymo || "") +
+          qrField("Ονομα", employee.onoma || "") +
+        `</div>` +
+      `</section>` +
+      `<section class="employee-qr-image-wrap">` +
+        (data.qr_data_url
+          ? `<img src="${Office.escapeHtml(data.qr_data_url)}" alt="QR ψηφιακής οργάνωσης ${Office.escapeHtml(employeeName || employeeAfm)}">`
+          : `<div class="employee-qr-empty">${Office.icon("qr-code")} Δεν έχει αποθηκευτεί QR για τον εργαζόμενο.</div>`) +
+      `</section>`;
+  } catch (e) {
+    body.innerHTML = `<p class="employee-qr-error">${Office.formatMultilineHtml(String(e.message || e))}</p>`;
+  }
 }
 
 async function runSync() {

@@ -37,6 +37,18 @@
 - SMTP,
 - Ergani API/portal settings.
 
+## Database Migrations
+
+Μετά από deploy που περιλαμβάνει QR ψηφιακής οργάνωσης εργαζομένων, τρέξε:
+
+```bash
+python scripts/run_migration_employment_work_time_qr.py
+```
+
+Προσθέτει τα `karta_employment.work_time_qr_data_url` και
+`karta_employment.work_time_qr_synced_at`, τα οποία γεμίζουν από τον ημερήσιο
+`scheduled_employment_contract_sync`.
+
 ## Φόρμα επικοινωνίας landing
 
 Ροή: φόρμα `#contact` → `POST /api/contact` → `send_email_message()` → SMTP Mailgun.
