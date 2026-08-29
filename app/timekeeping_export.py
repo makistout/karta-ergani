@@ -93,6 +93,8 @@ def build_timekeeping_export_xlsx(
         ("Υπερωρία 60%", "overtime_60_breakdown"),
         ("Κατ’ εξαίρεση", "overtime_120_breakdown"),
         ("6η ημέρα 30%", "sixth_day_breakdown"),
+        ("6η ημέρα άνω των 48 ωρών", "sixth_day_above_48_breakdown"),
+        ("Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών", "exception_sixth_day_above_48_breakdown"),
     )
 
     summary = wb.active
@@ -182,13 +184,17 @@ def build_timekeeping_detailed_export_xlsx(
     headers += _family_headers("Υπερωρία 60%")
     headers += _family_headers("Κατ’ εξαίρεση")
     headers += _family_headers("6η ημέρα 30%") + ["Σύνολο 6ης ημέρας"]
+    headers += _family_headers("6η ημέρα άνω των 48 ωρών") + ["Σύνολο 6ης άνω των 48"]
+    headers += _family_headers("Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών") + ["Σύνολο κατ’ εξαίρεση 6ης άνω των 48"]
     headers += ["Κατάσταση ημέρας", "Πηγή βάσης", "Παρατηρήσεις"]
     groups = [
         (1, 3, "Επιχείρηση"), (4, 7, "Εργαζόμενος"), (8, 15, "Ημερήσια στοιχεία"),
         (16, 19, "Προσαυξήσεις βάσης"), (20, 23, "Υπερεργασία 20%"),
         (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Υπερωρία 40%"),
         (33, 36, "Υπερωρία 60%"), (37, 40, "Κατ’ εξαίρεση"),
-        (41, 45, "6η ημέρα 30%"), (46, 48, "Έλεγχος"),
+        (41, 45, "6η ημέρα 30%"), (46, 50, "6η ημέρα άνω των 48 ωρών"),
+        (51, 55, "Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών"),
+        (56, 58, "Έλεγχος"),
     ]
     for start, end, label in groups:
         ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
@@ -238,18 +244,22 @@ def build_timekeeping_detailed_export_xlsx(
             *_breakdown_values(item, "overtime_120_breakdown"),
             *_breakdown_values(item, "sixth_day_breakdown"),
             _duration(item.get("sixth_day_minutes")),
+            *_breakdown_values(item, "sixth_day_above_48_breakdown"),
+            _duration(item.get("sixth_day_above_48_minutes")),
+            *_breakdown_values(item, "exception_sixth_day_above_48_breakdown"),
+            _duration(item.get("exception_sixth_day_above_48_minutes")),
             item.get("day_state") or "",
             item.get("basis_source") or "", " · ".join(str(value) for value in item.get("warnings") or []),
         ])
 
     widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 30, 24, 25, 15, 18, 15,
-              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 16 + [18, 18, 20, 42]
+              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 24 + [18, 18, 18, 20, 42]
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "J5"
     if ws.max_row > 4:
         ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
-    duration_columns = {13} | set(range(15, 28)) | set(range(29, 46))
+    duration_columns = {13} | set(range(15, 28)) | set(range(29, 56))
     for row in range(5, ws.max_row + 1):
         if row % 2:
             for cell in ws[row]:

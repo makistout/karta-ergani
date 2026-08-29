@@ -137,6 +137,8 @@ function renderRows(rows) {
     ["overtime_60_breakdown", "Υπερωρία 60%"],
     ["overtime_120_breakdown", "Κατ’ εξαίρεση"],
     ["sixth_day_breakdown", "6η ημέρα 30%"],
+    ["sixth_day_above_48_breakdown", "6η ημέρα άνω των 48 ωρών"],
+    ["exception_sixth_day_above_48_breakdown", "Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών"],
   ];
   const familyHeaders = families.map(([, label]) =>
     `<th colspan="4">${esc(label)}</th>`

@@ -22,6 +22,22 @@
       </section>
 
       <section class="card employee-detail-card">
+        <h2 class="employee-detail-section-title">Κλάδος ωρομέτρησης</h2>
+        <p class="page-desc">Αυτόματη αναγνώριση από τη σύμβαση ή χειροκίνητη διόρθωση για τους κανόνες επισιτιστικών.</p>
+        <form id="employeeCateringForm" class="actions" style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
+          <label class="dp-field"><span class="dp-field-label">Επισιτιστικά</span>
+            <select id="employeeCateringOverride" class="field-input">
+              <option value="auto">Αυτόματα από τη σύμβαση</option>
+              <option value="yes">Ναι — Επισιτιστικά</option>
+              <option value="no">Όχι — Λοιπός κλάδος</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" type="submit">Αποθήκευση</button>
+          <span id="employeeCateringStatus" class="page-desc"></span>
+        </form>
+      </section>
+
+      <section class="card employee-detail-card">
         <h2 class="employee-detail-section-title">Ενεργό διάστημα εργασίας</h2>
         <p class="page-desc">Οι ημερομηνίες χρησιμοποιούνται στην ωρομέτρηση για πρόσληψη ή αποχώρηση μέσα στην εβδομάδα.</p>
         <form id="employeeEmploymentDatesForm" class="actions" style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
@@ -39,5 +55,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
-  <script src="/static/js/employee-detail.js?v=20260826employmentdates1"></script>
+  <script src="/static/js/employee-detail.js?v=20260830catering1"></script>
 {% endblock %}

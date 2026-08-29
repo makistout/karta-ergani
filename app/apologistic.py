@@ -690,6 +690,20 @@ def _contract_for_day(candidates: list[dict[str, Any]], work_date: str) -> dict[
     return min(active_candidates, key=lambda item: item[:2])[2] if active_candidates else None
 
 
+def _is_catering_contract(contract: dict[str, Any] | None) -> bool:
+    override = (contract or {}).get("catering_override")
+    if override is not None:
+        return override in (True, 1, "1", "true", "True")
+    text = " ".join(str((contract or {}).get(key) or "") for key in (
+        "specialty", "characterization", "employment_relation", "regime",
+    )).upper()
+    normalized = "".join(
+        char for char in unicodedata.normalize("NFD", text)
+        if unicodedata.category(char) != "Mn"
+    )
+    return "ΕΠΙΣΙΤ" in normalized
+
+
 def _effective_weekly_days(
     schedule_rows: list[dict[str, Any]], contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
@@ -1217,6 +1231,9 @@ def build_weekly_report(
             "employee_afm": afm, "eponymo": names.get(afm, ("", ""))[0], "onoma": names.get(afm, ("", ""))[1],
             "work_date": work_date, "contract_kind": contract_kind, "weekly_days": weekly_days,
             "contract_weekly_minutes": _contract_weekly_minutes(contract),
+            "contract_specialty": contract.get("specialty") if contract else None,
+            "catering_override": contract.get("catering_override") if contract else None,
+            "is_catering": _is_catering_contract(contract),
             "employment_start_date": contract.get("hire_date") if contract else None,
             "employment_end_date": contract.get("departure_date") if contract else None,
             "contract_effective_from": contract.get("effective_from") if contract else None,

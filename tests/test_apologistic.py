@@ -1,6 +1,8 @@
 from datetime import date
 
-from app.apologistic import build_weekly_report, previous_week, _contract_for_day
+from app.apologistic import (
+    build_weekly_report, previous_week, _contract_for_day, _is_catering_contract,
+)
 
 
 def sched(afm="012345678", day="03/08/2026", start="09:00", end="17:00", shift="ΕΡΓΑΣΙΑ",
@@ -32,6 +34,12 @@ def test_contract_is_selected_by_the_date_on_which_it_applies():
     ]
     assert _contract_for_day(contracts, "19/08/2026")["characterization"] == "Πλήρης"
     assert _contract_for_day(contracts, "20/08/2026")["characterization"] == "Μερική"
+
+
+def test_catering_is_detected_from_contract_and_can_be_overridden():
+    assert _is_catering_contract({"specialty": "Υπάλληλος επισιτιστικών"}) is True
+    assert _is_catering_contract({"specialty": "Μάγειρας", "catering_override": True}) is True
+    assert _is_catering_contract({"specialty": "Επισιτιστικά", "catering_override": False}) is False
 
 
 def test_flexible_arrival_needs_no_change():

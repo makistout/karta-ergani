@@ -52,7 +52,8 @@ def list_employees_for_employer(
     sql = f"""
         SELECT TOP ({lim})
             emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
-            e.active, e.hire_date, e.departure_date, p.code_aa AS parartima_aa,
+            e.active, e.hire_date, e.departure_date, e.catering_override,
+            p.code_aa AS parartima_aa,
             p.description AS parartima_desc,
             em.afm AS employer_afm,
             em.eponimia AS employer_eponimia,
@@ -94,6 +95,28 @@ def update_employment_dates(
             """,
             (hire_date, departure_date, departure_date, departure_date,
              norm_afm(employer_afm), norm_afm(employee_afm), str(branch_aa or "0")),
+        )
+        if not cur.rowcount:
+            raise ValueError("Δεν βρέθηκε η εργασιακή σύνδεση του εργαζομένου στο κατάστημα")
+
+
+def update_employment_catering_override(
+    employer_afm: str, branch_aa: str, employee_afm: str,
+    *, catering_override: bool | None,
+) -> None:
+    """Override catering-sector detection for one store employment."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE e SET catering_override=?, updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+            WHERE em.afm=? AND emp.afm=? AND p.code_aa=?
+            """,
+            (catering_override, norm_afm(employer_afm), norm_afm(employee_afm),
+             str(branch_aa or "0")),
         )
         if not cur.rowcount:
             raise ValueError("Δεν βρέθηκε η εργασιακή σύνδεση του εργαζομένου στο κατάστημα")

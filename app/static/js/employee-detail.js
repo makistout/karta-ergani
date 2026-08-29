@@ -88,6 +88,7 @@ async function loadEmployeeDetail() {
   title.textContent = nameQ || `ΑΦΜ ${afm}`;
   meta.textContent = `ΑΦΜ ${afm}`;
   setupEmploymentDates(afm);
+  setupCateringOverride(afm);
 
   try {
     await Office.loadActiveStore();
@@ -171,6 +172,31 @@ async function loadEmployeeDetail() {
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
+}
+
+async function setupCateringOverride(afm) {
+  const form = document.getElementById("employeeCateringForm");
+  const select = document.getElementById("employeeCateringOverride");
+  const status = document.getElementById("employeeCateringStatus");
+  try {
+    const res = await fetch("/api/employees/list?limit=5000", {cache: "no-store"});
+    const data = await res.json();
+    const row = (data.employees || []).find((item) => String(item.afm || "") === afm);
+    if (row) {
+      select.value = row.catering_override == null ? "auto" : (row.catering_override ? "yes" : "no");
+    }
+  } catch (_) {}
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    status.textContent = "Αποθήκευση…";
+    const override = select.value === "auto" ? null : select.value === "yes";
+    const res = await fetch("/api/employees/catering-override", {
+      method: "PATCH", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({employee_afm: afm, catering_override: override}),
+    });
+    const data = await res.json();
+    status.textContent = res.ok ? "Αποθηκεύτηκε" : (data.error || "Αποτυχία αποθήκευσης");
+  });
 }
 
 async function setupEmploymentDates(afm) {

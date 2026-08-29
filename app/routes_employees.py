@@ -15,7 +15,10 @@ from app.repo_employment_contract import (
     list_current_for_store,
     list_history_for_employee,
 )
-from app.repo_entities import list_employees_for_employer, update_employment_dates
+from app.repo_entities import (
+    list_employees_for_employer, update_employment_dates,
+    update_employment_catering_override,
+)
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import start_async_portal_sync
 from app.work_card_payload import norm_afm
@@ -197,6 +200,28 @@ def employee_employment_dates_update():
     })
 
 
+@employees_bp.patch("/catering-override")
+def employee_catering_override_update():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    payload = request.get_json(silent=True) or {}
+    employee_afm = norm_afm(payload.get("employee_afm") or "")
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+    raw = payload.get("catering_override")
+    if raw not in (None, True, False):
+        return jsonify({"error": "Μη έγκυρη επιλογή επισιτιστικών"}), 400
+    try:
+        update_employment_catering_override(
+            str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0"), employee_afm,
+            catering_override=raw,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    return jsonify({"ok": True, "employee_afm": employee_afm, "catering_override": raw})
+
+
 @employees_bp.get("/monthly-overview")
 def employee_monthly_overview():
     ctx = resolve_active_store()
@@ -243,6 +268,7 @@ def employee_monthly_overview():
         for contract in contracts:
             contract["hire_date"] = employment.get("hire_date")
             contract["departure_date"] = employment.get("departure_date")
+            contract["catering_override"] = employment.get("catering_override")
         preview = build_weekly_report(schedule, work_log, contracts)
         for item in preview.get("days") or []:
             work_date = datetime.strptime(item["work_date"], "%d/%m/%Y").date()

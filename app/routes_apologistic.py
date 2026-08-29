@@ -281,7 +281,8 @@ def _merge_timekeeping_days(
     premium_keys = ("day", "night", "sunday_holiday", "night_sunday_holiday")
     breakdown_families = (
         "overwork", "overtime_40", "overtime_60", "overtime_120",
-        "partial_additional_12", "sixth_day",
+        "partial_additional_12", "sixth_day", "sixth_day_above_48",
+        "exception_sixth_day_above_48",
     )
     employees: dict[str, dict[str, object]] = {}
     for day in days:
@@ -300,11 +301,17 @@ def _merge_timekeeping_days(
             "overtime_120": 0,
             "partial_additional_12": 0,
             "sixth_day_minutes": 0,
+            "sixth_day_above_48_minutes": 0,
+            "exception_sixth_day_above_48_minutes": 0,
         })
         total["recognized_work_minutes"] += int(day.get("recognized_work_minutes") or 0)
         for key, value in (day.get("premium_minutes") or {}).items():
             total[str(key)] += int(value or 0)
-        for key in ("overtime_40", "overtime_60", "overtime_120", "partial_additional_12", "sixth_day_minutes"):
+        for key in (
+            "overtime_40", "overtime_60", "overtime_120", "partial_additional_12",
+            "sixth_day_minutes", "sixth_day_above_48_minutes",
+            "exception_sixth_day_above_48_minutes",
+        ):
             total[key] += int(day.get(key) or 0)
         for family in breakdown_families:
             field = f"{family}_breakdown"
@@ -316,7 +323,7 @@ def _merge_timekeeping_days(
             annual_after_by_employee.get(afm) or 0
         )
     return {
-        "calculation_version": "timekeeping-v11-existing-exception-family-month",
+        "calculation_version": "timekeeping-v12-catering-sixth-above-48-month",
         "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
         "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
         "counts": {"days": len(days), "employees": len(employees)},

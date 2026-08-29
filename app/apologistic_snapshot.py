@@ -52,6 +52,7 @@ def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -
             employment = employment_by_afm.get(str(contract.get("employee_afm") or "").zfill(9), {})
             contract["hire_date"] = employment.get("hire_date")
             contract["departure_date"] = employment.get("departure_date")
+            contract["catering_override"] = employment.get("catering_override")
             contract["effective_from"] = contract.get("ergani_updated_at")
         sunday_rest_transfer = get_sunday_rest_transfer_enabled(int(store["id"]))
         action_settings = get_action_settings(int(store["id"]))

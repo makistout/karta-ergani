@@ -532,6 +532,62 @@ def test_sixth_day_contains_only_clean_basis_not_overtime():
     assert sixth["overtime_120"] == 60
 
 
+def test_catering_sixth_day_splits_exactly_at_weekly_48_hours():
+    rows = [
+        _row(
+            work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης",
+            weekly_days=5, is_catering=True,
+            overwork_minutes=240 if day == 21 else 0,
+        )
+        for day in range(17, 22)
+    ]
+    rows.append(_row(
+        work_date="22/08/2026", declared="09:00–18:00", contract_kind="Πλήρης",
+        weekly_days=5, is_catering=True, overtime_minutes=60,
+        daily_overtime_basis_minutes=480,
+    ))
+    report = build_timekeeping_report(rows)
+    saturday = next(day for day in report["days"] if day["work_date"] == "22/08/2026")
+    assert saturday["sixth_day_minutes"] == 240
+    assert saturday["sixth_day_above_48_minutes"] == 240
+    assert saturday["exception_sixth_day_above_48_minutes"] == 60
+    assert saturday["overtime_120"] == 0
+    assert sum(saturday["sixth_day_above_48_breakdown"].values()) == 240
+    assert sum(saturday["exception_sixth_day_above_48_breakdown"].values()) == 60
+    assert saturday["base_allocation_integrity_minutes"] == 480
+
+
+def test_non_catering_employee_does_not_use_sixth_above_48_categories():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", weekly_days=5)
+        for day in range(17, 22)
+    ]
+    rows.append(_row(
+        work_date="22/08/2026", declared="09:00–18:00", contract_kind="Πλήρης",
+        weekly_days=5, overtime_minutes=60, daily_overtime_basis_minutes=480,
+    ))
+    saturday = build_timekeeping_report(rows)["days"][-1]
+    assert saturday["sixth_day_above_48_minutes"] == 0
+    assert saturday["exception_sixth_day_above_48_minutes"] == 0
+
+
+def test_catering_seventh_day_after_48_hours_moves_to_special_exception():
+    rows = [
+        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", weekly_days=5,
+             is_catering=True)
+        for day in range(17, 23)
+    ]
+    rows.append(_row(
+        work_date="23/08/2026", declared="09:00–11:00", contract_kind="Πλήρης",
+        weekly_days=5, is_catering=True,
+    ))
+    sunday = build_timekeeping_report(rows)["days"][-1]
+    assert sunday["sixth_day_minutes"] == 0
+    assert sunday["overtime_120"] == 0
+    assert sunday["exception_sixth_day_above_48_minutes"] == 120
+    assert sunday["exception_sixth_day_above_48_breakdown"]["sunday_holiday"] == 120
+
+
 def test_midweek_part_time_departure_prorates_weekly_cap_by_recognized_days():
     rows = [
         _row(
