@@ -20,6 +20,7 @@ let openExplanationId = null;
 let openEmployeeAfm = null;
 let proposalEditRow = null;
 let submitModalState = null;
+let bulkModalState = null;
 let acceptReviewPending = new Set();
 let restoreReviewPending = new Set();
 let exchangePending = new Set();
@@ -1200,8 +1201,8 @@ function updateBulkWeekBar() {
   const hintText =
     `Έλεγχος: ${counts.review || 0} · Μεταβολές: ${counts.change} · Εκκρεμείς υποβολές: ${items.length}` +
     ` (WTODailyA ${scheduleCount}, WTOOvA ${overtimeCount})` +
-    ((counts.review || 0) ? " · οι εγγραφές Ελέγχου δεν αποστέλλονται" : "") +
-    ` · προεπισκόπηση χωρίς αποστολή`;
+    ((counts.review || 0) ? " · οι εγγραφές Ελέγχου εξαιρούνται" : "") +
+    ` · προεπισκόπηση και υποβολή`;
   for (const bar of bars) {
     const btn = bar.querySelector(".apologistic-bulk-btn");
     const hint = bar.querySelector(".apologistic-bulk-hint");
@@ -1215,13 +1216,19 @@ function updateBulkWeekBar() {
 }
 
 function closeBulkWeekModal() {
+  bulkModalState = null;
   document.getElementById("apologisticBulkModal")?.classList.add("hidden");
+  const errorBox = document.getElementById("apologisticBulkError");
+  if (errorBox) errorBox.textContent = "";
+  const confirmBtn = document.getElementById("apologisticBulkConfirm");
+  if (confirmBtn) confirmBtn.innerHTML = '<i class="bi bi-send" aria-hidden="true"></i> Υποβολή στο Ergani';
 }
 
 function openBulkWeekPreview() {
   const modal = document.getElementById("apologisticBulkModal");
   const meta = document.getElementById("apologisticBulkModalMeta");
   const body = document.getElementById("apologisticBulkModalBody");
+  const errorBox = document.getElementById("apologisticBulkError");
   if (!modal || !body) return;
   const { eligible, items } = bulkWeekEligible(reportState.rows);
   if (!eligible) {
@@ -1231,6 +1238,8 @@ function openBulkWeekPreview() {
   }
   closeSubmitModal();
   closeExplanation();
+  bulkModalState = { items: items.slice() };
+  if (errorBox) errorBox.textContent = "";
   const scheduleCount = items.filter((item) => item.kind === "schedule").length;
   const overtimeCount = items.filter((item) => item.kind === "overtime").length;
   const weekLabel = reportPeriodLabel();
@@ -1240,7 +1249,7 @@ function openBulkWeekPreview() {
       `${items.length} υποβολές (${scheduleCount} WTODailyA, ${overtimeCount} WTOOvA)`;
   }
   body.innerHTML =
-    `<p class="apologistic-bulk-summary">Θα στέλνονταν στο Ergani οι παρακάτω καταχωρήσεις. Όσες έχουν ήδη σταλεί μεμονωμένα εξαιρούνται.</p>` +
+    `<p class="apologistic-bulk-summary">Θα σταλούν στο Ergani οι παρακάτω καταχωρήσεις. Όσες έχουν ήδη σταλεί μεμονωμένα εξαιρούνται.</p>` +
     `<table class="apologistic-bulk-table"><thead><tr>` +
     `<th>Έγγραφο</th><th>Εργαζόμενος</th><th>Ημέρα</th><th>Λεπτομέρειες</th>` +
     `</tr></thead><tbody>` +
@@ -1259,6 +1268,150 @@ function openBulkWeekPreview() {
   modal.classList.remove("hidden");
 }
 
+async function submitScheduleRowsToErgani(scheduleRows) {
+  const url = "/api/apologistic/submit-schedule";
+  const pendingRows = scheduleRows.filter((item) =>
+    !scheduleAlreadySubmitted(item) || item.ergani_submit?.schedule?.matches_proposal === false
+  );
+  const protocols = [];
+  for (const scheduleRow of pendingRows) {
+    const submitBody = {
+      week_from: weekFromForRow(scheduleRow),
+      work_date: scheduleRow.work_date,
+      employee_afm: scheduleRow.employee_afm,
+      use_snapshot: true,
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(
+        `${scheduleRow.work_date}: ` +
+        (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
+      );
+    }
+    mergeErganiSubmit(scheduleRow, data.ergani_submit);
+    if (!data.ergani_submit?.schedule) {
+      mergeErganiSubmit(scheduleRow, {
+        schedule: {
+          protocol: data.protocol || null,
+          ergani_submission_id: data.ergani_submission_id || null,
+          submit_date: data.submit_date || null,
+          submitted_at: new Date().toISOString(),
+          proposed_at_submit: scheduleRow.proposed,
+          matches_proposal: true,
+        },
+      });
+    }
+    if (data.protocol) protocols.push(String(data.protocol));
+  }
+  return protocols;
+}
+
+async function submitOvertimeSegmentToErgani(row, segmentDate) {
+  const url = "/api/apologistic/submit-overtime";
+  const baseBody = {
+    week_from: weekFromForRow(row),
+    work_date: row.work_date,
+    employee_afm: row.employee_afm,
+    use_snapshot: true,
+    segment_date: segmentDate,
+  };
+  let submitBody = { ...baseBody };
+  let res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(submitBody),
+  });
+  let data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.requires_confirmation) {
+    const proceed = await Office.confirm(`${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`, { title: "Επιβεβαίωση υποβολής", confirmText: "Συνέχεια" });
+    if (!proceed) throw new Error("Η υποβολή ακυρώθηκε από τον χρήστη.");
+    submitBody = { ...submitBody, confirm_annual_limit: true };
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+    data = await res.json().catch(() => ({}));
+  }
+  if (!res.ok || !data.success) {
+    throw new Error(
+      `${segmentDate}: ` +
+      (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
+    );
+  }
+  mergeErganiSubmit(row, data.ergani_submit);
+  if (!data.ergani_submit?.overtime) {
+    mergeErganiSubmit(row, {
+      overtime: {
+        [segmentDate]: {
+          protocol: data.protocol || null,
+          ergani_submission_id: data.ergani_submission_id || null,
+          submit_date: data.submit_date || null,
+          submitted_at: new Date().toISOString(),
+          segment_date: segmentDate,
+        },
+      },
+    });
+  }
+  return data.protocol ? String(data.protocol) : null;
+}
+
+async function confirmBulkWeekSubmit() {
+  const btn = document.getElementById("apologisticBulkConfirm");
+  const errorBox = document.getElementById("apologisticBulkError");
+  const state = bulkModalState;
+  if (!state?.items?.length || !btn) return;
+
+  Office.setButtonLoading(btn, true);
+  if (errorBox) errorBox.textContent = "";
+  const submittedScheduleKeys = new Set();
+  let okCount = 0;
+  try {
+    for (const item of state.items) {
+      if (item.kind === "schedule") {
+        const key = `${item.employee_afm}|${item.work_date}`;
+        if (submittedScheduleKeys.has(key)) continue;
+        const row = findReportRow(item.employee_afm, item.work_date);
+        if (!row) continue;
+        const pairedRow = row.exchange_pair?.paired_work_date
+          ? findReportRow(row.employee_afm, row.exchange_pair.paired_work_date)
+          : null;
+        const scheduleRows = pairedRow ? [row, pairedRow] : [row];
+        for (const scheduleRow of scheduleRows) {
+          submittedScheduleKeys.add(`${scheduleRow.employee_afm}|${scheduleRow.work_date}`);
+        }
+        const protocols = await submitScheduleRowsToErgani(scheduleRows);
+        okCount += protocols.length;
+        continue;
+      }
+      const row = findReportRow(item.employee_afm, item.work_date);
+      if (!row) continue;
+      const segmentDate = item.segment_date || item.work_date;
+      const protocol = await submitOvertimeSegmentToErgani(row, segmentDate);
+      if (protocol) okCount += 1;
+    }
+    closeBulkWeekModal();
+    refreshSummaryCounts();
+    renderVisibleRows();
+    updateBulkWeekBar();
+    showSubmitToast(`Ολοκληρώθηκαν ${okCount} υποβολές στο Ergani.`, true);
+  } catch (error) {
+    if (errorBox) errorBox.innerHTML = Office.formatMultilineHtml(error.message || String(error));
+    if (okCount > 0) {
+      refreshSummaryCounts();
+      renderVisibleRows();
+      updateBulkWeekBar();
+    }
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
+}
+
 function initBulkWeekModal() {
   const modal = document.getElementById("apologisticBulkModal");
   if (!modal || modal.dataset.bound) return;
@@ -1266,6 +1419,7 @@ function initBulkWeekModal() {
   modal.querySelectorAll("[data-apologistic-bulk-close]").forEach((el) => {
     el.addEventListener("click", closeBulkWeekModal);
   });
+  document.getElementById("apologisticBulkConfirm")?.addEventListener("click", confirmBulkWeekSubmit);
   document.querySelectorAll(".apologistic-bulk-btn").forEach((btn) => {
     if (btn.dataset.bound) return;
     btn.dataset.bound = "1";
@@ -1447,56 +1601,12 @@ async function confirmSubmitModal() {
   if (!state || !btn) return;
 
   const { kind, row } = state;
-  const baseBody = {
-    week_from: weekFromForRow(row),
-    work_date: row.work_date,
-    employee_afm: row.employee_afm,
-    use_snapshot: true,
-  };
-  const url = kind === "schedule" ? "/api/apologistic/submit-schedule" : "/api/apologistic/submit-overtime";
   Office.setButtonLoading(btn, true);
   errorBox.textContent = "";
   try {
     if (kind === "schedule") {
       const scheduleRows = state.pairRows || [row];
-      const pendingRows = scheduleRows.filter((item) =>
-        !scheduleAlreadySubmitted(item) || item.ergani_submit?.schedule?.matches_proposal === false
-      );
-      const protocols = [];
-      for (const scheduleRow of pendingRows) {
-        const submitBody = {
-          week_from: weekFromForRow(scheduleRow),
-          work_date: scheduleRow.work_date,
-          employee_afm: scheduleRow.employee_afm,
-          use_snapshot: true,
-        };
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(submitBody),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-          throw new Error(
-            `${scheduleRow.work_date}: ` +
-            (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
-          );
-        }
-        mergeErganiSubmit(scheduleRow, data.ergani_submit);
-        if (!data.ergani_submit?.schedule) {
-          mergeErganiSubmit(scheduleRow, {
-            schedule: {
-              protocol: data.protocol || null,
-              ergani_submission_id: data.ergani_submission_id || null,
-              submit_date: data.submit_date || null,
-              submitted_at: new Date().toISOString(),
-              proposed_at_submit: scheduleRow.proposed,
-              matches_proposal: true,
-            },
-          });
-        }
-        if (data.protocol) protocols.push(String(data.protocol));
-      }
+      const protocols = await submitScheduleRowsToErgani(scheduleRows);
       closeSubmitModal();
       refreshSummaryCounts();
       renderVisibleRows();
@@ -1513,52 +1623,20 @@ async function confirmSubmitModal() {
     }
     const protocols = [];
     for (const segmentDate of segmentDates) {
-      let submitBody = { ...baseBody, segment_date: segmentDate };
-      let res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submitBody),
-      });
-      let data = await res.json().catch(() => ({}));
-      if (res.status === 409 && data.requires_confirmation) {
-        const proceed = await Office.confirm(`${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`, { title: "Επιβεβαίωση υποβολής", confirmText: "Συνέχεια" });
-        if (!proceed) return;
-        submitBody = { ...submitBody, confirm_annual_limit: true };
-        res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(submitBody),
-        });
-        data = await res.json().catch(() => ({}));
-      }
-      if (!res.ok || !data.success) {
+      try {
+        const protocol = await submitOvertimeSegmentToErgani(row, segmentDate);
+        if (protocol) protocols.push(protocol);
+      } catch (error) {
         const prefix = segmentDates.length > 1
           ? `Αποτυχία για ${segmentDate}${protocols.length ? ` (${protocols.length}/${segmentDates.length} υποβλήθηκαν)` : ""}: `
           : "";
-        errorBox.innerHTML = Office.formatMultilineHtml(
-          prefix + (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
-        );
+        errorBox.innerHTML = Office.formatMultilineHtml(prefix + (error.message || String(error)));
         if (protocols.length) {
           refreshSummaryCounts();
           renderVisibleRows();
         }
         return;
       }
-      mergeErganiSubmit(row, data.ergani_submit);
-      if (!data.ergani_submit?.overtime) {
-        mergeErganiSubmit(row, {
-          overtime: {
-            [segmentDate]: {
-              protocol: data.protocol || null,
-              ergani_submission_id: data.ergani_submission_id || null,
-              submit_date: data.submit_date || null,
-              submitted_at: new Date().toISOString(),
-              segment_date: segmentDate,
-            },
-          },
-        });
-      }
-      if (data.protocol) protocols.push(String(data.protocol));
     }
     closeSubmitModal();
     refreshSummaryCounts();

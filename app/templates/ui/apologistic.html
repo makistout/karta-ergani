@@ -168,12 +168,14 @@
       <h2 id="apologisticBulkModalTitle" class="office-modal-title">Μαζική Καταχώρηση εβδομάδας</h2>
       <p id="apologisticBulkModalMeta" class="office-modal-sub"></p>
       <div class="apologistic-bulk-preview-banner" role="status">
-        <strong><i class="bi bi-eye" aria-hidden="true"></i> Προεπισκόπηση μόνο</strong>
-        <p>Δεν γίνεται αποστολή στο Ergani.</p>
+        <strong><i class="bi bi-send" aria-hidden="true"></i> Επιβεβαίωση υποβολής</strong>
+        <p>Ελέγξτε τη λίστα και πατήστε «Υποβολή στο Ergani» για αποστολή.</p>
       </div>
       <div id="apologisticBulkModalBody" class="apologistic-bulk-modal-body"></div>
+      <p id="apologisticBulkError" class="apologistic-proposal-error" role="alert"></p>
       <div class="office-modal-actions">
-        <button type="button" class="btn btn-secondary" data-apologistic-bulk-close>Κλείσιμο</button>
+        <button type="button" class="btn btn-secondary" data-apologistic-bulk-close>Ακύρωση</button>
+        <button type="button" class="btn btn-primary" id="apologisticBulkConfirm"><i class="bi bi-send" aria-hidden="true"></i> Υποβολή στο Ergani</button>
       </div>
     </div>
   </div>
