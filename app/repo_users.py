@@ -6,7 +6,13 @@ from typing import Any
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.access_control import ROLE_PERMISSIONS, all_permission_codes, normalize_role
+from app.access_control import (
+    MANAGED_PERMISSION_CODES,
+    ROLE_PERMISSIONS,
+    all_permission_codes,
+    normalize_role,
+    permissions_for_role,
+)
 from app.db import cursor
 from app.row_util import row_to_dict, rows_to_dicts
 from app.user_email_verification import expiry_utc, new_verification_token, token_hash
@@ -209,11 +215,16 @@ def _role_for_user(cur: Any, user_id: int, *, is_super_admin: bool) -> str:
 def _permissions_for_user(cur: Any, user_id: int, role_code: str, *, is_super_admin: bool) -> list[str]:
     if is_super_admin:
         return ["*"]
+    # Ο ρόλος είναι η βάση· τα karta_user_permission προσθέτουν μόνο managed extras.
+    # Έτσι π.χ. accountant κρατά πάντα schedule.submit_daily (μαζικές υποβολές απολογιστικού).
+    role_perms = permissions_for_role(role_code)
     cur.execute(
         "SELECT permission_code FROM dbo.karta_user_permission WHERE user_id = ? ORDER BY permission_code",
         int(user_id),
     )
-    return [str(row[0]) for row in cur.fetchall()]
+    user_perms = {str(row[0]) for row in cur.fetchall()}
+    extras = user_perms & MANAGED_PERMISSION_CODES
+    return sorted(role_perms | extras)
 
 
 def _onboarding_flags_from_row(data: dict[str, Any] | None) -> dict[str, Any]:

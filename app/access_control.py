@@ -303,7 +303,9 @@ def has_permission(permission: str | None, *, role: str | None = None) -> bool:
         if isinstance(session_permissions, list):
             permissions = {str(x) for x in session_permissions}
         else:
-            permissions = permissions_for_role(current_role())
+            permissions = set()
+        # Role baseline πάντα· αποφεύγει stale session χωρίς δικαίωμα ρόλου (π.χ. accountant + submit).
+        permissions |= permissions_for_role(current_role())
     else:
         permissions = permissions_for_role(role)
     if "*" in permissions or permission in permissions:
@@ -318,8 +320,11 @@ def has_permission(permission: str | None, *, role: str | None = None) -> bool:
 def current_permissions() -> set[str]:
     session_permissions = session.get(SESSION_PERMISSIONS)
     if isinstance(session_permissions, list):
-        return {str(x) for x in session_permissions}
-    return permissions_for_role(current_role())
+        permissions = {str(x) for x in session_permissions}
+    else:
+        permissions = set()
+    permissions |= permissions_for_role(current_role())
+    return permissions
 
 
 def is_super_admin() -> bool:

@@ -192,6 +192,9 @@ def test_accountant_permissions_and_holiday_api_rules():
     perms = permissions_for_role("accountant")
     assert "settings.holidays.view" in perms
     assert "settings.holidays.edit" in perms
+    assert "schedule.submit_daily" in perms
+    assert "schedule.submit_leave" in perms
+    assert "work_log.view" in perms
     assert "settings.view" not in perms
     assert "stores.view" not in perms
     assert "stores.select" in perms
@@ -203,6 +206,8 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert permission_for_path("/api/store/1/holidays", "GET") == "settings.holidays.view"
     assert permission_for_path("/api/store/holidays", "POST") == "settings.holidays.edit"
     assert permission_for_path("/api/store/list", "GET") == "stores.select"
+    assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "schedule.submit_daily"
+    assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "schedule.submit_daily"
 
 
 def test_role_aliases_do_not_fallback_to_super_admin():
