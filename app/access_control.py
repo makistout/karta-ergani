@@ -77,8 +77,8 @@ OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
 
 STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS)
 
-# Λογιστής: λειτουργικές οθόνες χωρίς Καταστήματα/Sync/Logs/Users· Ρυθμίσεις = μόνο αργίες.
-ACCOUNTANT_PERMISSIONS: set[str] = (OFFICE_OPERATOR_PERMISSIONS - {"stores.view"}) | {
+# Λογιστής: λειτουργικές οθόνες χωρίς Sync/Logs/Users· επιλογή καταστήματος· Ρυθμίσεις = μόνο αργίες.
+ACCOUNTANT_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS) | {
     "settings.holidays.view",
     "settings.holidays.edit",
 }
@@ -237,6 +237,7 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("PUT", "/api/apologistic/exchange", "work_log.view"),
     RouteRule("POST", "/api/apologistic/submit-schedule", "schedule.submit_daily"),
     RouteRule("POST", "/api/apologistic/submit-overtime", "schedule.submit_daily"),
+    RouteRule("POST", "/api/apologistic/submit-bulk", "schedule.submit_daily"),
     RouteRule("GET", "/api/monthly-status/*", "monthly_status.view"),
     RouteRule("POST", "/api/monthly-status/sync", "monthly_status.sync"),
     RouteRule("GET", "/api/work-card/*", "work_card.view"),

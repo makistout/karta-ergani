@@ -174,6 +174,7 @@ def test_accountant_menu_shows_ops_hides_admin_and_stores():
 
     for label in (
         "Αρχική",
+        "Καταστήματα",
         "Ψηφιακό ωράριο",
         "Πραγματική απασχόληση",
         "Πρωτόκολλα",
@@ -184,7 +185,7 @@ def test_accountant_menu_shows_ops_hides_admin_and_stores():
         "Ρυθμίσεις",
     ):
         assert label in html
-    for label in ("Συγχρονισμός", "Καταστήματα", "Καταγραφές", "Χρήστες"):
+    for label in ("Συγχρονισμός", "Καταγραφές", "Χρήστες"):
         assert label not in html
 
 
@@ -196,8 +197,10 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert "schedule.submit_leave" in perms
     assert "work_log.view" in perms
     assert "settings.view" not in perms
-    assert "stores.view" not in perms
+    assert "stores.view" in perms
     assert "stores.select" in perms
+    assert "stores.manage" not in perms
+    assert "stores.credentials.manage" not in perms
     assert "sync.view" not in perms
     assert "users.view" not in perms
     assert "logs.view" not in perms
@@ -207,6 +210,7 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert permission_for_path("/api/store/holidays", "POST") == "settings.holidays.edit"
     assert permission_for_path("/api/store/list", "GET") == "stores.select"
     assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "schedule.submit_daily"
+    assert permission_for_path("/api/apologistic/submit-bulk", "POST") == "schedule.submit_daily"
     assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "schedule.submit_daily"
 
 

@@ -35,6 +35,7 @@ from app.routes_wto_apologistic import execute_apologistic_wto_submit, json_subm
 from app.wto_submit import parse_submit_response
 from app.wto_daily_payload import SUBMISSION_CODE_WTO_DAILY_A, build_wto_daily_a_payload
 from app.wto_ov_payload import SUBMISSION_CODE_WTO_OV_A, build_wto_ov_a_payload
+from app.apologistic_batch_submit import execute_bulk_apologistic_submit
 from app.work_card_payload import WorkCardPayloadError
 from app.timekeeping import build_timekeeping_report, is_timekeeping_leave_row
 from app.timekeeping_export import (
@@ -997,3 +998,44 @@ def apologistic_submit_overtime():
         auth_retry=auth_retry,
         extra={"ergani_submit": ergani_submit} if ergani_submit else None,
     )
+
+
+@apologistic_bp.post("/submit-bulk")
+def apologistic_submit_bulk():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Αναμενόταν JSON"}), 400
+    if not tables_available():
+        return jsonify({"error": "Δεν έχουν εγκατασταθεί οι πίνακες απολογιστικού"}), 503
+
+    items = body.get("items")
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "Απαιτείται μη κενή λίστα items"}), 400
+    try:
+        week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Μη έγκυρο week_from"}), 400
+
+    try:
+        result = execute_bulk_apologistic_submit(
+            ctx,
+            week_from=week_from,
+            items=items,
+            confirm_annual_limit=bool(body.get("confirm_annual_limit")),
+            submitted_by=str(session.get(SESSION_USER) or "").strip() or None,
+            comments=body.get("comments"),
+        )
+    except (ValueError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except WorkCardPayloadError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 401
+
+    if not result.get("success"):
+        status = 409 if result.get("requires_confirmation") else 502
+        return jsonify(result), status
+    return jsonify(result)

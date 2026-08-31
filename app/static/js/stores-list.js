@@ -7,9 +7,19 @@ document.addEventListener("DOMContentLoaded", () => {
   loadStoresList();
 });
 
+function storesListFlags() {
+  const card = document.getElementById("storesListCard");
+  return {
+    canManage: card?.dataset.canManage === "1",
+    canCredentials: card?.dataset.canCredentials === "1",
+    canSettings: card?.dataset.canSettings === "1",
+  };
+}
+
 async function loadStoresList() {
   const wrap = document.getElementById("storesListWrap");
   if (!wrap) return;
+  const flags = storesListFlags();
   try {
     let activeId = null;
     try {
@@ -23,8 +33,9 @@ async function loadStoresList() {
     const stores = await res.json();
     Office.rememberStoreNames(stores || []);
     if (!stores.length) {
-      wrap.innerHTML =
-        "<p style='color:var(--muted);'>Δεν υπάρχουν καταστήματα. Πατήστε «Νέο κατάστημα».</p>";
+      wrap.innerHTML = flags.canCredentials
+        ? "<p style='color:var(--muted);'>Δεν υπάρχουν καταστήματα. Πατήστε «Νέο κατάστημα».</p>"
+        : "<p style='color:var(--muted);'>Δεν υπάρχουν διαθέσιμα καταστήματα.</p>";
       return;
     }
     const t = document.createElement("table");
@@ -75,13 +86,19 @@ async function loadStoresList() {
       actInner.appendChild(
         mkBtn(selectLabel, selectCls, "check-circle", () => selectStore(store.id), { disabled: isActive })
       );
-      actInner.appendChild(mkBtn("Επεξεργασία", "btn", "pencil-square", () => editStore(store.id)));
-      actInner.appendChild(
-        mkBtn("Ρυθμίσεις", "btn btn-secondary", "sliders", () => {
-          window.location.href = `/ui/stores/notify?id=${store.id}`;
-        })
-      );
-      actInner.appendChild(mkBtn("Διαγραφή", "btn btn-danger", "trash3", () => deleteStore(store.id)));
+      if (flags.canCredentials) {
+        actInner.appendChild(mkBtn("Επεξεργασία", "btn", "pencil-square", () => editStore(store.id)));
+      }
+      if (flags.canSettings) {
+        actInner.appendChild(
+          mkBtn("Ρυθμίσεις", "btn btn-secondary", "sliders", () => {
+            window.location.href = `/ui/stores/notify?id=${store.id}`;
+          })
+        );
+      }
+      if (flags.canManage) {
+        actInner.appendChild(mkBtn("Διαγραφή", "btn btn-danger", "trash3", () => deleteStore(store.id)));
+      }
       tdAct.appendChild(actInner);
       tr.appendChild(tdAct);
       t.appendChild(tr);

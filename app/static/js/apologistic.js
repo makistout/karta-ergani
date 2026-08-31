@@ -1249,7 +1249,7 @@ function openBulkWeekPreview() {
       `${items.length} υποβολές (${scheduleCount} WTODailyA, ${overtimeCount} WTOOvA)`;
   }
   body.innerHTML =
-    `<p class="apologistic-bulk-summary">Θα σταλούν στο Ergani οι παρακάτω καταχωρήσεις. Όσες έχουν ήδη σταλεί μεμονωμένα εξαιρούνται.</p>` +
+    `<p class="apologistic-bulk-summary">Θα σταλούν στο Ergani οι παρακάτω καταχωρήσεις σε έως 3 πρωτόκολλα (WTODailyA, WTOLeave, WTOOvA). Όσες έχουν ήδη σταλεί μεμονωμένα εξαιρούνται.</p>` +
     `<table class="apologistic-bulk-table"><thead><tr>` +
     `<th>Έγγραφο</th><th>Εργαζόμενος</th><th>Ημέρα</th><th>Λεπτομέρειες</th>` +
     `</tr></thead><tbody>` +
@@ -1268,46 +1268,79 @@ function openBulkWeekPreview() {
   modal.classList.remove("hidden");
 }
 
+function bulkItemFromRow(row, item) {
+  return {
+    kind: item.kind,
+    employee_afm: item.employee_afm,
+    work_date: item.work_date,
+    segment_date: item.segment_date || null,
+    week_from: weekFromForRow(row || item),
+  };
+}
+
+async function submitBulkItemsToErgani(items, weekFrom, { confirmAnnualLimit = false } = {}) {
+  const res = await fetch("/api/apologistic/submit-bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      week_from: weekFrom,
+      items,
+      confirm_annual_limit: confirmAnnualLimit,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.requires_confirmation) {
+    const proceed = await Office.confirm(
+      `${data.error}\n\nΘέλετε να συνεχίσετε την υποβολή;`,
+      { title: "Επιβεβαίωση υποβολής", confirmText: "Συνέχεια" },
+    );
+    if (!proceed) throw new Error("Η υποβολή ακυρώθηκε από τον χρήστη.");
+    return submitBulkItemsToErgani(items, weekFrom, { confirmAnnualLimit: true });
+  }
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`);
+  }
+  for (const result of data.results || []) {
+    const row = findReportRow(result.employee_afm, result.work_date);
+    if (!row || !result.ergani_submit) continue;
+    mergeErganiSubmit(row, result.ergani_submit);
+  }
+  return data;
+}
+
+function bulkProtocolSummary(protocols) {
+  const parts = [];
+  if (protocols?.schedule) parts.push(`WTODailyA ${protocols.schedule}`);
+  if (protocols?.leave) parts.push(`WTOLeave ${protocols.leave}`);
+  if (protocols?.overtime) parts.push(`WTOOvA ${protocols.overtime}`);
+  return parts.join(" · ");
+}
+
+function scheduleRowsToBulkItems(scheduleRows) {
+  return scheduleRows
+    .filter((row) => !scheduleAlreadySubmitted(row) || row.ergani_submit?.schedule?.matches_proposal === false)
+    .map((row) => ({
+      kind: "schedule",
+      employee_afm: row.employee_afm,
+      work_date: row.work_date,
+    }));
+}
+
 async function submitScheduleRowsToErgani(scheduleRows) {
-  const url = "/api/apologistic/submit-schedule";
   const pendingRows = scheduleRows.filter((item) =>
     !scheduleAlreadySubmitted(item) || item.ergani_submit?.schedule?.matches_proposal === false
   );
+  if (!pendingRows.length) return [];
+  const items = scheduleRowsToBulkItems(pendingRows).map((item) => {
+    const row = pendingRows.find((entry) => entry.employee_afm === item.employee_afm && entry.work_date === item.work_date);
+    return bulkItemFromRow(row, item);
+  });
+  if (!items.length) return [];
+  const weekFrom = weekFromForRow(pendingRows[0]);
+  const data = await submitBulkItemsToErgani(items, weekFrom);
   const protocols = [];
-  for (const scheduleRow of pendingRows) {
-    const submitBody = {
-      week_from: weekFromForRow(scheduleRow),
-      work_date: scheduleRow.work_date,
-      employee_afm: scheduleRow.employee_afm,
-      use_snapshot: true,
-    };
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(submitBody),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      throw new Error(
-        `${scheduleRow.work_date}: ` +
-        (data.error || data.data?.message || data.data?.Message || `Αποτυχία υποβολής (HTTP ${res.status})`),
-      );
-    }
-    mergeErganiSubmit(scheduleRow, data.ergani_submit);
-    if (!data.ergani_submit?.schedule) {
-      mergeErganiSubmit(scheduleRow, {
-        schedule: {
-          protocol: data.protocol || null,
-          ergani_submission_id: data.ergani_submission_id || null,
-          submit_date: data.submit_date || null,
-          submitted_at: new Date().toISOString(),
-          proposed_at_submit: scheduleRow.proposed,
-          matches_proposal: true,
-        },
-      });
-    }
-    if (data.protocol) protocols.push(String(data.protocol));
-  }
+  if (data.protocols?.schedule) protocols.push(String(data.protocols.schedule));
+  if (data.protocols?.leave) protocols.push(String(data.protocols.leave));
   return protocols;
 }
 
@@ -1369,44 +1402,28 @@ async function confirmBulkWeekSubmit() {
 
   Office.setButtonLoading(btn, true);
   if (errorBox) errorBox.textContent = "";
-  const submittedScheduleKeys = new Set();
-  let okCount = 0;
   try {
-    for (const item of state.items) {
-      if (item.kind === "schedule") {
-        const key = `${item.employee_afm}|${item.work_date}`;
-        if (submittedScheduleKeys.has(key)) continue;
-        const row = findReportRow(item.employee_afm, item.work_date);
-        if (!row) continue;
-        const pairedRow = row.exchange_pair?.paired_work_date
-          ? findReportRow(row.employee_afm, row.exchange_pair.paired_work_date)
-          : null;
-        const scheduleRows = pairedRow ? [row, pairedRow] : [row];
-        for (const scheduleRow of scheduleRows) {
-          submittedScheduleKeys.add(`${scheduleRow.employee_afm}|${scheduleRow.work_date}`);
-        }
-        const protocols = await submitScheduleRowsToErgani(scheduleRows);
-        okCount += protocols.length;
-        continue;
-      }
+    const bulkItems = state.items.map((item) => {
       const row = findReportRow(item.employee_afm, item.work_date);
-      if (!row) continue;
-      const segmentDate = item.segment_date || item.work_date;
-      const protocol = await submitOvertimeSegmentToErgani(row, segmentDate);
-      if (protocol) okCount += 1;
-    }
+      return bulkItemFromRow(row, item);
+    });
+    const weekFrom = weekFromForRow(findReportRow(state.items[0].employee_afm, state.items[0].work_date) || { week_from: iso(weekStart) });
+    const data = await submitBulkItemsToErgani(bulkItems, weekFrom);
     closeBulkWeekModal();
     refreshSummaryCounts();
     renderVisibleRows();
     updateBulkWeekBar();
-    showSubmitToast(`Ολοκληρώθηκαν ${okCount} υποβολές στο Ergani.`, true);
+    const proto = bulkProtocolSummary(data.protocols);
+    const protoText = proto ? ` · ${proto}` : "";
+    showSubmitToast(
+      `Ολοκληρώθηκαν ${data.row_count || 0} γραμμές σε ${data.submission_count || 0} πρωτόκολλα Ergani${protoText}.`,
+      true,
+    );
   } catch (error) {
     if (errorBox) errorBox.innerHTML = Office.formatMultilineHtml(error.message || String(error));
-    if (okCount > 0) {
-      refreshSummaryCounts();
-      renderVisibleRows();
-      updateBulkWeekBar();
-    }
+    refreshSummaryCounts();
+    renderVisibleRows();
+    updateBulkWeekBar();
   } finally {
     Office.setButtonLoading(btn, false);
   }
@@ -1621,29 +1638,20 @@ async function confirmSubmitModal() {
       errorBox.textContent = "Δεν προκύπτει υπερωρία για υποβολή.";
       return;
     }
-    const protocols = [];
-    for (const segmentDate of segmentDates) {
-      try {
-        const protocol = await submitOvertimeSegmentToErgani(row, segmentDate);
-        if (protocol) protocols.push(protocol);
-      } catch (error) {
-        const prefix = segmentDates.length > 1
-          ? `Αποτυχία για ${segmentDate}${protocols.length ? ` (${protocols.length}/${segmentDates.length} υποβλήθηκαν)` : ""}: `
-          : "";
-        errorBox.innerHTML = Office.formatMultilineHtml(prefix + (error.message || String(error)));
-        if (protocols.length) {
-          refreshSummaryCounts();
-          renderVisibleRows();
-        }
-        return;
-      }
-    }
+    const bulkItems = segmentDates.map((segmentDate) => bulkItemFromRow(row, {
+      kind: "overtime",
+      employee_afm: row.employee_afm,
+      work_date: row.work_date,
+      segment_date: segmentDate,
+    }));
+    const data = await submitBulkItemsToErgani(bulkItems, weekFromForRow(row));
     closeSubmitModal();
     refreshSummaryCounts();
     renderVisibleRows();
-    const proto = protocols.length ? ` · πρωτ. ${protocols.join(", ")}` : "";
+    const proto = bulkProtocolSummary(data.protocols);
+    const protoText = proto ? ` · ${proto}` : "";
     const countLabel = segmentDates.length > 1 ? ` (${segmentDates.length} ημέρες)` : "";
-    showSubmitToast(`Η απολογιστική υπερωρία υποβλήθηκε${countLabel}${proto}.`, true);
+    showSubmitToast(`Η απολογιστική υπερωρία υποβλήθηκε${countLabel}${protoText}.`, true);
   } catch (error) {
     errorBox.innerHTML = Office.formatMultilineHtml(error.message || error);
   } finally {
