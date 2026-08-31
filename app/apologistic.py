@@ -119,6 +119,13 @@ def _maximum_valid_punch_span(
                 if (max_inferred_overnight_minutes is None
                         or actual_end - actual_start > max_inferred_overnight_minutes):
                     continue
+            # The explicit next-day marker belongs to the row on which Ergani
+            # recorded it.  It must not be combined with an earlier start from
+            # another row to manufacture an almost 24-hour envelope.
+            if (last_punch is not first_punch
+                    and max_inferred_overnight_minutes is not None
+                    and actual_end - actual_start > max_inferred_overnight_minutes):
+                continue
             if actual_end > actual_start:
                 candidates.append((actual_start, actual_end, first_punch, last_punch))
     return max(candidates, key=lambda item: item[1] - item[0]) if candidates else None
@@ -364,10 +371,6 @@ def _possible_undeclared_split_parts(
         return []
     intervals: list[tuple[int, int, dict[str, Any]]] = []
     for punch in punches:
-        # A starred row plus a short next-calendar-day continuation has already
-        # been assigned to one overnight work period; it is not a same-day split.
-        if _is_explicit_next_day(punch):
-            return []
         interval = _valid_punch_interval(
             punch,
             max_inferred_overnight_minutes=max_inferred_overnight_minutes,
@@ -917,15 +920,29 @@ def build_weekly_report(
             if contract_kind in ("Πλήρης", "Εκ περιτροπής")
             else weekly_days
         )
+        missing_start = bool(len(day_punches) == 1 and not _clock(day_punches[0].get("hour_from")) and _clock(day_punches[0].get("hour_to")))
+        missing_end = bool(len(day_punches) == 1 and _clock(day_punches[0].get("hour_from")) and not _clock(day_punches[0].get("hour_to")))
+        provisional_actual_minutes = sum(
+            _minutes(m.get("from"), m.get("to")) or 0 for m in matched
+        ) if matched else None
+        break_minutes, break_in_work, outside_break = _break_context(
+            contract, work_slots,
+            has_actual_work=bool(provisional_actual_minutes and provisional_actual_minutes > 0),
+        )
+        # A missing exit is replaced by the declared exit. When the break is
+        # outside working time, the physical inferred exit also includes that
+        # extension so that the clean worked duration remains the declaration.
+        if missing_end and outside_break and len(work_slots) == 1 and len(matched) == 1:
+            inferred_start = _minute_of_day(matched[0].get("from"))
+            inferred_end = _minute_of_day(matched[0].get("to"), after=inferred_start)
+            if inferred_start is not None and inferred_end is not None:
+                matched[0]["to"] = _hm(inferred_end + outside_break)
         actual_minutes = sum(_minutes(m.get("from"), m.get("to")) or 0 for m in matched) if matched else None
         inferred = any(m.get("inferred_from") or m.get("inferred_to") for m in matched)
         declared_label = " · ".join(f"{s.get('hour_from')}–{s.get('hour_to')}" for s in work_slots) or (str(slots[0].get("shift_type") or "") if slots else "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ")
         punch_recorded = _format_recorded_punches(day_punches)
         actual_label = _format_matched_label(matched)
         flex = int((contract or {}).get("flex_arrival_minutes") or (work_slots[0].get("flex_arrival_minutes") if work_slots else 0) or 0)
-        break_minutes, break_in_work, outside_break = _break_context(
-            contract, work_slots, has_actual_work=bool(actual_minutes and actual_minutes > 0)
-        )
         effective_actual = max(0, (actual_minutes or 0) - outside_break) if actual_minutes is not None else None
         gross_difference = actual_minutes - declared_minutes if actual_minutes is not None else None
         net_difference = effective_actual - declared_minutes if effective_actual is not None else None
@@ -979,8 +996,6 @@ def build_weekly_report(
             and (effective_actual or 0) > 300
             and day_punches
         )
-        missing_start = bool(len(day_punches) == 1 and not _clock(day_punches[0].get("hour_from")) and _clock(day_punches[0].get("hour_to")))
-        missing_end = bool(len(day_punches) == 1 and _clock(day_punches[0].get("hour_from")) and not _clock(day_punches[0].get("hour_to")))
         # A clock wrap is accepted when explicitly marked (*) or when it forms
         # a positive overnight interval within the contractual daily limit.
         raw_overnight = False

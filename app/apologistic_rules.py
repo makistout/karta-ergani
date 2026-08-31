@@ -201,15 +201,18 @@ def normal_schedule_decision(
         duration = declared_minutes or base
         if not duration:
             return RuleDecision("review", "Λείπει είσοδος και δεν υπάρχει ασφαλής συμβατική διάρκεια", actual_label, "Χειροκίνητος έλεγχος", "MISSING_ENTRY_NO_DURATION")
-        work_end = actual_end - outside_break
-        status = "change" if declared_minutes else "review"
-        return RuleDecision(status, "Λείπει είσοδος· κατασκευάστηκε από την πραγματική έξοδο", f"{hm(work_end - duration)}–{hm(work_end)}", "Ανάστροφα από την πραγματική λήξη", "MISSING_ENTRY_REBUILT")
+        if not declared_minutes:
+            work_end = actual_end - outside_break
+            return RuleDecision("review", "Λείπει είσοδος· κατασκευάστηκε από την πραγματική έξοδο", f"{hm(work_end - duration)}–{hm(work_end)}", "Ανάστροφα από την πραγματική λήξη", "MISSING_ENTRY_REBUILT")
+        if (effective_actual or 0) > declared_minutes:
+            work_end = actual_end - outside_break
+            return RuleDecision("change", "Λείπει είσοδος και η χρήση της δηλωμένης έναρξης δημιουργεί επιπλέον ώρες", f"{hm(work_end - declared_minutes)}–{hm(work_end)}", "Πραγματική λήξη μείον επέκταση διαλείμματος και δηλωμένη διάρκεια προς τα πίσω", "MISSING_ENTRY_EXTRA_BACKWARD")
     if missing_end:
         duration = declared_minutes or base
         if not duration:
             return RuleDecision("review", "Λείπει έξοδος και δεν υπάρχει ασφαλής συμβατική διάρκεια", actual_label, "Χειροκίνητος έλεγχος", "MISSING_EXIT_NO_DURATION")
-        status = "change" if declared_minutes else "review"
-        return RuleDecision(status, "Λείπει έξοδος· κατασκευάστηκε από την πραγματική είσοδο", f"{hm(actual_start)}–{hm(actual_start + duration)}", "Συμβατική διάρκεια από την πραγματική έναρξη", "MISSING_EXIT_REBUILT")
+        if not declared_minutes:
+            return RuleDecision("review", "Λείπει έξοδος· κατασκευάστηκε από την πραγματική είσοδο", f"{hm(actual_start)}–{hm(actual_start + duration)}", "Συμβατική διάρκεια από την πραγματική έναρξη", "MISSING_EXIT_REBUILT")
     if not declared_minutes:
         duration = min(effective_actual or actual_minutes, cap) if cap else (effective_actual or actual_minutes)
         proposed = f"{hm(actual_start)}–{hm(actual_start + duration)}"

@@ -254,6 +254,25 @@ def test_two_complete_pairs_with_three_hour_gap_are_possible_split_review():
     assert row["proposed"] == "09:00–12:00 · 15:00–20:00"
 
 
+def test_early_pair_and_starred_main_shift_are_possible_split_review():
+    early = punch("00:08", "00:26", day="03/08/2026")
+    main = punch("17:42", "00:35", day="03/08/2026")
+    main["is_end_date_different"] = 1
+
+    row = build_weekly_report(
+        [sched(day="03/08/2026", start="17:00", end="01:00")],
+        [early, main],
+        [contract(flex=0)],
+    )["days"][0]
+
+    assert row["status"] == "review"
+    assert row["rule_id"] == "POSSIBLE_SPLIT_REVIEW"
+    assert row["reason"] == "ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ"
+    assert row["actual"] == "00:08–00:26 · 17:42–00:35"
+    assert row["actual_minutes"] == 431
+    assert row["proposed"] == "00:08–00:26 · 17:42–01:24"
+
+
 def test_pair_after_thirteen_hour_carry_window_stays_on_new_day():
     schedules = [
         sched(day="15/08/2026", start="16:00", end="00:00"),
@@ -595,15 +614,51 @@ def test_sixth_actual_day_is_not_automatically_changed_by_retrospective_engine()
     assert not any(row["sixth_day_candidate"] for row in result["days"])
 
 
-def test_missing_exit_is_rebuilt_from_contract_duration():
+def test_missing_exit_uses_declared_exit_and_is_compliant():
     result = build_weekly_report([sched()], [punch("09:00", None)], [contract(flex=0)])
     row = result["days"][0]
     assert row["punch_recorded"] == "09:00–"
     assert row["actual"] == "09:00–17:00"
     assert row["punch_completeness"] == "Τεκμαρτό"
-    assert row["status"] == "change"
-    assert row["rule_id"] == "MISSING_EXIT_REBUILT"
+    assert row["status"] == "ok"
+    assert row["rule_id"] == "FLEX_COMPLIANT"
     assert any("Λείπει έξοδος" in line for line in row["status_explanation"])
+
+
+def test_missing_exit_with_outside_break_extends_physical_exit_only():
+    row = build_weekly_report(
+        [sched(start="15:00", end="23:00")],
+        [punch("15:00", None)],
+        [contract(flex=0, break_minutes=30, break_in_work=0)],
+    )["days"][0]
+    assert row["actual"] == "15:00–23:30"
+    assert row["actual_minutes"] == 510
+    assert row["effective_actual_minutes"] == 480
+    assert row["proposed"] == "15:00–23:00"
+    assert row["status"] == "ok"
+
+
+def test_missing_entry_with_extra_hours_is_rebuilt_backwards_from_exit():
+    row = build_weekly_report(
+        [sched(start="15:00", end="23:00")],
+        [punch(None, "00:00")],
+        [contract(flex=0)],
+    )["days"][0]
+    assert row["actual"] == "15:00–00:00"
+    assert row["proposed"] == "16:00–00:00"
+    assert row["status"] == "change"
+    assert row["rule_id"] == "MISSING_ENTRY_EXTRA_BACKWARD"
+
+
+def test_missing_entry_without_extra_hours_uses_declared_start_and_is_compliant():
+    row = build_weekly_report(
+        [sched(start="15:00", end="23:00")],
+        [punch(None, "23:00")],
+        [contract(flex=0)],
+    )["days"][0]
+    assert row["actual"] == "15:00–23:00"
+    assert row["proposed"] == "15:00–23:00"
+    assert row["status"] == "ok"
 
 
 def test_multiple_complete_non_split_punches_use_full_envelope():
