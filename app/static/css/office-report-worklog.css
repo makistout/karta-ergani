@@ -986,10 +986,15 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-employee-search .field-input::-ms-clear { cursor:pointer; }
 .apologistic-table td { vertical-align:top; }
 .apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
-.apologistic-table th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; line-height:1; }
-.apologistic-table th:first-child { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
-.apologistic-table--all-days th:first-child { writing-mode:vertical-rl; transform:rotate(180deg); text-align:center; width:4%; }
-.apologistic-table--all-days th:nth-child(2) { writing-mode:horizontal-tb; transform:none; text-align:left; width:11%; }
+.apologistic-table thead th { height:112px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; white-space:nowrap; line-height:1; position:relative; overflow:hidden; }
+.apologistic-table th:first-child { width:11%; }
+.apologistic-table th.apologistic-head--horizontal { text-align:left; }
+.apologistic-table--all-days th:first-child { text-align:center; width:4%; }
+.apologistic-table--all-days th:nth-child(2) { text-align:left; width:11%; }
+.apologistic-head-label { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.apologistic-head-label--vertical { position:absolute; left:50%; bottom:.45rem; width:max-content; max-width:6.8rem; transform:translateX(-50%) rotate(-90deg); transform-origin:center; }
+.apologistic-table tbody tr { height:auto; }
+.apologistic-table tbody td { height:auto; min-height:0; }
 .apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(13) { width:9%; }
 .apologistic-table th:nth-child(5), .apologistic-table th:nth-child(6),
 .apologistic-table th:nth-child(7), .apologistic-table th:nth-child(8),

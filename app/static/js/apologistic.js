@@ -2816,6 +2816,14 @@ function renderVisibleRows() {
   updateBulkWeekBar();
   updateTimekeepingBar();
 }
+function apologisticHeader(label, options = {}) {
+  const thClasses = ["apologistic-head"];
+  if (options.horizontal) thClasses.push("apologistic-head--horizontal");
+  if (options.overtime) thClasses.push("apologistic-overtime-head");
+  const labelClasses = ["apologistic-head-label"];
+  if (!options.horizontal) labelClasses.push("apologistic-head-label--vertical");
+  return `<th class="${thClasses.join(" ")}"><span class="${labelClasses.join(" ")}">${attr(label)}</span></th>`;
+}
 function renderRows(rows, store) {
   hideProposalHistoryOverlay();
   const wrap = document.getElementById("apologisticWrap");
@@ -2837,7 +2845,7 @@ function renderRows(rows, store) {
     : (isAllDaysSelected() ? `${rows.length} αποτελέσματα` : `${rows.length} εργαζόμενοι`);
   const showDateColumn = isEmployeeMonthView() || isAllDaysSelected();
   const hideEmployeeColumn = isEmployeeMonthView();
-  const erganiHeader = canSubmitErgani ? `<th>Ergani</th>` : "";
+  const erganiHeader = canSubmitErgani ? apologisticHeader("Ergani") : "";
   const baseCols = canSubmitErgani ? 15 : 14;
   const tableCols = baseCols + (showDateColumn ? 1 : 0) - (hideEmployeeColumn ? 1 : 0);
   let html = `<div class="apologistic-table-meta">` +
@@ -2848,9 +2856,14 @@ function renderRows(rows, store) {
     `<button type="button" class="btn btn-secondary btn-icon apologistic-export-btn" title="Εξαγωγή Excel (ορατά αποτελέσματα)" aria-label="Εξαγωγή Excel">` +
     `<i class="bi bi-file-earmark-excel" aria-hidden="true"></i></button></div>`;
   html += `<table class="data apologistic-table${canSubmitErgani ? " apologistic-table--ergani" : ""}${showDateColumn ? " apologistic-table--all-days" : ""}"><thead><tr>` +
-    `${showDateColumn ? "<th>Ημέρα</th>" : ""}` +
-    `${hideEmployeeColumn ? "" : "<th>Εργαζόμενος</th>"}` +
-    `<th>Κατάσταση</th><th>Δηλωμένο</th><th>Χτύπημα</th><th>Δηλωμένες ώρες</th><th>Πραγματικές ώρες</th><th>Διαφ. έναρξης</th><th>Διαφ. λήξης</th><th>Μικτή διαφορά</th><th>Διάλ. εκτός</th><th>Καθαρή διαφορά</th><th class="apologistic-overtime-head">Υπερωρίες</th><th>Πρόταση</th><th>Αποτέλεσμα</th>${erganiHeader}</tr></thead><tbody>`;
+    `${showDateColumn ? apologisticHeader("Ημέρα") : ""}` +
+    `${hideEmployeeColumn ? "" : apologisticHeader("Εργαζόμενος", { horizontal: true })}` +
+    `${apologisticHeader("Κατάσταση")}${apologisticHeader("Δηλωμένο")}${apologisticHeader("Χτύπημα")}` +
+    `${apologisticHeader("Δηλωμένες ώρες")}${apologisticHeader("Πραγματικές ώρες")}` +
+    `${apologisticHeader("Διαφ. έναρξης")}${apologisticHeader("Διαφ. λήξης")}` +
+    `${apologisticHeader("Μικτή διαφορά")}${apologisticHeader("Διάλ. εκτός")}` +
+    `${apologisticHeader("Καθαρή διαφορά")}${apologisticHeader("Υπερωρίες", { overtime: true })}` +
+    `${apologisticHeader("Πρόταση")}${apologisticHeader("Αποτέλεσμα")}${erganiHeader}</tr></thead><tbody>`;
   for (const row of rows) {
     if (isEmployeeMonthView() && !isRowFinalized(row)) {
       html += `<tr class="apologistic-row--pending${row.source === "future" ? " employee-month-future" : ""}">` +
