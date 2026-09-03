@@ -300,6 +300,24 @@ def _resolve_access_store_id(
     return None
 
 
+def _looks_like_fresh_command(text: str) -> bool:
+    """Νέα εντολή (όνομα + άνοιξε/κλείσε, ή ερώτηση Αρχικής) — όχι διόρθωση της ανοιχτής."""
+    from app.assistant_rule_fallback import is_fast_today_info, looks_like_card_punch
+    from app.telegram_assistant_service import _query_tokens
+
+    if is_fast_today_info(text):
+        return True
+    return bool(looks_like_card_punch(text) and _query_tokens(text))
+
+
+def _cancel_superseded_pending(pending: dict[str, Any] | None) -> None:
+    if not pending or pending.get("id") is None:
+        return
+    from app.repo_telegram_assistant import cancel_assistant_task
+
+    cancel_assistant_task(int(pending["id"]), reason="superseded_by_new_command")
+
+
 def _is_store_choice_pending(pending: dict[str, Any]) -> bool:
     payload = pending.get("payload") if isinstance(pending.get("payload"), dict) else {}
     return str(payload.get("clarification_kind") or "") == "store_choice"
@@ -769,7 +787,16 @@ def process_assistant_command(
                 and pending_store is not None
                 and pending_store != mentioned_stores[0]
             ):
+                _cancel_superseded_pending(pending)
                 pending = None
+
+    if (
+        pending
+        and not _is_store_choice_pending(pending)
+        and _looks_like_fresh_command(text)
+    ):
+        _cancel_superseded_pending(pending)
+        pending = None
 
     if pending:
         resolved = _resolve_pending_clarification(

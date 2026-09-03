@@ -63,7 +63,7 @@ def test_llm_order_openai_after_gemini_failure(monkeypatch):
     assert parsed["intent"] == "card_check_in_now"
 
 
-def test_rules_last_after_all_llm_fail(monkeypatch):
+def test_who_is_working_uses_rules_fast_path(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(
@@ -120,8 +120,9 @@ def test_rules_last_after_all_llm_fail(monkeypatch):
         text="ποιοι εργάζονται ακόμα",
         contexts=[{"store_id": 9, "store_name": "ERATO", "employer_afm": "1", "branch_aa": "0"}],
     )
-    assert calls == ["gemini", "openai"]
-    assert meta["llm_used"] == "rules"
+    assert calls == []
+    assert meta["llm_used"] == "rules_fast"
+    assert meta.get("fast_path") is True
     assert parsed["intent"] == "today_info"
     assert "A" in (parsed.get("clarification_question") or "")
 

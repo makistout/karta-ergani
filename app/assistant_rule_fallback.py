@@ -40,6 +40,23 @@ _INFO_HINTS = (
     "ξεκινα",
     "ληγ",
     "αρχιζ",
+    "καθυστερ",
+    "αργοπορ",
+    "delay",
+)
+
+_PUNCH_IMPERATIVE = (
+    "ανοιξ",
+    "κλεισ",
+    "open",
+    "close",
+    "clock",
+    "checkin",
+    "checkout",
+    "check in",
+    "check out",
+    "χτυπ",
+    "punch",
 )
 
 _ATHENS = ZoneInfo("Europe/Athens")
@@ -57,16 +74,67 @@ def looks_like_today_info(text: str) -> bool:
     return any(hint in folded for hint in _INFO_HINTS)
 
 
+def looks_like_bare_punch(text: str) -> bool:
+    """«Χτύπα» / punch χωρίς ρητή είσοδο ή έξοδο."""
+    folded = _fold(text)
+    if any(token in folded for token in ("καθυστερ", "αργοπορ")):
+        return False
+    if any(token in folded for token in ("ποιος", "ποιοι", "ποια", "ποιες")):
+        return False
+    return bool(re.search(r"\bχτυπ", folded) or re.search(r"\bpunch\b", folded))
+
+
 def looks_like_card_punch(text: str) -> bool:
     """Άνοιξε/κλείσε κάρτα, clock in/out, είσοδος/έξοδος."""
+    folded = _fold(text)
+    if any(token in folded for token in ("καθυστερ", "αργοπορ")):
+        return False
+    if any(token in folded for token in ("ποιος", "ποιοι", "ποια", "ποιες")) and not any(
+        token in folded for token in _PUNCH_IMPERATIVE
+    ):
+        return False
+    if looks_like_bare_punch(text):
+        return True
     direction = card_action_direction_from_text(text)
     if not direction:
         return False
-    folded = _fold(text)
+    # «Άνοιξε γκουμα» — ρήμα ενέργειας, χωρίς τη λέξη κάρτα.
+    if any(token in folded for token in ("ανοιξ", "κλεισ", "open", "close")):
+        return True
     return any(
         token in folded
         for token in ("καρτ", "card", "εισοδ", "εξοδ", "checkin", "checkout", "clockin", "clockout")
     ) or "check in" in folded or "check out" in folded or "clock in" in folded or "clock out" in folded
+
+
+def _delay_kinds(text: str) -> tuple[bool, bool]:
+    """(καθυστερημένη είσοδος, καθυστερημένη έξοδος)."""
+    folded = _fold(text)
+    if not any(token in folded for token in ("καθυστερ", "αργοπορ", "delay", "late")):
+        return False, False
+    has_in = "εισοδ" in folded
+    has_out = "εξοδ" in folded
+    if has_in and not has_out:
+        return True, False
+    if has_out and not has_in:
+        return False, True
+    return True, True
+
+
+def is_fast_today_info(text: str) -> bool:
+    """Απλά ερωτήματα Αρχικής που απαντώνται χωρίς LLM."""
+    folded = _fold(text)
+    if looks_like_card_punch(text):
+        return False
+    if any(_delay_kinds(text)):
+        return True
+    if "ανοιχτ" in folded:
+        return True
+    if any(h in folded for h in ("εργαζ", "δουλευ", "ακομα")):
+        return True
+    if any(h in folded for h in ("τελειων", "ξεκινα", "ληγ", "αρχιζ")):
+        return True
+    return False
 
 
 def _wants_yesterday(text: str) -> bool:
@@ -185,6 +253,93 @@ def _pick_store(
     return None
 
 
+def _format_delay_lines(rows: list[dict[str, Any]], *, kind: str) -> list[str]:
+    lines = []
+    for row in rows:
+        label = str(row.get("name") or row.get("afm") or "—").strip()
+        sched_from = str(row.get("schedule_from") or "").strip()
+        sched_to = str(row.get("schedule_to") or "").strip()
+        card_in = str(row.get("card_in") or "").strip()[:5]
+        bit = label
+        if kind == "in" and sched_from:
+            bit += f" · ωράριο από {sched_from}"
+        elif kind == "out":
+            if card_in:
+                bit += f" · είσοδος {card_in}"
+            if sched_to:
+                bit += f" · έως {sched_to}"
+        lines.append(f"• {bit}")
+    return lines
+
+
+def _delay_listed_rows(employees: list[dict[str, Any]], *, want_in: bool, want_out: bool) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if want_in:
+        rows.extend(
+            row for row in employees if str(row.get("status") or "").strip() == "late_arrival"
+        )
+    if want_out:
+        rows.extend(
+            row for row in employees if str(row.get("status") or "").strip() == "needs_checkout"
+        )
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for row in rows:
+        afm = str(row.get("afm") or "").strip()
+        key = afm or str(row.get("name") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique
+
+
+def _delay_listed_afms(employees: list[dict[str, Any]], *, want_in: bool, want_out: bool) -> list[str]:
+    return [
+        str(row.get("afm") or "").strip()
+        for row in _delay_listed_rows(employees, want_in=want_in, want_out=want_out)
+        if str(row.get("afm") or "").strip()
+    ]
+
+
+def _direction_from_rows(rows: list[dict[str, Any]]) -> str | None:
+    statuses = {str(row.get("status") or "").strip() for row in rows}
+    statuses.discard("")
+    if not statuses:
+        return None
+    if statuses <= {"late_arrival", "needs_checkin", "absent", "pending"}:
+        return "check_in"
+    if statuses <= {"needs_checkout", "at_work"}:
+        return "check_out"
+    if statuses <= {"late_arrival", "needs_checkin", "absent", "pending", "needs_checkout", "at_work"}:
+        if statuses & {"late_arrival", "needs_checkin"} and not (statuses & {"needs_checkout", "at_work"}):
+            return "check_in"
+        if statuses & {"needs_checkout", "at_work"} and not (statuses & {"late_arrival", "needs_checkin"}):
+            return "check_out"
+    return None
+
+
+def _delay_answer(*, store_name: str, employees: list[dict[str, Any]], want_in: bool, want_out: bool) -> str:
+    late_in = [row for row in employees if str(row.get("status") or "").strip() == "late_arrival"]
+    late_out = [row for row in employees if str(row.get("status") or "").strip() == "needs_checkout"]
+    parts: list[str] = []
+    if want_in:
+        if late_in:
+            parts.append(
+                "Καθυστερημένη είσοδος:\n" + "\n".join(_format_delay_lines(late_in, kind="in"))
+            )
+        else:
+            parts.append("Δεν υπάρχει καθυστερημένη είσοδος.")
+    if want_out:
+        if late_out:
+            parts.append(
+                "Καθυστερημένη έξοδος:\n" + "\n".join(_format_delay_lines(late_out, kind="out"))
+            )
+        else:
+            parts.append("Δεν υπάρχει καθυστερημένη έξοδος.")
+    return f"Στο {store_name} σήμερα:\n" + "\n".join(parts)
+
+
 def _format_open_lines(rows: list[dict[str, Any]]) -> list[str]:
     lines = []
     for row in rows:
@@ -231,6 +386,22 @@ def _home_employees(
     return rows, None
 
 
+_PERSON_STOP = frozenset({
+    "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "καρτες", "καρτεσ",
+    "την", "τον", "του", "της", "τους", "τις", "τωρα", "σημερα", "παρακαλω",
+    "για", "και", "στο", "στη", "στην", "απο", "με", "ρεπο", "αδεια", "ωραριο",
+    "open", "close", "card", "now", "today", "χτυπα", "χτυπησε", "punch",
+    "εισοδο", "εισοδοσ", "εξοδο", "εξοδοσ", "ολουσ", "ολεσ", "ολα", "οσουσ",
+    "οσοι", "στισ", "στις", "πριν", "λεπτα", "ωρες",
+})
+
+
+def _person_hint_tokens(text: str) -> list[str]:
+    folded = _fold(text)
+    tokens = re.findall(r"[a-zα-ω]{4,}", folded)
+    return [token for token in tokens if token not in _PERSON_STOP]
+
+
 def _empty_parsed(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "intent": "unknown",
@@ -251,6 +422,46 @@ def _empty_parsed(**overrides: Any) -> dict[str, Any]:
     }
     base.update(overrides)
     return base
+
+
+def _surname_key(row: dict[str, Any]) -> str:
+    name = str(row.get("name") or "").strip()
+    parts = [part for part in name.split() if part]
+    if not parts:
+        return ""
+    last = _fold(parts[0])
+    for ending in ("πουλου", "πουλος", "οπουλος", "οπουλου", "ιδης", "ιδου", "αδης", "αδου"):
+        if len(last) > len(ending) + 2 and last.endswith(ending):
+            return last[: -len(ending)]
+    for ending in ("ος", "ου", "ας", "ης", "ων", "ις"):
+        if len(last) > len(ending) + 2 and last.endswith(ending):
+            return last[: -len(ending)]
+    if len(last) > 3 and last[-1] in "αηω":
+        return last[:-1]
+    return last
+
+
+def _is_same_surname_ambiguity(
+    afms: list[str], rows: list[dict[str, Any]],
+) -> bool:
+    """Πολλά ΑΦΜ μόνο όταν μοιράζονται το ίδιο επώνυμο (Φωτόπουλος×2)."""
+    if len(afms) < 2:
+        return False
+    by_afm = {
+        str(row.get("afm") or "").strip(): row
+        for row in rows
+        if str(row.get("afm") or "").strip()
+    }
+    keys = []
+    for afm in afms:
+        row = by_afm.get(afm) or {"afm": afm, "name": afm}
+        key = _surname_key(row)
+        if key:
+            keys.append(key)
+    if len(keys) < 2:
+        return True
+    first = keys[0]
+    return all(item == first or item.startswith(first) or first.startswith(item) for item in keys)
 
 
 def _name_choice_question(rows: list[dict[str, Any]]) -> str:
@@ -277,18 +488,11 @@ def build_card_punch_command(
     """Άνοιξε/κλείσε κάρτα από κανόνες. None → αφήνει LLM."""
     if store_id is None or not looks_like_card_punch(text):
         return None
-    direction = card_action_direction_from_text(text)
-    if not direction:
-        return None
 
     time_value, suffix = _extract_punch_time(text)
     if suffix == "_unresolved":
         return None
-    intent = f"card_{direction}{suffix}"
     want_yesterday = _wants_yesterday(text)
-    # Έξοδος χθες (overnight) — είσοδος χθες δεν καλύπτεται εδώ.
-    if want_yesterday and direction != "check_out":
-        return None
 
     home_rows, ydate = _home_employees(
         today_home, store_id=store_id, yesterday=want_yesterday,
@@ -296,24 +500,62 @@ def build_card_punch_command(
     today_iso = datetime.now(_ATHENS).date().isoformat()
     work_date = ydate if want_yesterday else today_iso
 
+    focus = [str(a).strip() for a in (focus_afms or []) if str(a or "").strip()]
     named_afms: list[str] = []
     if resolve_afms is not None and employees is not None:
-        named_afms = [
-            str(a).strip()
-            for a in resolve_afms(text, employees, store_id)
-            if str(a or "").strip()
-        ]
-    named_afms = list(dict.fromkeys(named_afms))
+        pools: list[list[dict[str, Any]]] = []
+        if focus:
+            focused_pool = [
+                row for row in employees
+                if str(row.get("afm") or "").strip() in set(focus)
+            ]
+            if not focused_pool:
+                focused_pool = [
+                    row for row in home_rows
+                    if str(row.get("afm") or "").strip() in set(focus)
+                ]
+            if focused_pool:
+                pools.append(focused_pool)
+        pools.append(employees)
+        for pool in pools:
+            named_afms = [
+                str(a).strip()
+                for a in resolve_afms(text, pool, store_id)
+                if str(a or "").strip()
+            ]
+            named_afms = list(dict.fromkeys(named_afms))
+            if named_afms:
+                break
 
-    focus = [str(a).strip() for a in (focus_afms or []) if str(a or "").strip()]
+    person_tokens = _person_hint_tokens(text)
+
+    direction = card_action_direction_from_text(text)
+    if not direction and looks_like_bare_punch(text):
+        infer_afms = named_afms or (focus if not person_tokens else [])
+        infer_rows = [
+            row for row in home_rows
+            if str(row.get("afm") or "").strip() in set(infer_afms)
+        ]
+        direction = _direction_from_rows(infer_rows)
+    if not direction:
+        return None
+    # Έξοδος χθες (overnight) — είσοδος χθες δεν καλύπτεται εδώ.
+    if want_yesterday and direction != "check_out":
+        return None
+
+    intent = f"card_{direction}{suffix}"
     wants_group = _wants_all(text) or (
         direction == "check_out"
         and any(t in _fold(text) for t in ("ανοιχτ", "ολεσ", "ολουσ", "οσουσ"))
     )
 
     if named_afms:
-        # Ένα επώνυμο → πολλοί: διευκρίνιση χωρίς LLM.
-        if len(named_afms) > 1 and not wants_group:
+        # Ίδιο επώνυμο → πολλοί (Φωτόπουλος×2): διευκρίνιση. Διαφορετικά επώνυμα → όλα.
+        if (
+            len(named_afms) > 1
+            and not wants_group
+            and _is_same_surname_ambiguity(named_afms, employees or home_rows)
+        ):
             amb_rows = [
                 row for row in (employees or home_rows)
                 if str(row.get("afm") or "").strip() in set(named_afms)
@@ -341,6 +583,17 @@ def build_card_punch_command(
                 confidence=0.8,
             )
         afms = named_afms
+    elif person_tokens:
+        return _empty_parsed(
+            intent="today_info",
+            store_id=store_id,
+            date=work_date,
+            confidence=0.7,
+            clarification_question=(
+                "Δεν εντόπισα αυτό το όνομα στο κατάστημα. "
+                "Πείτε το επώνυμο όπως εμφανίζεται στη λίστα."
+            ),
+        )
     elif focus and not wants_group:
         afms = focus
     elif wants_group or not named_afms:
@@ -530,6 +783,12 @@ def build_today_info_answer(
     name = str(target.get("name") or store_name or "κατάστημα").strip()
     employees = [e for e in (target.get("employees") or []) if isinstance(e, dict)]
 
+    want_late_in, want_late_out = _delay_kinds(text)
+    if want_late_in or want_late_out:
+        return _delay_answer(
+            store_name=name, employees=employees, want_in=want_late_in, want_out=want_late_out,
+        )
+
     schedule_answer = _schedule_criteria_answer(
         text=text, store_name=name, employees=employees,
     )
@@ -610,10 +869,31 @@ def rule_based_parse(
         if not info_date:
             yblock = today_home.get("yesterday") if isinstance(today_home.get("yesterday"), dict) else {}
             info_date = str(yblock.get("date") or "").strip()[:10] or None
+    home_rows, _ = _home_employees(
+        today_home, store_id=store_id, yesterday=_wants_yesterday(text),
+    )
+    listed_afms: list[str] = []
+    want_in, want_out = _delay_kinds(text)
+    folded = _fold(text)
+    if want_in or want_out:
+        listed_afms = _delay_listed_afms(home_rows, want_in=want_in, want_out=want_out)
+    elif "ανοιχτ" in folded:
+        listed_afms = [
+            str(row.get("afm") or "").strip()
+            for row in _open_card_rows(home_rows)
+            if str(row.get("afm") or "").strip()
+        ]
+    elif any(h in folded for h in ("εργαζ", "δουλευ", "ακομα")):
+        listed_afms = [
+            str(row.get("afm") or "").strip()
+            for row in _working_rows(home_rows)
+            if str(row.get("afm") or "").strip()
+        ]
     return _empty_parsed(
         intent="today_info",
         store_id=store_id,
         date=info_date,
+        employee_afms=listed_afms,
         confidence=0.7,
         clarification_question=answer,
     )

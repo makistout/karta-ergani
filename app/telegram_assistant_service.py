@@ -219,13 +219,14 @@ def _assistant_prompt_guide() -> list[str]:
         "Πολλά ονόματα/επώνυμα στο μήνυμα («του Χ και του Υ»): αν καθένα ταιριάζει σε διαφορετικό εργαζόμενο, βάλε ΟΛΑ τα ΑΦΜ σε employee_afms. ΜΗΝ ρωτάς «Εννοείτε…» ανάμεσα σε άσχετα επώνυμα.",
         "Ίδιο/παρόμοιο επώνυμο χωρίς διακριτό όνομα (Φωτόπουλος×2, VLASENKO×2): κράτησε στο intent την ενέργεια που ήδη ζήτησε ο χρήστης, βάλε την και στο pending_intent, γράψε «Εννοείτε του Χ ή του Υ;» (όλες οι επιλογές, άρθρο φύλου), ambiguous_employee_afms=όλα τα υποψήφια και employee_afms=[]. Μην αλλάζεις την ενέργεια σε unknown μόνο επειδή λείπει η επιλογή προσώπου.",
         "pending_clarification.name_choice: το message είναι η απάντηση ως έχει· επίλεξε ένα ΑΦΜ από candidate_* και κληρονόμησε preserve_*. Αν preserve_intent λείπει/είναι unknown (παλιό task), ανάκτησε την ενέργεια από original_message και κράτησέ την στο intent.",
-        "Όσο υπάρχει pending_clarification, το message αφορά ΠΑΝΤΑ την ίδια τρέχουσα εντολή. Συμπλήρωσε ή διόρθωσε μόνο όσα ζητά ο χρήστης και κληρονόμησε όλα τα υπόλοιπα preserve_*· νέα ανεξάρτητη εντολή δεν δημιουργείται μέχρι εκτέλεση/ακύρωση/τερματισμό.",
+        "pending_clarification υπάρχει μόνο για διόρθωση της ίδιας εντολής (ώρα, ναι/όχι, επιλογή ονόματος). Νέα εντολή με άλλο άτομο («άνοιξε γκουμα») ή ερώτηση Αρχικής («στο Χ ποιος έχει καθυστέρηση») ΔΕΝ κληρονομεί τα προηγούμενα ΑΦΜ.",
         "Ακύρωση/απόρριψη οποιασδήποτε διατύπωσης (ακύρωσε, άστο, γάμα το, μην το κάνεις, #N…) → cancel_pending. Όχι whitelist.",
         "Κάρτα — ΚΡΙΣΙΜΟ: μην αντιστρέφεις ποτέ είσοδο/έξοδο. Ρητή λεξηλογία: άνοιξε/open/clock in/check in/checkin/είσοδος → card_check_in_*· κλείσε/close/clock out/check out/checkout/έξοδος → card_check_out_*. «Άνοιξε κάρτα» ΠΟΤΕ check_out. «Κλείσε κάρτα» ΠΟΤΕ check_in. Αν το μήνυμα έχει ρήμα άνοιγματος, το intent ΠΡΕΠΕΙ να περιέχει check_in.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν Χ λεπτά» / «Χ λεπτά πριν» = *_retro από το now (τώρα − Χ)· ΠΟΤΕ όχι από την ώρα εισόδου/εξόδου της κάρτας. Αν εννοεί offset από χτύπημα, πρέπει να το πει ρητά («Χ λεπτά πριν την είσοδο/έξοδο»). «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Αλλαγή ωραρίου / νέο ωράριο / από–έως (π.χ. «15:00 έως 21:40», «αλλαγή ωραρίου») → intent=schedule_change με hour_from+hour_to. ΜΗΝ βάζεις unknown όταν υπάρχουν ώρες από–έως.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
         "today_home είναι ΠΑΝΤΑ παρόν: stores=σήμερα (πλήρες)· yesterday=μόνο ανοιχτές κάρτες χθες (overnight). Ερωτήσεις σήμερα → stores. Ερωτήσεις/κλείσιμο ανοιχτών «χθες»/εχθές → yesterday + date=yesterday_date. today_info: βάλε την πλήρη απάντηση στο clarification_question από τα πραγματικά δεδομένα. Μην λες «δεν υπάρχουν δεδομένα» αν υπάρχει yesterday· αν open_count=0 πες ρητά ότι δεν υπάρχουν ανοιχτές εκείνη την ημέρα.",
+        "Καθυστερημένη είσοδος/έξοδος («ποιος έχει καθυστέρηση») → today_info από today_home: status late_arrival = καθυστερημένη είσοδος, needs_checkout = καθυστερημένη έξοδος. Όχι card_check_*.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
         "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
@@ -343,6 +344,14 @@ def parse_command(
             fast_metadata["fast_path"] = True
             fast_metadata["llm_order"] = ["rules_fast"]
             return fast_parsed, employees, fast_metadata
+
+        if fast_intent == "today_info" and str(fast_parsed.get("clarification_question") or "").strip():
+            from app.assistant_rule_fallback import is_fast_today_info, looks_like_card_punch
+
+            if is_fast_today_info(text) or looks_like_card_punch(text):
+                fast_metadata["fast_path"] = True
+                fast_metadata["llm_order"] = ["rules_fast"]
+                return fast_parsed, employees, fast_metadata
 
     if not Config.GEMINI_API_KEY and not (Config.OPENAI_API_KEY or "").strip():
         raise RuntimeError("Δεν έχει ρυθμιστεί GEMINI_API_KEY ούτε OPENAI_API_KEY")
@@ -474,6 +483,7 @@ def _relative_ago_clock_from_text(text: str) -> str:
 _GROUP_FOCUS_HINTS = (
     "οσους", "οσοι", "οσες", "ολους", "ολες", "ολοι", "ολα",
     "τελειων", "ξεκινα", "δουλευ", "εργαζ", "ανοιχτ",
+    "καθυστερ", "αργοπορ",
     "μετα τι", "μετα τις", "πριν τι", "πριν τις",
 )
 
@@ -591,12 +601,83 @@ def _employee_surname_matches_token(surname: str, token: str) -> bool:
     return _stems_similar(_surname_stem(last), _surname_stem(needle))
 
 
+def _name_token_score(token: str, employee: dict[str, Any]) -> int | None:
+    """Μικρότερο = καλύτερο ταίριασμα· None = δεν ταιριάζει."""
+    surname, first = _name_parts(employee)
+    needle = _fold_text(token)
+    if len(needle) < 4:
+        return None
+    scores: list[int] = []
+    last = _fold_text(surname)
+    if last:
+        last_stem = _surname_stem(last)
+        needle_stem = _surname_stem(needle)
+        if needle == last:
+            scores.append(0)
+        elif needle in last or last in needle:
+            scores.append(1)
+        elif _stems_similar(last_stem, needle_stem):
+            scores.append(2)
+        else:
+            dist = _edit_distance(last_stem, needle_stem)
+            if dist <= 2 and min(len(last_stem), len(needle_stem)) >= 4:
+                scores.append(3 + dist)
+    if first:
+        folded_first = _fold_text(first)
+        if needle == folded_first or _first_name_stem(first) == _first_name_stem(token):
+            scores.append(1)
+        elif _first_name_in_text(token, first):
+            scores.append(4)
+    return min(scores) if scores else None
+
+
+def _assign_query_tokens_to_employees(
+    tokens: list[str], employees: list[dict[str, Any]],
+) -> list[str]:
+    """Κάθε λέξη → το πλησιέστερο άτομο. Ισοπαλία ίδιου επωνύμου → όλα τα ισόπαλα."""
+    assigned: list[str] = []
+    used: set[str] = set()
+    for token in tokens:
+        scored: list[tuple[int, dict[str, Any]]] = []
+        for emp in employees:
+            afm = str(emp.get("afm") or "").strip()
+            if not afm:
+                continue
+            score = _name_token_score(token, emp)
+            if score is not None:
+                scored.append((score, emp))
+        if not scored:
+            continue
+        scored.sort(key=lambda item: (item[0], str(item[1].get("afm") or "")))
+        best = scored[0][0]
+        ties = [
+            emp for score, emp in scored
+            if score == best and str(emp.get("afm") or "").strip() not in used
+        ]
+        if not ties:
+            continue
+        if len(ties) == 1:
+            afm = str(ties[0].get("afm") or "").strip()
+            assigned.append(afm)
+            used.add(afm)
+            continue
+        # Ίδιο σκορ, πολλά άτομα (συνήθως ίδιο επώνυμο) → κράτα όλα για διευκρίνιση.
+        for emp in ties:
+            afm = str(emp.get("afm") or "").strip()
+            if afm and afm not in assigned:
+                assigned.append(afm)
+                used.add(afm)
+    return assigned
+
+
 def _query_tokens(text: str) -> list[str]:
     folded = _fold_text(text)
     stop = {
-        "ανοιξε", "κλεισε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τους", "τις",
+        "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τους", "τις",
         "τωρα", "σημερα", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
         "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today",
+        "χτυπα", "χτυπησε", "punch", "στισ", "στις", "πριν", "λεπτα", "ωρες",
+        "ολουσ", "ολεσ", "ολα", "οσουσ", "οσοι", "εισοδο", "εξοδο",
     }
     tokens = re.findall(r"[a-zα-ω]{4,}", folded)
     return [token for token in tokens if token not in stop]
@@ -660,33 +741,36 @@ def _mentioned_afms(
 ) -> list[str]:
     raw = str(text or "")
     folded = _fold_text(raw)
+    pool = [
+        emp for emp in employees
+        if store_id is None
+        or emp.get("store_id") is None
+        or emp.get("store_id") == store_id
+    ]
     hits: list[str] = []
-    for emp in employees:
-        if store_id is not None and emp.get("store_id") != store_id:
-            continue
+    for emp in pool:
         afm = str(emp.get("afm") or "").strip()
         name = str(emp.get("name") or "").strip()
-        surname, first = _name_parts(emp)
         if afm and afm in raw:
             hits.append(afm)
             continue
         if name and len(name) >= 4 and _fold_text(name) in folded:
             hits.append(afm)
-            continue
+    if hits:
+        return list(dict.fromkeys(hits))
+
+    tokens = _query_tokens(raw)
+    if tokens:
+        assigned = _assign_query_tokens_to_employees(tokens, pool)
+        if assigned:
+            return assigned
+
+    hits = []
+    for emp in pool:
+        afm = str(emp.get("afm") or "").strip()
+        _surname, first = _name_parts(emp)
         if first and _first_name_in_text(raw, first):
             hits.append(afm)
-            continue
-        for token in _query_tokens(raw):
-            if _employee_surname_matches_token(surname, token):
-                hits.append(afm)
-                break
-            if first and (
-                _fold_text(first) == _fold_text(token)
-                or _first_name_stem(first) == _first_name_stem(token)
-                or _first_name_in_text(token, first)
-            ):
-                hits.append(afm)
-                break
     return list(dict.fromkeys(value for value in hits if value))
 
 
@@ -784,11 +868,22 @@ def _inherit_conversation_context(
     named_in_message = _mentioned_afms(
         user_text, employees, store_id if store_id in allowed_store_ids else None,
     )
+    from app.assistant_rule_fallback import looks_like_card_punch
+
+    named_tokens = _query_tokens(user_text)
+    intent_now = str(parsed.get("intent") or "unknown")
     # Name-choice / group: trust Gemini. Sticky focus: if the user did not name
     # anyone this turn, keep the previous people even if the model invents AFMs.
+    # Named punch («άνοιξε γκουμα») must never reuse the previous group's AFMs.
     if pending_clarification.get("kind") == "name_choice" and parsed_afms:
         afms = parsed_afms
+    elif intent_now == "today_info" and parsed_afms:
+        afms = parsed_afms
     elif group_query:
+        afms = parsed_afms
+    elif named_in_message:
+        afms = named_in_message
+    elif named_tokens and looks_like_card_punch(user_text):
         afms = parsed_afms
     elif not named_in_message and focus.get("employee_afms"):
         afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]

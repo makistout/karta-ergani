@@ -153,6 +153,7 @@ class AssistantHomeContextTests(unittest.TestCase):
             return response
 
         with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
+             patch("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", False), \
              patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
              patch("app.telegram_assistant_service.build_today_home_context", return_value=today_home) as build_home, \
              patch("app.telegram_assistant_service.requests.post", side_effect=fake_post):
@@ -204,6 +205,7 @@ class AssistantHomeContextTests(unittest.TestCase):
             return response
 
         with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
+             patch("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", False), \
              patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
              patch("app.telegram_assistant_service.build_today_home_context", return_value=today_home) as build_home, \
              patch("app.telegram_assistant_service.requests.post", side_effect=fake_post):

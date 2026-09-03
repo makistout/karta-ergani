@@ -12,6 +12,7 @@ from app.assistant_rule_fallback import (
 def test_looks_like_today_info():
     assert looks_like_today_info("Στο Ερατο ποιες κάρτες είναι ανοιχτές")
     assert looks_like_today_info("ποιοι εργάζονται ακόμα")
+    assert looks_like_today_info("στο σαλτυ ποιος έχει καθυστερημένη είσοδο/έξοδο")
     assert not looks_like_today_info("άνοιξε κάρτα του Γιάννη")
     assert not looks_like_today_info("clock in κάρτα")
 
@@ -23,7 +24,11 @@ def test_looks_like_card_punch():
     assert looks_like_card_punch("clock out όλους")
     assert looks_like_card_punch("είσοδος κάρτας του Α")
     assert looks_like_card_punch("έξοδος κάρτας")
+    assert looks_like_card_punch("άνοιξε γκουμα")
+    assert looks_like_card_punch("χτύπα")
     assert not looks_like_card_punch("ποιες κάρτες είναι ανοιχτές")
+    assert not looks_like_card_punch("ποιος έχει καθυστερημένη είσοδο")
+    assert not looks_like_card_punch("στο salty ποιος έχει καθυστερημένη είσοδο/έξοδο")
 
 
 def test_build_open_cards_answer():
@@ -47,6 +52,35 @@ def test_build_open_cards_answer():
     assert "ανοιχτές" in text
     assert "A" in text
     assert "B" not in text
+
+
+def test_late_entry_and_exit_question_lists_home_statuses():
+    today_home = {
+        "stores": [{
+            "store_id": 10,
+            "name": "SALTY",
+            "employees": [
+                {"name": "A", "afm": "1", "status": "late_arrival", "schedule_from": "09:00"},
+                {"name": "B", "afm": "2", "status": "needs_checkout", "card_in": "10:00", "schedule_to": "18:00"},
+                {"name": "C", "afm": "3", "status": "completed", "card_in": "08:00", "card_out": "16:00"},
+            ],
+        }]
+    }
+    parsed = rule_based_parse(
+        text="στο σαλτυ ποιος έχει καθυστερημένη είσοδο/έξοδο",
+        store_id=10,
+        store_name="SALTY",
+        today_home=today_home,
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "today_info"
+    answer = parsed["clarification_question"]
+    assert "Καθυστερημένη είσοδος" in answer
+    assert "Καθυστερημένη έξοδος" in answer
+    assert "A" in answer
+    assert "B" in answer
+    assert "C" not in answer
+    assert set(parsed["employee_afms"]) == {"1", "2"}
 
 
 def test_rule_based_parse_today_info():
@@ -231,6 +265,87 @@ def test_card_punch_focus_afms():
     )
     assert parsed is not None
     assert parsed["intent"] == "card_check_out_now"
+    assert parsed["employee_afms"] == ["1"]
+
+
+def test_open_named_person_ignores_unrelated_focus():
+    today_home = {
+        "stores": [{
+            "store_id": 1,
+            "name": "APERIO",
+            "employees": [
+                {"name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ", "afm": "180000001", "status": "late_arrival", "schedule_from": "15:00"},
+            ],
+        }]
+    }
+    employees = [{"store_id": 1, "afm": "180000001", "name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ"}]
+    parsed = build_card_punch_command(
+        text="άνοιξε γκουμα",
+        store_id=1,
+        today_home=today_home,
+        employees=employees,
+        resolve_afms=lambda t, e, s: ["180000001"],
+        focus_afms=["999111222", "999111223"],
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "card_check_in_now"
+    assert parsed["employee_afms"] == ["180000001"]
+
+
+def test_two_distinct_surnames_open_both():
+    today_home = {
+        "stores": [{
+            "store_id": 1,
+            "name": "APERIO",
+            "employees": [
+                {"name": "GHORBANZADEH PIRAGHVAM MARYAM", "afm": "1", "status": "late_arrival"},
+                {"name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ", "afm": "2", "status": "late_arrival", "schedule_from": "15:00"},
+                {"name": "ΜΠΑΣΙΟΣ ΣΤΑΥΡΟΣ", "afm": "3", "status": "late_arrival", "schedule_from": "17:00"},
+            ],
+        }]
+    }
+    employees = [
+        {"store_id": 1, "afm": "1", "name": "GHORBANZADEH PIRAGHVAM MARYAM"},
+        {"store_id": 1, "afm": "2", "name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ"},
+        {"store_id": 1, "afm": "3", "name": "ΜΠΑΣΙΟΣ ΣΤΑΥΡΟΣ"},
+    ]
+    from app.telegram_assistant_service import _mentioned_afms
+
+    parsed = build_card_punch_command(
+        text="άνοιξε γκουμα μπασιο",
+        store_id=1,
+        today_home=today_home,
+        employees=employees,
+        resolve_afms=_mentioned_afms,
+        focus_afms=["1", "2", "3"],
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "card_check_in_now"
+    assert set(parsed["employee_afms"]) == {"2", "3"}
+    assert not parsed.get("ambiguous_employee_afms")
+    assert "Εννοείτε" not in (parsed.get("clarification_question") or "")
+
+
+def test_bare_punch_uses_only_focus_people():
+    today_home = {
+        "stores": [{
+            "store_id": 10,
+            "name": "SALTY",
+            "employees": [
+                {"name": "A", "afm": "1", "status": "late_arrival"},
+                {"name": "B", "afm": "2", "status": "needs_checkin"},
+                {"name": "C", "afm": "3", "status": "at_work", "card_in": "10:00"},
+            ],
+        }]
+    }
+    parsed = build_card_punch_command(
+        text="χτύπα",
+        store_id=10,
+        today_home=today_home,
+        focus_afms=["1"],
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "card_check_in_now"
     assert parsed["employee_afms"] == ["1"]
 
 

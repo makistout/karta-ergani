@@ -726,6 +726,7 @@ def test_gemini_transient_503_is_retried_then_succeeds():
     contexts = [{"store_id": 4, "store_name": "ERATO", "employer_afm": "123", "branch_aa": "0"}]
     employees = [{"store_id": 4, "afm": "111222333", "name": "HOXHA ARBEN"}]
     with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
+         patch("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", False), \
          patch("app.telegram_assistant_service.Config.GEMINI_MODEL", "gemini-3.5-flash-lite"), \
          patch("app.telegram_assistant_service.Config.GEMINI_FALLBACK_MODEL", "gemini-3.5-flash"), \
          patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \
@@ -752,6 +753,7 @@ def test_gemini_timeout_fails_over_to_secondary_model():
     contexts = [{"store_id": 4, "store_name": "ERATO", "employer_afm": "123", "branch_aa": "0"}]
     employees = [{"store_id": 4, "afm": "111222333", "name": "HOXHA ARBEN"}]
     with patch("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test"), \
+         patch("app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED", False), \
          patch("app.telegram_assistant_service.Config.GEMINI_MODEL", "gemini-3.5-flash-lite"), \
          patch("app.telegram_assistant_service.Config.GEMINI_FALLBACK_MODEL", "gemini-3.5-flash"), \
          patch("app.telegram_assistant_service._employee_catalog", return_value=employees), \

@@ -29,6 +29,10 @@ def test_named_store_ignores_pending_from_other_store(monkeypatch):
     )
     monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
     monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_assistant_task",
+        lambda *a, **k: True,
+    )
+    monkeypatch.setattr(
         "app.repo_telegram_assistant.create_task",
         lambda **kwargs: 900,
     )
@@ -390,6 +394,10 @@ def test_mentioned_store_beats_conversation_focus_for_today_home(monkeypatch):
         },
     )
     monkeypatch.setattr("app.telegram_assistant_service.Config.GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.Config.ASSISTANT_RULE_FALLBACK_ENABLED",
+        False,
+    )
     monkeypatch.setattr(
         "app.telegram_assistant_service._employee_catalog",
         lambda contexts: [
@@ -887,6 +895,82 @@ def test_reply_to_confirmation_revises_same_open_task(monkeypatch):
     assert updates["status"] == "awaiting_ui_confirmation"
     assert updates["parsed"]["employee_afms"] == ["111111111"]
     assert updates["parsed"]["time"] == "17:00"
+
+
+def test_named_open_does_not_continue_unrelated_awaiting_pin(monkeypatch):
+    """«Άνοιξε γκουμα» δεν συνεχίζει PIN εντολή άλλων ατόμων (#454)."""
+    pending = {
+        "id": 454,
+        "recipient_id": 40,
+        "store_id": 10,
+        "task_status": "awaiting_pin",
+        "proposed_action_text": "ΚΛΩΝΤΖΑΣ · Άνοιγμα κάρτας τώρα",
+        "original_message_text": "χτύπα",
+        "payload": {
+            "intent": "card_check_in_now",
+            "store_id": 10,
+            "employee_afms": ["999111222", "999111223"],
+            "date": "2026-09-03",
+        },
+    }
+    cancelled: list[int] = []
+    created: dict = {}
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: pending,
+    )
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_assistant_task",
+        lambda task_id, **kwargs: cancelled.append(int(task_id)) or True,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return 455
+
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {
+                "intent": "card_check_in_now",
+                "store_id": 1,
+                "employee_afms": ["180000001"],
+                "date": "2026-09-03",
+                "confidence": 0.95,
+            },
+            [{"store_id": 1, "afm": "180000001", "name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ"}],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda parsed, **kwargs: (
+            "draft",
+            {"valid": True, "errors": [], "execution_enabled": True},
+            "ΓΚΟΥΜΑΣ ΜΗΝΑΣ · Άνοιγμα κάρτας τώρα",
+        ),
+    )
+
+    result = process_assistant_command(
+        text="Άνοιξε γκουμα",
+        contexts=[
+            {"store_id": 10, "store_name": "SALTY", "recipient_id": 40},
+            {"store_id": 1, "store_name": "APERIO", "recipient_id": 10},
+        ],
+        inbound_id=700,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+        reply_context={"store_id": 1, "employee_afms": ["180000001"]},
+    )
+
+    assert cancelled == [454]
+    assert result["task_id"] == 455
+    assert result["task_id"] != 454
+    assert created["parsed"]["employee_afms"] == ["180000001"]
+    assert "ΓΚΟΥΜΑΣ" in result["answer"]
 
 
 def test_name_choice_greeklish_answer_uses_gemini(monkeypatch):
