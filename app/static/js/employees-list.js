@@ -390,7 +390,7 @@ function ensureEmployeeQrModal() {
     `<div class="office-modal-panel employee-qr-modal-panel">` +
       `<div class="employee-qr-modal-head">` +
         `<div>` +
-          `<h2 class="office-modal-title" id="employeeQrTitle">Στοιχεια ψηφιακης οργανωσης χρονου εργασιας</h2>` +
+          `<h2 class="office-modal-title" id="employeeQrTitle">Στοιχεία ψηφιακής οργάνωσης χρόνου εργασίας</h2>` +
           `<p class="office-modal-sub" id="employeeQrSub"></p>` +
         `</div>` +
         `<button type="button" class="employees-action-btn" data-employee-qr-close aria-label="Κλείσιμο">${Office.icon("x-lg")}</button>` +
@@ -417,7 +417,7 @@ function closeEmployeeQrModal() {
 }
 
 function qrField(label, value) {
-  return `<div class="employee-qr-field"><span>${Office.escapeHtml(label)}</span><strong>${Office.escapeHtml(value || "—")}</strong></div>`;
+  return `<div class="employee-qr-field"><span>${Office.escapeHtml(label)}</span><div class="employee-qr-value">${Office.escapeHtml(value || "—")}</div></div>`;
 }
 
 async function openEmployeeQrModal(employeeAfm) {
@@ -439,17 +439,17 @@ async function openEmployeeQrModal(employeeAfm) {
     sub.textContent = data.synced_at ? `Τελευταίος συγχρονισμός: ${data.synced_at}` : "";
     body.innerHTML =
       `<section class="employee-qr-info">` +
-        `<h3>Στοιχεια επιχειρησης</h3>` +
+        `<h3>Στοιχεία επιχείρησης</h3>` +
         `<div class="employee-qr-fields">` +
           qrField("ΑΑ", business.branch_aa || "") +
           qrField("ΑΦΜ", business.afm || "") +
-          qrField("Επωνυμια", business.eponimia || business.branch_desc || "") +
+          qrField("Επωνυμία", business.eponimia || business.branch_desc || "") +
         `</div>` +
-        `<h3>Στοιχεια εργαζομενου</h3>` +
+        `<h3>Στοιχεία εργαζομένου</h3>` +
         `<div class="employee-qr-fields">` +
           qrField("ΑΦΜ", employee.afm || "") +
-          qrField("Επωνυμο", employee.eponymo || "") +
-          qrField("Ονομα", employee.onoma || "") +
+          qrField("Επώνυμο", employee.eponymo || "") +
+          qrField("Όνομα", employee.onoma || "") +
         `</div>` +
       `</section>` +
       `<section class="employee-qr-image-wrap">` +
