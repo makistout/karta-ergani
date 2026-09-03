@@ -584,16 +584,8 @@ def build_card_punch_command(
             )
         afms = named_afms
     elif person_tokens:
-        return _empty_parsed(
-            intent="today_info",
-            store_id=store_id,
-            date=work_date,
-            confidence=0.7,
-            clarification_question=(
-                "Δεν εντόπισα αυτό το όνομα στο κατάστημα. "
-                "Πείτε το επώνυμο όπως εμφανίζεται στη λίστα."
-            ),
-        )
+        # Ασαφές όνομα → LLM, όχι σκληρό «δεν εντόπισα».
+        return None
     elif focus and not wants_group:
         afms = focus
     elif wants_group or not named_afms:

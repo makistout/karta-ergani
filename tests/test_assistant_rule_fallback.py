@@ -268,6 +268,25 @@ def test_card_punch_focus_afms():
     assert parsed["employee_afms"] == ["1"]
 
 
+def test_unresolved_named_punch_defers_to_llm():
+    today_home = {
+        "stores": [{
+            "store_id": 4,
+            "name": "Training Room",
+            "employees": [{"name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ", "afm": "182666682", "status": "needs_checkin"}],
+        }]
+    }
+    # Resolve fails (wrong pool / empty) → κανόνες δεν κόβουν με «δεν εντόπισα».
+    parsed = build_card_punch_command(
+        text="άνοιξε βήχο πριν 2 ώρες",
+        store_id=4,
+        today_home=today_home,
+        employees=[{"store_id": 4, "afm": "182666682", "name": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ"}],
+        resolve_afms=lambda t, e, s: [],
+    )
+    assert parsed is None
+
+
 def test_open_named_person_ignores_unrelated_focus():
     today_home = {
         "stores": [{

@@ -346,9 +346,10 @@ def parse_command(
             return fast_parsed, employees, fast_metadata
 
         if fast_intent == "today_info" and str(fast_parsed.get("clarification_question") or "").strip():
-            from app.assistant_rule_fallback import is_fast_today_info, looks_like_card_punch
+            from app.assistant_rule_fallback import is_fast_today_info
 
-            if is_fast_today_info(text) or looks_like_card_punch(text):
+            # Μόνο σίγουρες απαντήσεις Αρχικής· ασαφή punch/ονόματα πάνε στο LLM.
+            if is_fast_today_info(text):
                 fast_metadata["fast_path"] = True
                 fast_metadata["llm_order"] = ["rules_fast"]
                 return fast_parsed, employees, fast_metadata
@@ -717,23 +718,54 @@ def _first_name_in_text(text: str, first_name: str) -> bool:
     return False
 
 
+def _store_name_tokens(name: str) -> list[str]:
+    folded = _fold_text(name)
+    stop = {"στο", "στη", "στην", "του", "της", "των", "και", "the", "of"}
+    return [tok for tok in re.findall(r"[a-zα-ω0-9]{3,}", folded) if tok not in stop]
+
+
+def _store_name_matches_text(name: str, *, folded: str, greeklish: str) -> bool:
+    """Πλήρες όνομα, ή αρκετές λέξεις του («training room» → Training Room Ίλιον)."""
+    name_fold = _fold_text(name)
+    name_gl = _greeklish_fold(name)
+    if not name_fold:
+        return False
+    if name_fold in folded or (name_gl and name_gl in greeklish):
+        return True
+    # Short latin codes (ERATO) vs Greek speech (Ερατο).
+    if name_gl and len(name_gl) >= 4 and " " not in name_gl and name_gl in greeklish:
+        return True
+
+    tokens = _store_name_tokens(name)
+    if not tokens:
+        return False
+    present = [tok for tok in tokens if tok in folded or _greeklish_fold(tok) in greeklish]
+    if not present:
+        return False
+    if len(tokens) == 1:
+        return len(present[0]) >= 4
+    # Πολλές λέξεις: ≥2 ταιριάσματα, ή όλες εκτός μίας (π.χ. 2/3).
+    if len(present) >= 2:
+        return True
+    return len(present) >= max(1, len(tokens) - 1)
+
+
 def _mentioned_store_ids(text: str, contexts: list[dict[str, Any]]) -> list[int]:
     folded = _fold_text(text)
     greeklish = _greeklish_fold(text)
-    hits: list[int] = []
+    scored: list[tuple[int, int]] = []
     for row in contexts:
         name = str(row.get("store_name") or "").strip()
-        if not name:
+        if not name or not _store_name_matches_text(name, folded=folded, greeklish=greeklish):
             continue
-        name_fold = _fold_text(name)
-        name_gl = _greeklish_fold(name)
-        if (name_fold and name_fold in folded) or (name_gl and name_gl in greeklish):
-            hits.append(int(row["store_id"]))
-            continue
-        # Short latin store codes (ERATO) vs Greek speech (Ερατο / Ερατοσθένους).
-        if name_gl and len(name_gl) >= 4 and name_gl in greeklish:
-            hits.append(int(row["store_id"]))
-    return list(dict.fromkeys(hits))
+        tokens = _store_name_tokens(name)
+        present = sum(1 for tok in tokens if tok in folded or _greeklish_fold(tok) in greeklish)
+        scored.append((present, int(row["store_id"])))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    if not scored:
+        return []
+    best = scored[0][0]
+    return list(dict.fromkeys(sid for score, sid in scored if score == best))
 
 
 def _mentioned_afms(

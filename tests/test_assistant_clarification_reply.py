@@ -429,6 +429,18 @@ def test_erato_greek_matches_latin_store_name():
     assert _mentioned_store_ids("Στο Ερατο ποιες κάρτες", contexts) == [9]
     assert _mentioned_store_ids("Στο Ερατοσθένους ανοιχτές", contexts) == [9]
 
+
+def test_training_room_matches_two_of_three_words():
+    from app.telegram_assistant_service import _mentioned_store_ids
+
+    contexts = [
+        {"store_id": 4, "store_name": "Training Room Ίλιον"},
+        {"store_id": 9, "store_name": "ERATO"},
+        {"store_id": 1, "store_name": "APERIO"},
+    ]
+    assert _mentioned_store_ids("Στο training room άνοιξε βήχο πριν 2 ώρες", contexts) == [4]
+    assert _mentioned_store_ids("στο Training Room", contexts) == [4]
+
 def test_yes_to_cancel_clarification_closes_same_task(monkeypatch):
     pending = {
         "id": 51,
