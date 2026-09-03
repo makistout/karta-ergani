@@ -397,6 +397,17 @@ def _format_matched_label(matched: list[dict[str, Any]]) -> str:
     return " · ".join(f"{m.get('from') or '—'}–{m.get('to') or '—'}" for m in matched)
 
 
+def _proposed_clock_end(proposed: str, *, after: int | None) -> int | None:
+    label = str(proposed or "").strip()
+    if not label or " · " in label or "–" not in label:
+        return None
+    start_text, end_text = label.split("–", 1)
+    start_minutes = _minute_of_day(start_text.strip())
+    if start_minutes is None:
+        return None
+    return _minute_of_day(end_text.strip(), after=after if after is not None else start_minutes)
+
+
 def _build_status_explanation(
     *,
     status: str,
@@ -460,7 +471,8 @@ def _build_status_explanation(
             if item.get("inferred_from"):
                 lines.append(f"{prefix}Λείπει είσοδος στην κάρτα — για υπολογισμό χρησιμοποιήθηκε δηλωμένη έναρξη ({item.get('from')}).")
             if item.get("inferred_to"):
-                lines.append(f"{prefix}Λείπει έξοδος στην κάρτα — για υπολογισμό χρησιμοποιήθηκε δηλωμένη λήξη ({item.get('to')}).")
+                inferred_to = item.get("_original_inferred_to") or item.get("to")
+                lines.append(f"{prefix}Λείπει έξοδος στην κάρτα — για υπολογισμό χρησιμοποιήθηκε δηλωμένη λήξη ({inferred_to}).")
 
     if actual_label != punch_recorded and actual_label != "—" and inferred:
         lines.append(f"Για ώρες και διαφορές αξιολογήθηκε (τεκμαίρεται): {actual_label}")
@@ -1101,6 +1113,52 @@ def build_weekly_report(
         status, reason, proposed, proposal_basis, rule_id = (
             decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
         )
+        capped_inferred_exit: tuple[str, str] | None = None
+        if (
+            missing_end
+            and status == "change"
+            and matched
+            and matched[-1].get("inferred_to")
+        ):
+            proposed_end = _proposed_clock_end(proposed, after=ps)
+            original_inferred_end = str(matched[-1].get("to") or "").strip()
+            if proposed_end is not None and pe is not None and proposed_end < pe:
+                matched[-1]["_original_inferred_to"] = original_inferred_end
+                matched[-1]["to"] = _hm(proposed_end)
+                capped_inferred_exit = (original_inferred_end, _hm(proposed_end))
+                actual_label = _format_matched_label(matched)
+                actual_minutes = sum(
+                    _minutes(m.get("from"), m.get("to")) or 0 for m in matched
+                ) if matched else None
+                effective_actual = (
+                    max(0, (actual_minutes or 0) - outside_break)
+                    if actual_minutes is not None else None
+                )
+                last = matched[-1]
+                pe = _minute_of_day(last.get("to"), after=ps) if last and ps is not None else None
+                overtime_ps, overtime_pe = _overtime_interval_before_general_validation(
+                    day_punches, slots, matched
+                )
+                overtime_actual_minutes = (
+                    overtime_pe - overtime_ps
+                    if overtime_ps is not None and overtime_pe is not None and overtime_pe > overtime_ps
+                    else 0
+                )
+                overtime_effective_actual = max(0, overtime_actual_minutes - outside_break)
+                gross_difference = (
+                    actual_minutes - declared_minutes if actual_minutes is not None else None
+                )
+                net_difference = (
+                    effective_actual - declared_minutes if effective_actual is not None else None
+                )
+                end_difference = pe - de if pe is not None and de is not None else None
+                bands = _classify_extra(
+                    contract_kind, classification_days, overtime_effective_actual, declared_minutes
+                )
+                if contract_flags["work_arrangement"]:
+                    bands["classification_warning"] = "Διευθέτηση χρόνου εργασίας: απαιτείται έλεγχος περιόδου αναφοράς και ορίου 10 ωρών"
+                elif contract_flags["uneven_distribution"]:
+                    bands["classification_warning"] = "Ανισομερής κατανομή: απαιτείται επιβεβαίωση της νόμιμης βάσης και του εβδομαδιαίου συνόλου"
         if len(work_slots) > 1 and status == "change" and proposed == declared_label and bands["overtime_minutes"] == 0:
             status, reason, rule_id = "ok", "Το πραγματικό σπαστό συμφωνεί με το δηλωμένο", "SPLIT_COMPLIANT"
         if status == "ok" and bands["overtime_minutes"] > 0:
@@ -1198,6 +1256,13 @@ def build_weekly_report(
             overtime_segments=overtime_segments,
             corrected_extra_punches=corrected_extra_punches,
         )
+        if capped_inferred_exit:
+            original_end, new_end = capped_inferred_exit
+            status_explanation.append(
+                f"Μετά την πρόταση νέου ωραρίου {proposed}, η τεκμαρτή λήξη "
+                f"{original_end} αντικαταστάθηκε από {new_end}· "
+                "ελλιπές χτύπημα δεν παράγει υπερωρία."
+            )
         if excluded_overnight_punches:
             previous_date = (
                 datetime.strptime(work_date, "%d/%m/%Y").date() - timedelta(days=1)

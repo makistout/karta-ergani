@@ -625,6 +625,38 @@ def test_missing_exit_uses_declared_exit_and_is_compliant():
     assert any("Λείπει έξοδος" in line for line in row["status_explanation"])
 
 
+def test_missing_exit_early_start_does_not_create_overtime():
+    row = build_weekly_report(
+        [sched(start="13:00", end="21:00")],
+        [punch("09:00", None)],
+        [contract(flex=0, break_minutes=30, break_in_work=1)],
+    )["days"][0]
+    assert row["punch_recorded"] == "09:00–"
+    assert row["actual"] == "09:00–17:00"
+    assert row["proposed"] == "09:00–17:00"
+    assert row["status"] == "change"
+    assert row["rule_id"] == "EARLY_START_SHIFT"
+    assert row["overtime_minutes"] == 0
+    assert row["overwork_minutes"] == 0
+    assert row["overtime_segments"] == []
+    assert any("τεκμαρτή λήξη" in line and "17:00" in line for line in row["status_explanation"])
+
+
+def test_missing_entry_with_extra_minutes_rebuilds_backwards_without_overtime():
+    row = build_weekly_report(
+        [sched(start="13:00", end="21:00")],
+        [punch(None, "21:05")],
+        [contract(flex=0, break_minutes=30, break_in_work=1)],
+    )["days"][0]
+    assert row["punch_recorded"] == "–21:05"
+    assert row["actual"] == "13:00–21:05"
+    assert row["proposed"] == "13:05–21:05"
+    assert row["status"] == "change"
+    assert row["rule_id"] == "MISSING_ENTRY_EXTRA_BACKWARD"
+    assert row["overtime_minutes"] == 0
+    assert row["overtime_segments"] == []
+
+
 def test_missing_exit_with_outside_break_extends_physical_exit_only():
     row = build_weekly_report(
         [sched(start="15:00", end="23:00")],
