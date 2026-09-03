@@ -33,3 +33,16 @@ def test_blank_schedule_with_card_in_is_unscheduled_work():
         work_date_ergani="03/08/2026",
     )
     assert ev["status"] == "unscheduled_work"
+
+
+def test_rest_day_with_arrival_signal_is_shown_as_at_work():
+    ev = _evaluate_row(
+        sched={"hour_from": "", "hour_to": "", "shift_type": "ΑΝΑΠΑΥΣΗ"},
+        wl={"hour_from": "09:04", "hour_to": ""},
+        card_in=None,
+        card_out=None,
+        work_date_ergani="03/09/2026",
+    )
+    assert ev["status"] == "at_work"
+    assert ev["status_label"] == "Σε εργασία"
+    assert "δήλωση αποχώρησης" in ev["action"]

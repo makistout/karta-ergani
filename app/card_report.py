@@ -235,8 +235,8 @@ def _rest_day_row_eval(
     if has_arrival and not has_departure:
         return (
             "Στο τέλος βάρδιας: δήλωση αποχώρησης (έξοδος)",
-            "needs_checkout",
-            label,
+            "at_work",
+            "Σε εργασία",
         )
     if has_arrival and has_departure:
         return "—", "completed", "Ολοκληρωμένη μέρα"
