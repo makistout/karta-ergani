@@ -986,13 +986,25 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-employee-search .field-input::-ms-clear { cursor:pointer; }
 .apologistic-table td { vertical-align:top; }
 .apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
-.apologistic-table thead th { height:172px; padding:.35rem .2rem; vertical-align:bottom; text-align:center; white-space:nowrap; line-height:1; position:relative; overflow:hidden; }
+.apologistic-table thead th { height:auto; min-height:0; padding:.55rem .2rem .4rem; vertical-align:bottom; text-align:center; white-space:nowrap; line-height:1.05; position:relative; overflow:visible; }
 .apologistic-table th:first-child { width:11%; }
 .apologistic-table th.apologistic-head--horizontal { text-align:left; }
 .apologistic-table--all-days th:first-child { text-align:center; width:4%; }
 .apologistic-table--all-days th:nth-child(2) { text-align:left; width:11%; }
 .apologistic-head-label { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
-.apologistic-head-label--vertical { position:absolute; left:50%; bottom:.45rem; width:max-content; max-width:10.25rem; transform:translateX(-50%) rotate(-90deg); transform-origin:center; }
+.apologistic-head-label--vertical {
+  position:static;
+  display:inline-block;
+  writing-mode:vertical-rl;
+  transform:rotate(180deg);
+  width:auto;
+  max-width:none;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:nowrap;
+  line-height:1.15;
+  padding:.15rem 0;
+}
 .apologistic-table tbody tr { height:auto; }
 .apologistic-table tbody td { height:auto; min-height:0; }
 .apologistic-table th:nth-child(3), .apologistic-table th:nth-child(4), .apologistic-table th:nth-child(13) { width:9%; }
