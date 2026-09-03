@@ -1585,7 +1585,8 @@ def list_apologistic_activity(
         """
 
     cursor_filter = ""
-    params: list[Any] = []
+    # TOP (?) is the first placeholder in the SQL below — keep limit first.
+    params: list[Any] = [limit + 1]
     if store_id is not None:
         sid = int(store_id)
         params.extend([sid, sid])
@@ -1594,16 +1595,24 @@ def list_apologistic_activity(
 
     if before_at is not None and before_type and before_id is not None:
         type_rank = _EVENT_TYPE_ORDER.get(str(before_type), 99)
+        # Compare as datetime2(0) wall-clock so naive cursor timestamps from the
+        # API (no offset, second precision) match datetimeoffset columns.
         cursor_filter = """
           AND (
-            src.event_at < ?
-            OR (src.event_at = ? AND src.type_rank > ?)
-            OR (src.event_at = ? AND src.type_rank = ? AND src.event_id < ?)
+            CAST(src.event_at AS datetime2(0)) < CAST(? AS datetime2(0))
+            OR (
+              CAST(src.event_at AS datetime2(0)) = CAST(? AS datetime2(0))
+              AND src.type_rank > ?
+            )
+            OR (
+              CAST(src.event_at AS datetime2(0)) = CAST(? AS datetime2(0))
+              AND src.type_rank = ?
+              AND src.event_id < ?
+            )
           )
         """
         params.extend([before_at, before_at, type_rank, before_at, type_rank, int(before_id)])
 
-    params.append(limit + 1)
     sql = f"""
         SELECT TOP (?)
             src.event_type, src.event_id,
