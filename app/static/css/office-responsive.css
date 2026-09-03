@@ -795,7 +795,11 @@ body.login-page {
   gap: 1.35rem;
   min-height: 0;
   overflow: auto;
-  align-items: start;
+  align-items: end;
+}
+
+.employee-qr-info {
+  min-width: 0;
 }
 
 .employee-qr-info h3 {
@@ -851,11 +855,13 @@ body.login-page {
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: end;
   min-height: 16rem;
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
+  box-sizing: border-box;
 }
 
 .employee-qr-image-wrap img {
