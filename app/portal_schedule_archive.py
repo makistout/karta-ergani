@@ -272,26 +272,33 @@ def download_and_archive_month(
     return {"success": True, "rows_parsed": len(rows), "rows_upserted": count, "reference_month": month_from.isoformat()}
 
 
+def monthly_archive_target_month(today: date | None = None) -> date | None:
+    """Μήνας αρχείου για το μηνιαίο job: τρέχων − 2.
+
+    Ιανουάριος/Φεβρουάριος → None (δεν τραβάμε· ο προηγούμενος μήνας
+    συνήθως δεν είναι ακόμα σωστά ενημερωμένος στο Ergani).
+    Π.χ. 1 Σεπ 2026 → Ιούλιος 2026· 1 Μαρ 2026 → Ιανουάριος 2026.
+    """
+    base = today or date.today()
+    if base.month <= 2:
+        return None
+    return date(base.year, base.month - 2, 1)
+
+
 def run_monthly_archive(
     store_cfg: dict[str, Any],
     *,
-    months_back: int = 2,
+    today: date | None = None,
     log: KartaLogger | None = None,
 ) -> list[dict[str, Any]]:
-    """Τρέχει archive για N μήνες πριν (default 2)."""
-    today = date.today()
-    results = []
-    for i in range(months_back, 0, -1):
-        ref = (today.replace(day=1) - timedelta(days=1))
-        for _ in range(i - 1):
-            ref = (ref.replace(day=1) - timedelta(days=1))
-        ref = ref.replace(day=1)
-        try:
-            result = download_and_archive_month(store_cfg, ref, log=log)
-            results.append(result)
-        except Exception as ex:
-            results.append({"success": False, "reference_month": ref.isoformat(), "error": str(ex)})
-    return results
+    """Αρχειοθετεί μόνο τον μήνα (τρέχων − 2). Ιαν/Φεβ → παράλειψη."""
+    ref = monthly_archive_target_month(today)
+    if ref is None:
+        return [{"skipped": True, "reason": "jan_or_feb"}]
+    try:
+        return [download_and_archive_month(store_cfg, ref, log=log)]
+    except Exception as ex:
+        return [{"success": False, "reference_month": ref.isoformat(), "error": str(ex)}]
 
 
 _MONTH_EL = (

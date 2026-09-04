@@ -171,7 +171,7 @@ def _run_configured_auto_actions(
     if archive_should_run:
         from app.portal_schedule_archive import run_monthly_archive
         try:
-            actions["schedule_archive"] = run_monthly_archive(cfg, months_back=2)
+            actions["schedule_archive"] = run_monthly_archive(cfg)
         except Exception as ex:
             actions["schedule_archive"] = {"success": False, "error": str(ex)}
     else:
@@ -546,10 +546,12 @@ def should_run_apologistic_snapshot(
 def _should_run_schedule_archive(
     cfg: dict[str, Any], *, now: datetime | None = None,
 ) -> tuple[bool, str]:
-    """1η κάθε μήνα, 05:00 — αρχειοθέτηση ψηφιακής οργάνωσης 2 μηνών πριν."""
+    """1η κάθε μήνα, 05:00 — αρχείο μόνο για (τρέχων − 2)· Ιαν/Φεβ παράλειψη."""
     local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
     if local_now.day != 1:
         return False, "δεν είναι 1η του μήνα"
+    if local_now.month <= 2:
+        return False, "Ιανουάριος/Φεβρουάριος — χωρίς μηνιαίο αρχείο (τρέχων − 2)"
     if local_now.strftime("%H:%M") < "05:00":
         return False, "αναμονή μέχρι 05:00"
     if not repo_sync_log.tables_available():
