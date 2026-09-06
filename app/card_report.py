@@ -20,20 +20,6 @@ from app.repo_work_log import (
 )
 from app.work_card_payload import tz_athens
 
-# Πρώτα όσοι δουλεύουν / ολοκλήρωσαν βάρδια, στο τέλος ρεπό και λοιποί.
-_STATUS_ORDER = {
-    "at_work": 0,
-    "needs_checkout": 1,
-    "completed": 2,
-    "late_arrival": 3,
-    "needs_checkin": 4,
-    "unscheduled_work": 5,
-    "absent": 6,
-    "pending": 7,
-    "no_schedule": 8,
-    "rest": 9,
-}
-
 _REST_MARKERS = ("ΑΝΑΠΑΥΣΗ", "ΡΕΠΟ", "ΜΗ ΕΡΓΑΣΙΑ", "ΑΔΕΙΑ", "ΑΡΓΙΑ")
 
 
@@ -326,6 +312,38 @@ def _pick_name(*pairs: tuple[str | None, str | None]) -> tuple[str, str]:
         if (ep or "").strip() or (on or "").strip():
             return (ep or "").strip(), (on or "").strip()
     return "", ""
+
+
+def _row_entry_punch_hm(row: dict[str, Any]) -> str | None:
+    """Ώρα χτυπήματος εισόδου (πραγματική ή κάρτα) για ταξινόμηση αρχικής."""
+    wl = row.get("work_log") if isinstance(row.get("work_log"), dict) else None
+    hf = _hm_short((wl or {}).get("hour_from"))
+    if hf:
+        return hf
+    card = row.get("card") if isinstance(row.get("card"), dict) else None
+    return _hm_short((card or {}).get("check_in"))
+
+
+def _row_schedule_start_hm(row: dict[str, Any]) -> str | None:
+    sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else None
+    if _schedule_shows_blank(sched):
+        return None
+    return _hm_short((sched or {}).get("hour_from"))
+
+
+def home_report_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Σειρά αρχικής: είσοδος (νωρίς→αργά) → ωράριο έναρξης → αλφαβητικά."""
+    name = (row.get("eponymo") or "").upper()
+    afm = str(row.get("employee_afm") or "")
+    entry = _row_entry_punch_hm(row)
+    if entry:
+        mins = _hm_to_minutes(entry)
+        return (0, mins if mins is not None else 24 * 60, name, afm)
+    sched_hm = _row_schedule_start_hm(row)
+    if sched_hm:
+        mins = _hm_to_minutes(sched_hm)
+        return (1, mins if mins is not None else 24 * 60, name, afm)
+    return (2, 0, name, afm)
 
 
 def _schedule_shows_blank(schedule: dict[str, Any] | None) -> bool:
@@ -822,14 +840,7 @@ def build_card_status_report(
             **_card_punch_fields(work_date, sched, wl),
         })
 
-    rows_out.sort(
-        key=lambda r: (
-            1 if _schedule_shows_blank(r.get("schedule")) else 0,
-            _STATUS_ORDER.get(r["status"], 99),
-            (r.get("eponymo") or "").upper(),
-            r.get("employee_afm") or "",
-        )
-    )
+    rows_out.sort(key=home_report_sort_key)
 
     return {
         "date": ref_iso,

@@ -522,19 +522,6 @@ function statusClass(status) {
   return map[status] || "status-muted";
 }
 
-const REPORT_STATUS_ORDER = {
-  at_work: 0,
-  needs_checkout: 1,
-  completed: 2,
-  late_arrival: 3,
-  needs_checkin: 4,
-  unscheduled_work: 5,
-  absent: 6,
-  pending: 7,
-  no_schedule: 8,
-  rest: 9,
-};
-
 function scheduleShowsBlank(schedule) {
   if (!schedule) return true;
   const hf = (schedule.hour_from || "").trim();
@@ -543,22 +530,54 @@ function scheduleShowsBlank(schedule) {
   return !(schedule.shift_type || "").trim();
 }
 
+function rowEntryPunchHm(row) {
+  const wlFrom = Office.normalizeHourMinute(row?.work_log?.hour_from || "");
+  if (wlFrom) return wlFrom;
+  return Office.normalizeHourMinute(row?.card?.check_in || "") || "";
+}
+
+function rowScheduleStartHm(row) {
+  if (scheduleShowsBlank(row?.schedule)) return "";
+  return Office.normalizeHourMinute(row?.schedule?.hour_from || "") || "";
+}
+
+function homeReportSortKey(row) {
+  const name = (row.eponymo || "").toUpperCase();
+  const afm = row.employee_afm || "";
+  const entry = rowEntryPunchHm(row);
+  if (entry) {
+    const mins = minutesFromHm(entry);
+    return [0, mins == null ? 24 * 60 : mins, name, afm];
+  }
+  const sched = rowScheduleStartHm(row);
+  if (sched) {
+    const mins = minutesFromHm(sched);
+    return [1, mins == null ? 24 * 60 : mins, name, afm];
+  }
+  return [2, 0, name, afm];
+}
+
+function compareHomeReportKeys(ka, kb) {
+  for (let i = 0; i < ka.length; i++) {
+    const a = ka[i];
+    const b = kb[i];
+    if (typeof a === "number" && typeof b === "number") {
+      if (a !== b) return a - b;
+      continue;
+    }
+    const cmp = String(a).localeCompare(String(b), "el");
+    if (cmp) return cmp;
+  }
+  return 0;
+}
+
 function sortReportRows(rows) {
   const dayKey = (s) => Office.parseDateGr(s || "") || s || "";
   return [...rows].sort((a, b) => {
     const da = dayKey(a.work_date);
     const db = dayKey(b.work_date);
     if (da && db && da !== db) return da.localeCompare(db);
-    const blankA = scheduleShowsBlank(a.schedule) ? 1 : 0;
-    const blankB = scheduleShowsBlank(b.schedule) ? 1 : 0;
-    if (blankA !== blankB) return blankA - blankB;
-    const stA = REPORT_STATUS_ORDER[a.status] ?? 99;
-    const stB = REPORT_STATUS_ORDER[b.status] ?? 99;
-    if (stA !== stB) return stA - stB;
-    const epA = (a.eponymo || "").toUpperCase();
-    const epB = (b.eponymo || "").toUpperCase();
-    if (epA !== epB) return epA.localeCompare(epB, "el");
-    return (a.employee_afm || "").localeCompare(b.employee_afm || "", "el");
+    return compareHomeReportKeys(homeReportSortKey(a), homeReportSortKey(b));
   });
 }
 
