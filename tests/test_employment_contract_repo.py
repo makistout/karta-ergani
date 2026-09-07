@@ -63,3 +63,64 @@ def test_normalize_row_keys_employer_branch_employee():
     assert data["flex_arrival_minutes"] == 120
     assert data["break_in_work"] == 1
     assert data["content_hash"]
+
+
+def _mock_contract_db(monkeypatch, previous):
+    from contextlib import contextmanager
+    from unittest.mock import MagicMock
+    from app import repo_employment_contract as repo
+
+    cur = MagicMock()
+    cur.fetchone.return_value = (42,)
+
+    @contextmanager
+    def fake_cursor(**kwargs):
+        yield cur
+
+    monkeypatch.setattr(repo, "cursor", fake_cursor)
+    monkeypatch.setattr(repo, "latest_for_employee", lambda *args: previous)
+    return repo, cur
+
+
+def test_unchanged_contract_refreshes_check_without_new_snapshot(monkeypatch):
+    row = {"employee_afm": "141320107", "salary": "1000"}
+    previous = {"id": 17, "content_hash": _normalize_row("802788173", "0", row)["content_hash"]}
+    repo, cur = _mock_contract_db(monkeypatch, previous)
+
+    result = repo.insert_if_changed("802788173", "0", row)
+
+    assert result == {"inserted": False, "reason": "unchanged", "id": 17}
+    cur.execute.assert_called_once()
+    sql, params = cur.execute.call_args.args
+    assert "SET last_checked_at = SYSDATETIMEOFFSET()" in sql
+    assert "WHERE id = ? AND is_current = 1" in sql
+    assert params == (17,)
+    assert "synced_at" not in sql
+
+
+def test_changed_contract_records_check_on_new_snapshot(monkeypatch):
+    repo, cur = _mock_contract_db(monkeypatch, {"id": 17, "content_hash": "old"})
+    result = repo.insert_if_changed("802788173", "0", {"employee_afm": "141320107", "salary": "1100"})
+
+    assert result["inserted"] is True
+    assert result["id"] == 42
+    assert cur.execute.call_count == 2
+    archive_sql = cur.execute.call_args_list[0].args[0]
+    assert "SET is_current = 0" in archive_sql
+    assert "last_checked_at" not in archive_sql
+    insert_sql = cur.execute.call_args_list[1].args[0]
+    assert "last_checked_at" in insert_sql
+    assert "SYSDATETIMEOFFSET()" in insert_sql
+
+
+def test_first_contract_records_successful_check(monkeypatch):
+    repo, cur = _mock_contract_db(monkeypatch, None)
+    result = repo.insert_if_changed("802788173", "0", {"employee_afm": "141320107"})
+    assert result["inserted"] is True
+    cur.execute.assert_called_once()
+    assert "last_checked_at" in cur.execute.call_args.args[0]
+
+
+def test_check_timestamp_does_not_change_contract_hash():
+    row = {"salary": "1000"}
+    assert content_hash_for_contract(row) == content_hash_for_contract({**row, "last_checked_at": "2026-09-07"})

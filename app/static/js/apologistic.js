@@ -1702,7 +1702,8 @@ const employeeContractFields = [
   ["fulltime_contract_weekly_hours", "Συμβατικές ώρες πλήρους απασχόλησης"],
   ["break_minutes", "Διάλειμμα (λεπτά)"], ["break_in_work", "Διάλειμμα εντός ωραρίου"],
   ["flex_arrival_minutes", "Ευέλικτη προσέλευση (λεπτά)"],
-  ["ergani_updated_at", "Ημ/νία τελευταίας ενημέρωσης Ergani"], ["synced_at", "Τελευταίος συγχρονισμός"],
+  ["ergani_updated_at", "Ημ/νία τελευταίας ενημέρωσης Ergani"], ["last_checked_at", "Τελευταίος επιτυχής έλεγχος"],
+  ["synced_at", "Αποθήκευση έκδοσης"],
   ["source", "Πηγή"],
 ];
 
@@ -1710,7 +1711,7 @@ function employeeContractValue(key, value) {
   if (value == null || value === "") return "—";
   if (key === "break_in_work") return value === 1 || value === true || value === "1" ? "Ναι" : "Όχι";
   if (key === "flex_arrival_minutes" && Office.formatFlexMinutes) return Office.formatFlexMinutes(value);
-  if (key === "synced_at") return String(value).replace("T", " ").slice(0, 19);
+  if (key === "synced_at" || key === "last_checked_at") return String(value).replace("T", " ").slice(0, 19);
   return String(value);
 }
 

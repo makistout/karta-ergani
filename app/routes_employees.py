@@ -84,7 +84,7 @@ def _annual_normal_leave_entitlement(contract: dict | None) -> int | None:
 
 def _iso_rows(rows: list[dict]) -> list[dict]:
     for r in rows:
-        for key in ("updated_at", "synced_at", "hire_date", "departure_date"):
+        for key in ("updated_at", "synced_at", "last_checked_at", "hire_date", "departure_date"):
             if hasattr(r.get(key), "isoformat"):
                 r[key] = r[key].isoformat()
     return rows

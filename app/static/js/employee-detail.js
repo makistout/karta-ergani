@@ -27,7 +27,8 @@ const CONTRACT_FIELDS = [
   ["break_in_work", "Διάλειμμα εντός ωραρίου"],
   ["flex_arrival_minutes", "Ευέλικτη προσέλευση (λεπτά)"],
   ["ergani_updated_at", "Ημ/νία τελευταίας ενημέρωσης Ergani"],
-  ["synced_at", "Τελευταίος συγχρονισμός"],
+  ["last_checked_at", "Τελευταίος επιτυχής έλεγχος"],
+  ["synced_at", "Αποθήκευση έκδοσης"],
   ["source", "Πηγή"],
 ];
 
@@ -40,7 +41,7 @@ function displayValue(key, value) {
   if (key === "flex_arrival_minutes" && Office.formatFlexMinutes) {
     return Office.formatFlexMinutes(value);
   }
-  if (key === "synced_at") {
+  if (key === "synced_at" || key === "last_checked_at") {
     return String(value).replace("T", " ").slice(0, 19);
   }
   return String(value);
@@ -127,7 +128,7 @@ async function loadEmployeeDetail() {
     const t = document.createElement("table");
     t.className = "data";
     const hr = document.createElement("tr");
-    ["Συγχρονισμός", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", ""].forEach((h) => {
+    ["Αποθήκευση έκδοσης", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", ""].forEach((h) => {
       const th = document.createElement("th");
       th.textContent = h;
       hr.appendChild(th);
@@ -158,7 +159,7 @@ async function loadEmployeeDetail() {
         const note = document.createElement("p");
         note.className = "table-meta";
         note.textContent =
-          `Προβολή προηγούμενης έκδοσης · συγχρ. ${displayValue("synced_at", row.synced_at)}`;
+          `Προβολή προηγούμενης έκδοσης · αποθήκευση ${displayValue("synced_at", row.synced_at)}`;
         wrap.appendChild(note);
         wrap.appendChild(renderContractFieldsTable(row));
         wrap.scrollIntoView({ behavior: "smooth", block: "start" });

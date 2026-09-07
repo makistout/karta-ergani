@@ -150,7 +150,7 @@ async function openHistory(row) {
     const t = document.createElement("table");
     t.className = "data";
     const hr = document.createElement("tr");
-    ["Συγχρονισμός", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", "Ευελ.", "Τρέχουσα"].forEach((h) => {
+    ["Αποθήκευση έκδοσης", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", "Ευελ.", "Τρέχουσα"].forEach((h) => {
       const th = document.createElement("th");
       th.textContent = h;
       hr.appendChild(th);

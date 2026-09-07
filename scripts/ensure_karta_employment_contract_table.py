@@ -49,6 +49,12 @@ BEGIN
     CREATE INDEX IX_karta_emp_contract_history
         ON dbo.karta_employment_contract (employer_afm, branch_aa, employee_afm, synced_at DESC);
 END
+-- NULL on existing snapshots: historical checks cannot be reconstructed.
+IF COL_LENGTH(N'dbo.karta_employment_contract', N'last_checked_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.karta_employment_contract
+        ADD last_checked_at DATETIMEOFFSET(7) NULL;
+END
 """
 
 

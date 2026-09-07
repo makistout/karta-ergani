@@ -133,7 +133,8 @@ def latest_for_employee(
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
                 flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
-                CAST(synced_at AS datetime2) AS synced_at, source
+                CAST(synced_at AS datetime2) AS synced_at,
+                CAST(last_checked_at AS datetime2) AS last_checked_at, source
             FROM dbo.karta_employment_contract
             WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
               AND is_current = 1
@@ -161,6 +162,15 @@ def insert_if_changed(
     if previous:
         prev_hash = _norm_str(previous.get("content_hash"))
         if prev_hash and prev_hash == data["content_hash"]:
+            with cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE dbo.karta_employment_contract
+                    SET last_checked_at = SYSDATETIMEOFFSET()
+                    WHERE id = ? AND is_current = 1
+                    """,
+                    (previous["id"],),
+                )
             return {"inserted": False, "reason": "unchanged", "id": previous.get("id")}
 
     with cursor() as cur:
@@ -183,7 +193,7 @@ def insert_if_changed(
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
                 flex_arrival_minutes, ergani_updated_at, content_hash,
-                is_current, source
+                is_current, source, last_checked_at
             ) OUTPUT INSERTED.id
             VALUES (
                 ?, ?, ?, ?, ?,
@@ -192,7 +202,7 @@ def insert_if_changed(
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
-                1, ?
+                1, ?, SYSDATETIMEOFFSET()
             )
             """,
             (
@@ -266,7 +276,8 @@ def list_current_for_store(
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
                 flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
-                CAST(synced_at AS datetime2) AS synced_at, source
+                CAST(synced_at AS datetime2) AS synced_at,
+                CAST(last_checked_at AS datetime2) AS last_checked_at, source
             FROM dbo.karta_employment_contract
             WHERE employer_afm = ? AND branch_aa = ? AND is_current = 1
             ORDER BY eponymo, onoma, employee_afm
@@ -293,7 +304,8 @@ def list_history_for_store(
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
                 flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
-                CAST(synced_at AS datetime2) AS synced_at, source
+                CAST(synced_at AS datetime2) AS synced_at,
+                CAST(last_checked_at AS datetime2) AS last_checked_at, source
             FROM dbo.karta_employment_contract
             WHERE employer_afm=? AND branch_aa=?
             ORDER BY employee_afm, synced_at, id
@@ -325,7 +337,8 @@ def list_history_for_employee(
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
                 flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
-                CAST(synced_at AS datetime2) AS synced_at, source
+                CAST(synced_at AS datetime2) AS synced_at,
+                CAST(last_checked_at AS datetime2) AS last_checked_at, source
             FROM dbo.karta_employment_contract
             WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
             ORDER BY synced_at DESC, id DESC
