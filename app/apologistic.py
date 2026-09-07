@@ -20,6 +20,7 @@ from app.apologistic_rules import (
     normal_schedule_decision,
     split_schedule_decision,
 )
+from app.overtime_basis import overtime_basis
 
 
 REST_MARKERS = ("ΑΝΑΠΑΥΣ", "ΡΕΠΟ")
@@ -408,6 +409,29 @@ def _proposed_clock_end(proposed: str, *, after: int | None) -> int | None:
     return _minute_of_day(end_text.strip(), after=after if after is not None else start_minutes)
 
 
+def _apply_inferred_split_boundaries(
+    matched: list[dict[str, Any]], proposed: str,
+) -> bool:
+    """Move only inferred split boundaries to the final proposed parts."""
+    parts = str(proposed or "").split(" · ")
+    if len(parts) != len(matched):
+        return False
+    parsed: list[tuple[str, str]] = []
+    for part in parts:
+        if "–" not in part:
+            return False
+        start, end = (value.strip() for value in part.split("–", 1))
+        if not _clock(start) or not _clock(end):
+            return False
+        parsed.append((start, end))
+    for item, (start, end) in zip(matched, parsed):
+        if item.get("inferred_from"):
+            item["from"] = start
+        if item.get("inferred_to"):
+            item["to"] = end
+    return True
+
+
 def _build_status_explanation(
     *,
     status: str,
@@ -561,6 +585,32 @@ def _working_slots(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def _single_punch_inside_declared_part(
+    punches: list[dict[str, Any]], slots: list[dict[str, Any]],
+) -> bool:
+    """Whether the sole recorded boundary falls inside a declared work part."""
+    if len(punches) != 1:
+        return False
+    punch = punches[0]
+    boundary = (
+        punch.get("hour_from") if _clock(punch.get("hour_from"))
+        else punch.get("hour_to") if _clock(punch.get("hour_to"))
+        else None
+    )
+    minute = _minute_of_day(boundary)
+    if minute is None:
+        return False
+    for slot in _working_slots(slots):
+        start = _minute_of_day(slot.get("hour_from"))
+        end = _minute_of_day(slot.get("hour_to"), after=start) if start is not None else None
+        if start is None or end is None:
+            continue
+        candidate = minute + 1440 if end >= 1440 and minute < start else minute
+        if start <= candidate <= end:
+            return True
+    return False
+
+
 def _distance(punch: dict[str, Any], slot: dict[str, Any]) -> int:
     ds = _minute_of_day(slot.get("hour_from")) or 0
     de = _minute_of_day(slot.get("hour_to"), after=ds) or ds
@@ -632,8 +682,17 @@ def _match_punches(
 
     available = list(punches)
     matched: list[dict[str, Any]] = []
+    single_punch_slot = None
+    if len(punches) == 1:
+        single_punch_slot = min(declared, key=lambda slot: _distance(punches[0], slot))
     for slot in declared:
-        pick = min(available, key=lambda p: _distance(p, slot)) if available else None
+        pick = (
+            available[0]
+            if available and single_punch_slot is slot
+            else min(available, key=lambda p: _distance(p, slot))
+            if available and single_punch_slot is None
+            else None
+        )
         if pick is not None:
             available.remove(pick)
         actual_from = pick.get("hour_from") if pick and _clock(pick.get("hour_from")) else slot.get("hour_from")
@@ -732,14 +791,8 @@ def _effective_weekly_days(
 def _daily_overtime_basis(
     declared_minutes: int, contract_weekly_days: int | None,
 ) -> tuple[int | None, str]:
-    """Resolve only the day's overtime bands; never the contractual weekly system."""
-    if declared_minutes == 480:
-        return 5, "Δηλωμένο ωράριο ημέρας ακριβώς 8:00"
-    if declared_minutes == 400:
-        return 6, "Δηλωμένο ωράριο ημέρας ακριβώς 6:40"
-    if contract_weekly_days in (5, 6):
-        return contract_weekly_days, "Σύμβαση εργαζομένου"
-    return None, "Μη προσδιορισμένη ημερήσια βάση"
+    """Resolve the daily bands through the centrally selected strategy."""
+    return overtime_basis(declared_minutes, contract_weekly_days)
 
 
 def _break_context(
@@ -967,8 +1020,11 @@ def build_weekly_report(
         overtime_ps, overtime_pe = _overtime_interval_before_general_validation(
             day_punches, slots, matched
         )
+        split_actual = len(work_slots) > 1 or bool(possible_split_parts)
         overtime_actual_minutes = (
-            overtime_pe - overtime_ps
+            actual_minutes or 0
+            if split_actual
+            else overtime_pe - overtime_ps
             if overtime_ps is not None and overtime_pe is not None and overtime_pe > overtime_ps
             else 0
         )
@@ -1044,7 +1100,16 @@ def build_weekly_report(
                 "POSSIBLE_SPLIT_REVIEW",
             )
         elif len(work_slots) > 1:
-            if len(matched) >= 2 and not inferred and not orphan_punches:
+            if _single_punch_inside_declared_part(day_punches, work_slots):
+                decision = RuleDecision(
+                    "ok",
+                    "Το μονό χτύπημα βρίσκεται μέσα σε δηλωμένο τμήμα του σπαστού· διατηρείται το δηλωμένο ωράριο",
+                    declared_label,
+                    "Έγκυρο δηλωμένο σπαστό και μονό χτύπημα εντός τμήματος",
+                    "SPLIT_SINGLE_PUNCH_WITHIN_DECLARED",
+                )
+            elif (len(matched) >= 2 and not orphan_punches
+                    and (not inferred or len(day_punches) == 1)):
                 first_start = _minute_of_day(matched[0].get("from"))
                 first_end = _minute_of_day(matched[0].get("to"), after=first_start)
                 second_start = _minute_of_day(matched[1].get("from"), after=first_end)
@@ -1113,6 +1178,32 @@ def build_weekly_report(
         status, reason, proposed, proposal_basis, rule_id = (
             decision.status, decision.reason, decision.proposed, decision.proposal_basis, decision.rule_id
         )
+        if (
+            len(work_slots) > 1
+            and len(day_punches) == 1
+            and status == "change"
+            and _apply_inferred_split_boundaries(matched, proposed)
+        ):
+            actual_label = _format_matched_label(matched)
+            actual_minutes = sum(
+                _minutes(item.get("from"), item.get("to")) or 0 for item in matched
+            )
+            effective_actual = max(0, actual_minutes - outside_break)
+            gross_difference = actual_minutes - declared_minutes
+            net_difference = effective_actual - declared_minutes
+            first, last = matched[0], matched[-1]
+            ps = _minute_of_day(first.get("from"))
+            pe = _minute_of_day(last.get("to"), after=ps) if ps is not None else None
+            overtime_ps, overtime_pe = _overtime_interval_before_general_validation(
+                day_punches, slots, matched
+            )
+            overtime_actual_minutes = actual_minutes
+            overtime_effective_actual = effective_actual
+            start_difference = ps - ds if ps is not None and ds is not None else None
+            end_difference = pe - de if pe is not None and de is not None else None
+            bands = _classify_extra(
+                contract_kind, classification_days, overtime_effective_actual, declared_minutes
+            )
         capped_inferred_exit: tuple[str, str] | None = None
         if (
             missing_end
@@ -1140,7 +1231,9 @@ def build_weekly_report(
                     day_punches, slots, matched
                 )
                 overtime_actual_minutes = (
-                    overtime_pe - overtime_ps
+                    actual_minutes or 0
+                    if split_actual
+                    else overtime_pe - overtime_ps
                     if overtime_ps is not None and overtime_pe is not None and overtime_pe > overtime_ps
                     else 0
                 )

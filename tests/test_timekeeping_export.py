@@ -24,6 +24,8 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
             "sunday_holiday": 0, "night_sunday_holiday": 0,
             "partial_additional_12": 0, "sixth_day_minutes": 0,
             "overtime_40": 30, "overtime_60": 0, "overtime_120": 0,
+            "exception_sixth_day_holiday_minutes": 60,
+            "exception_sixth_day_holiday_night_minutes": 30,
             "annual_legal_overtime_minutes_after_period": 300,
             "overtime_40_breakdown": {"day": 30, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         }],
@@ -35,6 +37,8 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
             "premium_minutes": {"day": 420, "night": 60, "sunday_holiday": 0, "night_sunday_holiday": 0},
             "partial_additional_12": 0, "sixth_day_minutes": 0,
             "overtime_40": 30, "overtime_60": 0, "overtime_120": 0,
+            "exception_sixth_day_holiday_minutes": 60,
+            "exception_sixth_day_holiday_night_minutes": 30,
             "overtime_40_breakdown": {"day": 30, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
             "warnings": [],
         }],
@@ -45,8 +49,11 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
     assert workbook["Σύνοψη"]["B4"].value == "012345678"
     assert workbook["Σύνοψη"]["C4"].value == 8
     assert workbook["Σύνοψη"]["C4"].number_format == "0.##"
-    assert workbook["Σύνοψη"]["P3"].value == "Υπερωρία 40% – Ημέρας (ώρες)"
-    assert workbook["Σύνοψη"]["P4"].value == 0.5
+    assert workbook["Σύνοψη"]["T3"].value == "Υπερωρία 40% – Ημέρας (ώρες)"
+    assert workbook["Σύνοψη"]["T4"].value == 0.5
+    assert workbook["Σύνοψη"]["AR3"].value == "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία (ώρες)"
+    assert workbook["Σύνοψη"]["AR4"].value == 1
+    assert workbook["Σύνοψη"]["AS4"].value == 0.5
     assert workbook["Ανά ημέρα"]["F4"].value == "14:00–22:00"
 
 
@@ -69,6 +76,8 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
         "overtime_120_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         "sixth_day_minutes": 0, "day_state": "Εργασία", "basis_source": "effective_proposed",
         "sixth_day_breakdown": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
+        "exception_sixth_day_holiday_minutes": 60,
+        "exception_sixth_day_holiday_night_minutes": 30,
         "warnings": [],
     }]}
     content = build_timekeeping_detailed_export_xlsx(
@@ -87,3 +96,6 @@ def test_detailed_export_projects_common_daily_report_without_recalculation():
     assert sheet["X5"].value == 2
     assert sheet["X5"].number_format == "0.##"
     assert sheet["AB5"].value == "13:00–15:00"
+    assert sheet["BH4"].value == "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία (ώρες)"
+    assert sheet["BH5"].value == 1
+    assert sheet["BI5"].value == 0.5

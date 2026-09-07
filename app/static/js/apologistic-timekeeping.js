@@ -133,6 +133,7 @@ function renderRows(rows) {
   const families = [
     ["overwork_breakdown", "Υπερεργασία 20%"],
     ["partial_additional_12_breakdown", "Μερική 12%"],
+    ["uneven_extension_breakdown", "Επέκταση ανισομερούς"],
     ["overtime_40_breakdown", "Υπερωρία 40%"],
     ["overtime_60_breakdown", "Υπερωρία 60%"],
     ["overtime_120_breakdown", "Κατ’ εξαίρεση"],
@@ -143,6 +144,9 @@ function renderRows(rows) {
   const familyHeaders = families.map(([, label]) =>
     `<th colspan="4">${esc(label)}</th>`
   ).join("");
+  const exceptionHolidayHeaders =
+    `<th rowspan="2">Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία</th>` +
+    `<th rowspan="2">Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία νύχτα</th>`;
   const zoneHeaders = zones.map(([, label]) => `<th>${esc(label)}</th>`).join("");
   const detailHeaders = `<th>Βάση (ώρες)</th>${zoneHeaders}${families.map(() => zoneHeaders).join("")}`;
   const breakdownCells = (row, field) => zones.map(([key]) =>
@@ -150,13 +154,15 @@ function renderRows(rows) {
   ).join("");
   document.getElementById("timekeepingWrap").innerHTML =
     `<table class="data apologistic-timekeeping-table"><thead>` +
-    `<tr><th rowspan="2">Εργαζόμενος</th><th colspan="5">Αναγνωρισμένη βάση</th>${familyHeaders}</tr>` +
+    `<tr><th rowspan="2">Εργαζόμενος</th><th colspan="5">Αναγνωρισμένη βάση</th>${familyHeaders}${exceptionHolidayHeaders}</tr>` +
     `<tr>${detailHeaders}</tr></thead><tbody>${rows.map((row) => `<tr>` +
       `<td>${esc(`${row.eponymo || ""} ${row.onoma || ""}`.trim())}<br><small>${esc(row.employee_afm)}</small></td>` +
       `<td>${duration(row.recognized_work_minutes)}</td><td>${duration(row.day)}</td>` +
       `<td>${duration(row.night)}</td><td>${duration(row.sunday_holiday)}</td>` +
       `<td>${duration(row.night_sunday_holiday)}</td>` +
-      families.map(([field]) => breakdownCells(row, field)).join("") + `</tr>`
+      families.map(([field]) => breakdownCells(row, field)).join("") +
+      `<td>${duration(row.exception_sixth_day_holiday_minutes)}</td>` +
+      `<td>${duration(row.exception_sixth_day_holiday_night_minutes)}</td></tr>`
     ).join("")}</tbody></table>`;
 }
 

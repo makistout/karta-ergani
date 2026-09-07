@@ -34,14 +34,14 @@ def test_split_short_gap_is_rebuilt_with_three_hour_gap():
     assert row["proposed"] == "09:00–13:00 · 16:00–20:00"
 
 
-def test_accented_ergani_leave_description_is_classified_as_leave():
-    row = one(
+def test_accented_ergani_leave_without_punch_is_omitted():
+    report = build_weekly_report(
         [sched(shift="Κανονική άδεια Έτος Αναφοράς: 2026 Αρ. Δικαιούμενων ημερών: 21",
                start=None, end=None)],
         [],
-        contract(),
+        [contract()],
     )
-    assert row["day_state"] == "Άδεια"
+    assert report["days"] == []
 
 
 def test_split_overtime_starts_after_proposed_day_and_overwork_window():
@@ -131,17 +131,17 @@ def test_daily_span_limit_for_five_day_contract_goes_to_review():
     assert "η πρόταση υπολογίστηκε" in row["reason"]
 
 
-def test_rotating_exact_six_forty_uses_daily_six_day_basis_under_five_day_contract():
+def test_rotating_exact_six_forty_uses_five_day_contract_basis():
     row = one(
         [sched(start="09:00", end="15:40")],
         [punch("09:00", "18:00")],
         contract(kind="ΕΚ ΠΕΡΙΤΡΟΠΗΣ ΑΠΑΣΧΟΛΗΣΗ", days="5"),
     )
     assert row["weekly_days"] == 5
-    assert row["daily_overtime_basis_days"] == 6
+    assert row["daily_overtime_basis_days"] == 5
     assert row["overwork_minutes"] == 0
-    assert row["overtime_minutes"] == 140
-    assert row["overtime_from"] == "15:40"
+    assert row["overtime_minutes"] == 60
+    assert row["overtime_from"] == "17:00"
 
 
 def test_clock_wrap_within_daily_limit_is_treated_as_real_overnight():
