@@ -220,18 +220,19 @@
   Δύο χτυπήματα την ίδια ώρα εκ των οποίων ένα δικό μας → το άλλο παίρνει το εναπομείναν
   πρωτόκολλο. Αν μείνουν πολλαπλά άγνωστα, μένουν κενά.
 - Νυχτερινό sync πρωτοκόλλων (`scheduled_nightly_protocol_sync`, ~03:00): κατέβασμα χθες +
-  1-1 απαγωγή (+ προαιρετικό PDF match), μετά το 30ήμερο sync πραγματικής. Βλ.
-  `docs/ERGANI_PORTAL_SYNC.md`.
+  1-1 απαγωγή κάρτας (+ PDF match κάρτας) και PDF ΟΧΕ (χωρίς απαγωγή), μετά το 30ήμερο
+  sync πραγματικής. Βλ. `docs/ERGANI_PORTAL_SYNC.md`.
 
 ## Πρωτόκολλα (`/ui/protocols`)
 
-- Κατάλογος γραμμών από `karta_ergani_protocol` όπως το portal WorkCardSearch
-  (αρ. πρωτοκόλλου, ημ/νία υποβολής, τύπος, κατάσταση, εκπρόθεσμο, παράρτημα).
+- Κατάλογος γραμμών από `karta_ergani_protocol` (κάρτα WorkCardSearch + δηλώσεις ΟΧΕ).
 - Date range picker όπως `/ui/work-log` · API `GET /api/protocols/list`.
-- Admin: `POST /api/protocols/sync` κατεβάζει από Ergani και τρέχει 1-1 απαγωγή.
+- Φίλτρο **Είδος δήλωσης** (`declaration_type`) με πλήθος ανά τύπο.
+- Admin: `POST /api/protocols/sync` κατεβάζει πρωτόκολλα **κάρτας** από Ergani και τρέχει
+  1-1 απαγωγή (όχι ΟΧΕ).
 - Στήλη **PDF**: κόκκινο εικονίδιο όταν υπάρχει τοπικό αρχείο· modal με iframe και
-  `GET /api/protocols/<id>/pdf`. Τα PDF γεμίζουν από το portal match
-  (`app/portal_protocol_pdf_match.py`, βλ. `docs/ERGANI_PORTAL_SYNC.md`).
+  `GET /api/protocols/<id>/pdf`. Τα PDF γεμίζουν από portal match κάρτας και ΟΧΕ
+  (`app/portal_protocol_pdf_match.py`, `app/portal_wto_organization_pdf_sync.py`).
 - Η client-side σελιδοποίηση χρησιμοποιεί το κοινό `Office.paginateSlice()` και
   διαβάζει τις ορατές εγγραφές από `items`. Μη αναμενόμενη ή κενή συλλογή API
   κανονικοποιείται σε κενό array, ώστε η οθόνη να μην αποτυγχάνει με JavaScript

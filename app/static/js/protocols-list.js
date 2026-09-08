@@ -1,5 +1,12 @@
 let datePicker = null;
-let tableState = { rows: [], page: 1, count: 0, store: null, range: null };
+let tableState = {
+  rows: [],
+  page: 1,
+  count: 0,
+  store: null,
+  range: null,
+  typeFilter: "",
+};
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("protocols");
@@ -11,6 +18,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   const btnSync = document.getElementById("btnSyncProtocols");
   if (btnSync) btnSync.onclick = () => runSync();
+  const typeFilter = document.getElementById("protocolsTypeFilter");
+  if (typeFilter) {
+    typeFilter.addEventListener("change", () => {
+      tableState.typeFilter = String(typeFilter.value || "");
+      tableState.page = 1;
+      renderTablePage();
+    });
+  }
   bindProtocolPdfModal();
 
   try {
@@ -68,34 +83,105 @@ async function loadProtocols(cachedActive) {
     const meta = document.getElementById("protocolsSyncMeta");
     if (meta && data.store) {
       meta.textContent =
-        `Κατάλογος πρωτοκόλλων Ergani (WorkCardSearch) · ${data.store.name || ""}`;
+        `Κατάλογος πρωτοκόλλων Ergani (κάρτα & οργάνωση χρόνου) · ${data.store.name || ""}`;
     }
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
+function declarationTypeKey(row) {
+  return String(row?.declaration_type || "").trim();
+}
+
+function uniqueDeclarationTypes(rows) {
+  const seen = new Set();
+  const out = [];
+  (rows || []).forEach((row) => {
+    const key = declarationTypeKey(row);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  });
+  out.sort((a, b) => a.localeCompare(b, "el"));
+  return out;
+}
+
+function rebuildTypeFilterOptions(rows) {
+  const select = document.getElementById("protocolsTypeFilter");
+  if (!select) return;
+  const prev = tableState.typeFilter || "";
+  const types = uniqueDeclarationTypes(rows);
+  select.innerHTML = "";
+  const allOpt = document.createElement("option");
+  allOpt.value = "";
+  allOpt.textContent = types.length ? `Όλα (${rows.length})` : "Όλα";
+  select.appendChild(allOpt);
+  types.forEach((type) => {
+    const count = rows.filter((r) => declarationTypeKey(r) === type).length;
+    const opt = document.createElement("option");
+    opt.value = type;
+    opt.title = type;
+    const short =
+      type.length > 56 ? `${type.slice(0, 53)}…` : type;
+    opt.textContent = `${short} (${count})`;
+    select.appendChild(opt);
+  });
+  select.disabled = !rows.length;
+  if (prev && types.includes(prev)) {
+    select.value = prev;
+    tableState.typeFilter = prev;
+  } else {
+    select.value = "";
+    tableState.typeFilter = "";
+  }
+}
+
+function filteredProtocolRows() {
+  const filter = String(tableState.typeFilter || "").trim();
+  const rows = Array.isArray(tableState.rows) ? tableState.rows : [];
+  if (!filter) return rows;
+  return rows.filter((row) => declarationTypeKey(row) === filter);
+}
+
 function renderTable(rows, count, store, range) {
   const safeRows = Array.isArray(rows) ? rows : [];
-  tableState = { rows: safeRows, page: 1, count: Number(count) || safeRows.length, store, range };
+  tableState = {
+    ...tableState,
+    rows: safeRows,
+    page: 1,
+    count: Number(count) || safeRows.length,
+    store,
+    range,
+  };
+  rebuildTypeFilterOptions(safeRows);
   renderTablePage();
 }
 
 function renderTablePage() {
   const wrap = document.getElementById("protocolsWrap");
   if (!wrap) return;
-  const { rows, store, range } = tableState;
+  const { store } = tableState;
+  const allRows = Array.isArray(tableState.rows) ? tableState.rows : [];
+  const rows = filteredProtocolRows();
   const pg = Office.paginateSlice(rows, tableState.page, 50);
   tableState.page = pg.page;
 
+  const filterNote = tableState.typeFilter
+    ? ` · φίλτρο: ${rows.length}/${allRows.length}`
+    : "";
   const storeLine = store
-    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${rows.length} πρωτόκολλα</p>`
+    ? `<p class="table-meta">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${rows.length} πρωτόκολλα${Office.escapeHtml(filterNote)}</p>`
     : "";
 
   if (!rows.length) {
     wrap.innerHTML =
       storeLine +
-      `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν πρωτόκολλα για το διάστημα.</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("info-circle")}<span style="margin-left:0.35rem;">` +
+      (allRows.length
+        ? "Δεν υπάρχουν πρωτόκολλα για το επιλεγμένο είδος δήλωσης."
+        : "Δεν βρέθηκαν πρωτόκολλα για το διάστημα.") +
+      `</span></p>`;
     return;
   }
 

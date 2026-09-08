@@ -146,6 +146,7 @@ def _norm_hm(value: Any) -> str:
 
 def _norm_protocol(value: str) -> str:
     s = (value or "").strip().upper().replace("KE", "ΚΕ")
+    s = s.replace("OP", "ΟΡ").replace("ΟΠ", "ΟΡ")
     return s[:128]
 
 

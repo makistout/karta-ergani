@@ -424,6 +424,25 @@ def run_nightly_protocol_sync_for_store(
                 match_updated=pdf_match.get("match_updated_total"),
                 wall_seconds=pdf_match.get("wall_seconds"),
             )
+
+        from app.portal_wto_organization_pdf_sync import (
+            sync_wto_organization_pdfs_from_portal,
+        )
+
+        wto_pdf = sync_wto_organization_pdfs_from_portal(
+            ctx,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            run_id=run_id,
+        )
+        log.info(
+            wto_pdf.get("detail") or "ΟΧΕ PDF",
+            pdf_ok=wto_pdf.get("pdf_ok"),
+            items=wto_pdf.get("items"),
+            upserted=wto_pdf.get("upserted"),
+            wall_seconds=wto_pdf.get("wall_seconds"),
+        )
+
         protocol_match = apply_protocol_sync(
             sid,
             str(ctx.get("employer_afm") or ""),
@@ -445,9 +464,11 @@ def run_nightly_protocol_sync_for_store(
         if isinstance(pdf_match, dict):
             pdf_upd = int(pdf_match.get("match_updated_total") or 0)
             pdf_ok = int(pdf_match.get("pdf_ok_total") or 0)
+        wto_ok = int(wto_pdf.get("pdf_ok") or 0)
         detail = (
             f"πρωτόκολλα {card_protocol.get('count', 0)}, "
-            f"PDF {pdf_ok} (work_log {pdf_upd}), "
+            f"PDF κάρτας {pdf_ok} (work_log {pdf_upd}), "
+            f"ΟΧΕ PDF {wto_ok}/{wto_pdf.get('items', 0)}, "
             f"1-1 πραγματική {wl_upd}, δηλώσεις {protocol_match.get('declaration_updated', 0)}"
         )
         repo_sync_log.finish_run(
@@ -459,6 +480,7 @@ def run_nightly_protocol_sync_for_store(
                 "target_date": from_iso,
                 "card_protocol": card_protocol,
                 "pdf_match": pdf_match,
+                "wto_org_pdf": wto_pdf,
                 "protocol_match": protocol_match,
             },
         )
@@ -468,6 +490,7 @@ def run_nightly_protocol_sync_for_store(
             "detail": detail,
             "card_protocol": card_protocol,
             "pdf_match": pdf_match,
+            "wto_org_pdf": wto_pdf,
             "protocol_match": protocol_match,
         }
     except Exception as ex:

@@ -69,7 +69,14 @@ def _enrich_protocols_with_pdf(
 ) -> list[dict]:
     pdf_set = index_protocol_pdfs_for_range(employer_afm, branch_aa, from_iso, to_iso)
     for row in rows:
-        proto = str(row.get("protocol") or "").strip().upper().replace("KE", "ΚΕ")
+        proto = (
+            str(row.get("protocol") or "")
+            .strip()
+            .upper()
+            .replace("KE", "ΚΕ")
+            .replace("OP", "ΟΡ")
+            .replace("ΟΠ", "ΟΡ")
+        )
         has = proto in pdf_set
         row["has_pdf"] = has
         row["pdf_url"] = (

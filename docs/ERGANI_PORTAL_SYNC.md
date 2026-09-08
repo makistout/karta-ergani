@@ -14,6 +14,8 @@
 - `app/portal_card_protocol_sync.py`: πρωτόκολλα χτυπημάτων κάρτας (WorkCardSearch Excel).
 - `app/portal_protocol_pdf_match.py`: PrintPDF ανά ημέρα → τοπικά αρχεία + parse ώρας
   για κενά `protocol_from`/`protocol_to` στο `karta_work_log`.
+- `app/portal_wto_organization_pdf_sync.py`: PrintPDF Ψηφιακής Οργάνωσης (ΟΧΕ Αναζήτηση)
+  → ίδια `protocol_pdfs/` + upsert `karta_ergani_protocol`.
 - `app/repo_ergani_protocol.py`: persist / upsert στο `karta_ergani_protocol`.
 - `app/protocol_deduction_match.py`: 1-1 απαγωγή πρωτοκόλλων → `karta_work_log.protocol_from/to`
   (+ κενά `karta_declaration.protocol` όταν υπάρχει δική μας δήλωση).
@@ -58,17 +60,21 @@
   - αρχικός store sync (βήμα 6, 31 ημέρες),
   - περιοδικός `period_sync`,
   - νυχτερινός `scheduled_nightly_protocol_sync` (~03:00, χθες, μετά 30ήμερο πραγματικής)
-    με `pdf_match=True` όπου υποστηρίζεται.
+    με `pdf_match=True` όπου υποστηρίζεται, και PDF ΟΧΕ
+    (`sync_wto_organization_pdfs_from_portal`) χωρίς 1-1 απαγωγή.
 - **PDF match:** `app/portal_protocol_pdf_match.py` · κατάλογος
   `Config.PROTOCOL_PDF_DIR` (`data/protocol_pdfs/...`) · dependency `pypdf`
   (lazy import στο parse). Γεμίζει μόνο κενά `protocol_from`/`protocol_to`.
+- **PDF ΟΧΕ:** `app/portal_wto_organization_pdf_sync.py` · ίδια `protocol_pdfs/` +
+  upsert `karta_ergani_protocol` · χωρίς χωριστό UI sync και χωρίς απαγωγή σε
+  `work_log`.
 - **Backfill:** `scripts/backfill_ergani_protocols.py`, `scripts/backfill_protocol_deduction_matches.py`.
 - **Migrations:** `sql/alter_add_karta_ergani_protocol.sql`, `sql/alter_add_work_log_protocol.sql`,
   runners `ensure_karta_ergani_protocol_table.py`, `ensure_work_log_protocol_columns.py`.
 - **Ρύθμιση:** `KARTA_SCHEDULED_PROTOCOL_SYNC_ENABLED`, `KARTA_SCHEDULED_PROTOCOL_SYNC_TIME`,
   `KARTA_PROTOCOL_PDF_DIR`.
-- **UI:** `/ui/protocols` (λίστα καταλόγου + admin sync + προβολή PDF) ·
-  API `/api/protocols/list|sync` και `GET /api/protocols/<id>/pdf`.
+- **UI:** `/ui/protocols` (λίστα καταλόγου + φίλτρο είδους δήλωσης + admin sync κάρτας +
+  προβολή PDF) · API `/api/protocols/list|sync` και `GET /api/protocols/<id>/pdf`.
 
 ## Pattern
 

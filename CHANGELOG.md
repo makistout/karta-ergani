@@ -8,6 +8,25 @@
 
 ---
 
+## 2026-09-08 — `/ui/protocols`: φίλτρο είδους δήλωσης
+
+- Dropdown **Είδος δήλωσης** δίπλα στο date range· επιλογές από τα
+  `declaration_type` του διαστήματος (με πλήθος) και client-side φιλτράρισμα πίνακα.
+
+---
+
+## 2026-09-08 — PDF Ψηφιακής Οργάνωσης (ΟΧΕ) στο ίδιο κατάλογο
+
+- Νέο `app/portal_wto_organization_pdf_sync.py`: Αναζήτηση ΟΧΕ → parse Επισκόπηση
+  `Select(n, 'id|ημ/νία')` → `WorkingTimeOrganizationPrintPDF.aspx?id=…`.
+- Αποθήκευση στα ίδια `data/protocol_pdfs/{afm}/{aa}/{ημέρα}/` και upsert στο
+  `karta_ergani_protocol` (`WTOWeek` / `WTODaily` / `WTOOv`).
+- Ενσωμάτωση στο νυχτερινό protocol sync μαζί με τα PDF κάρτας.
+- Χωρίς χωριστό UI sync και χωρίς 1-1 απαγωγή σε `work_log` (μόνο κατάλογος + PDF).
+- Backfill Αυγούστου 2026: 13 καταστήματα, 191 δηλώσεις.
+
+---
+
 ## 2026-09-08 — Κατέβασμα Excel ωραρίου: επιλογή εβδομάδας
 
 - Στο `/ui/schedule` το **Κατέβασμα Excel** έχει τρίτη επιλογή «Επιλογή εβδομάδας…»:
