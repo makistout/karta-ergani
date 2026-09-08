@@ -298,6 +298,35 @@ table.data.report-table td.work-log-action-cell {
   background: var(--bg-soft, #f1f5f9);
 }
 
+.schedule-week-pick-panel {
+  width: min(100%, 420px);
+}
+
+.schedule-week-pick-panel .dp-date-field {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.schedule-week-pick-panel .dp-date-control {
+  display: flex;
+  width: 100%;
+}
+
+.schedule-week-pick-panel .dp-date-control .dp-text {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.schedule-week-pick-hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+  min-height: 1.2em;
+}
+
 .schedule-day-form-date-section {
   margin-bottom: 0.75rem;
 }

@@ -377,7 +377,11 @@ def run_nightly_protocol_sync_for_store(
     target_date_iso: str,
     protocol_to_iso: str,
 ) -> dict[str, Any]:
-    """Κατέβασμα πρωτοκόλλων Ergani + 1-1 απαγωγή για προηγούμενη ημέρα εργασίας."""
+    """Κατέβασμα πρωτοκόλλων Ergani (Excel + PDF δηλώσεων) + 1-1 απαγωγή.
+
+    Η λήψη PDF / αντιστοίχιση ΩΡΑ ΠΡΟΣΕΛΕΥΣΗΣ·ΑΠΟΧΩΡΗΣΗΣ → protocol_from/to
+    γίνεται μέσα στο ``sync_card_protocols_from_portal`` (pdf_match=True).
+    """
     from app.protocol_deduction_match import apply_protocol_sync
 
     ctx = store_api_context(cfg)
@@ -409,8 +413,17 @@ def run_nightly_protocol_sync_for_store(
             to_iso=to_iso,
             max_days=max(1, (datetime.strptime(to_iso, "%Y-%m-%d").date() - datetime.strptime(from_iso, "%Y-%m-%d").date()).days + 1),
             run_id=run_id,
+            pdf_match=True,
         )
         _log_portal_phase(log, "Πρωτόκολλα Ergani", card_protocol)
+        pdf_match = card_protocol.get("pdf_match") if isinstance(card_protocol, dict) else None
+        if isinstance(pdf_match, dict):
+            log.info(
+                pdf_match.get("detail") or "PDF δηλώσεων / αντιστοίχιση",
+                pdf_ok=pdf_match.get("pdf_ok_total"),
+                match_updated=pdf_match.get("match_updated_total"),
+                wall_seconds=pdf_match.get("wall_seconds"),
+            )
         protocol_match = apply_protocol_sync(
             sid,
             str(ctx.get("employer_afm") or ""),
@@ -427,8 +440,14 @@ def run_nightly_protocol_sync_for_store(
                 matched=protocol_match.get("matched"),
             )
         ok = bool(card_protocol.get("success"))
+        pdf_upd = 0
+        pdf_ok = 0
+        if isinstance(pdf_match, dict):
+            pdf_upd = int(pdf_match.get("match_updated_total") or 0)
+            pdf_ok = int(pdf_match.get("pdf_ok_total") or 0)
         detail = (
             f"πρωτόκολλα {card_protocol.get('count', 0)}, "
+            f"PDF {pdf_ok} (work_log {pdf_upd}), "
             f"1-1 πραγματική {wl_upd}, δηλώσεις {protocol_match.get('declaration_updated', 0)}"
         )
         repo_sync_log.finish_run(
@@ -439,6 +458,7 @@ def run_nightly_protocol_sync_for_store(
                 "success": ok,
                 "target_date": from_iso,
                 "card_protocol": card_protocol,
+                "pdf_match": pdf_match,
                 "protocol_match": protocol_match,
             },
         )
@@ -447,6 +467,7 @@ def run_nightly_protocol_sync_for_store(
             "target_date": from_iso,
             "detail": detail,
             "card_protocol": card_protocol,
+            "pdf_match": pdf_match,
             "protocol_match": protocol_match,
         }
     except Exception as ex:

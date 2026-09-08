@@ -8,6 +8,40 @@
 
 ---
 
+## 2026-09-08 — Κατέβασμα Excel ωραρίου: επιλογή εβδομάδας
+
+- Στο `/ui/schedule` το **Κατέβασμα Excel** έχει τρίτη επιλογή «Επιλογή εβδομάδας…»:
+  ο χρήστης διαλέγει ημερομηνία έναρξης και κατεβαίνουν **7 συνεχόμενες ημέρες**
+  (όχι μόνο Δευτέρα–Κυριακή).
+- API: `?week=custom&from=YYYY-MM-DD` · `resolve_week_start` στο
+  `app/schedule_excel_template.py`.
+- Τα πεδία ημερομηνίας στο modal χρησιμοποιούν το ελληνικό date picker
+  (`ηη/μμ/εεεε`), όχι το native `type="date"` (που έδειχνε ΜΜ/ΗΗ ανά locale).
+- Διόρθωση στο `Office.attachGreekDateField`: το wrap κρατά τη θέση του input στο
+  DOM (`insertBefore`) αντί για `appendChild` στο τέλος του parent.
+
+---
+
+## 2026-09-08 — PDF πρωτοκόλλων κάρτας + αντιστοίχιση ώρας
+
+- Νέο `app/portal_protocol_pdf_match.py`: κατέβασμα PrintPDF από WorkCardSearch,
+  αποθήκευση σε `data/protocol_pdfs/{afm}/{aa}/{ημέρα}/`, parse ΑΦΜ+ώρας κάτω από
+  ΩΡΑ ΠΡΟΣΕΛΕΥΣΗΣ / ΑΠΟΧΩΡΗΣΗΣ → γέμισμα κενών `protocol_from` / `protocol_to`
+  στο `karta_work_log`.
+- Ενσωμάτωση στο `sync_card_protocols_from_portal(..., pdf_match=True)` και στο
+  νυχτερινό protocol sync · dependency `pypdf` · config `PROTOCOL_PDF_DIR`.
+- `/ui/protocols`: στήλη PDF + modal προβολής · `GET /api/protocols/<id>/pdf`.
+
+---
+
+## 2026-09-08 — Ανοιχτά χτυπήματα μήνα: χωρίς σήμερα
+
+- Η μέτρηση ελλιπών χτυπημάτων ανά εργαζόμενο για τον μήνα
+  (`count_incomplete_punches_by_employee_for_month`) σταματά έως χθες· η σημερινή
+  ημέρα δεν μετρά ως ανοιχτή.
+
+---
+
 ## 2026-09-07 — Ένδειξη οφειλόμενου ρεπό μόνο σε εργασία Κυριακής
 
 - Η ένδειξη «Οφείλεται ρεπό» εμφανίζεται μόνο όταν το κατάστημα έχει ενεργή τη

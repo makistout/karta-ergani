@@ -395,6 +395,105 @@ def test_who_finishes_at_time():
     assert "B" not in answer
 
 
+def test_who_works_at_time_means_schedule_start():
+    today_home = {
+        "stores": [{
+            "store_id": 9,
+            "name": "ERATO",
+            "employees": [
+                {"name": "UZZAL MOHAMMAD", "afm": "1", "status": "needs_checkin", "schedule_from": "12:00", "schedule_to": "20:00"},
+                {"name": "VLASENKO IGOR", "afm": "2", "status": "needs_checkin", "schedule_from": "12:00", "schedule_to": "20:00"},
+                {"name": "OTHER", "afm": "3", "status": "at_work", "schedule_from": "10:00", "schedule_to": "18:00", "card_in": "10:05"},
+            ],
+        }]
+    }
+    for text in (
+        "ποιος δουλεύει στις 12.00",
+        "ποιος ξεκινάει στις 12.00",
+        "ποιος έρχεται στις 12.00",
+    ):
+        parsed = rule_based_parse(
+            text=text,
+            store_id=9,
+            store_name="ERATO",
+            today_home=today_home,
+        )
+        assert parsed is not None, text
+        answer = parsed["clarification_question"]
+        assert "12:00" in answer, text
+        assert "UZZAL" in answer, text
+        assert "VLASENKO" in answer, text
+        assert "OTHER" not in answer, text
+        assert "δεν φαίνεται να εργάζεται κανείς" not in answer, text
+        assert set(parsed["employee_afms"]) == {"1", "2"}, text
+
+
+def test_open_them_uses_previous_schedule_list():
+    from app.telegram_assistant_service import _mentioned_afms
+
+    today_home = {
+        "stores": [{
+            "store_id": 9,
+            "name": "ERATO",
+            "employees": [
+                {"name": "UZZAL MOHAMMAD", "afm": "1", "status": "needs_checkin", "schedule_from": "12:00"},
+                {"name": "VLASENKO IGOR", "afm": "2", "status": "needs_checkin", "schedule_from": "12:00"},
+                {"name": "ΝΤΟΥΛΑΣ ΓΕΩΡΓΙΟΣ", "afm": "9", "status": "needs_checkin", "schedule_from": "09:00"},
+            ],
+        }]
+    }
+    employees = [
+        {"store_id": 9, "afm": "1", "name": "UZZAL MOHAMMAD"},
+        {"store_id": 9, "afm": "2", "name": "VLASENKO IGOR"},
+        {"store_id": 9, "afm": "9", "name": "ΝΤΟΥΛΑΣ ΓΕΩΡΓΙΟΣ"},
+    ]
+    info = rule_based_parse(
+        text="ποιος δουλεύει στις 12.00",
+        store_id=9,
+        store_name="ERATO",
+        today_home=today_home,
+    )
+    assert set(info["employee_afms"]) == {"1", "2"}
+
+    punch = build_card_punch_command(
+        text="άνοιξε τους 10 λεπτά πριν",
+        store_id=9,
+        today_home=today_home,
+        employees=employees,
+        resolve_afms=_mentioned_afms,
+        focus_afms=list(info["employee_afms"]),
+    )
+    assert punch is not None
+    assert punch["intent"] == "card_check_in_retro"
+    assert set(punch["employee_afms"]) == {"1", "2"}
+    assert "9" not in punch["employee_afms"]
+    assert punch["time"] is not None
+
+
+def test_who_still_working_without_clock_is_current_status():
+    today_home = {
+        "stores": [{
+            "store_id": 9,
+            "name": "ERATO",
+            "employees": [
+                {"name": "A", "afm": "1", "status": "at_work", "card_in": "10:00", "schedule_to": "18:00"},
+                {"name": "B", "afm": "2", "status": "completed", "card_in": "08:00", "card_out": "16:00"},
+            ],
+        }]
+    }
+    parsed = rule_based_parse(
+        text="ποιοι δουλεύουν ακόμα",
+        store_id=9,
+        store_name="ERATO",
+        today_home=today_home,
+    )
+    assert parsed is not None
+    answer = parsed["clarification_question"]
+    assert "A" in answer
+    assert "B" not in answer
+    assert "εργάζονται ακόμα" in answer or "δουλεύ" in answer or "είσοδος" in answer
+
+
 def test_minutes_ago_before_suffix():
     from app.assistant_rule_fallback import _extract_punch_time
 

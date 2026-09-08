@@ -335,6 +335,8 @@
     let fieldEl = input.closest(".dp-date-field");
     if (!fieldEl) {
       const parent = input.parentNode;
+      // Κράτα τη θέση του input στο DOM (όχι append στο τέλος του parent).
+      const insertBeforeNode = input.nextSibling;
       fieldEl = document.createElement("div");
       fieldEl.className = "dp-date-field";
       const control = document.createElement("div");
@@ -357,7 +359,7 @@
       control.appendChild(input);
       fieldEl.appendChild(control);
       fieldEl.appendChild(popup);
-      parent.appendChild(fieldEl);
+      parent.insertBefore(fieldEl, insertBeforeNode);
     }
 
     const initial =

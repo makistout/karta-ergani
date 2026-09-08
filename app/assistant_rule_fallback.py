@@ -43,6 +43,7 @@ _INFO_HINTS = (
     "καθυστερ",
     "αργοπορ",
     "delay",
+    "ερχ",
 )
 
 _PUNCH_IMPERATIVE = (
@@ -132,7 +133,7 @@ def is_fast_today_info(text: str) -> bool:
         return True
     if any(h in folded for h in ("εργαζ", "δουλευ", "ακομα")):
         return True
-    if any(h in folded for h in ("τελειων", "ξεκινα", "ληγ", "αρχιζ")):
+    if any(h in folded for h in ("τελειων", "ξεκινα", "ληγ", "αρχιζ", "ερχ")):
         return True
     return False
 
@@ -148,6 +149,15 @@ def _wants_all(text: str) -> bool:
         token in folded
         for token in ("ολεσ", "ολουσ", "οσουσ", "οσα", "ολα", "all")
     ) or "καρτεσ" in folded or "καρτες" in folded
+
+
+def _refers_to_listed_people(text: str) -> bool:
+    """«άνοιξε τους / αυτές / αυτούς» → η προηγούμενη λίστα (όχι «τις κάρτες»)."""
+    folded = _fold(text)
+    if "καρτ" in folded:
+        return False
+    tokens = set(re.findall(r"[a-zα-ω]+", folded))
+    return bool(tokens & {"τουσ", "τισ", "αυτουσ", "αυτεσ", "αυτα"})
 
 
 def _wants_schedule(text: str) -> bool:
@@ -388,11 +398,12 @@ def _home_employees(
 
 _PERSON_STOP = frozenset({
     "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "καρτες", "καρτεσ",
-    "την", "τον", "του", "της", "τους", "τις", "τωρα", "σημερα", "παρακαλω",
+    "την", "τον", "του", "της", "τουσ", "τισ", "τωρα", "σημερα", "παρακαλω",
     "για", "και", "στο", "στη", "στην", "απο", "με", "ρεπο", "αδεια", "ωραριο",
     "open", "close", "card", "now", "today", "χτυπα", "χτυπησε", "punch",
     "εισοδο", "εισοδοσ", "εξοδο", "εξοδοσ", "ολουσ", "ολεσ", "ολα", "οσουσ",
     "οσοι", "στισ", "στις", "πριν", "λεπτα", "ωρες",
+    "αυτουσ", "αυτεσ", "αυτα",
 })
 
 
@@ -548,6 +559,7 @@ def build_card_punch_command(
         direction == "check_out"
         and any(t in _fold(text) for t in ("ανοιχτ", "ολεσ", "ολουσ", "οσουσ"))
     )
+    refers_listed = _refers_to_listed_people(text)
 
     if named_afms:
         # Ίδιο επώνυμο → πολλοί (Φωτόπουλος×2): διευκρίνιση. Διαφορετικά επώνυμα → όλα.
@@ -583,6 +595,10 @@ def build_card_punch_command(
                 confidence=0.8,
             )
         afms = named_afms
+    elif refers_listed:
+        if not focus:
+            return None
+        afms = focus
     elif person_tokens:
         # Ασαφές όνομα → LLM, όχι σκληρό «δεν εντόπισα».
         return None
@@ -680,32 +696,65 @@ def _employee_start_times(row: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(times))
 
 
+def _schedule_criteria_match(
+    text: str, employees: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str, str] | None:
+    """(matched rows, hhmm, 'start'|'end') ή None."""
+    folded = _fold(text)
+    hhmm = _clock_from_info_text(text)
+    if not hhmm:
+        return None
+    want_end = any(token in folded for token in ("τελειων", "ληγ", "finish", "ends"))
+    want_start = any(
+        token in folded
+        for token in (
+            "ξεκινα", "αρχιζ", "starts", "begin",
+            "δουλευ", "εργαζ", "ερχ", "come", "arriv", "work",
+        )
+    )
+    if not want_end and not want_start:
+        if any(token in folded for token in ("ποιος", "ποιοι", "ποια", "ποιες")):
+            want_end = True
+        else:
+            return None
+    if want_end and want_start and any(token in folded for token in ("τελειων", "ληγ", "finish", "ends")):
+        want_start = False
+    elif want_end and want_start:
+        want_end = False
+
+    kind = "end" if want_end else "start"
+    matched: list[dict[str, Any]] = []
+    for row in employees:
+        times = _employee_end_times(row) if want_end else _employee_start_times(row)
+        if hhmm in times:
+            matched.append(row)
+    return matched, hhmm, kind
+
+
+def _schedule_listed_afms(text: str, employees: list[dict[str, Any]]) -> list[str]:
+    hit = _schedule_criteria_match(text, employees)
+    if not hit:
+        return []
+    matched, _hhmm, _kind = hit
+    return [
+        str(row.get("afm") or "").strip()
+        for row in matched
+        if str(row.get("afm") or "").strip()
+    ]
+
+
 def _schedule_criteria_answer(
     *,
     text: str,
     store_name: str,
     employees: list[dict[str, Any]],
 ) -> str | None:
-    """«ποιος τελειώνει/ξεκινά στις 19.40» από schedule_* στο today_home."""
-    folded = _fold(text)
-    hhmm = _clock_from_info_text(text)
-    if not hhmm:
+    """«ποιος τελειώνει/ξεκινά/δουλεύει/έρχεται στις 19.40» από schedule_* στο today_home."""
+    hit = _schedule_criteria_match(text, employees)
+    if not hit:
         return None
-    want_end = any(token in folded for token in ("τελειων", "ληγ", "finish", "ends"))
-    want_start = any(token in folded for token in ("ξεκινα", "αρχιζ", "starts", "begin"))
-    if not want_end and not want_start:
-        # «στις 19:40» με ποιος/ποιες χωρίς ρήμα → τέλος βάρδιας.
-        if any(token in folded for token in ("ποιος", "ποιοι", "ποια", "ποιες")):
-            want_end = True
-        else:
-            return None
-
-    matched: list[dict[str, Any]] = []
-    for row in employees:
-        times = _employee_end_times(row) if want_end else _employee_start_times(row)
-        if hhmm in times:
-            matched.append(row)
-
+    matched, hhmm, kind = hit
+    want_end = kind == "end"
     name = store_name or "κατάστημα"
     verb = "τελειώνουν" if want_end else "ξεκινούν"
     if not matched:
@@ -738,7 +787,11 @@ def build_today_info_answer(
     folded = _fold(text)
     want_yesterday = _wants_yesterday(text)
     want_open = "ανοιχτ" in folded
-    want_working = any(h in folded for h in ("εργαζ", "δουλευ", "ακομα"))
+    # Χωρίς ώρα: «ποιοι δουλεύουν/εργάζονται ακόμα». Με ώρα → ωράριο (κάτω).
+    want_working = (
+        any(h in folded for h in ("εργαζ", "δουλευ", "ακομα"))
+        and _clock_from_info_text(text) is None
+    )
 
     if want_yesterday:
         yblock = today_home.get("yesterday") if isinstance(today_home.get("yesterday"), dict) else {}
@@ -867,7 +920,10 @@ def rule_based_parse(
     listed_afms: list[str] = []
     want_in, want_out = _delay_kinds(text)
     folded = _fold(text)
-    if want_in or want_out:
+    schedule_afms = _schedule_listed_afms(text, home_rows)
+    if schedule_afms or _schedule_criteria_match(text, home_rows) is not None:
+        listed_afms = schedule_afms
+    elif want_in or want_out:
         listed_afms = _delay_listed_afms(home_rows, want_in=want_in, want_out=want_out)
     elif "ανοιχτ" in folded:
         listed_afms = [
@@ -875,7 +931,7 @@ def rule_based_parse(
             for row in _open_card_rows(home_rows)
             if str(row.get("afm") or "").strip()
         ]
-    elif any(h in folded for h in ("εργαζ", "δουλευ", "ακομα")):
+    elif any(h in folded for h in ("εργαζ", "δουλευ", "ακομα")) and _clock_from_info_text(text) is None:
         listed_afms = [
             str(row.get("afm") or "").strip()
             for row in _working_rows(home_rows)

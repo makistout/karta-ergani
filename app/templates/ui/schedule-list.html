@@ -21,6 +21,9 @@
               <button type="button" class="schedule-download-option" data-schedule-template="next">
                 Επόμενη εβδομάδα
               </button>
+              <button type="button" class="schedule-download-option" data-schedule-template="custom" id="btnScheduleTemplateCustom">
+                Επιλογή εβδομάδας…
+              </button>
             </div>
           </details>
           <label class="btn btn-secondary schedule-import-btn" for="scheduleImportFile">
@@ -101,9 +104,28 @@
           </div>
         </div>
       </div>
+
+      <div id="scheduleWeekPickModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="scheduleWeekPickTitle">
+        <div class="office-modal-backdrop" data-schedule-week-close></div>
+        <div class="office-modal-panel schedule-week-pick-panel">
+          <h2 id="scheduleWeekPickTitle" class="office-modal-title">Επιλογή εβδομάδας Excel</h2>
+          <p class="office-modal-sub">Διάλεξε την πρώτη ημέρα· κατεβαίνει 7 συνεχόμενες ημέρες (π.χ. Πέμπτη έως Τετάρτη).</p>
+          <label class="field-label" for="scheduleWeekFromInput">Από</label>
+          <input type="text" id="scheduleWeekFromInput" class="field-input" inputmode="numeric" autocomplete="off" placeholder="ηη/μμ/εεεε" />
+          <label class="field-label" for="scheduleWeekToInput">Έως</label>
+          <input type="text" id="scheduleWeekToInput" class="field-input" inputmode="numeric" autocomplete="off" placeholder="ηη/μμ/εεεε" readonly />
+          <p id="scheduleWeekPickHint" class="schedule-week-pick-hint"></p>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary" data-schedule-week-close>Ακύρωση</button>
+            <button type="button" class="btn" id="btnScheduleWeekPickDownload">
+              <i class="bi bi-download" aria-hidden="true"></i><span>Κατέβασμα</span>
+            </button>
+          </div>
+        </div>
+      </div>
     
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/office-date-picker.js?v=20260806dayform3"></script>
-  <script src="/static/js/schedule-list.js?v=20260806dayform5"></script>
+  <script src="/static/js/office-date-picker.js?v=20260908weekcustom3"></script>
+  <script src="/static/js/schedule-list.js?v=20260908weekcustom3"></script>
 {% endblock %}

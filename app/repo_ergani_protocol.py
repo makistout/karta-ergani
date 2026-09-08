@@ -240,6 +240,34 @@ def list_protocols_for_store_range(
     return rows
 
 
+def get_protocol_by_id(protocol_id: int) -> dict[str, Any] | None:
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT
+                p.id,
+                p.store_id,
+                p.employer_afm,
+                p.branch_aa,
+                p.protocol,
+                CAST(p.submit_at AS datetime2) AS submit_at,
+                p.submit_date_text
+            FROM dbo.karta_ergani_protocol p
+            WHERE p.id = ?
+            """,
+            (int(protocol_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        data = dict(zip(cols, row))
+    val = data.get("submit_at")
+    if hasattr(val, "isoformat"):
+        data["submit_at"] = val.isoformat()
+    return data
+
+
 def earliest_store_activity_date(
     store_id: int,
     employer_afm: str,

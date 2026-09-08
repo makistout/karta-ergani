@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -34,26 +34,67 @@ from app.schedule_excel_layout import (
 )
 from app.work_card_payload import norm_afm
 
-DAYS = [
-    ("Δευτέρα", 0),
-    ("Τρίτη", 1),
-    ("Τετάρτη", 2),
-    ("Πέμπτη", 3),
-    ("Παρασκευή", 4),
-    ("Σάββατο", 5),
-    ("Κυριακή", 6),
-]
+DAYS_GR = (
+    "Δευτέρα",
+    "Τρίτη",
+    "Τετάρτη",
+    "Πέμπτη",
+    "Παρασκευή",
+    "Σάββατο",
+    "Κυριακή",
+)
 
 
-def resolve_week_monday(which: str, *, today: date | None = None) -> date:
+def resolve_week_start(
+    which: str,
+    *,
+    today: date | None = None,
+    week_from: str | date | None = None,
+) -> date:
+    """Επιστρέφει την πρώτη ημέρα της εβδομάδας (7 συνεχόμενες ημέρες).
+
+    ``current`` / ``next`` = Δευτέρα τρέχουσας / επόμενης.
+    ``custom`` (ή ISO ημερομηνία) = η δοθείσα ``week_from`` ως αρχή.
+    """
     ref = today or date.today()
     monday = ref - timedelta(days=ref.weekday())
     key = str(which or "").strip().lower()
+
+    if key in ("", "current"):
+        return monday
     if key == "next":
         return monday + timedelta(days=7)
-    if key == "current":
-        return monday
-    raise ValueError("Μη έγκυρη εβδομάδα — επιτρέπονται current ή next")
+
+    custom = week_from
+    if custom is None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", key):
+        custom = key
+    if key in ("custom", "range") or custom is not None:
+        if custom is None:
+            raise ValueError("Για προσαρμοσμένη εβδομάδα απαιτείται ημερομηνία έναρξης (from)")
+        if isinstance(custom, date):
+            return custom
+        text = str(custom).strip()[:10]
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").date()
+        except ValueError:
+            try:
+                return datetime.strptime(text, "%d/%m/%Y").date()
+            except ValueError as ex:
+                raise ValueError("Μη έγκυρη ημερομηνία έναρξης εβδομάδας") from ex
+
+    raise ValueError("Μη έγκυρη εβδομάδα — επιτρέπονται current, next ή custom με from")
+
+
+def resolve_week_monday(which: str, *, today: date | None = None) -> date:
+    """Συμβατότητα: τρέχουσα/επόμενη Δευτέρα."""
+    return resolve_week_start(which, today=today)
+
+
+def week_day_labels(week_start: date) -> list[tuple[str, int]]:
+    """[(όνομα ημέρας, offset 0..6), ...] για 7 ημέρες από week_start."""
+    return [
+        (DAYS_GR[(week_start + timedelta(days=i)).weekday()], i) for i in range(7)
+    ]
 
 
 def _safe_filename_part(value: str, *, fallback: str = "store") -> str:
@@ -139,7 +180,7 @@ def build_weekly_schedule_template_bytes(
     ws["A2"].fill = warn_fill
     ws.merge_cells(f"A2:{last_letter}2")
 
-    for day_idx, (day_name, offset) in enumerate(DAYS):
+    for day_idx, (day_name, offset) in enumerate(week_day_labels(week_monday)):
         d = week_monday + timedelta(days=offset)
         start_col = single_sheet_day_col(day_idx, 0)
         end_col = single_sheet_day_col(day_idx, DAY_FIELD_COUNT - 1)

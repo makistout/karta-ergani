@@ -358,12 +358,18 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
     month_rows = list_store_days(store_id=int(ctx["id"]), date_from=month_from, date_to=month_to)
     if not month_rows:
         raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον μήνα")
+    # Μόνο ολοκληρωμένες εβδομάδες (όπως στο /week)· η τρέχουσα/επόμενη
+    # δεν μπλοκάρει τον μήνα και δεν εμφανίζεται ως «προβληματική».
+    latest_closed_week_from, _ = previous_week()
     week_starts = sorted({
         datetime.strptime(str(row.get("week_from") or "")[:10], "%Y-%m-%d").date()
         for row in month_rows if str(row.get("week_from") or "").strip()
     })
+    week_starts = [week for week in week_starts if week <= latest_closed_week_from]
     if not week_starts:
-        raise LookupError("Δεν βρέθηκαν αποθηκευμένες εβδομάδες για αυτόν τον μήνα")
+        raise LookupError(
+            "Δεν υπάρχουν ακόμη ολοκληρωμένες εβδομάδες απολογιστικού για αυτόν τον μήνα"
+        )
 
     problem_weeks: list[dict[str, str]] = []
     initial_afms: set[str] = set()

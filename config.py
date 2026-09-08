@@ -179,6 +179,10 @@ class Config:
         os.environ.get("KARTA_PORTAL_EXCEL_DEBUG_DIR")
         or (_ROOT / "data" / "portal_excel_debug")
     )
+    PROTOCOL_PDF_DIR = Path(
+        os.environ.get("KARTA_PROTOCOL_PDF_DIR")
+        or (_ROOT / "data" / "protocol_pdfs")
+    )
 
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"

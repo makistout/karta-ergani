@@ -1483,7 +1483,7 @@ def build_weekly_report(
                 "πρόταση ρεπό με έγκριση"
             )
             row.update(status="review", reason=rest_reason, rule_id="SURPLUS_DECLARED_DAY_REST",
-                       proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", suggested_rest=True,
+                               proposed="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ", suggested_rest=True,
                        requires_confirmation=True, confidence="Χαμηλή",
                        status_explanation=["Αποτέλεσμα: Έλεγχος", rest_reason,
                                            "Δεν υπάρχει καμία εγγραφή χτυπήματος στην κάρτα.",

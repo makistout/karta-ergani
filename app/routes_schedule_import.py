@@ -16,7 +16,7 @@ from app.repo_schedule_import import (
     update_batch_status,
 )
 from app.schedule_excel_import import parse_weekly_schedule_workbook
-from app.schedule_excel_template import build_weekly_schedule_template_bytes, resolve_week_monday
+from app.schedule_excel_template import build_weekly_schedule_template_bytes
 from app.schedule_import_service import confirm_import_batch
 
 schedule_import_bp = Blueprint("schedule_import", __name__, url_prefix="/api/schedule/import")
@@ -36,8 +36,11 @@ def download_schedule_import_template():
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
 
     week = str(request.args.get("week") or "current").strip().lower()
+    week_from = request.args.get("from") or request.args.get("week_from")
     try:
-        week_monday = resolve_week_monday(week)
+        from app.schedule_excel_template import resolve_week_start
+
+        week_monday = resolve_week_start(week, week_from=week_from)
         content, filename, _meta = build_weekly_schedule_template_bytes(
             store_id=int(ctx["id"]),
             week_monday=week_monday,

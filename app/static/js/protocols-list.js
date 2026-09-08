@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   const btnSync = document.getElementById("btnSyncProtocols");
   if (btnSync) btnSync.onclick = () => runSync();
+  bindProtocolPdfModal();
 
   try {
     const activeData = await Office.fetchActiveStore();
@@ -105,6 +106,7 @@ function renderTablePage() {
     "Κατάσταση",
     "Εκπρόθεσμο",
     "Παράρτημα",
+    "PDF",
   ];
 
   const t = document.createElement("table");
@@ -114,6 +116,7 @@ function renderTablePage() {
   headers.forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
+    if (h === "PDF") th.style.textAlign = "center";
     hr.appendChild(th);
   });
   thead.appendChild(hr);
@@ -139,6 +142,23 @@ function renderTablePage() {
       }
       tr.appendChild(td);
     });
+
+    const pdfTd = document.createElement("td");
+    pdfTd.className = "protocol-pdf-cell";
+    if (row.has_pdf && row.pdf_url) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "protocol-pdf-btn";
+      btn.title = "Προβολή PDF";
+      btn.setAttribute("aria-label", `PDF ${row.protocol || ""}`);
+      btn.innerHTML = Office.icon("file-earmark-pdf");
+      btn.addEventListener("click", () => openProtocolPdfModal(row));
+      pdfTd.appendChild(btn);
+    } else {
+      pdfTd.textContent = "—";
+      pdfTd.style.color = "var(--muted)";
+    }
+    tr.appendChild(pdfTd);
     tbody.appendChild(tr);
   });
   t.appendChild(tbody);
@@ -160,7 +180,6 @@ function formatSubmitAt(row) {
   if (text) return text;
   const raw = String(row.submit_at || "").trim();
   if (!raw) return "—";
-  // 2026-08-14T08:22:00 or with Z
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
   if (m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
   return raw;
@@ -170,6 +189,42 @@ function formatOverdue(value) {
   if (value === true || value === 1 || value === "1") return "Ναι";
   if (value === false || value === 0 || value === "0") return "Όχι";
   return "—";
+}
+
+function bindProtocolPdfModal() {
+  const modal = document.getElementById("protocolPdfModal");
+  if (!modal || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-protocol-pdf-close]").forEach((el) => {
+    el.addEventListener("click", closeProtocolPdfModal);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !modal.classList.contains("hidden")) {
+      closeProtocolPdfModal();
+    }
+  });
+}
+
+function openProtocolPdfModal(row) {
+  const modal = document.getElementById("protocolPdfModal");
+  const frame = document.getElementById("protocolPdfFrame");
+  const sub = document.getElementById("protocolPdfSub");
+  const openTab = document.getElementById("protocolPdfOpenTab");
+  const url = row.pdf_url;
+  if (!modal || !frame || !url) return;
+  if (sub) {
+    sub.textContent = `${row.protocol || ""} · ${formatSubmitAt(row)}`;
+  }
+  frame.src = url;
+  if (openTab) openTab.href = url;
+  modal.classList.remove("hidden");
+}
+
+function closeProtocolPdfModal() {
+  const modal = document.getElementById("protocolPdfModal");
+  const frame = document.getElementById("protocolPdfFrame");
+  if (frame) frame.src = "about:blank";
+  modal?.classList.add("hidden");
 }
 
 async function runSync() {

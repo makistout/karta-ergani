@@ -176,6 +176,61 @@ def test_timekeeping_month_preview_returns_merged_period(monkeypatch):
     assert body["counts"]["days"] == 10
 
 
+def test_timekeeping_month_skips_current_incomplete_week(monkeypatch):
+    """Η τρέχουσα εβδομάδα (π.χ. 31/08–06/09) δεν μπλοκάρει ωρομέτρηση Αυγούστου."""
+    closed = [
+        {"week_from": "2026-08-24", "employee_afm": "1", "work_date": "2026-08-24", "status": "ok"},
+    ]
+    # Aug 31 also tagged under current week in store days.
+    month_days = closed + [
+        {"week_from": "2026-08-31", "employee_afm": "1", "work_date": "2026-08-31", "status": "review"},
+    ]
+
+    def fake_list_store_days(**kwargs):
+        return month_days
+
+    def fake_load_report(store_id, week_from):
+        if week_from == date(2026, 8, 31):
+            raise AssertionError("current week must not be loaded for month timekeeping")
+        return (
+            {"days": [row for row in closed]},
+            {"id": 1, "status": "draft"},
+        )
+
+    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 24), date(2026, 8, 30)))
+    monkeypatch.setattr(routes_apologistic, "list_store_days", fake_list_store_days)
+    monkeypatch.setattr(routes_apologistic, "load_report", fake_load_report)
+    monkeypatch.setattr(routes_apologistic, "load_annual_overtime_context", lambda **kwargs: {})
+    monkeypatch.setattr(routes_apologistic, "get_effective_holidays_for_store", lambda *_: set())
+    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
+    monkeypatch.setattr(
+        routes_apologistic,
+        "build_timekeeping_report",
+        lambda rows, **kwargs: {
+            "days": [{
+                "work_date": "24/08/2026",
+                "employee_afm": "1",
+                "employee_name": "A",
+                "duration_minutes": 480,
+                "night_minutes": 0,
+                "overtime_minutes": 0,
+                "legal_overtime_minutes": 0,
+                "exceptional_overtime_minutes": 0,
+                "annual_legal_overtime_minutes_after_period": 0,
+            }],
+            "employees": [{"employee_afm": "1", "annual_legal_overtime_minutes_after_period": 0}],
+        },
+    )
+    monkeypatch.setattr(routes_apologistic, "_next_week_rest_context", lambda *a, **k: {})
+
+    result, snapshots, _ = routes_apologistic._build_timekeeping_for_month(
+        _store(), year=2026, month=8,
+    )
+    assert snapshots and snapshots[0]["week_from"] == "2026-08-24"
+    assert all(s["week_from"] != "2026-08-31" for s in snapshots)
+    assert result["counts"]["days"] >= 1
+
+
 def test_timekeeping_export_returns_xlsx(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_: ({

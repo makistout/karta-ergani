@@ -117,8 +117,13 @@ def sync_card_protocols_from_portal(
     to_iso: str | None = None,
     max_days: int = 31,
     run_id: str | None = None,
+    pdf_match: bool = True,
 ) -> dict[str, Any]:
-    """Συγχρονισμός πρωτοκόλλων κάρτας για διάστημα ημερομηνιών υποβολής."""
+    """Συγχρονισμός πρωτοκόλλων κάρτας για διάστημα ημερομηνιών υποβολής.
+
+    Με ``pdf_match=True`` (προεπιλογή): μετά το Excel, κατεβάζει PDF δηλώσεων
+    ανά ημέρα και γεμίζει κενά protocol_from/to από ΩΡΑ ΠΡΟΣΕΛΕΥΣΗΣ/ΑΠΟΧΩΡΗΣΗΣ.
+    """
     log = logger_for_store("card_protocol_sync", ctx, run_id=run_id)
     store_id = int(ctx["id"])
     employer_afm = str(ctx.get("employer_afm") or "")
@@ -171,6 +176,28 @@ def sync_card_protocols_from_portal(
         log.error(f"Αποτυχία αποθήκευσης πρωτοκόλλων: {msg}")
         return {"success": False, "detail": msg, "count": 0}
 
+    pdf_result: dict[str, Any] | None = None
+    if pdf_match:
+        try:
+            from app.portal_protocol_pdf_match import sync_protocol_pdf_match_from_portal
+
+            pdf_result = sync_protocol_pdf_match_from_portal(
+                ctx,
+                from_iso=start.isoformat(),
+                to_iso=end.isoformat(),
+                session=session,
+                run_id=log.run_id,
+            )
+            log.info(
+                pdf_result.get("detail") or "PDF match ολοκληρώθηκε",
+                match_updated=pdf_result.get("match_updated_total"),
+                pdf_ok=pdf_result.get("pdf_ok_total"),
+                wall_seconds=pdf_result.get("wall_seconds"),
+            )
+        except Exception as ex:
+            log.warning(f"PDF match απέτυχε (τα Excel πρωτόκολλα αποθηκεύτηκαν): {ex}")
+            pdf_result = {"success": False, "detail": str(ex)}
+
     try:
         from app import repo_store
 
@@ -182,6 +209,8 @@ def sync_card_protocols_from_portal(
         f"{stats['total']} πρωτόκολλα ({stats['inserted']} νέα, {stats['updated']} ενημερώθηκαν) "
         f"για {date_from} – {date_to}"
     )
+    if pdf_result and pdf_result.get("match_updated_total") is not None:
+        detail += f", PDF→πραγματική {pdf_result.get('match_updated_total', 0)}"
     log.info(detail, **stats, date_from=date_from, date_to=date_to)
     return {
         "success": True,
@@ -195,6 +224,7 @@ def sync_card_protocols_from_portal(
         "portal_rows": len(raw_rows),
         "parsed_rows": len(parsed),
         "fetch_source": "excel",
+        "pdf_match": pdf_result,
     }
 
 

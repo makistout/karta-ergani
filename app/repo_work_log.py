@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pyodbc
@@ -826,12 +826,19 @@ def count_incomplete_punches_by_employee_for_month(
     year: int | None = None,
     month: int | None = None,
 ) -> dict[str, int]:
-    """Μετρά ελλιπή χτυπήματα (κενό Από ή Έως) ανά εργαζόμενο για τον τρέχοντα μήνα."""
+    """Μετρά ελλιπή χτυπήματα (κενό Από ή Έως) ανά εργαζόμενο για τον τρέχοντα μήνα.
+
+    Δεν μετρά τη σημερινή ημέρα — τα ανοιχτά χτυπήματα σήμερα θεωρούνται σε εξέλιξη.
+    """
     today = date.today()
     y = int(year or today.year)
     m = int(month or today.month)
     month_start = date(y, m, 1)
-    month_end = min(date(y, m, calendar.monthrange(y, m)[1]), today)
+    month_last = date(y, m, calendar.monthrange(y, m)[1])
+    # Έως χθες (όχι σήμερα).
+    month_end = min(month_last, today - timedelta(days=1))
+    if month_end < month_start:
+        return {}
     afm = norm_afm(employer_afm)
     aa = str(branch_aa or "0").strip()[:32] or "0"
     with cursor(commit=False) as cur:

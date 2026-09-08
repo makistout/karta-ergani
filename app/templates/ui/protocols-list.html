@@ -3,6 +3,74 @@
 {% set shell = "office" %}
 {% set active_nav = 'protocols' %}
 {% set body_class = "" %}
+{% block extra_head %}
+  <style>
+    .protocol-pdf-modal-panel {
+      width: min(96vw, 980px);
+      max-height: min(92vh, 900px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .protocol-pdf-modal-panel .office-modal-title,
+    .protocol-pdf-modal-panel .office-modal-sub {
+      flex-shrink: 0;
+    }
+    .protocol-pdf-frame-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: min(68vh, 700px);
+      border: 1px solid var(--border, #ddd);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f6f6f6;
+    }
+    .protocol-pdf-frame-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      background: #fff;
+    }
+    .protocol-pdf-modal-panel .office-modal-actions {
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 0.75rem;
+      padding-top: 0.15rem;
+    }
+    .protocol-pdf-modal-panel .office-modal-actions .btn {
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .protocol-pdf-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.15rem;
+      height: 2.15rem;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #dc2626;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .protocol-pdf-btn i {
+      font-size: 1.28rem;
+      line-height: 1;
+    }
+    .protocol-pdf-btn:hover {
+      background: rgba(220, 38, 38, 0.1);
+      color: #b91c1c;
+    }
+    td.protocol-pdf-cell { text-align: center; width: 3.4rem; vertical-align: middle; }
+  </style>
+{% endblock %}
 {% block content %}
       <h1 class="page-title"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> Πρωτόκολλα</h1>
       <p class="page-desc sync-meta-line" id="protocolsSyncMeta">Κατάλογος πρωτοκόλλων χτυπημάτων από Ergani (WorkCardSearch).</p>
@@ -20,8 +88,23 @@
         <div id="protocolsWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
       </div>
       <div id="protocolsMsg" class="msg"></div>
+
+      <div id="protocolPdfModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="protocolPdfTitle">
+        <div class="office-modal-backdrop" data-protocol-pdf-close></div>
+        <div class="office-modal-panel office-modal-panel--history protocol-pdf-modal-panel">
+          <h2 id="protocolPdfTitle" class="office-modal-title">PDF δήλωσης</h2>
+          <p id="protocolPdfSub" class="office-modal-sub"></p>
+          <div class="protocol-pdf-frame-wrap">
+            <iframe id="protocolPdfFrame" title="PDF δήλωσης πρωτοκόλλου"></iframe>
+          </div>
+          <div class="office-modal-actions">
+            <a id="protocolPdfOpenTab" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Άνοιγμα σε νέα καρτέλα</a>
+            <button type="button" class="btn btn-secondary" data-protocol-pdf-close>Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/protocols-list.js?v=20260814proto2"></script>
+  <script src="/static/js/protocols-list.js?v=20260907pdf2"></script>
 {% endblock %}

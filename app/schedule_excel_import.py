@@ -423,7 +423,7 @@ def _parse_single_week_sheet(
     monday = _monday_from_meta(meta)
     if not monday:
         raise ValueError(
-            "Το φύλλο «Οδηγίες» δεν έχει έγκυρη εβδομάδα (A2) — απαιτείται ημερομηνία Δευτέρας"
+            "Το φύλλο «Οδηγίες» δεν έχει έγκυρη εβδομάδα (A2) — απαιτείται εύρος ημερομηνιών"
         )
 
     ws = wb[WEEK_SHEET]

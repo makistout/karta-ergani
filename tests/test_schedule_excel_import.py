@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 from unittest.mock import patch
 
@@ -13,7 +13,12 @@ from app.schedule_excel_import import (
     summarize_import_rows,
 )
 from app.schedule_excel_layout import WEEK_SHEET
-from app.schedule_excel_template import build_weekly_schedule_template_bytes, resolve_week_monday
+from app.schedule_excel_template import (
+    build_weekly_schedule_template_bytes,
+    resolve_week_monday,
+    resolve_week_start,
+    week_day_labels,
+)
 
 
 class ScheduleExcelTemplateTests(unittest.TestCase):
@@ -21,6 +26,15 @@ class ScheduleExcelTemplateTests(unittest.TestCase):
         ref = date(2026, 7, 7)  # Tuesday
         self.assertEqual(resolve_week_monday("current", today=ref), date(2026, 7, 6))
         self.assertEqual(resolve_week_monday("next", today=ref), date(2026, 7, 13))
+
+    def test_resolve_week_start_custom_thursday(self):
+        start = resolve_week_start("custom", week_from="2026-09-10")  # Thursday
+        self.assertEqual(start, date(2026, 9, 10))
+        labels = week_day_labels(start)
+        self.assertEqual([name for name, _ in labels], [
+            "Πέμπτη", "Παρασκευή", "Σάββατο", "Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη",
+        ])
+        self.assertEqual(start + timedelta(days=6), date(2026, 9, 16))
 
 
 class ScheduleExcelImportAbsentTests(unittest.TestCase):

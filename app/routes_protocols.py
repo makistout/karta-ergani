@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import pyodbc
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from app.access_control import is_admin_role
 from app.http_helpers import resolve_active_store
 from app.portal_card_protocol_sync import iter_card_protocol_sync_events
+from app.portal_protocol_pdf_match import (
+    find_protocol_pdf_path,
+    index_protocol_pdfs_for_range,
+)
 from app.protocol_deduction_match import apply_protocol_sync
-from app.repo_ergani_protocol import list_protocols_for_store_range, table_missing_message
+from app.repo_ergani_protocol import (
+    get_protocol_by_id,
+    list_protocols_for_store_range,
+    table_missing_message,
+)
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import (
     parse_sync_request,
@@ -39,6 +47,37 @@ def _dates_from_request() -> tuple[str | None, str | None]:
     return str(from_iso).strip()[:10], str(to_iso or from_iso).strip()[:10]
 
 
+def _submit_day_iso(row: dict) -> str:
+    raw = str(row.get("submit_at") or "").strip()
+    if raw:
+        return raw[:10]
+    text = str(row.get("submit_date_text") or "").strip()
+    # dd/mm/yyyy …
+    if len(text) >= 10 and text[2] == "/" and text[5] == "/":
+        d, m, y = text[:2], text[3:5], text[6:10]
+        return f"{y}-{m}-{d}"
+    return ""
+
+
+def _enrich_protocols_with_pdf(
+    rows: list[dict],
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    from_iso: str,
+    to_iso: str,
+) -> list[dict]:
+    pdf_set = index_protocol_pdfs_for_range(employer_afm, branch_aa, from_iso, to_iso)
+    for row in rows:
+        proto = str(row.get("protocol") or "").strip().upper().replace("KE", "ΚΕ")
+        has = proto in pdf_set
+        row["has_pdf"] = has
+        row["pdf_url"] = (
+            f"/api/protocols/{int(row['id'])}/pdf" if has and row.get("id") else None
+        )
+    return rows
+
+
 @protocols_bp.get("/list")
 def protocols_list():
     ctx = resolve_active_store()
@@ -49,6 +88,13 @@ def protocols_list():
         return jsonify({"error": "Λείπει date ή from/to"}), 400
     try:
         rows = list_protocols_for_store_range(int(ctx["id"]), from_iso, to_iso)
+        rows = _enrich_protocols_with_pdf(
+            rows,
+            employer_afm=str(ctx.get("employer_afm") or ""),
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+            from_iso=from_iso,
+            to_iso=to_iso or from_iso,
+        )
     except pyodbc.Error as ex:
         return _db_error(ex)
     return jsonify({
@@ -63,6 +109,42 @@ def protocols_list():
         "count": len(rows),
         "protocols": rows,
     })
+
+
+@protocols_bp.get("/<int:protocol_id>/pdf")
+def protocols_pdf(protocol_id: int):
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    try:
+        row = get_protocol_by_id(protocol_id)
+    except pyodbc.Error as ex:
+        return _db_error(ex)
+    if not row:
+        return jsonify({"error": "Το πρωτόκολλο δεν βρέθηκε"}), 404
+    if int(row.get("store_id") or 0) != int(ctx["id"]):
+        return jsonify({"error": "Το πρωτόκολλο δεν ανήκει στο ενεργό κατάστημα"}), 403
+
+    day_iso = _submit_day_iso(row)
+    if not day_iso:
+        return jsonify({"error": "Λείπει ημερομηνία υποβολής"}), 404
+
+    path = find_protocol_pdf_path(
+        str(row.get("employer_afm") or ctx.get("employer_afm") or ""),
+        str(row.get("branch_aa") or ctx.get("branch_aa") or "0"),
+        day_iso,
+        str(row.get("protocol") or ""),
+    )
+    if path is None or not path.is_file():
+        return jsonify({"error": "Δεν υπάρχει αποθηκευμένο PDF για το πρωτόκολλο"}), 404
+
+    return send_file(
+        path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=path.name,
+        max_age=300,
+    )
 
 
 @protocols_bp.post("/sync")

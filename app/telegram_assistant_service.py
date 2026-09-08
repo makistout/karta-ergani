@@ -227,6 +227,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
         "today_home είναι ΠΑΝΤΑ παρόν: stores=σήμερα (πλήρες)· yesterday=μόνο ανοιχτές κάρτες χθες (overnight). Ερωτήσεις σήμερα → stores. Ερωτήσεις/κλείσιμο ανοιχτών «χθες»/εχθές → yesterday + date=yesterday_date. today_info: βάλε την πλήρη απάντηση στο clarification_question από τα πραγματικά δεδομένα. Μην λες «δεν υπάρχουν δεδομένα» αν υπάρχει yesterday· αν open_count=0 πες ρητά ότι δεν υπάρχουν ανοιχτές εκείνη την ημέρα.",
         "Καθυστερημένη είσοδος/έξοδος («ποιος έχει καθυστέρηση») → today_info από today_home: status late_arrival = καθυστερημένη είσοδος, needs_checkout = καθυστερημένη έξοδος. Όχι card_check_*.",
+        "Με ώρα: «ποιος δουλεύει/εργάζεται/ξεκινάει/έρχεται στις 12» = ίδια ερώτηση ωραρίου (έναρξη)· «ποιος τελειώνει στις…» = λήξη. Χωρίς ώρα: «ποιοι δουλεύουν ακόμα» = αυτή τη στιγμή σε εργασία.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
         "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
@@ -674,11 +675,12 @@ def _assign_query_tokens_to_employees(
 def _query_tokens(text: str) -> list[str]:
     folded = _fold_text(text)
     stop = {
-        "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τους", "τις",
+        "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τουσ", "τισ",
         "τωρα", "σημερα", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
         "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today",
         "χτυπα", "χτυπησε", "punch", "στισ", "στις", "πριν", "λεπτα", "ωρες",
         "ολουσ", "ολεσ", "ολα", "οσουσ", "οσοι", "εισοδο", "εξοδο",
+        "αυτουσ", "αυτεσ", "αυτα",
     }
     tokens = re.findall(r"[a-zα-ω]{4,}", folded)
     return [token for token in tokens if token not in stop]
@@ -783,7 +785,7 @@ def _mentioned_afms(
     for emp in pool:
         afm = str(emp.get("afm") or "").strip()
         name = str(emp.get("name") or "").strip()
-        if afm and afm in raw:
+        if afm and len(afm) >= 9 and afm in raw:
             hits.append(afm)
             continue
         if name and len(name) >= 4 and _fold_text(name) in folded:

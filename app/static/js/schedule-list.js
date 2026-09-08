@@ -299,6 +299,10 @@ function initScheduleTemplateDownload() {
     btn.addEventListener("click", () => {
       const week = String(btn.getAttribute("data-schedule-template") || "current");
       menu.open = false;
+      if (week === "custom") {
+        openScheduleWeekPickModal();
+        return;
+      }
       void downloadScheduleTemplate(week);
     });
   });
@@ -306,15 +310,135 @@ function initScheduleTemplateDownload() {
     if (!menu.open) return;
     if (!menu.contains(event.target)) menu.open = false;
   });
+  bindScheduleWeekPickModal();
 }
 
-async function downloadScheduleTemplate(week) {
+const WEEKDAY_NAMES_GR = [
+  "Κυριακή",
+  "Δευτέρα",
+  "Τρίτη",
+  "Τετάρτη",
+  "Πέμπτη",
+  "Παρασκευή",
+  "Σάββατο",
+];
+
+function isoDateLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseIsoDateLocal(value) {
+  const m = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function addDaysLocal(d, days) {
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+function formatGrDate(d) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${WEEKDAY_NAMES_GR[d.getDay()]} ${dd}/${mm}/${d.getFullYear()}`;
+}
+
+let scheduleWeekFromPicker = null;
+let scheduleWeekToPicker = null;
+
+function scheduleWeekFromIso() {
+  return String(scheduleWeekFromPicker?.getIso?.() || "").trim();
+}
+
+function updateScheduleWeekPickHint() {
+  const hint = document.getElementById("scheduleWeekPickHint");
+  const fromIso = scheduleWeekFromIso();
+  const from = parseIsoDateLocal(fromIso);
+  if (!from) {
+    scheduleWeekToPicker?.setIso?.("", true);
+    if (hint) hint.textContent = "";
+    return;
+  }
+  const to = addDaysLocal(from, 6);
+  scheduleWeekToPicker?.setIso?.(isoDateLocal(to), true);
+  if (hint) {
+    hint.textContent = `${formatGrDate(from)} → ${formatGrDate(to)}`;
+  }
+}
+
+function bindScheduleWeekPickModal() {
+  const modal = document.getElementById("scheduleWeekPickModal");
+  if (!modal || modal.dataset.bound) return;
+  modal.dataset.bound = "1";
+  modal.querySelectorAll("[data-schedule-week-close]").forEach((el) => {
+    el.addEventListener("click", closeScheduleWeekPickModal);
+  });
+
+  if (typeof Office.attachGreekDateField === "function") {
+    scheduleWeekFromPicker = Office.attachGreekDateField({
+      inputId: "scheduleWeekFromInput",
+      allowEmpty: true,
+      onChange: () => updateScheduleWeekPickHint(),
+    });
+    scheduleWeekToPicker = Office.attachGreekDateField({
+      inputId: "scheduleWeekToInput",
+      allowEmpty: true,
+    });
+    scheduleWeekToPicker?.setDisabled?.(true);
+  }
+
+  document.getElementById("btnScheduleWeekPickDownload")?.addEventListener("click", () => {
+    const from = scheduleWeekFromIso();
+    if (!from) {
+      Office.showMsg("schedMsg", "Επιλέξτε ημερομηνία έναρξης εβδομάδας", false);
+      return;
+    }
+    closeScheduleWeekPickModal();
+    void downloadScheduleTemplate("custom", from);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !modal.classList.contains("hidden")) {
+      closeScheduleWeekPickModal();
+    }
+  });
+}
+
+function openScheduleWeekPickModal() {
+  const modal = document.getElementById("scheduleWeekPickModal");
+  if (!modal) return;
+  if (!scheduleWeekFromIso()) {
+    // Προεπιλογή: επόμενη Πέμπτη (συχνή αρχή εβδομάδας εργασίας)
+    const today = new Date();
+    const day = today.getDay(); // 0=Κυρ … 4=Πέμ
+    const delta = (4 - day + 7) % 7 || 7;
+    const nextThu = isoDateLocal(addDaysLocal(today, delta));
+    scheduleWeekFromPicker?.setIso?.(nextThu, true);
+  }
+  updateScheduleWeekPickHint();
+  modal.classList.remove("hidden");
+}
+
+function closeScheduleWeekPickModal() {
+  document.getElementById("scheduleWeekPickModal")?.classList.add("hidden");
+}
+
+async function downloadScheduleTemplate(week, weekFromIso) {
   Office.showMsg("schedMsg", "Δημιουργία Excel…", true);
   try {
-    const res = await fetch(
-      `/api/schedule/import/template?week=${encodeURIComponent(week)}&_=${Date.now()}`,
-      { credentials: "same-origin", cache: "no-store" },
-    );
+    const params = new URLSearchParams({
+      week: String(week || "current"),
+      _: String(Date.now()),
+    });
+    if (weekFromIso) params.set("from", weekFromIso);
+    const res = await fetch(`/api/schedule/import/template?${params.toString()}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       Office.showMsg("schedMsg", data.error || `Σφάλμα HTTP ${res.status}`, false);
@@ -335,8 +459,14 @@ async function downloadScheduleTemplate(week) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    const label = week === "next" ? "επόμενη" : "τρέχουσα";
-    Office.showMsg("schedMsg", `Κατέβηκε template (${label} εβδομάδα)`, true);
+    let label = "τρέχουσα";
+    if (week === "next") label = "επόμενη";
+    if (week === "custom" && weekFromIso) {
+      const from = parseIsoDateLocal(weekFromIso);
+      const to = from ? addDaysLocal(from, 6) : null;
+      label = from && to ? `${formatGrDate(from)} – ${formatGrDate(to)}` : "προσαρμοσμένη";
+    }
+    Office.showMsg("schedMsg", `Κατέβηκε template (${label})`, true);
   } catch (e) {
     Office.showMsg("schedMsg", String(e), false);
   }
