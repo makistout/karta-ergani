@@ -205,6 +205,130 @@ def test_close_all_open_cards_replaces_llm_list_with_open_only():
     assert "TOUMARAS" not in proposed
 
 
+def test_open_all_cards_fills_from_needs_checkin():
+    """«άνοιξε τους όλους τώρα» → όσοι με ωράριο χωρίς είσοδο, χωρίς ΑΦΜ από το LLM."""
+    parsed = {
+        "intent": "card_check_in_now",
+        "store_id": 9,
+        "employee_afms": [],
+        "date": "2026-09-09",
+    }
+    employees = [
+        {"store_id": 9, "afm": "111", "name": "NEED A"},
+        {"store_id": 9, "afm": "222", "name": "NEED B"},
+        {"store_id": 9, "afm": "333", "name": "ALREADY OPEN"},
+    ]
+    need_matches = [
+        {"store_id": 9, "afm": "111", "name": "NEED A"},
+        {"store_id": 9, "afm": "222", "name": "NEED B"},
+    ]
+    with patch(
+        "app.telegram_assistant_service._checkin_all_matches_for_date",
+        return_value=need_matches,
+    ), patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 9,
+                "store_name": "Training Room",
+                "employer_afm": "123",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+            user_text="Στο training room άνοιξε τους όλους τώρα",
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["employee_afms"] == ["111", "222"]
+    assert "NEED A" in proposed
+    assert "ALREADY OPEN" not in proposed
+
+
+def test_checkin_all_matches_only_scheduled_without_card():
+    from app.telegram_assistant_service import _checkin_all_matches_for_date
+
+    employees = [
+        {"store_id": 9, "afm": "111", "name": "WORK NO CARD"},
+        {"store_id": 9, "afm": "222", "name": "REST"},
+        {"store_id": 9, "afm": "333", "name": "WORK WITH CARD"},
+        {"store_id": 9, "afm": "444", "name": "NO SCHEDULE"},
+    ]
+    report = {
+        "rows": [
+            {
+                "employee_afm": "111",
+                "schedule": {"hour_from": "10:00", "hour_to": "18:00", "shift_type": "ΕΡΓΑΣΙΑ"},
+                "card": {"has_check_in": False},
+                "status": "needs_checkin",
+            },
+            {
+                "employee_afm": "222",
+                "schedule": {"hour_from": None, "hour_to": None, "shift_type": "ΡΕΠΟ"},
+                "card": {"has_check_in": False},
+                "status": "rest",
+            },
+            {
+                "employee_afm": "333",
+                "schedule": {"hour_from": "10:00", "hour_to": "18:00", "shift_type": "ΕΡΓΑΣΙΑ"},
+                "card": {"has_check_in": True, "check_in": "10:05"},
+                "status": "at_work",
+            },
+            {
+                "employee_afm": "444",
+                "schedule": None,
+                "card": {"has_check_in": False},
+                "status": "no_schedule",
+            },
+        ]
+    }
+    with patch("app.card_report.build_card_status_report", return_value=report):
+        matches = _checkin_all_matches_for_date(
+            store_context={"employer_afm": "1", "branch_aa": "0"},
+            employees=employees,
+            store_id=9,
+            date_iso="2026-09-09",
+        )
+    assert [m["afm"] for m in matches] == ["111"]
+
+
+def test_close_all_except_names_excludes_from_open_list():
+    """«κλείσε όλους στις 23:00 εκτός από ΟΝΟΜΑ» → ανοιχτοί μείον εξαιρέσεις."""
+    parsed = {
+        "intent": "card_check_out_retro",
+        "store_id": 12,
+        "employee_afms": [],
+        "date": "2026-09-08",
+        "time": "23:00",
+    }
+    employees = [
+        {"store_id": 12, "afm": "111111111", "name": "PAPADOPOULOS GIORGOS"},
+        {"store_id": 12, "afm": "222222222", "name": "NIKOLAOU MARIA"},
+        {"store_id": 12, "afm": "333333333", "name": "OPEN THREE"},
+    ]
+    open_matches = list(employees)
+    with patch(
+        "app.telegram_assistant_service._open_checkout_matches_for_date",
+        return_value=open_matches,
+    ), patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 12,
+                "store_name": "APERIO",
+                "employer_afm": "800994796",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+            user_text="κλείσε όλους στις 23.00 εκτός από PAPADOPOULOS και NIKOLAOU",
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["employee_afms"] == ["333333333"]
+    assert "OPEN THREE" in proposed
+    assert "PAPADOPOULOS" not in proposed.split("Παραλείφθηκαν")[0]
+    assert set(parsed.get("excluded_card_employees") or []) == {"111111111", "222222222"}
+
+
 def test_checkin_validation_skips_already_open_cards():
     parsed = {
         "intent": "card_check_in_retro",

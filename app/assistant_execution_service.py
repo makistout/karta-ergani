@@ -6,7 +6,9 @@ import json
 import hashlib
 import threading
 import time
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.repo_store import get_action_settings, get_store_config
 
@@ -15,6 +17,7 @@ _AUTH_CACHE_LOCK = threading.RLock()
 _AUTH_CACHE: dict[tuple[Any, ...], tuple[str, float]] = {}
 _AUTH_CACHE_DEFAULT_TTL_SEC = 300.0
 _AUTH_CACHE_EXPIRY_MARGIN_SEC = 30.0
+_ATHENS = ZoneInfo("Europe/Athens")
 
 
 def _payload(task: dict[str, Any]) -> dict[str, Any]:
@@ -129,6 +132,9 @@ def _submit_leave(store: dict[str, Any], bearer: str, client: Any, employee: dic
 def _execute_command(
     store: dict[str, Any], bearer: str, client: Any, parsed: dict[str, Any], *, source: str,
     punch_index_offset: int = 0, punch_total: int = 1,
+    stagger_offsets: list[int] | None = None,
+    queue_wall_start: float | None = None,
+    queue_base_now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     store_id = int(parsed.get("store_id") or store.get("id") or 0)
     afms = [str(value or "").strip() for value in (parsed.get("employee_afms") or []) if str(value or "").strip()]
@@ -137,9 +143,34 @@ def _execute_command(
     employees = _employees(store, afms)
     intent = str(parsed.get("intent") or "")
     results: list[dict[str, Any]] = []
+    offsets = list(stagger_offsets or [])
+    wall_start = float(queue_wall_start) if queue_wall_start is not None else time.monotonic()
+    base_now = queue_base_now or datetime.now(_ATHENS)
+
     for index, employee in enumerate(employees, start=1):
         name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
         global_batch_index = punch_index_offset + index
+        zero_based = global_batch_index - 1
+        offset_min = 0
+        if punch_total > 1 and zero_based >= 0:
+            if zero_based < len(offsets):
+                offset_min = int(offsets[zero_based] or 0)
+            else:
+                from app.punch_batch_stagger import cumulative_stagger_minutes
+
+                offset_min = cumulative_stagger_minutes(zero_based)
+
+        if (
+            intent.endswith("_now")
+            and punch_total > 1
+            and offset_min > 0
+        ):
+            # Ουρά μόνο για ζωντανά «τώρα»: περίμενε μέχρι το λεπτό offset από την έναρξη.
+            due = wall_start + (offset_min * 60.0)
+            delay = due - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+
         if intent.startswith("card_check_"):
             from app.routes_work_card import _submit_work_card
             from app.work_card_guards import new_card_punch_blocked_reason
@@ -150,13 +181,28 @@ def _execute_command(
                 event_time = str(parsed.get("time") or "")
             elif intent.endswith("_schedule"):
                 event_time = str((parsed.get("resolved_schedule_times") or {}).get(str(employee.get("afm") or "")) or "")
-            event_at = f"{parsed.get('date')}T{event_time}:00" if event_time else None
+
+            ref_date = str(parsed.get("date") or base_now.date().isoformat())
+            if event_time:
+                try:
+                    hh, mm = [int(part) for part in str(event_time).strip()[:5].split(":", 1)]
+                    event_dt = datetime(
+                        int(ref_date[0:4]), int(ref_date[5:7]), int(ref_date[8:10]),
+                        hh, mm, 0, tzinfo=_ATHENS,
+                    ) + timedelta(minutes=offset_min)
+                except (TypeError, ValueError, IndexError):
+                    event_dt = base_now + timedelta(minutes=offset_min)
+            else:
+                # «τώρα»: ίδια βάση για όλη την παρτίδα + stagger 1–2′.
+                event_dt = base_now + timedelta(minutes=offset_min)
+            event_at = event_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
             blocked = new_card_punch_blocked_reason(
                 intent=intent,
                 employer_afm=str(store.get("employer_afm") or ""),
                 branch_aa=str(store.get("branch_aa") or "0"),
                 employee_afm=str(employee.get("afm") or ""),
-                reference_date_iso=str(parsed.get("date") or ""),
+                reference_date_iso=ref_date,
                 event_at=event_at,
             )
             if blocked:
@@ -170,20 +216,27 @@ def _execute_command(
             body = {
                 "employee_afm": employee.get("afm"), "eponymo": employee.get("eponymo"),
                 "onoma": employee.get("onoma"), "employee_name": name, "event": event,
-                "reference_date": parsed.get("date"), "source": source,
-                "batch_index": global_batch_index,
-                "batch_total": max(punch_total, len(employees)),
+                "reference_date": ref_date, "source": source,
+                # Ήδη εφαρμόσαμε stagger + ουρά· μην διπλο-μετατοπίσει το routes layer.
+                "batch_index": 1,
+                "batch_total": 1,
+                "event_at": event_at,
             }
-            if event_time:
-                body["event_at"] = f"{parsed.get('date')}T{event_time}:00"
             response, status = _submit_work_card(
                 body=body, erg_s=str(store.get("employer_afm") or ""),
                 aa_s=str(store.get("branch_aa") or "0"), bearer=bearer,
                 api_base_url=client.base_url, store_id=store_id,
             )
             data = response.get_json() if hasattr(response, "get_json") else {}
-            row = {"employee": name, "success": status == 200 and bool(data.get("success")),
-                   "protocol": data.get("protocol"), "http_status": status, "error": data.get("error")}
+            row = {
+                "employee": name,
+                "success": status == 200 and bool(data.get("success")),
+                "protocol": data.get("protocol"),
+                "http_status": status,
+                "error": data.get("error"),
+                "event_at": event_at,
+                "queue_offset_minutes": offset_min,
+            }
         elif intent in {"schedule_change", "rest_day"}:
             from app.schedule_import_service import apply_import_row
             schedule_row = {
@@ -231,10 +284,13 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
         store["api_base_url"] = client.base_url
         results: list[dict[str, Any]] = []
         commands = parsed.get("commands") if isinstance(parsed.get("commands"), list) else [parsed]
-        from app.punch_batch_stagger import count_card_punches_in_commands
+        from app.punch_batch_stagger import count_card_punches_in_commands, precompute_batch_offsets
 
         normalized_commands = [command for command in commands if isinstance(command, dict)]
         punch_total = count_card_punches_in_commands(normalized_commands) or 1
+        stagger_offsets = precompute_batch_offsets(punch_total) if punch_total > 1 else [0]
+        queue_wall_start = time.monotonic()
+        queue_base_now = datetime.now(_ATHENS)
         punch_offset = 0
         commands_started = time.monotonic()
         for command in normalized_commands:
@@ -242,6 +298,9 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
                 _execute_command(
                     store, bearer, client, command, source=source,
                     punch_index_offset=punch_offset, punch_total=punch_total,
+                    stagger_offsets=stagger_offsets,
+                    queue_wall_start=queue_wall_start,
+                    queue_base_now=queue_base_now,
                 )
             )
             intent = str(command.get("intent") or "")

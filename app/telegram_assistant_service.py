@@ -229,7 +229,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Καθυστερημένη είσοδος/έξοδος («ποιος έχει καθυστέρηση») → today_info από today_home: status late_arrival = καθυστερημένη είσοδος, needs_checkout = καθυστερημένη έξοδος. Όχι card_check_*.",
         "Με ώρα: «ποιος δουλεύει/εργάζεται/ξεκινάει/έρχεται στις 12» = ίδια ερώτηση ωραρίου (έναρξη)· «ποιος τελειώνει στις…» = λήξη. Χωρίς ώρα: «ποιοι δουλεύουν ακόμα» = αυτή τη στιγμή σε εργασία.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
-        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας.",
+        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας. «κλείσε όλους εκτός από Χ/Υ» = ανοιχτοί ΜΕΙΟΝ τους εξαιρούμενους. «άνοιξε όλους/όσους» = μόνο όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα (όχι ρεπό/χωρίς ωράριο)· «εκτός από» αφαιρεί εξαιρέσεις.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
@@ -1005,6 +1005,56 @@ def _asks_close_all_open_cards(text: str) -> bool:
     )
 
 
+def _asks_open_all_cards(text: str) -> bool:
+    """«άνοιξε όλους / όσους» χωρίς ρητά ονόματα → όσοι δεν έχουν ακόμα είσοδο."""
+    folded = _fold_text(text)
+    if any(token in folded for token in ("κλεισ", "close", "checkout", "clockout", "clock out")):
+        return False
+    if not any(
+        token in folded
+        for token in ("ανοιξ", "open", "checkin", "check in", "clockin", "clock in", "εισοδ")
+    ):
+        return False
+    return any(
+        token in folded
+        for token in ("ολεσ", "ολουσ", "ολοι", "οσουσ", "οσα", "ολα", "all")
+    )
+
+
+def _close_all_exclusion_clause(text: str) -> str | None:
+    """Τμήμα μετά από «εκτός από / χωρίς / except …» για εξαιρέσεις μαζικού κλεισίματος."""
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    match = re.search(
+        r"(?:"
+        r"εκτ[οό]ς\s+απ[οό]|"
+        r"εκτ[οό]ς\s+(?:τον|την|τους|τις|του|της)\b|"
+        r"χωρ[ιί]ς\s+(?:τον|την|τους|τις|το|τα)\b|"
+        r"\bexcept(?:ing)?\b|"
+        r"\bexcluding\b"
+        r")\s+(.+)$",
+        raw,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    clause = str(match.group(1) or "").strip(" \t\r\n,.;:")
+    return clause or None
+
+
+def _close_all_excluded_afms(
+    text: str,
+    *,
+    employees: list[dict[str, Any]],
+    store_id: int | None,
+) -> list[str]:
+    clause = _close_all_exclusion_clause(text)
+    if not clause:
+        return []
+    return _mentioned_afms(clause, employees, store_id)
+
+
 def _open_checkout_matches_for_date(
     *,
     store_context: dict[str, Any],
@@ -1034,6 +1084,50 @@ def _open_checkout_matches_for_date(
     return [
         emp for emp in employees
         if emp.get("store_id") == store_id and str(emp.get("afm") or "").strip() in open_set
+    ]
+
+
+def _checkin_all_matches_for_date(
+    *,
+    store_context: dict[str, Any],
+    employees: list[dict[str, Any]],
+    store_id: int,
+    date_iso: str,
+) -> list[dict[str, Any]]:
+    """Όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα."""
+    from app.card_report import _is_rest_day, build_card_status_report
+
+    report = build_card_status_report(
+        str(store_context.get("employer_afm") or ""),
+        str(store_context.get("branch_aa") or "0"),
+        date_iso=date_iso,
+    )
+    need_afms: list[str] = []
+    for row in report.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else None
+        if not sched:
+            continue
+        if _is_rest_day(sched.get("shift_type"), sched.get("hour_from"), sched.get("hour_to")):
+            continue
+        has_hours = bool(
+            str(sched.get("hour_from") or "").strip()
+            or str(sched.get("hour_to") or "").strip()
+            or (sched.get("intervals") or [])
+        )
+        if not has_hours:
+            continue
+        card = row.get("card") if isinstance(row.get("card"), dict) else {}
+        if card.get("has_check_in"):
+            continue
+        afm = str(row.get("employee_afm") or "").strip()
+        if afm:
+            need_afms.append(afm)
+    need_set = set(need_afms)
+    return [
+        emp for emp in employees
+        if emp.get("store_id") == store_id and str(emp.get("afm") or "").strip() in need_set
     ]
 
 
@@ -1137,6 +1231,10 @@ def _validate_single_command(
             intent.startswith("card_check_out")
             and _asks_close_all_open_cards(user_text)
         )
+        and not (
+            intent.startswith("card_check_in")
+            and _asks_open_all_cards(user_text)
+        )
     ):
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
@@ -1187,6 +1285,7 @@ def _validate_single_command(
         parsed["resolved_schedule_times"] = schedule_times
 
     # «κλείσε όλες» → μόνο πραγματικά ανοιχτές εκείνης της ημέρας (όχι επινόηση LLM).
+    # «εκτός από ονόματα» αφαιρεί εξαιρέσεις από τη λίστα ανοιχτών.
     if (
         intent.startswith("card_check_out")
         and store_id in allowed_store_ids
@@ -1201,13 +1300,74 @@ def _validate_single_command(
             store_id=int(store_id),
             date_iso=date,
         )
+        excluded = set(
+            _close_all_excluded_afms(
+                user_text,
+                employees=employees,
+                store_id=int(store_id),
+            )
+        )
+        if excluded:
+            matches = [
+                item
+                for item in matches
+                if str(item.get("afm") or "").strip() not in excluded
+            ]
+            parsed["excluded_card_employees"] = sorted(excluded)
         afms = [str(item.get("afm") or "") for item in matches if str(item.get("afm") or "")]
         parsed["employee_afms"] = afms
         parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
         if not matches:
-            errors.append(
-                "Δεν υπάρχουν ανοιχτές κάρτες για κλείσιμο αυτή την ημερομηνία"
+            if excluded:
+                errors.append(
+                    "Μετά τις εξαιρέσεις δεν μένουν ανοιχτές κάρτες για κλείσιμο αυτή την ημερομηνία"
+                )
+            else:
+                errors.append(
+                    "Δεν υπάρχουν ανοιχτές κάρτες για κλείσιμο αυτή την ημερομηνία"
+                )
+
+    # «άνοιξε όλους» → όσοι δεν έχουν είσοδο ακόμη (όχι επινόηση LLM).
+    if (
+        intent.startswith("card_check_in")
+        and store_id in allowed_store_ids
+        and _is_iso_date(date)
+        and not errors
+        and _asks_open_all_cards(user_text)
+    ):
+        store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+        matches = _checkin_all_matches_for_date(
+            store_context=store_context,
+            employees=employees,
+            store_id=int(store_id),
+            date_iso=date,
+        )
+        excluded = set(
+            _close_all_excluded_afms(
+                user_text,
+                employees=employees,
+                store_id=int(store_id),
             )
+        )
+        if excluded:
+            matches = [
+                item
+                for item in matches
+                if str(item.get("afm") or "").strip() not in excluded
+            ]
+            parsed["excluded_card_employees"] = sorted(excluded)
+        afms = [str(item.get("afm") or "") for item in matches if str(item.get("afm") or "")]
+        parsed["employee_afms"] = afms
+        parsed["employee_afm"] = afms[0] if len(afms) == 1 else None
+        if not matches:
+            if excluded:
+                errors.append(
+                    "Μετά τις εξαιρέσεις δεν μένουν εργαζόμενοι με ωράριο χωρίς είσοδο αυτή την ημερομηνία"
+                )
+            else:
+                errors.append(
+                    "Δεν υπάρχουν εργαζόμενοι με ωράριο σήμερα που να μην έχουν ανοίξει κάρτα"
+                )
 
     skipped_card: list[str] = []
     if (

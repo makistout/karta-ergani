@@ -253,8 +253,21 @@ async function selectStore(storeId, pushUrl) {
     url.searchParams.set("id", String(storeId));
     history.replaceState(null, "", url.pathname + url.search);
   }
+  const tasks = [];
+  if (document.getElementById("notifyRecipientsCard")) {
+    tasks.push(loadNotifyRecipients(storeId));
+  }
+  if (
+    document.getElementById("storeActionsCard") ||
+    document.getElementById("apologisticSettingsCard")
+  ) {
+    tasks.push(loadActionSettings(storeId));
+  }
+  if (document.getElementById("cardListenerCard")) {
+    tasks.push(loadCardListenerSettings(storeId));
+  }
   try {
-    await Promise.all([loadNotifyRecipients(storeId), loadActionSettings(storeId), loadCardListenerSettings(storeId)]);
+    await Promise.all(tasks);
   } catch (e) { /* ignore */ }
   updateNotifyUiState();
   try { await loadHolidays(); } catch (e) { /* ignore */ }
@@ -400,7 +413,9 @@ async function loadCardListenerSettings(storeId) {
   const res = await fetch(`/api/store/${storeId}/card-listener-settings`, { credentials: "same-origin" });
   const data = await Office.parseJson(res);
   if (!res.ok) {
-    Office.showMsg("stepMsg", data.error || data.db_setup || "Αποτυχία φόρτωσης listener", false);
+    if (res.status !== 403) {
+      Office.showMsg("stepMsg", data.error || data.db_setup || "Αποτυχία φόρτωσης listener", false);
+    }
     return;
   }
   cardListenerSettings = data.settings;
@@ -841,11 +856,13 @@ async function loadNotifyRecipients(storeId) {
     });
     const data = await Office.parseJson(res);
     if (!res.ok) {
-      Office.showMsg(
-        "stepMsg",
-        data.error || data.db_setup || `Σφάλμα ληπτών (HTTP ${res.status})`,
-        false
-      );
+      if (res.status !== 403) {
+        Office.showMsg(
+          "stepMsg",
+          data.error || data.db_setup || `Σφάλμα ληπτών (HTTP ${res.status})`,
+          false
+        );
+      }
       notifyRecipients = [];
       renderNotifyRecipients();
       return;

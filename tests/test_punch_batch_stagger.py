@@ -1,10 +1,11 @@
-"""Tests for batch punch time stagger (1–2 min apart, retro only)."""
+"""Tests for batch punch time stagger (1–2 min apart)."""
 
 from app.punch_batch_stagger import (
     apply_batch_stagger_to_clock_hm,
     apply_batch_stagger_to_event_at,
     count_card_punches_in_commands,
     cumulative_stagger_minutes,
+    precompute_batch_offsets,
 )
 
 
@@ -51,6 +52,12 @@ def test_first_retro_punch_unchanged():
         rng=_FixedRng(2),
     )
     assert out == "2026-08-22T23:00:00"
+
+
+def test_precompute_batch_offsets():
+    assert precompute_batch_offsets(0) == []
+    assert precompute_batch_offsets(1) == [0]
+    assert precompute_batch_offsets(3, rng=_FixedRng(2)) == [0, 2, 4]
 
 
 def test_clock_hm_stagger():

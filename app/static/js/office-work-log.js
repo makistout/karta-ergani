@@ -660,18 +660,9 @@ Object.assign(window.Office, {
     const txt = String(value || "").trim();
     const proto = String(cardMeta?.protocol || "").trim();
     const cardTime = String(cardMeta?.time || "").trim();
-    let protoHtml = "";
-    if (proto && !(cardMeta?.superseded_by_portal && cardTime && cardTime !== txt)) {
-      protoHtml = `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`;
-    } else if (cardMeta?.superseded_by_portal && cardTime && cardTime !== txt) {
-      const cardLabel = proto
-        ? `κάρτα ${cardTime} (${proto})`
-        : `κάρτα ${cardTime}`;
-      protoHtml =
-        `<br><span class="work-log-protocol work-log-protocol--superseded" ` +
-        `title="Δήλωση κάρτας erganiOS — η πραγματική από portal είναι αργότερη">` +
-        `${this.escapeHtml(cardLabel)}</span>`;
-    }
+    const portalProto = String(
+      cardMeta?.portal_protocol || cardMeta?.corrected_previous_protocol || ""
+    ).trim();
     if (txt) {
       const corrected =
         cardMeta &&
@@ -679,27 +670,72 @@ Object.assign(window.Office, {
         ((Array.isArray(cardMeta.previous_events) && cardMeta.previous_events.length > 0) ||
           String(cardMeta.corrected_previous_time || "").trim()) &&
         String(cardMeta.time || "").trim() === txt;
+
+      if (cardMeta?.superseded_by_portal && cardTime && cardTime !== txt) {
+        const cardLabel = proto
+          ? `${cardTime} · ${proto}`
+          : cardTime;
+        return {
+          html:
+            `<span class="work-log-time-stack">` +
+            `<span class="work-log-time-current">` +
+            `${this.escapeHtml(txt)}` +
+            (portalProto
+              ? `<span class="work-log-protocol">${this.escapeHtml(portalProto)}</span>`
+              : "") +
+            `</span>` +
+            `<span class="work-log-time-old" title="Δήλωση κάρτας erganiOS — η πραγματική από portal είναι αργότερη">` +
+            `<span class="work-log-time-struck">${this.escapeHtml(cardLabel)}</span>` +
+            `</span>` +
+            `</span>`,
+          isMissing: false,
+        };
+      }
+
       if (!corrected) {
+        const protoHtml = proto
+          ? `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
+          : "";
         return { html: this.escapeHtml(txt) + protoHtml, isMissing: false };
       }
-      const previous = cardMeta.previous_events
-        .map((ev) => String(ev?.time || "").trim())
-        .filter(Boolean)
-        .join(", ");
-      const correctedPrevious = String(cardMeta.corrected_previous_time || "").trim();
-      const previousLabel = [correctedPrevious, previous].filter(Boolean).join(", ");
-      const hint = previous
-        ? `Διορθωτικό χτύπημα. Προηγούμενο: ${previousLabel}`
-        : correctedPrevious
-          ? `Διορθωτικό χτύπημα. Προηγούμενο: ${correctedPrevious}`
-        : "Διορθωτικό χτύπημα";
+
+      const previousBlocks = [];
+      const seenTimes = new Set();
+      const pushPrev = (timeRaw, protocolRaw) => {
+        const time = String(timeRaw || "").trim();
+        if (!time || seenTimes.has(time)) return;
+        seenTimes.add(time);
+        const p = String(protocolRaw || "").trim();
+        previousBlocks.push(
+          `<span class="work-log-time-old" title="Προηγούμενο χτύπημα που αντικαταστάθηκε">` +
+            `<span class="work-log-time-struck">${this.escapeHtml(time)}</span>` +
+            (p
+              ? `<span class="work-log-protocol work-log-protocol--struck">${this.escapeHtml(p)}</span>`
+              : "") +
+            `</span>`
+        );
+      };
+      const prevEvents = Array.isArray(cardMeta.previous_events)
+        ? cardMeta.previous_events
+        : [];
+      prevEvents.forEach((ev) => pushPrev(ev?.time, ev?.protocol));
+      pushPrev(
+        cardMeta.corrected_previous_time,
+        cardMeta.corrected_previous_protocol || portalProto
+      );
+      const currentHtml =
+        `<span class="work-log-time-current">` +
+        `${this.escapeHtml(txt)}` +
+        (proto
+          ? `<span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
+          : "") +
+        `</span>`;
       return {
         html:
-          `<span class="work-log-time-corrected" title="${this.escapeHtml(hint)}">` +
-          `${this.escapeHtml(txt)}` +
-          `<span class="work-log-time-corrected-badge">διορθ.</span>` +
-          `</span>` +
-          protoHtml,
+          `<span class="work-log-time-stack">` +
+          previousBlocks.join("") +
+          currentHtml +
+          `</span>`,
         isMissing: false,
       };
     }

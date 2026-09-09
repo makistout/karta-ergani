@@ -242,6 +242,19 @@ def work_log_closed_hour_to(
     work_date: str,
 ) -> str | None:
     """Ώρα Έως κλειστής πραγματικής (Από+Έως), αλλιώς None."""
+    row = work_log_closed_hours(employer_afm, branch_aa, employee_afm, work_date)
+    if not row:
+        return None
+    return row[1]
+
+
+def work_log_closed_hours(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    work_date: str,
+) -> tuple[str, str] | None:
+    """(hour_from, hour_to) κλειστής πραγματικής, αλλιώς None."""
     erg = norm_afm(employer_afm)
     aa = str(branch_aa or "0").strip()[:32] or "0"
     emp = norm_afm(employee_afm)
@@ -251,7 +264,7 @@ def work_log_closed_hour_to(
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT TOP (1) hour_to
+            SELECT TOP (1) hour_from, hour_to
             FROM dbo.karta_work_log
             WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
               AND (
@@ -260,6 +273,44 @@ def work_log_closed_hour_to(
               )
               AND NULLIF(LTRIM(RTRIM(ISNULL(hour_from, N''))), N'') IS NOT NULL
               AND NULLIF(LTRIM(RTRIM(ISNULL(hour_to, N''))), N'') IS NOT NULL
+            ORDER BY id DESC
+            """,
+            (erg, aa, emp, wd, wd),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    hf = str(row[0] or "").strip()
+    ht = str(row[1] or "").strip()
+    if not hf or not ht:
+        return None
+    return hf, ht
+
+
+def work_log_any_hour_from(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    work_date: str,
+) -> str | None:
+    """Ώρα Από πραγματικής (ανοιχτή ή κλειστή), αλλιώς None."""
+    erg = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    emp = norm_afm(employee_afm)
+    wd = str(work_date or "").strip()
+    if not erg or not emp or not wd:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (1) hour_from
+            FROM dbo.karta_work_log
+            WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
+              AND (
+                work_date = ?
+                OR TRY_CONVERT(date, work_date, 103) = TRY_CONVERT(date, ?, 103)
+              )
+              AND NULLIF(LTRIM(RTRIM(ISNULL(hour_from, N''))), N'') IS NOT NULL
             ORDER BY id DESC
             """,
             (erg, aa, emp, wd, wd),

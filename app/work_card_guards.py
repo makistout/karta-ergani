@@ -7,9 +7,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.date_util import format_date_for_ergani
-from app.repo_card import card_event_exists, latest_card_event_time_hm
+from app.repo_card import card_event_exists, latest_card_event_f_date, latest_card_event_time_hm
 from app.repo_work_log_core import (
+    work_log_any_hour_from,
     work_log_closed_hour_to,
+    work_log_closed_hours,
     work_log_has_hour_from,
     work_log_has_open_entry,
     work_log_open_hour_from,
@@ -341,6 +343,129 @@ def _time_at_suffix(time_hm: str | None) -> str:
     return ""
 
 
+def _local_dt_on_day(day_iso: str, hm: str) -> datetime | None:
+    day = str(day_iso or "").strip()[:10]
+    clock = str(hm or "").strip()[:5]
+    if not day or _clock_to_minutes(clock) is None:
+        return None
+    try:
+        return datetime.strptime(f"{day} {clock}", "%Y-%m-%d %H:%M").replace(
+            tzinfo=tz_athens()
+        )
+    except ValueError:
+        return None
+
+
+def _parse_existing_card_dt(raw_f_date: str | None, reference_date_iso: str) -> datetime | None:
+    raw = str(raw_f_date or "").strip()
+    if not raw:
+        return None
+    try:
+        return parse_event_at(raw, reference_date_iso).astimezone(tz_athens())
+    except (WorkCardPayloadError, ValueError, TypeError):
+        pass
+    hm = raw[11:16] if "T" in raw and len(raw) >= 16 else raw[:5]
+    return _local_dt_on_day(reference_date_iso, hm)
+
+
+def _existing_same_type_dt(
+    *,
+    f_type: str,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date_iso: str,
+) -> tuple[datetime | None, str | None]:
+    """
+    Τελευταία υπάρχουσα ώρα ίδιου τύπου (κάρτα ή πραγματική).
+    Επιστρέφει (datetime, hh:mm για μήνυμα).
+    """
+    emp = norm_afm(employee_afm)
+    ref = str(reference_date_iso or "").strip()[:10]
+    ft = str(f_type or "").strip()
+    if not emp or not ref or ft not in ("0", "1"):
+        return None, None
+
+    candidates: list[tuple[datetime, str]] = []
+
+    card_raw = latest_card_event_f_date(emp, ref, ft)
+    card_dt = _parse_existing_card_dt(card_raw, ref)
+    if card_dt is not None:
+        candidates.append((card_dt, card_dt.strftime("%H:%M")))
+
+    erg_date = format_date_for_ergani(ref)
+    try:
+        if ft == "0":
+            wl_hm = work_log_any_hour_from(employer_afm, branch_aa, emp, erg_date)
+            wl_dt = _local_dt_on_day(ref, wl_hm or "")
+            if wl_dt is not None:
+                candidates.append((wl_dt, wl_dt.strftime("%H:%M")))
+        else:
+            closed = work_log_closed_hours(employer_afm, branch_aa, emp, erg_date)
+            if closed:
+                hf, ht = closed
+                from_min = _clock_to_minutes(hf)
+                to_min = _clock_to_minutes(ht)
+                day = ref
+                if (
+                    from_min is not None
+                    and to_min is not None
+                    and to_min <= from_min
+                ):
+                    nxt = _iso_next_day(ref)
+                    if nxt:
+                        day = nxt
+                wl_dt = _local_dt_on_day(day, ht)
+                if wl_dt is not None:
+                    candidates.append((wl_dt, wl_dt.strftime("%H:%M")))
+    except WorkCardPayloadError:
+        pass
+
+    if not candidates:
+        return None, None
+    best_dt, best_hm = max(candidates, key=lambda item: item[0])
+    return best_dt, best_hm
+
+
+def same_type_earlier_blocked_reason(
+    *,
+    f_type: str,
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    reference_date_iso: str,
+    event_at: str | None,
+) -> str | None:
+    """
+    Απόρριψη όταν υπάρχει ήδη ίδιο χτύπημα (είσοδος ή έξοδος) και η νέα ώρα
+    είναι προγενέστερη — ισχύει και για διορθωτική υποβολή.
+    """
+    ref = str(reference_date_iso or "").strip()[:10]
+    if not ref or not event_at:
+        return None
+    existing_dt, existing_hm = _existing_same_type_dt(
+        f_type=f_type,
+        employer_afm=employer_afm,
+        branch_aa=branch_aa,
+        employee_afm=employee_afm,
+        reference_date_iso=ref,
+    )
+    if existing_dt is None:
+        return None
+    try:
+        new_dt = parse_event_at(str(event_at), ref).astimezone(tz_athens())
+    except (WorkCardPayloadError, ValueError, TypeError):
+        return None
+    if new_dt >= existing_dt:
+        return None
+    label = "εισόδου" if str(f_type).strip() == "0" else "εξόδου"
+    return (
+        f"Δεν επιτρέπεται προγενέστερο χτύπημα {label}"
+        + _time_at_suffix(existing_hm)
+        + "."
+    )
+
+
 def new_card_punch_blocked_reason(
     *,
     intent: str,
@@ -386,6 +511,16 @@ def new_card_punch_blocked_reason(
                 reference_date_iso=ref,
                 event_at=event_use,
             )
+        earlier = same_type_earlier_blocked_reason(
+            f_type="1",
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            employee_afm=emp,
+            reference_date_iso=ref_use,
+            event_at=event_use,
+        )
+        if earlier:
+            return earlier
         if card_event_exists(emp, ref_use, "1"):
             exit_time = latest_card_event_time_hm(emp, ref_use, "1")
             return (
@@ -426,6 +561,19 @@ def new_card_punch_blocked_reason(
         return None
 
     if "check_in" in key:
+        event_use = str(event_at or "").strip() or None
+        if not event_use and key.endswith("_now"):
+            event_use = datetime.now(tz_athens()).isoformat(timespec="seconds")
+        earlier = same_type_earlier_blocked_reason(
+            f_type="0",
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            employee_afm=emp,
+            reference_date_iso=ref,
+            event_at=event_use,
+        )
+        if earlier:
+            return earlier
         if card_event_exists(emp, ref, "0"):
             entry_time = latest_card_event_time_hm(emp, ref, "0")
             return (

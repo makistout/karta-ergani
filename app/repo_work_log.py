@@ -248,32 +248,25 @@ def _card_db_details_by_employee_work_date(
             "recorded_at": _format_recorded_at(card.get("declaration_created_at")),
             "card_event_id": card.get("id"),
         }
-        if ft == "1":
-            if slot.get("check_out") is None:
-                slot["check_out"] = {**entry, "previous_events": []}
-            else:
-                prev = slot.get("check_out") or {}
-                prev_list = prev.get("previous_events") if isinstance(prev.get("previous_events"), list) else []
-                prev_list.append({
-                    "time": prev.get("time"),
-                    "protocol": prev.get("protocol"),
-                    "recorded_at": prev.get("recorded_at"),
-                    "card_event_id": prev.get("card_event_id"),
-                })
-                slot["check_out"] = {**prev, "previous_events": prev_list}
+        # Τα events έρχονται νεότερα→παλαιότερα· το πρώτο μένει current,
+        # κάθε επόμενο μπαίνει στα previous_events.
+        kind_key = "check_out" if ft == "1" else "check_in"
+        current = slot.get(kind_key)
+        if current is None:
+            slot[kind_key] = {**entry, "previous_events": []}
         else:
-            if slot.get("check_in") is None:
-                slot["check_in"] = {**entry, "previous_events": []}
-            else:
-                prev = slot.get("check_in") or {}
-                prev_list = prev.get("previous_events") if isinstance(prev.get("previous_events"), list) else []
-                prev_list.append({
-                    "time": prev.get("time"),
-                    "protocol": prev.get("protocol"),
-                    "recorded_at": prev.get("recorded_at"),
-                    "card_event_id": prev.get("card_event_id"),
-                })
-                slot["check_in"] = {**prev, "previous_events": prev_list}
+            prev_list = (
+                list(current.get("previous_events") or [])
+                if isinstance(current.get("previous_events"), list)
+                else []
+            )
+            prev_list.append({
+                "time": entry.get("time"),
+                "protocol": entry.get("protocol"),
+                "recorded_at": entry.get("recorded_at"),
+                "card_event_id": entry.get("card_event_id"),
+            })
+            slot[kind_key] = {**current, "previous_events": prev_list}
         slot["types"].add(ft)
     return out
 
@@ -300,21 +293,39 @@ def _clock_minutes_hm(raw: str | None) -> int | None:
     return h * 60 + m
 
 
+def _exit_timeline_minutes(hm: str | None, other_hm: str | None = None) -> int | None:
+    """
+    Λεπτά εξόδου σε χρονογραμμή βάρδιας: ξημερώματα (<03:00) μετά βραδινή
+    ώρα μετράνε ως επόμενη ημέρα (+24h).
+    """
+    minutes = _clock_minutes_hm(hm)
+    if minutes is None:
+        return None
+    other = _clock_minutes_hm(other_hm)
+    overnight_before = 3 * 60
+    evening_from = 12 * 60
+    if minutes < overnight_before and (other is None or other >= evening_from):
+        return minutes + 24 * 60
+    return minutes
+
+
 def _merge_portal_and_card_punch_time(
     *,
     portal_time: str,
     card_entry: dict[str, Any],
     punch_kind: str,
+    portal_protocol: str | None = None,
 ) -> tuple[str, dict[str, Any], str | None]:
     """
     Συγχώνευση πραγματικής (portal) με δήλωση κάρτας.
 
-    «διορθ.» μόνο όταν η κάρτα αντικαθιστά παλαιότερη τιμή (άλλη κάρτα ή
+    Διόρθωση μόνο όταν η κάρτα αντικαθιστά παλαιότερη τιμή (άλλη κάρτα ή
     πραγματική με νωρίτερη έξοδο / αργότερη είσοδο). Αν η πραγματική ήρθε
     αργότερα (π.χ. τερματικό μετά από retro κάρτα), κρατάμε την πραγματική.
     """
     card_time = str(card_entry.get("time") or "").strip()
     portal = str(portal_time or "").strip()
+    portal_proto = str(portal_protocol or "").strip() or None
     if not card_time:
         return portal, card_entry, None
     if not portal:
@@ -325,28 +336,40 @@ def _merge_portal_and_card_punch_time(
     if _card_entry_is_correction(card_entry):
         return card_time, card_entry, "card_event_correction"
 
-    pm = _clock_minutes_hm(portal)
-    cm = _clock_minutes_hm(card_time)
-    if pm is None or cm is None:
-        if punch_kind == "out":
-            return portal, {**card_entry, "superseded_by_portal": True}, None
-        return card_time, card_entry, "card_event"
-
     if punch_kind == "out":
+        pm = _exit_timeline_minutes(portal, card_time)
+        cm = _exit_timeline_minutes(card_time, portal)
+        if pm is None or cm is None:
+            return portal, {
+                **card_entry,
+                "superseded_by_portal": True,
+                "portal_protocol": portal_proto,
+            }, None
         if cm > pm:
             meta = {
                 **card_entry,
                 "corrected_previous_time": portal,
+                "corrected_previous_protocol": portal_proto,
                 "previous_events": list(card_entry.get("previous_events") or []),
             }
             return card_time, meta, "card_event_correction"
-        return portal, {**card_entry, "superseded_by_portal": True}, None
+        return portal, {
+            **card_entry,
+            "superseded_by_portal": True,
+            "portal_protocol": portal_proto,
+        }, None
+
+    pm = _clock_minutes_hm(portal)
+    cm = _clock_minutes_hm(card_time)
+    if pm is None or cm is None:
+        return card_time, card_entry, "card_event"
 
     # Είσοδος: η κάρτα «διορθώνει» μόνο όταν δηλώνει αργότερη είσοδο.
     if cm > pm:
         meta = {
             **card_entry,
             "corrected_previous_time": portal,
+            "corrected_previous_protocol": portal_proto,
             "previous_events": list(card_entry.get("previous_events") or []),
         }
         return card_time, meta, "card_event_correction"
@@ -477,6 +500,7 @@ def enrich_work_log_rows_with_card_punch(
         if check_in:
             display_from, check_in, src = _merge_portal_and_card_punch_time(
                 portal_time=str(row.get("hour_from") or "").strip(),
+                portal_protocol=str(row.get("protocol_from") or "").strip() or None,
                 card_entry=check_in,
                 punch_kind="in",
             )
@@ -488,6 +512,7 @@ def enrich_work_log_rows_with_card_punch(
         if check_out:
             display_to, check_out, src = _merge_portal_and_card_punch_time(
                 portal_time=str(row.get("hour_to") or "").strip(),
+                portal_protocol=str(row.get("protocol_to") or "").strip() or None,
                 card_entry=check_out,
                 punch_kind="out",
             )

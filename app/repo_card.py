@@ -290,6 +290,21 @@ def latest_card_event_time_hm(
     """Τελευταία επιτυχημένη δήλωση κάρτας (είσοδος/έξοδος) — ώρα HH:MM."""
     from app.date_util import format_f_date_time
 
+    raw = latest_card_event_f_date(employee_afm, reference_date, f_type)
+    if not raw:
+        return None
+    hm = format_f_date_time(str(raw))
+    if len(hm) >= 5:
+        return hm[:5]
+    return hm or None
+
+
+def latest_card_event_f_date(
+    employee_afm: str,
+    reference_date: str,
+    f_type: str,
+) -> str | None:
+    """Τελευταία επιτυχημένη δήλωση κάρτας — πλήρες f_date (ISO/Ergani)."""
     emp = norm_afm(employee_afm)
     ref = str(reference_date or "").strip()[:10]
     ft = str(f_type or "").strip()
@@ -308,10 +323,7 @@ def latest_card_event_time_hm(
         row = cur.fetchone()
     if not row or not row[0]:
         return None
-    hm = format_f_date_time(str(row[0]))
-    if len(hm) >= 5:
-        return hm[:5]
-    return hm or None
+    return str(row[0]).strip() or None
 
 
 def list_card_events_for_store_date(

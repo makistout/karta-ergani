@@ -790,6 +790,29 @@ tr.work-log-row--deficient .work-log-time-missing {
   gap: 0.35rem;
 }
 
+.work-log-time-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  line-height: 1.15;
+}
+
+.work-log-time-old,
+.work-log-time-current {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.02rem;
+}
+
+.work-log-time-struck {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  color: var(--muted);
+  opacity: 0.9;
+}
+
 .work-log-protocol {
   display: block;
   margin: 0.05rem 0 0;
@@ -799,6 +822,15 @@ tr.work-log-row--deficient .work-log-time-missing {
   letter-spacing: -0.01em;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.work-log-protocol--struck {
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.work-log-protocol--superseded {
+  font-style: italic;
 }
 
 .work-log-time-corrected-badge {

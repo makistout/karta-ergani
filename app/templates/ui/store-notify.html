@@ -8,7 +8,7 @@
       {% if office_has_permission('settings.view') %}
       <p class="page-desc">Ρυθμίσεις λειτουργίας ανά κατάστημα.</p>
       {% else %}
-      <p class="page-desc">Επεξεργασία αργιών ανά κατάστημα.</p>
+      <p class="page-desc">Επεξεργασία αργιών και απολογιστικού ανά κατάστημα.</p>
       {% endif %}
       <div class="card notify-store-picker-card">
         <label for="notifyStoreInput">Κατάστημα</label>
@@ -319,5 +319,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260909accApol"></script>
+  <script src="/static/js/store-notify.js?v=20260909accApol3"></script>
 {% endblock %}

@@ -63,7 +63,7 @@ def test_execution_stops_if_store_ai_was_disabled_after_parsing():
     finish.assert_called_once_with(9, success=False, result=result)
 
 
-def test_batch_card_punches_use_global_batch_indices():
+def test_batch_card_punches_queue_and_stagger_now():
     app = Flask(__name__)
     task = {
         "id": 11, "store_id": 4,
@@ -91,6 +91,8 @@ def test_batch_card_punches_use_global_batch_indices():
          patch("app.assistant_execution_service._authenticate", return_value=("token", client)), \
          patch("app.assistant_execution_service._employees", side_effect=fake_employees), \
          patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None), \
+         patch("app.assistant_execution_service.time.sleep") as sleep_mock, \
+         patch("app.punch_batch_stagger.precompute_batch_offsets", return_value=[0, 2]), \
          patch("app.routes_work_card._submit_work_card", return_value=(
              jsonify({"success": True, "protocol": "P-1"}), 200,
          )) as submit, \
@@ -101,10 +103,16 @@ def test_batch_card_punches_use_global_batch_indices():
     assert submit.call_count == 2
     first_body = submit.call_args_list[0].kwargs["body"]
     second_body = submit.call_args_list[1].kwargs["body"]
-    assert first_body["batch_index"] == 1
-    assert second_body["batch_index"] == 2
-    assert first_body["batch_total"] == 2
-    assert second_body["batch_total"] == 2
+    # Stagger + ουρά στο execution· routes παίρνει τελικό event_at χωρίς διπλό stagger.
+    assert first_body["batch_total"] == 1
+    assert second_body["batch_total"] == 1
+    assert first_body["event_at"] and second_body["event_at"]
+    from datetime import datetime as _dt
+    delta = _dt.fromisoformat(second_body["event_at"]) - _dt.fromisoformat(first_body["event_at"])
+    assert delta.total_seconds() == 120
+    sleep_mock.assert_called()
+    assert result["results"][0]["queue_offset_minutes"] == 0
+    assert result["results"][1]["queue_offset_minutes"] == 2
 
 
 def test_batch_executes_every_command_and_collects_every_protocol():

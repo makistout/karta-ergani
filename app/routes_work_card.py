@@ -309,7 +309,6 @@ def _submit_work_card(
     ref_date = (body.get("reference_date") or "").strip()[:10]
     if not ref_date:
         ref_date = datetime.now(tz_athens()).date().isoformat()
-    explicit_event_at = bool(str(body.get("event_at") or "").strip())
     event_at_str = str(body.get("event_at") or "").strip() or None
     correction_mode = bool(body.get("correction_mode"))
     employee_display = str(body.get("employee_name") or "").strip() or f"{first} {last}".strip()
@@ -353,6 +352,22 @@ def _submit_work_card(
         if before:
             return jsonify({"error": before, "code": "checkout_before_entry"}), 400
 
+    if not event_at_str:
+        event_at_str = datetime.now(tz_athens()).isoformat(timespec="seconds")
+
+    from app.work_card_guards import same_type_earlier_blocked_reason
+
+    earlier = same_type_earlier_blocked_reason(
+        f_type=resolved_type,
+        employer_afm=erg_s,
+        branch_aa=aa_s,
+        employee_afm=emp_afm,
+        reference_date_iso=ref_date,
+        event_at=event_at_str,
+    )
+    if earlier:
+        return jsonify({"error": earlier, "code": "same_type_earlier"}), 400
+
     if card_event_exists(emp_afm, ref_date, resolved_type) and not correction_mode:
         existing_event = _latest_existing_card_event(
             employer_afm=erg_s,
@@ -382,15 +397,28 @@ def _submit_work_card(
     except (TypeError, ValueError):
         batch_index = 0
         batch_total = 0
-    if batch_total > 1 and batch_index >= 1 and explicit_event_at:
+    if batch_total > 1 and batch_index >= 1:
         from app.punch_batch_stagger import apply_batch_stagger_to_event_at
 
+        # Ισχύει και για «τώρα» (χωρίς ρητό event_at): αληθοφάνεια +1–2′ ανά χτύπημα.
         event_at_str = apply_batch_stagger_to_event_at(
             event_at_str,
             reference_date=ref_date,
             punch_index=batch_index - 1,
             punch_total=batch_total,
         )
+        earlier_after_stagger = same_type_earlier_blocked_reason(
+            f_type=resolved_type,
+            employer_afm=erg_s,
+            branch_aa=aa_s,
+            employee_afm=emp_afm,
+            reference_date_iso=ref_date,
+            event_at=event_at_str,
+        )
+        if earlier_after_stagger:
+            return jsonify(
+                {"error": earlier_after_stagger, "code": "same_type_earlier"}
+            ), 400
     aitiologia_raw = aitiologia_for_wrk_card_submit(
         f_type=resolved_type,
         reference_date=ref_date,

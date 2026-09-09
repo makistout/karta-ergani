@@ -333,3 +333,82 @@ def test_new_card_punch_blocked_reason_rejects_future_time_today():
         event_at=future.isoformat(timespec="seconds"),
     )
     assert reason == "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική"
+
+
+def test_same_type_earlier_blocks_earlier_exit_against_card(monkeypatch):
+    monkeypatch.setattr(
+        guards,
+        "latest_card_event_f_date",
+        lambda *a, **k: "2026-09-08T20:00:00",
+    )
+    monkeypatch.setattr(guards, "work_log_closed_hours", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "work_log_any_hour_from", lambda *a, **k: None)
+    reason = guards.same_type_earlier_blocked_reason(
+        f_type="1",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-08",
+        event_at="2026-09-08T19:30:00",
+    )
+    assert reason is not None
+    assert "προγενέστερο" in reason
+    assert "20:00" in reason
+
+
+def test_same_type_earlier_allows_later_exit(monkeypatch):
+    monkeypatch.setattr(
+        guards,
+        "latest_card_event_f_date",
+        lambda *a, **k: "2026-09-08T20:00:00",
+    )
+    monkeypatch.setattr(guards, "work_log_closed_hours", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "work_log_any_hour_from", lambda *a, **k: None)
+    reason = guards.same_type_earlier_blocked_reason(
+        f_type="1",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-08",
+        event_at="2026-09-08T21:00:00",
+    )
+    assert reason is None
+
+
+def test_same_type_earlier_blocks_earlier_entry_against_work_log(monkeypatch):
+    monkeypatch.setattr(guards, "latest_card_event_f_date", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "work_log_any_hour_from", lambda *a, **k: "12:00")
+    monkeypatch.setattr(guards, "work_log_closed_hours", lambda *a, **k: None)
+    reason = guards.same_type_earlier_blocked_reason(
+        f_type="0",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-08",
+        event_at="2026-09-08T11:30:00",
+    )
+    assert reason is not None
+    assert "εισόδου" in reason
+    assert "12:00" in reason
+
+
+def test_same_type_earlier_overnight_exit_rejects_previous_evening(monkeypatch):
+    """Πραγματική έξοδος 00:33 (επόμενη μέρα) · κάρτα 23:59 ίδια βάρδια = προγενέστερη."""
+    monkeypatch.setattr(guards, "latest_card_event_f_date", lambda *a, **k: None)
+    monkeypatch.setattr(
+        guards,
+        "work_log_closed_hours",
+        lambda *a, **k: ("16:00", "00:33"),
+    )
+    monkeypatch.setattr(guards, "work_log_any_hour_from", lambda *a, **k: None)
+    reason = guards.same_type_earlier_blocked_reason(
+        f_type="1",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-08",
+        event_at="2026-09-08T23:59:00",
+    )
+    assert reason is not None
+    assert "προγενέστερο" in reason
+    assert "00:33" in reason

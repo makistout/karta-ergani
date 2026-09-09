@@ -18,16 +18,33 @@ class WorkLogCardMergeTests(unittest.TestCase):
         self.assertTrue(meta.get("superseded_by_portal"))
         self.assertNotIn("corrected_previous_time", meta)
 
+    def test_exit_overnight_portal_beats_earlier_evening_card(self):
+        """Πραγματική 00:33 (επόμενη μέρα) κερδίζει κάρτα 23:59 ίδιας βάρδιας."""
+        card = {"time": "23:59", "protocol": "ΚΕ363107690", "previous_events": []}
+        display, meta, src = _merge_portal_and_card_punch_time(
+            portal_time="00:33",
+            portal_protocol="ΚΕ363131156",
+            card_entry=card,
+            punch_kind="out",
+        )
+        self.assertEqual(display, "00:33")
+        self.assertIsNone(src)
+        self.assertTrue(meta.get("superseded_by_portal"))
+        self.assertEqual(meta.get("portal_protocol"), "ΚΕ363131156")
+        self.assertNotIn("corrected_previous_time", meta)
+
     def test_exit_card_later_marks_portal_as_corrected(self):
         card = {"time": "20:30", "protocol": "ΚΕ1", "previous_events": []}
         display, meta, src = _merge_portal_and_card_punch_time(
             portal_time="19:00",
+            portal_protocol="ΚΕ0",
             card_entry=card,
             punch_kind="out",
         )
         self.assertEqual(display, "20:30")
         self.assertEqual(src, "card_event_correction")
         self.assertEqual(meta.get("corrected_previous_time"), "19:00")
+        self.assertEqual(meta.get("corrected_previous_protocol"), "ΚΕ0")
 
     def test_exit_card_chain_correction_unchanged(self):
         card = {

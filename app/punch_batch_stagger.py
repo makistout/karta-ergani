@@ -23,6 +23,21 @@ def cumulative_stagger_minutes(punch_index: int, *, rng: Any | None = None) -> i
     return total
 
 
+def precompute_batch_offsets(punch_total: int, *, rng: Any | None = None) -> list[int]:
+    """
+    Λεπτά offset ανά χτύπημα (0-based) για ολόκληρη παρτίδα.
+    1ο=0, κάθε επόμενο = προηγούμενο +1 ή +2.
+    """
+    total = max(0, int(punch_total or 0))
+    if total <= 0:
+        return []
+    r = rng if rng is not None else random
+    offsets = [0]
+    for _ in range(1, total):
+        offsets.append(offsets[-1] + int(r.randint(BATCH_PUNCH_GAP_MIN_MINUTES, BATCH_PUNCH_GAP_MAX_MINUTES)))
+    return offsets
+
+
 def count_card_punches_in_commands(commands: list[dict[str, Any]]) -> int:
     total = 0
     for cmd in commands:
@@ -47,9 +62,9 @@ def apply_batch_stagger_to_event_at(
     rng: Any | None = None,
 ) -> str:
     """
-    Μετατοπίζει την ώρα χτυπήματος ανά δείκτη batch (μόνο ετεροχρονισμένα).
+    Μετατοπίζει την ώρα χτυπήματος ανά δείκτη batch.
 
-    1ο χτύπημα στην ρητή ώρα, κάθε επόμενο +1–2 λεπτά.
+    1ο χτύπημα στη βάση, κάθε επόμενο +1–2 λεπτά (ρητή ώρα ή «τώρα»).
     """
     if punch_total <= 1 or punch_index <= 0 or not event_at_str:
         return str(event_at_str or "").strip()
