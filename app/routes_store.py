@@ -117,6 +117,31 @@ def save_store_action_settings(store_id: int):
     return jsonify({"success": True, "settings": settings})
 
 
+@store_bp.put("/<int:store_id>/apologistic-settings")
+def save_store_apologistic_settings(store_id: int):
+    """Μόνο ρυθμίσεις απολογιστικού (ΡΕΠΟ Κυριακής / ανισομερής) — για λογιστή κ.ά."""
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        current = repo.get_action_settings(store_id)
+        settings = repo.save_action_settings(
+            store_id,
+            auto_close_prev_day_enabled=bool(current.get("auto_close_prev_day_enabled")),
+            auto_close_prev_day_time=str(current.get("auto_close_prev_day_time") or "00:30"),
+            auto_close_fixed_exit_time=current.get("auto_close_fixed_exit_time"),
+            notify_grace_minutes=current.get("notify_grace_minutes"),
+            sunday_rest_transfer_enabled=bool(data.get("sunday_rest_transfer_enabled")),
+            uneven_distribution_enabled=bool(data.get("uneven_distribution_enabled")),
+            ai_agent_enabled=bool(current.get("ai_agent_enabled")),
+        )
+    except RuntimeError as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_store_action_settings.sql"}), 503
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 404
+    return jsonify({"success": True, "settings": settings})
+
+
 @store_bp.get("/<int:store_id>/card-listener-settings")
 def get_card_listener_settings(store_id: int):
     if not can_access_store(store_id):

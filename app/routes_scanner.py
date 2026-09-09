@@ -23,6 +23,7 @@ from app.http_helpers import json_or_text
 from app.repo_store import get_store_config, list_store_configs
 from app.repo_entities import list_active_employees_for_store
 from app.work_card_payload import tz_athens
+from config import Config
 from app.repo_scanner import store_menu_details
 
 scanner_bp = Blueprint("scanner", __name__, url_prefix="/scanner")
@@ -71,10 +72,22 @@ def limited(key, maximum=10):
         return db.execute("SELECT count FROM attempts WHERE key=?", (key,)).fetchone()[0] > maximum
 
 
+def _allowed_scanner_origins() -> set[str]:
+    """Origins που επιτρέπονται για POST (public URL + τοπικό host πίσω από IIS)."""
+    allowed = {request.host_url.rstrip("/")}
+    public = str(Config.PUBLIC_BASE_URL or "").strip().rstrip("/")
+    if public:
+        allowed.add(public)
+    return {o for o in allowed if o}
+
+
 @scanner_bp.before_request
 def guard():
     if request.method == "POST":
-        if request.headers.get("X-Scanner-Request") != "1" or (request.headers.get("Origin") and request.headers["Origin"] != request.host_url.rstrip("/")):
+        origin = (request.headers.get("Origin") or "").rstrip("/")
+        if request.headers.get("X-Scanner-Request") != "1" or (
+            origin and origin not in _allowed_scanner_origins()
+        ):
             return jsonify(error="Μη έγκυρη προέλευση αιτήματος"), 403
         if not isinstance(request.get_json(silent=True), dict):
             return jsonify(error="Αναμενόταν αντικείμενο JSON"), 400

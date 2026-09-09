@@ -223,7 +223,9 @@
             </div>
           </div>
         </section>
+        {% endif %}
 
+        {% if office_has_permission('settings.view') or office_has_permission('work_log.view') %}
         <section class="card settings-section" id="apologisticSettingsCard" aria-labelledby="apologisticSettingsTitle">
           <div class="settings-section-head">
             <div>
@@ -317,5 +319,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260821acc1"></script>
+  <script src="/static/js/store-notify.js?v=20260909accApol"></script>
 {% endblock %}

@@ -8,6 +8,50 @@
 
 ---
 
+## 2026-09-09 — Accountant: ρυθμίσεις Απολογιστικού
+
+- Ο ρόλος `accountant` βλέπει/αποθηκεύει την ενότητα **Απολογιστικό** στις Ρυθμίσεις
+  (ΡΕΠΟ Κυριακής + ανισομερής)· `PUT /api/store/<id>/apologistic-settings`.
+
+---
+
+## 2026-09-09 — Scanner: χωρίς «Εγκατάσταση στη συσκευή»
+
+- Αφαίρεση οδηγιών/κουμπιού εγκατάστασης PWA από τις Ρυθμίσεις του `/scanner/`.
+
+---
+
+## 2026-09-09 — Scanner: συμπαγές πλαϊνό μενού σε κινητό
+
+- Μικρότερο πλάτος drawer και γραμματοσειρές (επωνυμία/στοιχεία/μενού)· cache-bust
+  CSS + SW `erganios-scanner-v4`.
+
+---
+
+## 2026-09-09 — Auto-close: χωρίς σχόλιο erganiOS στην Ergani
+
+- Αφαίρεση `comments="erganiOS automatic last-day close"` από τις υποβολές
+  αυτόματου κλεισίματος (δεν εμφανίζεται πλέον στις ΠΑΡΑΤΗΡΗΣΕΙΣ του PDF).
+
+---
+
+## 2026-09-09 — Επαναϋπολογισμός απολογιστικού 1/6–χθες
+
+- `save_report` παραλείπει πλέον runs με επιτυχημένη υποβολή Ergani
+  (`has_successful_submit`), εκτός από `approved`/`locked`.
+- Επαναϋπολογισμός όλων των καταστημάτων από 1/6/2026 έως χθες μέσω
+  `scripts/_recalc_apologistic_from_jun.py`.
+
+---
+
+## 2026-09-09 — Scanner: Origin πίσω από IIS
+
+- Το POST login απέρριπτε `Origin: https://erganios.gr` επειδή το Flask πίσω από
+  HttpPlatformHandler βλέπει `host_url` σε `127.0.0.1`. Ο έλεγχος δέχεται πλέον και
+  το `PUBLIC_BASE_URL`.
+
+---
+
 ## 2026-09-09 — CardScanner PWA Android/iOS
 
 - Νέο `/scanner/` με ανεξάρτητη συνεδρία, επαλήθευση web/API ή portal/ΕΦΚΑ χρήστη

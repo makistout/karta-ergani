@@ -58,8 +58,10 @@ scanner session and no office/admin login. No App Store / Google Play package.
 - Ministry logo on login and scanner home uses the supplied remote image with
   CSS multiply blending to visually remove its white background. The JPEG itself
   is not an alpha-transparent asset and requires network access to load.
-- Service worker v3 replaces old shell caches and refreshes successful cached
+- Service worker v4 replaces old shell caches and refreshes successful cached
   shell responses. Business data and API responses are excluded.
+- Πλαϊνό μενού σε κινητό: στενότερο (~78vw / max 300px) και μικρότερα γράμματα
+  (επωνυμία ~15px, στοιχεία ~12px, στοιχεία μενού ~14px).
 
 ## Verification
 
@@ -88,9 +90,9 @@ Open `http://localhost:5051/scanner/`. A local preview still uses the configured
 store's Ergani environment; it is not a demo mode. Camera testing from a phone
 requires an HTTPS origin accessible to that phone.
 
-Serve over HTTPS through the existing site. iOS: Safari > Share > Add to Home
-Screen. Android: browser install action. Icons and manifest are under
-`app/static/scanner/`; SW scope is `/scanner/`.
+Serve over HTTPS through the existing site. Icons and manifest are under
+`app/static/scanner/`; SW scope is `/scanner/`. Η ενότητα «Εγκατάσταση στη συσκευή»
+δεν εμφανίζεται πλέον στις Ρυθμίσεις του UI.
 
 Grant the application identity write access to Flask's `instance/` directory.
 `SCANNER_DB_PATH` may be supplied in Flask config to override `instance/scanner.sqlite3`.
@@ -99,9 +101,11 @@ not the business history. Back it up and keep it on persistent local storage.
 Multiple processes on the same host share it; multiple hosts require a shared
 transactional store implementation before deployment. Never expose the file via IIS.
 
-Use one stable HTTPS origin; proxies must preserve the external scheme/host for
-same-origin validation and Secure cookies. No automated production submissions
-were performed during implementation.
+Use one stable HTTPS origin (`PUBLIC_BASE_URL`, π.χ. `https://erganios.gr`).
+POST requests require `X-Scanner-Request: 1` and, when `Origin` is present, it must
+match either that public base URL or the Flask `host_url` (loopback behind IIS is
+accepted via `PUBLIC_BASE_URL`). No automated production submissions were
+performed during implementation.
 
 ## Device acceptance checks still required
 

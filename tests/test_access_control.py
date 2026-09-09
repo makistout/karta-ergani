@@ -212,6 +212,8 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "schedule.submit_daily"
     assert permission_for_path("/api/apologistic/submit-bulk", "POST") == "schedule.submit_daily"
     assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "schedule.submit_daily"
+    assert permission_for_path("/api/store/1/action-settings", "GET") == "work_log.view"
+    assert permission_for_path("/api/store/1/apologistic-settings", "PUT") == "work_log.view"
 
 
 def test_role_aliases_do_not_fallback_to_super_admin():

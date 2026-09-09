@@ -862,7 +862,6 @@ def run_auto_close_prev_day_for_store(
                 reference_date=item["reference_date"],
                 event_at=event_at,
                 aitiologia=resolved_aitiologia,
-                comments="erganiOS automatic last-day close",
             )
         except WorkCardPayloadError as ex:
             failures.append({**item, "error": str(ex)})
@@ -960,7 +959,6 @@ def run_auto_close_prev_day_for_store(
                     event_at=event_at,
                     aitiologia=None,
                     include_null_aitiologia=True,
-                    comments="erganiOS automatic last-day close",
                 )
             except WorkCardPayloadError as ex:
                 failures.append({**item, "error": str(ex)})

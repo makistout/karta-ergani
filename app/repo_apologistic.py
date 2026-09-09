@@ -129,6 +129,23 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
         if existing and str(existing[1]) in ("approved", "locked"):
             return {"run_id": int(existing[0]), "skipped": True, "reason": f"status={existing[1]}"}
         if existing:
+            cur.execute(
+                """
+                SELECT TOP 1 1
+                FROM dbo.karta_apologistic_day d
+                INNER JOIN dbo.karta_apologistic_submit s
+                    ON s.day_id = d.id AND s.success = 1
+                WHERE d.run_id = ?
+                """,
+                (int(existing[0]),),
+            )
+            if cur.fetchone():
+                return {
+                    "run_id": int(existing[0]),
+                    "skipped": True,
+                    "reason": "has_successful_submit",
+                }
+        if existing:
             run_id = int(existing[0])
             cur.execute("""
                 UPDATE dbo.karta_apologistic_run SET status=N'running', calculation_version=?,

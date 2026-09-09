@@ -45,6 +45,15 @@ def test_scanner_requires_own_session_and_csrf(setup):
     assert client.get('/scanner/api/recent').status_code == 401
     assert client.post('/scanner/api/login', json={}).status_code == 403
     assert client.post('/scanner/api/login', json={}, headers={**HEADERS,"Origin":"https://attacker.invalid"}).status_code == 403
+    # Πίσω από IIS το host_url είναι loopback· το Origin του browser είναι το PUBLIC_BASE_URL.
+    with patch("app.routes_scanner.Config") as cfg:
+        cfg.PUBLIC_BASE_URL = "https://erganios.gr"
+        r = client.post(
+            "/scanner/api/login",
+            json={"username": "x", "password": "y"},
+            headers={**HEADERS, "Origin": "https://erganios.gr"},
+        )
+    assert r.status_code != 403
     assert client.get('/scanner/').status_code == 200
 
 

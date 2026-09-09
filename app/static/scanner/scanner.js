@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let session = null, stream = null, scanning = false, facing = 'environment', action = 'in', preview = null, sending = false, installPrompt = null;
+let session = null, stream = null, scanning = false, facing = 'environment', action = 'in', preview = null, sending = false;
 let recentPage = 0, recentLoading = false;
 let serverOnline = null, connectivityCheck = null;
 const dbPromise = new Promise((resolve, reject) => {
@@ -233,7 +233,6 @@ async function loadRecent(pageIndex) {
 $('recent-prev').onclick=safeTask(()=>loadRecent(Math.max(0,recentPage-1)));
 $('recent-next').onclick=safeTask(()=>loadRecent(recentPage+1));
 $('pin-form').onsubmit=safeTask(async event=>{event.preventDefault();await api('pin',{pin:$('old-pin').value,new_pin:$('new-pin').value});event.target.reset();await refreshSession();message('Το PIN διαχείρισης ενεργοποιήθηκε για αυτή τη σύνδεση.');});
-window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;$('install').hidden=false;});$('install').onclick=safeTask(async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('install').hidden=true;}});
 window.addEventListener('online',()=>checkConnectivity().catch(error=>message(error.message,true)));window.addEventListener('offline',()=>checkConnectivity().catch(error=>message(error.message,true)));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();$('camera-dialog').close();$('recent-list').replaceChildren();$('pending-list').replaceChildren();document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!=='home');}else{checkConnectivity().catch(error=>message(error.message,true));}});
 network();clock();setInterval(clock,10000);
