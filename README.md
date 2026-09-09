@@ -23,3 +23,4 @@ python run.py
 - [Deployment](docs/DEPLOYMENT.md): IIS/production σημειώσεις και ρυθμίσεις.
 - [Decisions](docs/DECISIONS.md): τεχνικές αποφάσεις που πρέπει να μείνουν ορατές.
 - [Changelog](CHANGELOG.md): ιστορικό αλλαγών, νέα πρώτα.
+- [Card Scanner PWA](docs/SCANNER_PWA.md): εγκατάσταση Android/iOS χωρίς store, `/scanner/`, σάρωση και πλήρες συγχρονισμένο ιστορικό.

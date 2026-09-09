@@ -216,6 +216,9 @@ def register_login_guard(app: Flask) -> None:
 
     @app.before_request
     def _require_office_login():
+        # Scanner owns its isolated authentication; it never creates an office login.
+        if request.blueprint == "scanner":
+            return None
         path = request.path or ""
         if _path_is_public(path, request.method):
             return None

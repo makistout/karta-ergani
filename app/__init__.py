@@ -32,6 +32,7 @@ from app.routes_apologistic import apologistic_bp
 from app.routes_wto_apologistic import wto_apologistic_bp
 from app.routes_card_listener import card_listener_bp
 from app.routes_assistant import assistant_bp
+from app.routes_scanner import scanner_bp
 
 
 def create_app() -> Flask:
@@ -47,6 +48,7 @@ def create_app() -> Flask:
     register_security(app)
     register_access_context(app)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(scanner_bp)
     app.register_blueprint(contact_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(audit_bp)

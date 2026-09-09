@@ -15,6 +15,7 @@ from app.office_auth import SESSION_USER
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _REDACT_KEYS = (
+    "qr",
     "password",
     "pass",
     "pwd",
