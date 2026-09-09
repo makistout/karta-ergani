@@ -94,7 +94,12 @@ def protocols_list():
     if not from_iso:
         return jsonify({"error": "Λείπει date ή from/to"}), 400
     try:
-        rows = list_protocols_for_store_range(int(ctx["id"]), from_iso, to_iso)
+        rows = list_protocols_for_store_range(
+            int(ctx["id"]),
+            from_iso,
+            to_iso,
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        )
         rows = _enrich_protocols_with_pdf(
             rows,
             employer_afm=str(ctx.get("employer_afm") or ""),

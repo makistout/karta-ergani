@@ -38,6 +38,9 @@
   του ως ενεργού, **period sync** τελευταίων 30 ημερών, **αρχείο ψηφιακής οργάνωσης**
   από 1/1 τρέχοντος έτους έως και 2 μήνες πριν (παράλειψη αν είσοδος Ιαν/Φεβ) και
   μετάβαση στην **αρχική**.
+  **Διαγραφή καταστήματος**: `DELETE /api/stores/<id>` μέσω `app/store_purge.py`
+  σβήνει και δεδομένα με κλειδί ΑΦΜ+παράρτημα (όχι μόνο CASCADE σε `store_id`) και
+  φακέλους `protocol_pdfs/{afm}/{branch}/` + `portal_excel_debug/store_{id}/`.
 - `/ui/stores/credentials`: Ergani API/portal credentials.
 - `/ui/stores/notify`: λήπτες Telegram/Email· ενέργειες (auto-close, καθυστέρηση
   ειδοποιήσεων)· ενότητα Απολογιστικό (μεταφορά ΡΕΠΟ Κυριακής και επιλογή
@@ -226,6 +229,8 @@
 ## Πρωτόκολλα (`/ui/protocols`)
 
 - Κατάλογος γραμμών από `karta_ergani_protocol` (κάρτα WorkCardSearch + δηλώσεις ΟΧΕ).
+- Μόνο γραμμές με `branch_aa` ίσο με το παράρτημα του ενεργού καταστήματος
+  (λίστα API + sync Excel/ΟΧΕ).
 - Date range picker όπως `/ui/work-log` · API `GET /api/protocols/list`.
 - Φίλτρο **Είδος δήλωσης** (`declaration_type`) με πλήθος ανά τύπο.
 - Admin: `POST /api/protocols/sync` κατεβάζει πρωτόκολλα **κάρτας** από Ergani και τρέχει

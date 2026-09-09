@@ -274,6 +274,10 @@ def _item_day_iso(item: dict[str, str]) -> str:
     return date.today().isoformat()
 
 
+def _norm_branch_aa(value: str | None) -> str:
+    return str(value or "0").strip() or "0"
+
+
 def _rows_for_upsert(
     items: list[dict[str, str]],
     *,
@@ -281,9 +285,12 @@ def _rows_for_upsert(
     branch_aa: str,
 ) -> list[dict[str, Any]]:
     erg = norm_afm(employer_afm)
-    default_aa = str(branch_aa or "0").strip() or "0"
+    default_aa = _norm_branch_aa(branch_aa)
     out: list[dict[str, Any]] = []
     for it in items:
+        row_branch = _norm_branch_aa(it.get("branch_aa") or default_aa)
+        if row_branch != default_aa:
+            continue
         protocol = _norm_wto_protocol(it.get("protocol") or "")
         if not protocol:
             continue
@@ -299,7 +306,7 @@ def _rows_for_upsert(
         out.append(
             {
                 "employer_afm": erg,
-                "branch_aa": (str(it.get("branch_aa") or default_aa).strip() or default_aa)[:32],
+                "branch_aa": default_aa[:32],
                 "submission_code": submission_code_for_declaration_type(dtype),
                 "protocol": protocol,
                 "submit_date_text": (it.get("submit_text") or "")[:128] or None,
@@ -332,6 +339,7 @@ def process_wto_pdfs_for_range(
         "to": to_iso[:10],
         "items": 0,
         "pages": 0,
+        "items_skipped_other_branch": 0,
         "pdf_ok": 0,
         "pdf_fail": 0,
         "pdf_skipped_existing": 0,
@@ -350,8 +358,16 @@ def process_wto_pdfs_for_range(
             format_date_for_ergani(from_iso),
             format_date_for_ergani(to_iso),
         )
+        want_branch = _norm_branch_aa(branch)
+        before = len(items)
+        items = [
+            it
+            for it in items
+            if _norm_branch_aa(it.get("branch_aa") or want_branch) == want_branch
+        ]
         result["items"] = len(items)
         result["pages"] = pages
+        result["items_skipped_other_branch"] = max(0, before - len(items))
     except Exception as ex:
         result["error"] = f"search: {ex}"
         result["total_s"] = round(time.perf_counter() - t0, 3)

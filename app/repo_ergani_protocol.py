@@ -47,6 +47,10 @@ def _parse_overdue(value: str | None) -> bool | None:
     return None
 
 
+def _norm_branch_aa(value: str | None) -> str:
+    return str(value or "0").strip() or "0"
+
+
 def normalize_protocol_row(
     cells: list[str],
     *,
@@ -58,7 +62,7 @@ def normalize_protocol_row(
     protocol = str(cells[4] or "").strip()
     if not protocol:
         return None
-    branch = str(cells[0] or "").strip() or str(branch_aa or "0").strip() or "0"
+    branch = _norm_branch_aa(str(cells[0] or "").strip() or branch_aa)
     submit_text = str(cells[3] or "").strip()
     return {
         "employer_afm": norm_afm(employer_afm),
@@ -82,6 +86,7 @@ def parse_card_protocol_export_rows(
 ) -> list[dict[str, Any]]:
     if not rows:
         return []
+    want_branch = _norm_branch_aa(branch_aa)
     start = 0
     header = [str(c or "").strip().lower() for c in rows[0]]
     if any("πρωτοκόλλ" in h or "protocol" in h for h in header):
@@ -90,6 +95,8 @@ def parse_card_protocol_export_rows(
     for cells in rows[start:]:
         item = normalize_protocol_row(cells, employer_afm=employer_afm, branch_aa=branch_aa)
         if not item:
+            continue
+        if _norm_branch_aa(item.get("branch_aa")) != want_branch:
             continue
         dtype = str(item.get("declaration_type") or "").lower()
         if dtype and "έναρξης" not in dtype and "λήξης" not in dtype:
@@ -189,9 +196,13 @@ def list_protocols_for_store_range(
     from_iso: str,
     to_iso: str,
     *,
+    branch_aa: str | None = None,
     limit: int = 10000,
 ) -> list[dict[str, Any]]:
-    """Πρωτόκολλα καταστήματος για ημερολογιακό διάστημα submit_at (YYYY-MM-DD)."""
+    """Πρωτόκολλα καταστήματος για ημερολογιακό διάστημα submit_at (YYYY-MM-DD).
+
+    Αν δοθεί ``branch_aa``, επιστρέφει μόνο γραμμές του ίδιου παραρτήματος.
+    """
     sid = int(store_id)
     start = str(from_iso or "").strip()[:10]
     end = str(to_iso or "").strip()[:10]
@@ -202,6 +213,14 @@ def list_protocols_for_store_range(
     if end < start:
         start, end = end, start
     lim = max(1, min(int(limit), 20000))
+    want_branch = None if branch_aa is None else _norm_branch_aa(branch_aa)
+    branch_sql = ""
+    params: list[Any] = [sid, start, end]
+    if want_branch is not None:
+        branch_sql = """
+          AND LTRIM(RTRIM(ISNULL(p.branch_aa, N'0'))) = ?
+        """
+        params.append(want_branch)
     sql = f"""
         SELECT TOP ({lim})
             p.id,
@@ -223,10 +242,11 @@ def list_protocols_for_store_range(
           AND p.submit_at IS NOT NULL
           AND CAST(p.submit_at AS date) >= ?
           AND CAST(p.submit_at AS date) <= ?
+          {branch_sql}
         ORDER BY p.submit_at DESC, p.id DESC
     """
     with cursor(commit=False) as cur:
-        cur.execute(sql, (sid, start, end))
+        cur.execute(sql, tuple(params))
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, row)) for row in cur.fetchall()]
     for row in rows:

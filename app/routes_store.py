@@ -370,7 +370,7 @@ def record_store_sync():
 def delete_store(store_id: int):
     if not can_access_store(store_id):
         return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
-    repo.delete_store_config(store_id)
+    result = repo.delete_store_config(store_id)
     if session.get("active_store_id") == store_id:
         session.pop("active_store_id", None)
         session.pop("ergani_bearer", None)
@@ -379,7 +379,12 @@ def delete_store(store_id: int):
         session.pop("employer_afm", None)
         session.pop("branch_aa", None)
         session.pop("ergani_env", None)
-    return jsonify({"success": True})
+    if isinstance(result, dict) and not result.get("success", True):
+        return jsonify(result), 404
+    payload = {"success": True}
+    if isinstance(result, dict):
+        payload.update({k: v for k, v in result.items() if k != "success"})
+    return jsonify(payload)
 
 
 @store_bp.get("/active")

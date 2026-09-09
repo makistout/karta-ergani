@@ -68,6 +68,10 @@
 - **PDF ΟΧΕ:** `app/portal_wto_organization_pdf_sync.py` · ίδια `protocol_pdfs/` +
   upsert `karta_ergani_protocol` · χωρίς χωριστό UI sync και χωρίς απαγωγή σε
   `work_log`.
+- **Φίλτρο παραρτήματος:** Excel κάρτας, λίστα `/ui/protocols` και sync ΟΧΕ κρατούν
+  μόνο `branch_aa` του ενεργού καταστήματος (όχι όλα τα παραρτήματα του ΑΦΜ).
+- **Διαγραφή καταστήματος:** `app/store_purge.py` καθαρίζει και δεδομένα/αρχεία με
+  κλειδί ΑΦΜ+παράρτημα (`protocol_pdfs/{afm}/{branch}/`, excel debug `store_{id}`).
 - **Backfill:** `scripts/backfill_ergani_protocols.py`, `scripts/backfill_protocol_deduction_matches.py`.
 - **Migrations:** `sql/alter_add_karta_ergani_protocol.sql`, `sql/alter_add_work_log_protocol.sql`,
   runners `ensure_karta_ergani_protocol_table.py`, `ensure_work_log_protocol_columns.py`.

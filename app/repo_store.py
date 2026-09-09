@@ -426,9 +426,11 @@ def save_store_config(
         return int(row[0]) if row else 0
 
 
-def delete_store_config(store_id: int) -> None:
-    with cursor() as cur:
-        cur.execute("DELETE FROM dbo.karta_store_config WHERE id = ?", (int(store_id),))
+def delete_store_config(store_id: int) -> dict[str, Any]:
+    """Διαγραφή καταστήματος + επιχειρησιακά δεδομένα ΑΦΜ/παραρτήματος + αρχεία."""
+    from app.store_purge import delete_store_with_data
+
+    return delete_store_with_data(int(store_id))
 
 
 def touch_last_sync(store_id: int) -> None:
