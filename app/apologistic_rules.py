@@ -217,6 +217,26 @@ def normal_schedule_decision(
         duration = min(effective_actual or actual_minutes, cap) if cap else (effective_actual or actual_minutes)
         proposed = f"{hm(actual_start)}–{hm(actual_start + duration)}"
         return RuleDecision("review", "Χτύπημα χωρίς δηλωμένο ωράριο ή σε ημέρα μη εργασίας", proposed, "Πραγματική έναρξη και συμβατική βάση", "UNDECLARED_DAY_PUNCH_REVIEW")
+    # In partial employment an explicitly configured flexible-arrival window
+    # also covers the corresponding exit window.  Small duration differences
+    # inside that whole window are payroll facts, not a schedule amendment.
+    # Keep the old capped-change rule for zero flex or an exit beyond the
+    # configured window.
+    if (
+        contract_kind == "Μερική"
+        and flex > 0
+        and declared_start is not None
+        and declared_end is not None
+        and declared_start <= actual_start <= declared_start + flex
+        and actual_end <= declared_end + flex
+    ):
+        return RuleDecision(
+            "ok",
+            "Η πραγματική απασχόληση μερικής βρίσκεται στο δηλωμένο παράθυρο ευελιξίας",
+            declared_label,
+            "Δηλωμένο ωράριο",
+            "PARTIAL_FLEX_COMPLIANT",
+        )
     if contract_kind == "Μερική" and (effective_actual or 0) > declared_minutes:
         duration = min(effective_actual or actual_minutes, cap) if cap else (effective_actual or actual_minutes)
         return RuleDecision("change", "Η πραγματική διάρκεια μερικής υπερβαίνει τη δηλωμένη", f"{hm(actual_start)}–{hm(actual_start + duration)}", "Πραγματική διάρκεια με κόφτη πλήρους ημερήσιας βάσης", "PARTIAL_ACTUAL_CAPPED")

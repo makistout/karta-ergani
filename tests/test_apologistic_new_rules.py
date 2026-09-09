@@ -83,6 +83,33 @@ def test_partial_uses_actual_duration_with_five_day_cap_and_no_overtime():
     assert row["overtime_minutes"] == 0
 
 
+def test_partial_small_duration_difference_inside_configured_flex_is_compliant():
+    cases = (
+        ("14:00", "20:40", "14:06", "20:50"),
+        ("14:00", "20:40", "14:03", "20:49"),
+        ("16:00", "22:40", "16:00", "22:50"),
+    )
+    for declared_from, declared_to, actual_from, actual_to in cases:
+        row = one(
+            [sched(start=declared_from, end=declared_to)],
+            [punch(actual_from, actual_to)],
+            contract(kind="ΜΕΡΙΚΗ ΑΠΑΣΧΟΛΗΣΗ", days="5", flex=120),
+        )
+        assert row["status"] == "ok"
+        assert row["rule_id"] == "PARTIAL_FLEX_COMPLIANT"
+        assert row["proposed"] == f"{declared_from}–{declared_to}"
+
+
+def test_partial_exit_beyond_configured_flex_still_uses_capped_change():
+    row = one(
+        [sched(start="09:00", end="13:00")],
+        [punch("09:10", "15:01")],
+        contract(kind="ΜΕΡΙΚΗ ΑΠΑΣΧΟΛΗΣΗ", days="5", flex=120),
+    )
+    assert row["status"] == "change"
+    assert row["rule_id"] == "PARTIAL_ACTUAL_CAPPED"
+
+
 def test_partial_uses_six_day_cap():
     row = one([sched(start="09:00", end="12:00")], [punch("09:00", "18:00")],
               contract(kind="ΜΕΡΙΚΗ ΑΠΑΣΧΟΛΗΣΗ", days="6"))
