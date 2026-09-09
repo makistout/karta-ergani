@@ -11,4 +11,6 @@ dialog.menu-drawer{position:fixed;inset:0 0 0 auto;margin:0;padding:0;width:min(
 
 .drawer-sync{display:flex;align-items:center;gap:12px;padding:14px 4px;border-bottom:1px solid #dce3e8;color:#123f68}.drawer-sync>span{font-size:18px;width:22px;text-align:center}.drawer-sync strong{font-size:14px}.drawer-sync small{display:block;font-size:11px;margin-top:4px}
 
-.sync-top{background:transparent;border:0;color:white;font-size:32px;line-height:1;padding:4px;min-width:38px}.drawer-nav .drawer-sync{gap:12px}.drawer-nav .drawer-sync>div{flex:1}.drawer-sync small{line-height:1.4}#sync-dialog{text-align:center;padding:30px 24px}#sync-result{font-size:21px;line-height:1.5;margin:0 0 22px}#sync-time{color:#617789;margin-bottom:24px}#sync-dialog button{width:100%}@media(max-width:400px){.header-actions{gap:4px}.sync-top{min-width:32px;font-size:28px}.badge{padding:7px 8px}.brand img{width:138px;height:46px}}
+.drawer-nav .drawer-sync{gap:12px}.drawer-nav .drawer-sync>div{flex:1}.drawer-sync small{line-height:1.4}#sync-dialog{text-align:center;padding:30px 24px}#sync-result{font-size:21px;line-height:1.5;margin:0 0 22px}#sync-time{color:#617789;margin-bottom:24px}#sync-dialog button{width:100%}@media(max-width:400px){.header-actions{gap:4px}.badge{padding:7px 8px}.brand img{width:138px;height:46px}}
+
+.header-actions{gap:8px}

@@ -49,7 +49,7 @@ function clock() { $('clock').textContent = new Intl.DateTimeFormat('el-GR',{tim
 async function refreshSession() {
   session = await api('session');
   $('login').hidden = true; $('workspace').hidden = false;
-  $('menu-toggle').hidden=false; $('sync-top').hidden=false;
+  $('menu-toggle').hidden=false;
   const store=session.stores.find(s=>s.id===session.store_id) || {};
   $('store-name').textContent=store.name || '';
   $('store-afm').textContent='ΑΦΜ: '+(store.employer_afm || '—');
@@ -67,12 +67,15 @@ async function unlock() {
     $('unlock-dialog').oncancel = () => reject(new Error('Η πρόσβαση ακυρώθηκε'));
   });
 }
-async function page(name) {
-  closeMenu();
-  if (name === 'recent') await unlock();
+function showPage(name) {
   $('page-title').textContent=({home:'Αρχική',recent:'Αποστολές',pending:'Εκκρεμείς',settings:'Ρυθμίσεις'})[name];
   document.querySelectorAll('.page').forEach(el => { el.hidden = el.id !== name; });
   document.querySelectorAll('nav button').forEach(el => { el.removeAttribute('aria-current'); if(el.dataset.page === name) el.setAttribute('aria-current','page'); });
+}
+async function page(name) {
+  closeMenu();
+  if (name === 'recent') await unlock();
+  showPage(name);
   if(name === 'recent') await loadRecent(0);
   if(name === 'pending') await renderPending();
 }
@@ -87,7 +90,7 @@ $('menu-close').onclick=closeMenu;
 $('menu-drawer').addEventListener('close',()=> $('menu-toggle').setAttribute('aria-expanded','false'));
 $('menu-drawer').onclick=event=>{if(event.target===$('menu-drawer')) {const rect=$('menu-drawer').getBoundingClientRect();if(event.clientX<rect.left)closeMenu();}};
 document.querySelectorAll('nav button[data-page]').forEach(el => el.onclick = safeTask(() => page(el.dataset.page)));
-$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; $('sync-top').hidden=true; session=null; $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
+$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
 function stopCamera() { scanning=false; if(stream) stream.getTracks().forEach(track=>track.stop()); stream=null; $('video').srcObject=null; }
 async function openCamera(event) {
   if(!session?.store_id) throw new Error('Επιλέξτε πρώτα κατάστημα');
@@ -190,7 +193,7 @@ async function synchronizePending() {
   if(manualSyncRunning) return;
   if(sending) { syncResult('Η αποστολή δηλώσεων βρίσκεται ήδη σε εξέλιξη.'); return; }
   manualSyncRunning=true;
-  $('sync-top').disabled=$('sync-menu').disabled=true;
+  $('sync-menu').disabled=true;
   try {
     const pending=(await outbox()).filter(item=>item.state!=='success');
     if(!pending.length) { syncResult('Δεν βρέθηκαν δηλώσεις προς υποβολή.'); return; }
@@ -203,9 +206,8 @@ async function synchronizePending() {
     else syncResult(`${sent ? `Υποβλήθηκαν ${sent} δηλώσεις. ` : ''}Παραμένουν ${remaining.length} εκκρεμείς δηλώσεις. Ελέγξτε τις «Εκκρεμείς» για αιτιολογία ή έλεγχο αποτελέσματος.`);
     await refreshSession();
   } catch(error) { syncResult(error.message || 'Ο συγχρονισμός δεν ολοκληρώθηκε.'); }
-  finally { manualSyncRunning=false; $('sync-top').disabled=$('sync-menu').disabled=false; }
+  finally { manualSyncRunning=false; $('sync-menu').disabled=false; }
 }
-$('sync-top').onclick=synchronizePending;
 $('sync-menu').onclick=synchronizePending;
 async function loadRecent(pageIndex) {
   if(recentLoading) return;
@@ -234,7 +236,7 @@ $('recent-prev').onclick=safeTask(()=>loadRecent(Math.max(0,recentPage-1)));
 $('recent-next').onclick=safeTask(()=>loadRecent(recentPage+1));
 $('pin-form').onsubmit=safeTask(async event=>{event.preventDefault();await api('pin',{pin:$('old-pin').value,new_pin:$('new-pin').value});event.target.reset();await refreshSession();message('Το PIN διαχείρισης ενεργοποιήθηκε για αυτή τη σύνδεση.');});
 window.addEventListener('online',()=>checkConnectivity().catch(error=>message(error.message,true)));window.addEventListener('offline',()=>checkConnectivity().catch(error=>message(error.message,true)));
-document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();$('camera-dialog').close();$('recent-list').replaceChildren();$('pending-list').replaceChildren();document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!=='home');}else{checkConnectivity().catch(error=>message(error.message,true));}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();closeMenu();$('camera-dialog').close();$('recent-list').replaceChildren();$('pending-list').replaceChildren();showPage('home');}else{checkConnectivity().catch(error=>message(error.message,true));}});
 network();clock();setInterval(clock,10000);
 checkConnectivity().catch(error=>message(error.message,true));
 setInterval(()=>{if(!document.hidden)checkConnectivity().catch(error=>message(error.message,true));},30000);

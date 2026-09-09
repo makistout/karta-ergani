@@ -45,7 +45,7 @@ scanner session and no office/admin login. No App Store / Google Play package.
   database is available. On localhost it does not prove internet access.
 - Automatic pending submission runs every 60 seconds while the page is running,
   and after connectivity is restored. The original request id is reused.
-- The top synchronization icon and the menu “Συγχρονισμός” submit eligible pending
+- The menu “Συγχρονισμός” submits eligible pending
   events. Empty queue: “Δεν βρέθηκαν δηλώσεις προς υποβολή.” A result dialog includes
   date/time and OK. Offline, late, failed and uncertain outcomes stay visible in
   Εκκρεμείς; reasons and reconciliation are not bypassed.
@@ -54,6 +54,13 @@ scanner session and no office/admin login. No App Store / Google Play package.
 
 - Shared official erganiOS logo on login, main header and drawer; primary blue
   `#1062fe`, white Online/Offline badge with blue text.
+- Header contains the Online/Offline indicator next to the hamburger menu;
+  synchronization is available only inside the drawer.
+- Returning from another app resets the view, title and selected menu item to
+  Αρχική together and closes the drawer/camera.
+- Installation icons use the existing erganiOS symbol on white: 192/512px regular
+  icons, 180px Apple touch icon and a separate 512px maskable Android icon with
+  safe padding. Existing installations may need re-adding to update their icon.
 - CardScanner heading and bilingual Clock-in / Clock-out labels.
 - Ministry logo on login and scanner home uses the supplied remote image with
   CSS multiply blending to visually remove its white background. The JPEG itself
