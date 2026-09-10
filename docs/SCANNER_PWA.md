@@ -10,10 +10,14 @@ scanner session and no office/admin login. No App Store / Google Play package.
   existing portal login flow, including EFKA users. Only stores mapped to the
   verified account are offered. Submissions still use the store's web/API account.
   No arbitrary employer/branch ids from the browser.
-- Right-side hamburger menu shows store details without a store selector.
-  The first configured matching store is used for a new login.
-  The menu displays the official `karta_employer.eponimia`, AFM, branch description
-  and the configured **portal `username`**, not the web/API account.
+- Right-side hamburger menu shows store details. With a single matching store the
+  session selects it automatically. With **two or more** stores for the same
+  credentials, login asks which branch to use. The choice is stored in device
+  `localStorage` (`erganios-scanner-preferred-store:<username>`) and reused on
+  later logins via `preferred_store_id`. Tapping the branch info block in the
+  menu reopens the picker. The menu displays the official `karta_employer.eponimia`,
+  AFM, branch description and the configured **portal `username`**, not the
+  web/API account.
   “Τελ. συγχρ.” shows the latest card event time for this branch, considering both
   synchronized work-log punches and successful local card declarations. It is not
   the background job execution time. Details refresh whenever the menu opens.

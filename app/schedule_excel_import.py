@@ -308,19 +308,40 @@ def _read_instructions(ws: Any) -> dict[str, Any]:
     m = _WEEK_RANGE.search(instructions_week_label or "")
     if m:
         week_from, week_to = m.group(1), m.group(2)
-    store_id_raw = ws["B16"].value
+
+    labels: dict[str, Any] = {}
+    max_row = int(ws.max_row or 0)
+    for row_idx in range(1, max_row + 1):
+        key = str(ws.cell(row_idx, 1).value or "").strip().casefold()
+        if not key:
+            continue
+        labels[key] = ws.cell(row_idx, 2).value
+
+    store_id_raw = labels.get("store id")
     try:
-        store_id = int(store_id_raw) if store_id_raw is not None else None
+        store_id = int(store_id_raw) if store_id_raw is not None and str(store_id_raw).strip() != "" else None
     except (TypeError, ValueError):
         store_id = None
+
+    employer_afm = str(labels.get("employer afm") or "").strip() or None
+    branch_aa = str(labels.get("branch aa") or "").strip() or None
+    # Συμβατότητα με παλιά templates σε σταθερές γραμμές B16–B18.
+    if store_id is None and employer_afm is None and branch_aa is None:
+        try:
+            store_id = int(ws["B16"].value) if ws["B16"].value is not None else None
+        except (TypeError, ValueError):
+            store_id = None
+        employer_afm = str(ws["B17"].value or "").strip() or None
+        branch_aa = str(ws["B18"].value or "").strip() or None
+
     return {
         "week_label": instructions_week_label,
         "instructions_week_label": instructions_week_label,
         "week_from": week_from,
         "week_to": week_to,
         "store_id": store_id,
-        "employer_afm": str(ws["B17"].value or "").strip() or None,
-        "branch_aa": str(ws["B18"].value or "").strip() or None,
+        "employer_afm": employer_afm,
+        "branch_aa": branch_aa,
     }
 
 
@@ -739,8 +760,9 @@ def summarize_import_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
             counts[kind] += 1
         if str(row.get("import_action") or "") == "absent":
             counts["absent"] += 1
-        if kind in ("new", "update") and not row.get("validation_errors"):
-            counts["apply"] += 1
+        if kind in ("new", "update", "same") and not row.get("validation_errors"):
+            if str(row.get("import_action") or "") in ("work", "rest", "absent"):
+                counts["apply"] += 1
     return counts
 
 

@@ -172,12 +172,29 @@ def login():
             return jsonify(error="Το ΕΡΓΑΝΗ δεν ανταποκρίνεται. Δοκιμάστε ξανά."), 503
     if not allowed:
         return jsonify(error="Μη έγκυροι κωδικοί ή μη συνδεδεμένο κατάστημα στο erganiOS"), 401
+    preferred_raw = body.get("preferred_store_id")
+    preferred_id = None
+    try:
+        if preferred_raw is not None and str(preferred_raw).strip() != "":
+            preferred_id = int(preferred_raw)
+    except (TypeError, ValueError):
+        preferred_id = None
+    if preferred_id is not None and str(preferred_id) in allowed:
+        store_id = preferred_id
+    elif len(allowed) == 1:
+        store_id = int(next(iter(allowed)))
+    else:
+        # Πολλαπλά παραρτήματα χωρίς αποθηκευμένη προτίμηση → επιλογή από τη συσκευή.
+        store_id = None
     token = secrets.token_urlsafe(32)
     sid = hashlib.sha256(token.encode()).hexdigest()
     with database() as db:
         db.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
-        db.execute("INSERT INTO sessions(id,stores,store_id,expires) VALUES(?,?,?,?)", (sid, json.dumps(allowed), int(next(iter(allowed))), time.time() + 43200))
-    response = jsonify(success=True)
+        db.execute(
+            "INSERT INTO sessions(id,stores,store_id,expires) VALUES(?,?,?,?)",
+            (sid, json.dumps(allowed), store_id, time.time() + 43200),
+        )
+    response = jsonify(success=True, store_id=store_id, store_count=len(allowed))
     response.set_cookie(COOKIE, token, max_age=43200, secure=request.is_secure, httponly=True, samesite="Strict", path="/scanner/")
     return response
 
@@ -190,13 +207,31 @@ def status():
         if cfg and binding_matches(cfg, username):
             details = store_menu_details(cfg["employer_afm"], cfg["branch_aa"])
             stores.append({"id": cfg["id"], "name": details["legal_name"] or "Μη διαθέσιμη επωνυμία", "branch_aa": cfg["branch_aa"], "employer_afm": cfg["employer_afm"], "username": cfg.get("username") or "", "branch_description": details["branch_description"], "last_card_at": details["last_card_at"]})
-    if not g.scanner["store_id"] and stores:
-        g.scanner["store_id"] = stores[0]["id"]
+    store_ids = {int(item["id"]) for item in stores}
+    current_id = g.scanner.get("store_id")
+    try:
+        current_id = int(current_id) if current_id is not None else None
+    except (TypeError, ValueError):
+        current_id = None
+    if current_id is not None and current_id not in store_ids:
+        current_id = None
         with database() as db:
-            db.execute("UPDATE sessions SET store_id=? WHERE id=?", (stores[0]["id"], g.scanner["id"]))
-    cfg = get_store_config(g.scanner["store_id"]) if g.scanner["store_id"] else {}
+            db.execute("UPDATE sessions SET store_id=NULL WHERE id=?", (g.scanner["id"],))
+    if current_id is None and len(stores) == 1:
+        current_id = stores[0]["id"]
+        with database() as db:
+            db.execute("UPDATE sessions SET store_id=? WHERE id=?", (current_id, g.scanner["id"]))
+    g.scanner["store_id"] = current_id
+    cfg = get_store_config(current_id) if current_id else {}
     owner = hashlib.sha256(g.scanner["stores"].encode()).hexdigest()
-    return jsonify(stores=stores, store_id=g.scanner["store_id"], owner=owner, pin_enabled=bool(g.scanner["pin"]), last_sync=str(cfg.get("work_log_last_sync_at") or cfg.get("last_sync_at") or ""))
+    return jsonify(
+        stores=stores,
+        store_id=current_id,
+        owner=owner,
+        pin_enabled=bool(g.scanner["pin"]),
+        needs_store_selection=current_id is None and len(stores) > 1,
+        last_sync=str(cfg.get("work_log_last_sync_at") or cfg.get("last_sync_at") or ""),
+    )
 
 
 @scanner_bp.post("/api/store")

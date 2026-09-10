@@ -88,7 +88,7 @@ def insert_import_rows(batch_id: int, rows: list[dict[str, Any]]) -> int:
                     json.dumps(row.get("current_snapshot") or [], ensure_ascii=False),
                     json.dumps(row.get("proposed_snapshot") or [], ensure_ascii=False),
                     json.dumps(row.get("validation_errors") or [], ensure_ascii=False),
-                    "pending" if row.get("change_kind") in ("new", "update") and not row.get("validation_errors") else None,
+                    "pending" if row.get("change_kind") in ("new", "update", "same") and not row.get("validation_errors") and str(row.get("import_action") or "") in ("work", "rest", "absent") else None,
                 ),
             )
             n += 1
@@ -234,10 +234,12 @@ def update_import_row_result(
 
 
 def list_apply_rows(batch_id: int) -> list[dict[str, Any]]:
+    """Ημέρες προς υποβολή: νέα/αλλαγή ή επιβεβαίωση (same) από συμπληρωμένο Excel."""
     rows = list_import_rows(batch_id)
     return [
         row
         for row in rows
-        if row.get("change_kind") in ("new", "update")
+        if row.get("change_kind") in ("new", "update", "same")
+        and str(row.get("import_action") or "") in ("work", "rest", "absent")
         and not (row.get("validation_errors") or [])
     ]

@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 let session = null, stream = null, scanning = false, facing = 'environment', action = 'in', preview = null, sending = false;
 let recentPage = 0, recentLoading = false;
 let serverOnline = null, connectivityCheck = null;
+let loginUsername = '';
+const PREF_STORE_KEY = 'erganios-scanner-preferred-store';
 const dbPromise = new Promise((resolve, reject) => {
   const req = indexedDB.open('erganios-scanner', 1);
   req.onupgradeneeded = () => req.result.createObjectStore('outbox', {keyPath: 'request_id'});
@@ -17,6 +19,24 @@ async function storage(method, value) {
   });
 }
 function message(text, error = false) { $('message').textContent = text; $('message').className = error ? 'error' : ''; $('message').hidden = !text; }
+function preferenceKey(username) {
+  const name = String(username || loginUsername || '').trim().toLowerCase();
+  return name ? `${PREF_STORE_KEY}:${name}` : PREF_STORE_KEY;
+}
+function readPreferredStoreId(username) {
+  try {
+    const raw = localStorage.getItem(preferenceKey(username));
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  } catch { return null; }
+}
+function writePreferredStoreId(storeId, username) {
+  try {
+    if (storeId == null) localStorage.removeItem(preferenceKey(username));
+    else localStorage.setItem(preferenceKey(username), String(storeId));
+  } catch {}
+}
 async function api(path, body) {
   const response = await fetch('/scanner/api/' + path, {method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-Scanner-Request': '1'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
   let data; try { data = await response.json(); } catch { throw new Error('Μη αναμενόμενη απάντηση από τον server'); }
@@ -46,17 +66,58 @@ async function checkConnectivity() {
   try { await connectivityCheck; } finally { connectivityCheck=null; }
 }
 function clock() { $('clock').textContent = new Intl.DateTimeFormat('el-GR',{timeZone:'Europe/Athens',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date()); }
-async function refreshSession() {
+function updateStorePanel() {
+  const store=session?.stores?.find(s=>s.id===session.store_id) || {};
+  const multi=(session?.stores?.length || 0) > 1;
+  $('store-name').textContent=store.name || (multi ? 'Επιλέξτε παράρτημα' : '');
+  $('store-afm').textContent=store.employer_afm ? 'ΑΦΜ: '+store.employer_afm : '';
+  $('store-branch').textContent=store.branch_aa!=null ? 'Παράρτημα: ('+store.branch_aa+') '+(store.branch_description || '') : '';
+  $('store-last-card').textContent=store.last_card_at || session?.last_sync || 'Δεν υπάρχει καταχωρημένη κάρτα';
+  $('store-user').textContent=store.username ? 'Όνομα χρήστη: '+store.username : '';
+  $('store-switch-hint').hidden=!multi;
+  $('drawer-store').classList.toggle('switchable', multi);
+  $('drawer-store').setAttribute('aria-disabled', multi ? 'false' : 'true');
+}
+function openBranchPicker({required=false}={}) {
+  if (!session?.stores?.length) return;
+  const list=$('branch-list');
+  list.replaceChildren();
+  for (const store of session.stores) {
+    const button=document.createElement('button');
+    button.type='button';
+    button.setAttribute('role','option');
+    button.setAttribute('aria-selected', String(store.id===session.store_id));
+    button.append(
+      textNode('strong', store.name || 'Κατάστημα'),
+      textNode('span', `ΑΦΜ ${store.employer_afm || '—'} · Παράρτημα (${store.branch_aa ?? '—'}) ${store.branch_description || ''}`.trim()),
+    );
+    button.onclick=safeTask(async()=>{
+      await api('store',{store_id:store.id});
+      writePreferredStoreId(store.id, store.username || loginUsername);
+      $('branch-dialog').close();
+      await refreshSession({promptBranch:false});
+      message(`Ενεργό παράρτημα: (${store.branch_aa ?? '—'}) ${store.branch_description || store.name || ''}`.trim());
+    });
+    list.append(button);
+  }
+  if (!$('branch-dialog').open) $('branch-dialog').showModal();
+  $('branch-dialog').oncancel = required
+    ? (event => { event.preventDefault(); })
+    : null;
+}
+async function refreshSession({promptBranch=true}={}) {
   session = await api('session');
+  if (!loginUsername) {
+    const current=session.stores.find(s=>s.id===session.store_id);
+    loginUsername = current?.username || '';
+  }
   $('login').hidden = true; $('workspace').hidden = false;
   $('menu-toggle').hidden=false;
-  const store=session.stores.find(s=>s.id===session.store_id) || {};
-  $('store-name').textContent=store.name || '';
-  $('store-afm').textContent='ΑΦΜ: '+(store.employer_afm || '—');
-  $('store-branch').textContent='Παράρτημα: ('+(store.branch_aa ?? '—')+') '+(store.branch_description || '');
-  $('store-last-card').textContent=store.last_card_at || 'Δεν υπάρχει καταχωρημένη κάρτα';
-  $('store-user').textContent='Όνομα χρήστη: '+(store.username || '—');
+  updateStorePanel();
   await renderPending();
+  if (promptBranch && (session.needs_store_selection || (!session.store_id && session.stores.length > 1))) {
+    openBranchPicker({required:true});
+  }
 }
 async function unlock() {
   if (!session?.pin_enabled) return;
@@ -74,6 +135,10 @@ function showPage(name) {
 }
 async function page(name) {
   closeMenu();
+  if(!session?.store_id && (session?.stores?.length || 0) > 1) {
+    openBranchPicker({required:true});
+    throw new Error('Επιλέξτε πρώτα παράρτημα');
+  }
   if (name === 'recent') await unlock();
   showPage(name);
   if(name === 'recent') await loadRecent(0);
@@ -82,18 +147,40 @@ async function page(name) {
 function safeTask(fn) { return async event => { try { await fn(event); } catch(error) { message(error.message, true); } }; }
 $('login-form').onsubmit = safeTask(async event => {
   event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true;
-  try { const form = new FormData(event.target); await api('login',{username:form.get('username'),password:form.get('password')}); event.target.reset(); message(''); await refreshSession(); } finally { button.disabled = false; }
+  try {
+    const form = new FormData(event.target);
+    loginUsername = String(form.get('username') || '').trim();
+    const preferred = readPreferredStoreId(loginUsername);
+    await api('login',{
+      username:loginUsername,
+      password:form.get('password'),
+      ...(preferred ? {preferred_store_id: preferred} : {}),
+    });
+    event.target.reset(); message(''); await refreshSession();
+  } finally { button.disabled = false; }
 });
 function closeMenu() { $('menu-drawer').close(); $('menu-toggle').setAttribute('aria-expanded','false'); }
-$('menu-toggle').onclick=()=>{ $('menu-drawer').showModal(); $('menu-toggle').setAttribute('aria-expanded','true'); if(serverOnline) refreshSession().catch(error=>message(error.message,true)); };
+$('menu-toggle').onclick=()=>{ $('menu-drawer').showModal(); $('menu-toggle').setAttribute('aria-expanded','true'); if(serverOnline) refreshSession({promptBranch:false}).catch(error=>message(error.message,true)); };
 $('menu-close').onclick=closeMenu;
 $('menu-drawer').addEventListener('close',()=> $('menu-toggle').setAttribute('aria-expanded','false'));
 $('menu-drawer').onclick=event=>{if(event.target===$('menu-drawer')) {const rect=$('menu-drawer').getBoundingClientRect();if(event.clientX<rect.left)closeMenu();}};
+function onDrawerStoreActivate(event) {
+  if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  if ((session?.stores?.length || 0) <= 1) return;
+  closeMenu();
+  openBranchPicker({required:false});
+}
+$('drawer-store').onclick=onDrawerStoreActivate;
+$('drawer-store').onkeydown=onDrawerStoreActivate;
 document.querySelectorAll('nav button[data-page]').forEach(el => el.onclick = safeTask(() => page(el.dataset.page)));
-$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
+$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; loginUsername=''; $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
 function stopCamera() { scanning=false; if(stream) stream.getTracks().forEach(track=>track.stop()); stream=null; $('video').srcObject=null; }
 async function openCamera(event) {
-  if(!session?.store_id) throw new Error('Επιλέξτε πρώτα κατάστημα');
+  if(!session?.store_id) {
+    if ((session?.stores?.length || 0) > 1) openBranchPicker({required:true});
+    throw new Error('Επιλέξτε πρώτα παράρτημα');
+  }
   action=event; preview=null; stopCamera();
   if(!navigator.mediaDevices?.getUserMedia) throw new Error('Η κάμερα απαιτεί HTTPS και υποστηριζόμενο browser.');
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -204,7 +291,7 @@ async function synchronizePending() {
     const sent=pending.filter(item=>!remaining.some(row=>row.request_id===item.request_id)).length;
     if(!remaining.length) syncResult(`Υποβλήθηκαν επιτυχώς ${sent} δηλώσεις.`);
     else syncResult(`${sent ? `Υποβλήθηκαν ${sent} δηλώσεις. ` : ''}Παραμένουν ${remaining.length} εκκρεμείς δηλώσεις. Ελέγξτε τις «Εκκρεμείς» για αιτιολογία ή έλεγχο αποτελέσματος.`);
-    await refreshSession();
+    await refreshSession({promptBranch:false});
   } catch(error) { syncResult(error.message || 'Ο συγχρονισμός δεν ολοκληρώθηκε.'); }
   finally { manualSyncRunning=false; $('sync-menu').disabled=false; }
 }
@@ -234,7 +321,7 @@ async function loadRecent(pageIndex) {
 }
 $('recent-prev').onclick=safeTask(()=>loadRecent(Math.max(0,recentPage-1)));
 $('recent-next').onclick=safeTask(()=>loadRecent(recentPage+1));
-$('pin-form').onsubmit=safeTask(async event=>{event.preventDefault();await api('pin',{pin:$('old-pin').value,new_pin:$('new-pin').value});event.target.reset();await refreshSession();message('Το PIN διαχείρισης ενεργοποιήθηκε για αυτή τη σύνδεση.');});
+$('pin-form').onsubmit=safeTask(async event=>{event.preventDefault();await api('pin',{pin:$('old-pin').value,new_pin:$('new-pin').value});event.target.reset();await refreshSession({promptBranch:false});message('Το PIN διαχείρισης ενεργοποιήθηκε για αυτή τη σύνδεση.');});
 window.addEventListener('online',()=>checkConnectivity().catch(error=>message(error.message,true)));window.addEventListener('offline',()=>checkConnectivity().catch(error=>message(error.message,true)));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();closeMenu();$('camera-dialog').close();$('recent-list').replaceChildren();$('pending-list').replaceChildren();showPage('home');}else{checkConnectivity().catch(error=>message(error.message,true));}});
 network();clock();setInterval(clock,10000);

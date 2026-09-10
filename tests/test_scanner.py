@@ -138,6 +138,51 @@ def test_existing_portal_user_can_login_without_web_credentials(setup):
         assert data['stores'][0]['last_card_at']=='09/09/2026 11:00'
 
 
+def test_multi_branch_login_requires_selection_unless_preferred(setup):
+    app, client = setup
+    store_a = dict(STORE)
+    store_b = dict(STORE, id=8, branch_aa="3", name="Second branch")
+    auth = Mock(ok=True)
+    auth.json.return_value = {"accessToken": "secret-token"}
+    identity = Mock(ok=True)
+
+    def get_cfg(store_id):
+        return {7: store_a, 8: store_b}.get(int(store_id or 0))
+
+    with patch("app.routes_scanner.list_store_configs", return_value=[store_a, store_b]), \
+         patch("app.routes_scanner.get_store_config", side_effect=get_cfg), \
+         patch("app.routes_scanner.ErganiClient") as cls, \
+         patch("app.routes_scanner.parse_employer_afm", return_value="123456789"):
+        cls.return_value.authenticate.return_value = auth
+        cls.return_value.execute_service.return_value = identity
+        response = client.post(
+            "/scanner/api/login",
+            json={"username": "branch-user", "password": "secret"},
+            headers=HEADERS,
+        )
+        assert response.status_code == 200
+        assert response.json["store_id"] is None
+        assert response.json["store_count"] == 2
+        session = client.get("/scanner/api/session").json
+        assert session["store_id"] is None
+        assert session["needs_store_selection"] is True
+        assert {row["id"] for row in session["stores"]} == {7, 8}
+        assert client.post("/scanner/api/store", json={"store_id": 8}, headers=HEADERS).status_code == 200
+        session = client.get("/scanner/api/session").json
+        assert session["store_id"] == 8
+        assert session["needs_store_selection"] is False
+
+        client.post("/scanner/api/logout", json={}, headers=HEADERS)
+        preferred = client.post(
+            "/scanner/api/login",
+            json={"username": "branch-user", "password": "secret", "preferred_store_id": 8},
+            headers=HEADERS,
+        )
+        assert preferred.status_code == 200
+        assert preferred.json["store_id"] == 8
+        assert client.get("/scanner/api/session").json["store_id"] == 8
+
+
 def test_database_failure_is_json_not_debug_html(setup):
     import pyodbc
     app,client=setup
