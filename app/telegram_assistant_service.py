@@ -71,6 +71,17 @@ _COMMAND_SCHEMA = {
         "time": {"type": ["string", "null"]},
         "hour_from": {"type": ["string", "null"]},
         "hour_to": {"type": ["string", "null"]},
+        "intervals": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "hour_from": {"type": "string"},
+                    "hour_to": {"type": "string"},
+                },
+                "required": ["hour_from", "hour_to"],
+            },
+        },
         "leave_type": {"type": ["string", "null"]},
         "confidence": {"type": "number"},
         "clarification_question": {"type": ["string", "null"]},
@@ -224,13 +235,14 @@ def _assistant_prompt_guide() -> list[str]:
         "Κάρτα — ΚΡΙΣΙΜΟ: μην αντιστρέφεις ποτέ είσοδο/έξοδο. Ρητή λεξηλογία: άνοιξε/open/clock in/check in/checkin/είσοδος → card_check_in_*· κλείσε/close/clock out/check out/checkout/έξοδος → card_check_out_*. «Άνοιξε κάρτα» ΠΟΤΕ check_out. «Κλείσε κάρτα» ΠΟΤΕ check_in. Αν το μήνυμα έχει ρήμα άνοιγματος, το intent ΠΡΕΠΕΙ να περιέχει check_in.",
         "Κάρτα χωρίς ώρα («άνοιξε/κλείσε κάρτα») = *_now, time=null. «πριν Χ λεπτά» / «Χ λεπτά πριν» = *_retro από το now (τώρα − Χ)· ΠΟΤΕ όχι από την ώρα εισόδου/εξόδου της κάρτας. Αν εννοεί offset από χτύπημα, πρέπει να το πει ρητά («Χ λεπτά πριν την είσοδο/έξοδο»). «στις 10» = *_retro ακριβώς. Μην μαντεύεις ώρα.",
         "Αλλαγή ωραρίου / νέο ωράριο / από–έως (π.χ. «15:00 έως 21:40», «αλλαγή ωραρίου») → intent=schedule_change με hour_from+hour_to. ΜΗΝ βάζεις unknown όταν υπάρχουν ώρες από–έως.",
+        "Σπαστό ωράριο: δύο (ή περισσότερα) διαστήματα χωρισμένα με «/» ή «και» (π.χ. «11:00-16:00/20:00-23:00», «11:00–16:00 και 20:00–23:00») → schedule_change με intervals=[{hour_from,hour_to},…] και hour_from/hour_to του πρώτου μέρους. ΜΗΝ τα ενώσεις σε ένα ενιαίο ωράριο.",
         "Πολλές εντολές/εργαζόμενοι OK. Ίδια ενέργεια+ημερομηνία+ώρα → μία εγγραφή commands με πολλά employee_afms.",
         "today_home είναι ΠΑΝΤΑ παρόν: stores=σήμερα (πλήρες)· yesterday=μόνο ανοιχτές κάρτες χθες (overnight). Ερωτήσεις σήμερα → stores. Ερωτήσεις/κλείσιμο ανοιχτών «χθες»/εχθές → yesterday + date=yesterday_date. today_info: βάλε την πλήρη απάντηση στο clarification_question από τα πραγματικά δεδομένα. Μην λες «δεν υπάρχουν δεδομένα» αν υπάρχει yesterday· αν open_count=0 πες ρητά ότι δεν υπάρχουν ανοιχτές εκείνη την ημέρα.",
         "Καθυστερημένη είσοδος/έξοδος («ποιος έχει καθυστέρηση») → today_info από today_home: status late_arrival = καθυστερημένη είσοδος, needs_checkout = καθυστερημένη έξοδος. Όχι card_check_*.",
         "Με ώρα: «ποιος δουλεύει/εργάζεται/ξεκινάει/έρχεται στις 12» = ίδια ερώτηση ωραρίου (έναρξη)· «ποιος τελειώνει στις…» = λήξη. Χωρίς ώρα: «ποιοι δουλεύουν ακόμα» = αυτή τη στιγμή σε εργασία.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
         "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας. «κλείσε όλους εκτός από Χ/Υ» = ανοιχτοί ΜΕΙΟΝ τους εξαιρούμενους. «άνοιξε όλους/όσους» = μόνο όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα (όχι ρεπό/χωρίς ωράριο)· «εκτός από» αφαιρεί εξαιρέσεις.",
-        "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to.",
+        "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to ή intervals για σπαστό.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
 
@@ -462,6 +474,82 @@ def _normalize_clock_time(value: str) -> str:
     if re.fullmatch(r"[0-9]:[0-5]\d", text):
         text = f"0{text}"
     return text if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", text) else str(value or "").strip()
+
+
+_SCHEDULE_RANGE_RE = re.compile(
+    r"((?:[01]?\d|2[0-3])[.:][0-5]\d)\s*"
+    r"(?:-|–|—|εως|έως|to)\s*"
+    r"((?:[01]?\d|2[0-3])[.:][0-5]\d)",
+    re.IGNORECASE,
+)
+
+
+def _schedule_intervals_from_text(text: str) -> list[dict[str, str]]:
+    """Extract one or more ωω:λλ–ωω:λλ ranges (split when «/» or «και» separates them)."""
+    raw = str(text or "")
+    if not raw.strip():
+        return []
+    intervals: list[dict[str, str]] = []
+    for match in _SCHEDULE_RANGE_RE.finditer(raw):
+        hour_from = _normalize_clock_time(match.group(1))
+        hour_to = _normalize_clock_time(match.group(2))
+        if not (
+            re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_from)
+            and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_to)
+        ):
+            continue
+        intervals.append({"hour_from": hour_from, "hour_to": hour_to})
+    return intervals
+
+
+def _normalize_schedule_intervals(parsed: dict[str, Any]) -> list[dict[str, str]]:
+    raw = parsed.get("intervals")
+    out: list[dict[str, str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            hour_from = _normalize_clock_time(str(item.get("hour_from") or ""))
+            hour_to = _normalize_clock_time(str(item.get("hour_to") or ""))
+            if (
+                re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_from)
+                and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_to)
+            ):
+                out.append({"hour_from": hour_from, "hour_to": hour_to})
+    if out:
+        return out
+    hour_from = _normalize_clock_time(str(parsed.get("hour_from") or ""))
+    hour_to = _normalize_clock_time(str(parsed.get("hour_to") or ""))
+    if (
+        re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_from)
+        and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hour_to)
+    ):
+        return [{"hour_from": hour_from, "hour_to": hour_to}]
+    return []
+
+
+def _apply_schedule_intervals(parsed: dict[str, Any], user_text: str = "") -> list[dict[str, str]]:
+    """Prefer explicit multi-range text (σπαστό)· else parsed intervals / hour_from+hour_to."""
+    from_text = _schedule_intervals_from_text(user_text)
+    intervals = from_text if len(from_text) >= 2 else (_normalize_schedule_intervals(parsed) or from_text)
+    if not intervals:
+        return []
+    parsed["intervals"] = intervals
+    parsed["hour_from"] = intervals[0]["hour_from"]
+    parsed["hour_to"] = intervals[0]["hour_to"] if len(intervals) == 1 else intervals[-1]["hour_to"]
+    return intervals
+
+
+def _format_schedule_change_label(parsed: dict[str, Any]) -> str:
+    intervals = _normalize_schedule_intervals(parsed)
+    if len(intervals) >= 2:
+        parts = " · ".join(f"{item['hour_from']}–{item['hour_to']}" for item in intervals)
+        return f"Αλλαγή ωραρίου σε σπαστό {parts}"
+    if len(intervals) == 1:
+        return f"Αλλαγή ωραρίου σε {intervals[0]['hour_from']}–{intervals[0]['hour_to']}"
+    return (
+        f"Αλλαγή ωραρίου σε {parsed.get('hour_from') or '—'}–{parsed.get('hour_to') or '—'}"
+    )
 
 
 def _clock_from_text(text: str) -> str:
@@ -968,11 +1056,13 @@ def _inherit_conversation_context(
             # try extract from user text for that field later if needed
             pass
 
+    intervals = _apply_schedule_intervals(parsed, user_text)
+
     folded = _fold_text(user_text)
     has_employee = bool(parsed.get("employee_afms") or parsed.get("employee_afm"))
     hf = str(parsed.get("hour_from") or "")
     ht = str(parsed.get("hour_to") or "")
-    has_schedule_hours = bool(
+    has_schedule_hours = bool(intervals) or bool(
         re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hf)
         and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ht)
     )
@@ -1153,11 +1243,14 @@ def _validate_single_command(
         parsed["intent"] = intent
     if intent not in ALLOWED_INTENTS:
         # LLM sometimes invents labels; recover schedule_change from hours.
+        intervals = _apply_schedule_intervals(parsed, user_text)
         hf = str(parsed.get("hour_from") or "")
         ht = str(parsed.get("hour_to") or "")
         if (
-            re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hf)
-            and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ht)
+            (intervals or (
+                re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hf)
+                and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ht)
+            ))
             and (parsed.get("employee_afms") or parsed.get("employee_afm"))
         ):
             intent = "schedule_change"
@@ -1250,10 +1343,18 @@ def _validate_single_command(
     if intent in {"card_check_in_retro", "card_check_out_retro"} and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
         errors.append("Δεν προσδιορίστηκε έγκυρη ώρα προγενέστερου χτυπήματος")
     if intent == "schedule_change":
-        for field in ("hour_from", "hour_to"):
-            if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(parsed.get(field) or "")):
-                errors.append("Το νέο ωράριο χρειάζεται έγκυρη έναρξη και λήξη")
-                break
+        intervals = _apply_schedule_intervals(parsed, user_text)
+        if not intervals:
+            errors.append("Το νέο ωράριο χρειάζεται έγκυρη έναρξη και λήξη")
+        elif len(intervals) >= 2:
+            # Σπαστό: κράτα όλα τα μέρη στο payload για WTODaily intervals.
+            parsed["intervals"] = intervals
+            parsed["hour_from"] = intervals[0]["hour_from"]
+            parsed["hour_to"] = intervals[0]["hour_to"]
+        else:
+            parsed["intervals"] = intervals
+            parsed["hour_from"] = intervals[0]["hour_from"]
+            parsed["hour_to"] = intervals[0]["hour_to"]
     if intent == "leave" and not str(parsed.get("leave_type") or "").strip():
         errors.append("Η άδεια χρειάζεται συγκεκριμένο τύπο")
     if intent == "today_info" and not str(parsed.get("clarification_question") or "").strip():
@@ -1458,7 +1559,7 @@ def _validate_single_command(
         "card_check_out_retro": f"Κλείσιμο κάρτας στις {time_value}",
         "card_check_in_schedule": "Άνοιγμα κάρτας",
         "card_check_out_schedule": "Κλείσιμο κάρτας",
-        "schedule_change": f"Αλλαγή ωραρίου σε {parsed.get('hour_from') or '—'}–{parsed.get('hour_to') or '—'}",
+        "schedule_change": _format_schedule_change_label(parsed),
         "rest_day": "Δήλωση ρεπό",
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
         "today_info": "Πληροφορία σήμερα",

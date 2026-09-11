@@ -592,6 +592,45 @@ def test_schedule_change_validation_and_description():
     assert proposed == "ΔΟΚΙΜΗ ΧΡΗΣΤΗΣ · 16/08/2026 · Αλλαγή ωραρίου σε 09:00–17:00"
 
 
+def test_split_schedule_from_slash_or_kai():
+    from app.telegram_assistant_service import (
+        _schedule_intervals_from_text,
+        validate_and_describe,
+    )
+
+    assert _schedule_intervals_from_text("Ο Arthur Urai σήμερα 11:00-16:00/20:00-23:00") == [
+        {"hour_from": "11:00", "hour_to": "16:00"},
+        {"hour_from": "20:00", "hour_to": "23:00"},
+    ]
+    assert _schedule_intervals_from_text("11:00–16:00 και 20:00–23:00") == [
+        {"hour_from": "11:00", "hour_to": "16:00"},
+        {"hour_from": "20:00", "hour_to": "23:00"},
+    ]
+
+    parsed = {
+        "intent": "schedule_change",
+        "store_id": 4,
+        "employee_afms": ["127603625"],
+        "date": "2026-09-11",
+        # LLM mistakenly merged into one block — text must win.
+        "hour_from": "11:00",
+        "hour_to": "23:00",
+    }
+    status, validation, proposed = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ΛΑΔΟΚΟΛΛΑ"}],
+        employees=[{"store_id": 4, "afm": "127603625", "name": "URAJ ARTUR"}],
+        user_text="Ο Arthur Urai σήμερα 11:00-16:00/20:00-23:00",
+    )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["intervals"] == [
+        {"hour_from": "11:00", "hour_to": "16:00"},
+        {"hour_from": "20:00", "hour_to": "23:00"},
+    ]
+    assert "σπαστό 11:00–16:00 · 20:00–23:00" in proposed
+
+
 def test_tomorrow_urai_does_not_match_kyri_surname():
     """«Αύριο ο Urai …» must not fuzzy-match Κυριμοπούλου via stem distance."""
     from app.telegram_assistant_service import _mentioned_afms, _query_tokens

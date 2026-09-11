@@ -239,13 +239,30 @@ def _execute_command(
             }
         elif intent in {"schedule_change", "rest_day"}:
             from app.schedule_import_service import apply_import_row
+            intervals = parsed.get("intervals") if isinstance(parsed.get("intervals"), list) else None
+            if intent == "rest_day":
+                proposed_snapshot: list[dict[str, Any]] = []
+            elif intervals:
+                proposed_snapshot = [
+                    {
+                        "hour_from": str(item.get("hour_from") or "").strip(),
+                        "hour_to": str(item.get("hour_to") or "").strip(),
+                    }
+                    for item in intervals
+                    if isinstance(item, dict)
+                    and str(item.get("hour_from") or "").strip()
+                    and str(item.get("hour_to") or "").strip()
+                ]
+            else:
+                proposed_snapshot = [{
+                    "hour_from": parsed.get("hour_from"), "hour_to": parsed.get("hour_to"),
+                }]
             schedule_row = {
                 "employee_afm": employee.get("afm"), "eponymo": employee.get("eponymo"),
                 "onoma": employee.get("onoma"), "work_date": parsed.get("date"),
                 "import_action": "rest" if intent == "rest_day" else "work",
-                "proposed_snapshot": [] if intent == "rest_day" else [{
-                    "hour_from": parsed.get("hour_from"), "hour_to": parsed.get("hour_to"),
-                }], "comments": "Υποβολή από AI Agent",
+                "proposed_snapshot": proposed_snapshot,
+                "comments": "Υποβολή από AI Agent",
             }
             data = apply_import_row(store, schedule_row, bearer, batch_meta={"source": source})
             row = {"employee": name, "success": bool(data.get("success")),
