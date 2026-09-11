@@ -34,14 +34,14 @@ def test_split_short_gap_is_rebuilt_with_three_hour_gap():
     assert row["proposed"] == "09:00–13:00 · 16:00–20:00"
 
 
-def test_accented_ergani_leave_description_is_classified_as_leave():
-    row = one(
+def test_accented_ergani_leave_without_punch_is_omitted():
+    report = build_weekly_report(
         [sched(shift="Κανονική άδεια Έτος Αναφοράς: 2026 Αρ. Δικαιούμενων ημερών: 21",
                start=None, end=None)],
         [],
-        contract(),
+        [contract()],
     )
-    assert row["day_state"] == "Άδεια"
+    assert report["days"] == []
 
 
 def test_split_overtime_starts_after_proposed_day_and_overwork_window():
