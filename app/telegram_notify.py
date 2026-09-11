@@ -203,7 +203,11 @@ def format_today_alert_notification(
     notify_grace_minutes: int | None = None,
     ai_agent_enabled: bool = False,
 ) -> str:
-    """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας."""
+    """Κείμενο ειδοποίησης τύπου 2 — πρόβλημα τρέχουσας ημέρας.
+
+    Με AI Agent: υπόδειξη απάντησης στο chat. Χωρίς AI Agent: μόνο ενημέρωση
+    (χωρίς σύνδεσμο/κλικ ενέργειας).
+    """
     from app.today_notify_logic import (
         WTO_DAILY_NOTIFY_KINDS,
         format_digital_schedule_summary,
@@ -211,7 +215,7 @@ def format_today_alert_notification(
         notify_kind_label,
     )
 
-    link = (hit_url or "").strip()
+    _ = hit_url, has_pin  # διατηρούνται για συμβατότητα κλήσεων
     name = f"{(eponymo or '').strip()} {(onoma or '').strip()}".strip() or employee_afm
     kind = (notify_kind or "").strip()
     base_kind = notify_kind_base(kind)
@@ -247,12 +251,4 @@ def format_today_alert_notification(
             lines.append(sched_line)
     if ai_agent_enabled:
         lines.extend(["", "Απαντήστε στο μήνυμα για ενέργεια."])
-    else:
-        lines.extend(["", "Προχωρήστε σε ενέργεια:"])
-        if link:
-            lines.append(link)
-        elif not has_pin:
-            lines.append(
-                "(Ορίστε PIN λήπτη στο κατάστημα για σύνδεσμο με επιλογές ενέργειας.)"
-            )
     return "\n".join(lines)

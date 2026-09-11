@@ -370,8 +370,9 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
   - `schedule_change`: αν το LLM δώσει `unknown`/alias αλλά υπάρχουν από–έως ώρες
     + εργαζόμενος, η εντολή ανακτάται αυτόματα ως αλλαγή ωραρίου.
 - Επιβεβαίωση: κουμπί στο UI ή PIN στο Telegram → `_submit_work_card` / WTODaily / WTOLeave.
-- Today-alert Telegram: με AI Agent = ON → «Απαντήστε στο μήνυμα για ενέργεια.»
-  (χωρίς `today-hit` URL)· με OFF → «Προχωρήστε σε ενέργεια:» + σύνδεσμος.
+- Today-alert: με AI Agent = ON → Telegram «Απαντήστε στο μήνυμα για ενέργεια.»
+  (χωρίς `today-hit` URL)· με OFF → **μόνο ενημέρωση** χωρίς σύνδεσμο/κουμπί
+  ενέργειας σε Telegram και Email.
 - Τεκμηρίωση: `docs/TELEGRAM_ASSISTANT.md`.
 
 ## Αρχική Αναφορά

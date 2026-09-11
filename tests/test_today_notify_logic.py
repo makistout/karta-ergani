@@ -269,7 +269,7 @@ class TodayNotifyLogicTests(unittest.TestCase):
         self.assertNotIn("Προχωρήστε σε ενέργεια:", text)
         self.assertNotIn("today-hit", text)
 
-    def test_today_alert_default_cta_keeps_link(self):
+    def test_today_alert_without_ai_agent_has_no_action_cta(self):
         from app.telegram_notify import format_today_alert_notification
 
         text = format_today_alert_notification(
@@ -283,9 +283,10 @@ class TodayNotifyLogicTests(unittest.TestCase):
             has_pin=True,
             ai_agent_enabled=False,
         )
-        self.assertIn("Προχωρήστε σε ενέργεια:", text)
-        self.assertIn("today-hit?t=abc", text)
+        self.assertNotIn("Προχωρήστε σε ενέργεια:", text)
         self.assertNotIn("Απαντήστε στο μήνυμα για ενέργεια.", text)
+        self.assertNotIn("today-hit", text)
+        self.assertNotIn("PIN λήπτη", text)
 
     def test_grace_constant_is_fifteen_minutes(self):
         self.assertEqual(NOTIFY_GRACE_MINUTES, 15)

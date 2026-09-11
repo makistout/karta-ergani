@@ -315,24 +315,7 @@ def send_wto_schedule_notifications(
         ):
             continue
         hit_url = None
-        if not ai_agent_enabled and (rec.get("notify_pin_hash") or "").strip():
-            try:
-                token = create_today_alert_token(
-                    recipient_id=int(rec["id"]),
-                    store_id=store_id,
-                    employee_afm=employee_afm,
-                    eponymo=eponymo,
-                    onoma=onoma,
-                    work_date_ergani=work_date,
-                    reference_date_iso=ref_iso,
-                    notify_kind=kind,
-                    hour_from=prop_from,
-                    hour_to=prop_to,
-                    schedule_hour_from=None,
-                )
-                hit_url = build_today_hit_redirect_url(token)
-            except Exception as ex:
-                errors.append(f"{rec.get('name')}: token — {ex}")
+        # Χωρίς AI Agent δεν στέλνουμε σύνδεσμο ενέργειας — μόνο ενημέρωση.
         text = format_today_alert_notification(
             store_name=store_name,
             employee_afm=employee_afm,
@@ -374,7 +357,7 @@ def send_wto_schedule_notifications(
             continue
         hit_url = None
         has_pin = bool((rec.get("notify_pin_hash") or "").strip())
-        if has_pin:
+        if ai_agent_enabled and has_pin:
             try:
                 token = create_today_alert_token(
                     recipient_id=int(rec["id"]),
@@ -392,6 +375,20 @@ def send_wto_schedule_notifications(
                 hit_url = build_today_hit_redirect_url(token)
             except Exception as ex:
                 errors.append(f"Email {rec.get('name')}: token — {ex}")
+        email_details: list[tuple[str, str]] = [
+            ("Ώρα από", prop_from or "—"),
+            ("Ώρα έως", prop_to or "—"),
+        ]
+        footer_note = None
+        if ai_agent_enabled:
+            email_details.append(
+                ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη")
+            )
+            footer_note = (
+                "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
+                if hit_url
+                else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
+            )
         try:
             send_notification_email(
                 email,
@@ -403,18 +400,10 @@ def send_wto_schedule_notifications(
                 employee_afm=employee_afm,
                 work_date=work_date,
                 problem="Χρειάζεται ενέργεια για το ψηφιακό ωράριο/κάρτα του εργαζομένου.",
-                details=[
-                    ("Ώρα από", prop_from or "—"),
-                    ("Ώρα έως", prop_to or "—"),
-                    ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη"),
-                ],
-                action_url=hit_url,
+                details=email_details,
+                action_url=hit_url if ai_agent_enabled else None,
                 action_label="Άνοιγμα ενέργειας",
-                footer_note=(
-                    "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
-                    if hit_url
-                    else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
-                ),
+                footer_note=footer_note,
             )
             sent += 1
         except EmailNotConfigured as ex:
@@ -659,30 +648,7 @@ def send_today_punch_notifications(
         ):
             continue
         hit_url = None
-        if not ai_agent_enabled and (rec.get("notify_pin_hash") or "").strip():
-            try:
-                log_step(
-                    "Δημιουργία token ενέργειας Telegram",
-                    recipient_id=rec.get("id"),
-                    recipient_name=rec.get("name"),
-                    notification_channel="telegram",
-                )
-                token = create_today_alert_token(
-                    recipient_id=int(rec["id"]),
-                    store_id=store_id,
-                    employee_afm=employee_afm,
-                    eponymo=eponymo,
-                    onoma=onoma,
-                    work_date_ergani=work_date,
-                    reference_date_iso=ref_iso,
-                    notify_kind=resolved_kind,
-                    hour_from=hour_from,
-                    hour_to=hour_to,
-                    schedule_hour_from=schedule_hour_from,
-                )
-                hit_url = build_today_hit_redirect_url(token)
-            except Exception as ex:
-                errors.append(f"{rec.get('name')}: token — {ex}")
+        # Χωρίς AI Agent δεν στέλνουμε σύνδεσμο ενέργειας — μόνο ενημέρωση.
         text = format_today_alert_notification(
             store_name=store_name,
             employee_afm=employee_afm,
@@ -761,7 +727,7 @@ def send_today_punch_notifications(
             continue
         hit_url = None
         has_pin = bool((rec.get("notify_pin_hash") or "").strip())
-        if has_pin:
+        if ai_agent_enabled and has_pin:
             try:
                 log_step(
                     "Δημιουργία token ενέργειας Email",
@@ -785,6 +751,33 @@ def send_today_punch_notifications(
                 hit_url = build_today_hit_redirect_url(token)
             except Exception as ex:
                 errors.append(f"Email {rec.get('name')}: token — {ex}")
+        email_details: list[tuple[str, str]] = [
+            ("Χτύπημα από", hour_from or "—"),
+            ("Χτύπημα έως", hour_to or "—"),
+            *(
+                [("Ψηφ. ωράριο", schedule_summary)]
+                if schedule_summary
+                else [
+                    ("Ώρα ωραρίου από", schedule_hour_from or "—"),
+                    ("Ώρα ωραρίου έως", schedule_hour_to or "—"),
+                ]
+            ),
+            *(
+                [("Αναμενόμενη έξοδος", expected_exit_hm)]
+                if expected_exit_hm
+                else []
+            ),
+        ]
+        footer_note = None
+        if ai_agent_enabled:
+            email_details.append(
+                ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη")
+            )
+            footer_note = (
+                "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
+                if hit_url
+                else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
+            )
         try:
             log_step(
                 "Αποστολή Email προς λήπτη",
@@ -803,31 +796,10 @@ def send_today_punch_notifications(
                 employee_afm=employee_afm,
                 work_date=work_date,
                 problem="Εντοπίστηκε σημερινή εκκρεμότητα κάρτας εργασίας.",
-                details=[
-                    ("Χτύπημα από", hour_from or "—"),
-                    ("Χτύπημα έως", hour_to or "—"),
-                    *(
-                        [("Ψηφ. ωράριο", schedule_summary)]
-                        if schedule_summary
-                        else [
-                            ("Ώρα ωραρίου από", schedule_hour_from or "—"),
-                            ("Ώρα ωραρίου έως", schedule_hour_to or "—"),
-                        ]
-                    ),
-                    *(
-                        [("Αναμενόμενη έξοδος", expected_exit_hm)]
-                        if expected_exit_hm
-                        else []
-                    ),
-                    ("Ενέργεια", "Άνοιγμα ενέργειας" if hit_url else "Απαιτείται PIN λήπτη"),
-                ],
-                action_url=hit_url,
+                details=email_details,
+                action_url=hit_url if ai_agent_enabled else None,
                 action_label="Άνοιγμα ενέργειας",
-                footer_note=(
-                    "Το άνοιγμα της ενέργειας απαιτεί τον προσωπικό PIN του λήπτη."
-                    if hit_url
-                    else "Δεν δημιουργήθηκε σύνδεσμος επειδή δεν έχει οριστεί PIN για τον λήπτη."
-                ),
+                footer_note=footer_note,
             )
             sent += 1
             log_notification(
