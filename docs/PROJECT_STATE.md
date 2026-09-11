@@ -294,7 +294,12 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
 - Κανόνες γραμμής:
   - `ΡΕΠΟ` = ρεπό · κενή ενέργεια + ώρες = αλλαγή · κενό παντού = skip.
   - **Λείπει εντελώς από το φύλλο ημέρας** = χωρίς εργασία (ΡΕΠΟ, `absent`).
-- Καταγραφές: audit `wto_daily.schedule_change` (πηγή `excel_import`) + `schedule_import.batch_applied` · προβολή στο `/ui/sync-log#schedule`.
+- Καταγραφές: audit `wto_daily.schedule_change` (πηγή `excel_import` /
+  `assistant_ui` / `assistant_telegram` / `manual` κ.λπ.) +
+  `schedule_import.batch_applied` · προβολή στο `/ui/sync-log#schedule`.
+  Στήλη **Πηγή** από το πραγματικό `details.source` (όχι πάντα Excel).
+  Στήλη **ΑΦΜ** (αριθμός + όνομα από κάτω / tooltip)· **Ώρα** με ημερομηνία πάνω
+  και ώρα από κάτω.
 - Το template υποστηρίζει:
   - ένα φύλλο ανά ημέρα,
   - πραγματική ημερομηνία σε κάθε tab,

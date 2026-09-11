@@ -298,6 +298,36 @@
   white-space: nowrap;
 }
 
+.work-card-punches-table .sync-log-ts--stacked {
+  white-space: pre-line;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  width: 1%;
+  min-width: 5.6rem;
+}
+
+.work-card-punches-table .schedule-change-emp-afm {
+  white-space: normal;
+  line-height: 1.25;
+  max-width: 11rem;
+  cursor: help;
+}
+
+.work-card-punches-table .schedule-change-emp-afm-num {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.work-card-punches-table .schedule-change-emp-name {
+  display: block;
+  color: var(--muted, #64748b);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sync-log-muted {
   color: var(--muted);
   font-size: 0.74rem;

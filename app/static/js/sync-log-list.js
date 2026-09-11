@@ -231,6 +231,17 @@ function formatTs(iso) {
   return String(iso).replace("T", " ").slice(0, 19);
 }
 
+/** Ημερομηνία πάνω, ώρα κάτω — στενότερη στήλη «Ώρα». */
+function fillTsStacked(td, iso) {
+  const text = formatTs(iso);
+  td.classList.add("sync-log-ts--stacked");
+  if (!iso || text === "—") {
+    td.textContent = "—";
+    return;
+  }
+  td.textContent = text.includes(" ") ? text.replace(" ", "\n") : text;
+}
+
 function parseTsMs(iso) {
   if (!iso) return null;
   const t = Date.parse(String(iso).replace(" ", "T"));
@@ -928,7 +939,9 @@ function actionLabel(action, path) {
 
 function scheduleChangeSourceLabel(source) {
   const s = String(source || "").trim().toLowerCase();
-  if (s === "excel_import") return "Excel";
+  if (s === "excel_import" || s === "excel_import_wtoweek") return "Excel";
+  if (s === "assistant_ui") return "AI Agent";
+  if (s === "assistant_telegram") return "AI Agent · Telegram";
   if (s === "telegram") return "Ειδοποίηση";
   if (s === "manual") return "Χειροκίνητα";
   return source || "—";
@@ -948,11 +961,25 @@ function scheduleSnapshotText(snapshot) {
   return parts.join(" / ") || "—";
 }
 
-function scheduleChangeEmployeeText(row) {
+function fillScheduleChangeEmployeeCell(td, row) {
   const d = row.details || {};
-  const name = d.employee_name || "";
-  const afm = d.employee_afm || row.entity_id || "";
-  return [name, afm].filter(Boolean).join(" · ") || "—";
+  if (row.action === "schedule_import.batch_applied") {
+    td.textContent = `Batch #${d.batch_id || row.entity_id || "—"}`;
+    td.removeAttribute("title");
+    td.className = "";
+    return;
+  }
+  const name = String(d.employee_name || "").trim();
+  const afm = String(d.employee_afm || row.entity_id || "").trim();
+  td.className = "schedule-change-emp-afm";
+  const afmHtml = Office.escapeHtml(afm || "—");
+  const nameHtml = name
+    ? `<span class="schedule-change-emp-name">${Office.escapeHtml(name)}</span>`
+    : "";
+  td.innerHTML =
+    `<span class="schedule-change-emp-afm-num">${afmHtml}</span>${nameHtml}`;
+  if (name) td.title = name;
+  else td.removeAttribute("title");
 }
 
 function scheduleChangeDetailsText(row) {
@@ -1060,7 +1087,7 @@ function renderScheduleChanges(rows, hasMore) {
   t.className = "data work-card-punches-table";
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  ["Ώρα", "Πηγή", "Εργαζόμενος", "Ημ/νία", "Ενέργεια", "Κατάστημα", "Κατάσταση", "Λεπτομέρειες"].forEach((h) => {
+  ["Ώρα", "Πηγή", "ΑΦΜ", "Ημ/νία", "Ενέργεια", "Κατάστημα", "Κατάσταση", "Λεπτομέρειες"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
@@ -1075,18 +1102,18 @@ function renderScheduleChanges(rows, hasMore) {
 
     const tdTs = document.createElement("td");
     tdTs.className = "sync-log-ts work-card-punch-col-ts";
-    tdTs.textContent = formatTs(row.created_at);
+    fillTsStacked(tdTs, row.created_at);
     tr.appendChild(tdTs);
 
     const tdSource = document.createElement("td");
-    tdSource.textContent = scheduleChangeSourceLabel(d.source || (row.action || "").includes("schedule_import") ? "excel_import" : "");
+    const rawSource =
+      d.source ||
+      ((row.action || "").includes("schedule_import") ? "excel_import" : "");
+    tdSource.textContent = scheduleChangeSourceLabel(rawSource);
     tr.appendChild(tdSource);
 
     const tdEmp = document.createElement("td");
-    tdEmp.textContent =
-      row.action === "schedule_import.batch_applied"
-        ? `Batch #${d.batch_id || row.entity_id || "—"}`
-        : scheduleChangeEmployeeText(row);
+    fillScheduleChangeEmployeeCell(tdEmp, row);
     tr.appendChild(tdEmp);
 
     const tdDate = document.createElement("td");
