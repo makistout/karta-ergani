@@ -190,6 +190,9 @@ class Config:
     SERVER_INSTANCE_ID = (os.environ.get("SERVER_INSTANCE_ID") or "").strip()
     ERGANI_EGRESS_IP = (os.environ.get("ERGANI_EGRESS_IP") or "").strip()
 
+    # Προσωρινό: Card Scanner δεν καλεί ΕΡΓΑΝΗ — επιστρέφει τι θα στελνόταν.
+    SCANNER_DRY_RUN = _env_flag("SCANNER_DRY_RUN", default=False)
+
     CATALOG_DATABASE = (os.environ.get("CATALOG_DATABASE") or "").strip() or "ergani_ii"
 
     KARTA_OFFICE_LOGIN_USER = (os.environ.get("KARTA_OFFICE_LOGIN_USER") or "").strip()

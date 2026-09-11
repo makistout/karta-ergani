@@ -1,4 +1,4 @@
-"""Εφαρμογή εισαγωγής ωραρίου από staging σε Ergani (WTOWeek ανά εργαζόμενο)."""
+"""Εφαρμογή εισαγωγής ωραρίου από staging σε Ergani (WTOWeek — ένα πρωτόκολλο/batch)."""
 
 from __future__ import annotations
 
@@ -31,8 +31,11 @@ from app.schedule_sync import fetch_and_save_schedule_for_ctx
 from app.today_notify_logic import ergani_date_to_iso
 from app.work_card_payload import WorkCardPayloadError
 from app.wto_daily_payload import build_wto_daily_payload
-from app.wto_week_payload import SUBMISSION_CODE_WTO_WEEK, build_wto_week_payload
-
+from app.wto_week_payload import (
+    SUBMISSION_CODE_WTO_WEEK,
+    build_wto_week_batch_payload,
+    build_wto_week_payload,
+)
 
 def _import_row_to_body(row: dict[str, Any]) -> dict[str, Any]:
     ref_iso = ergani_date_to_iso(str(row.get("work_date") or ""))
@@ -241,22 +244,14 @@ def _submit_wto_week_with_auth_retry(
     return resp, parsed, auth_retry
 
 
-def apply_import_employee_week(
-    ctx: dict[str, Any],
-    *,
+def _week_employee_spec_from_rows(
     employee_rows: list[dict[str, Any]],
-    apply_rows: list[dict[str, Any]],
-    bearer: str,
-    batch_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """
-    Μία υποβολή WTOWeek ανά εργαζόμενο για ολόκληρη την εβδομάδα.
-    Οι ημέρες χωρίς συμπλήρωση στο Excel συμπληρώνονται από το τρέχον ωράριο.
-    """
+    """Κατασκευή spec εργαζομένου (7 ημέρες) από τις γραμμές εισαγωγής."""
     if not employee_rows:
-        return {"success": False, "error": "Κενή εβδομάδα εργαζομένου", "http_status": 400}
+        raise WorkCardPayloadError("Κενή εβδομάδα εργαζομένου")
 
-    sample = apply_rows[0] if apply_rows else employee_rows[0]
+    sample = employee_rows[0]
     emp_afm = str(sample.get("employee_afm") or "").strip()
     last = str(sample.get("eponymo") or "").strip()
     first = str(sample.get("onoma") or "").strip()
@@ -268,11 +263,9 @@ def apply_import_employee_week(
     }
     work_dates = sorted(by_date.keys(), key=lambda d: datetime.strptime(d, "%d/%m/%Y"))
     if len(work_dates) != 7:
-        return {
-            "success": False,
-            "error": f"Απαιτούνται 7 ημέρες για WTOWeek (βρέθηκαν {len(work_dates)})",
-            "http_status": 400,
-        }
+        raise WorkCardPayloadError(
+            f"Απαιτούνται 7 ημέρες για WTOWeek (βρέθηκαν {len(work_dates)})"
+        )
 
     days_payload: list[dict[str, Any]] = []
     seen_days: set[int] = set()
@@ -281,25 +274,184 @@ def apply_import_employee_week(
         try:
             day_code = _ergani_weekday(work_date)
         except ValueError as ex:
-            return {"success": False, "error": f"Μη έγκυρη ημερομηνία {work_date}", "http_status": 400}
+            raise WorkCardPayloadError(f"Μη έγκυρη ημερομηνία {work_date}") from ex
         if day_code in seen_days:
-            return {"success": False, "error": f"Διπλή ημέρα εβδομάδας για {work_date}", "http_status": 400}
+            raise WorkCardPayloadError(f"Διπλή ημέρα εβδομάδας για {work_date}")
         seen_days.add(day_code)
         snapshot = _effective_snapshot_for_week_day(row)
         days_payload.append({"day": day_code, "entries": _snapshot_to_week_entries(snapshot)})
 
-    from_iso = ergani_date_to_iso(work_dates[0])
-    to_iso = ergani_date_to_iso(work_dates[-1])
-    try:
-        payload = build_wto_week_payload(
-            branch_aa=str(ctx.get("branch_aa") or "0"),
+    return {
+        "employee_afm": emp_afm,
+        "employee_last_name": last,
+        "employee_first_name": first,
+        "eponymo": last,
+        "onoma": first,
+        "from_iso": ergani_date_to_iso(work_dates[0]),
+        "to_iso": ergani_date_to_iso(work_dates[-1]),
+        "days": days_payload,
+    }
+
+
+def _persist_week_apply_rows_local(
+    ctx: dict[str, Any],
+    *,
+    apply_rows: list[dict[str, Any]],
+    emp_afm: str,
+    last: str,
+    first: str,
+    protocol: str | None,
+    ergani_id: str | None,
+    http_status: int,
+    batch_meta: dict[str, Any] | None,
+) -> int:
+    local_updated_days = 0
+    with cursor() as cur:
+        upsert_employee(cur, emp_afm, last, first)
+    meta = batch_meta if isinstance(batch_meta, dict) else {}
+    for row in apply_rows:
+        body = _import_row_to_body(row)
+        try:
+            day_payload = build_wto_daily_payload(
+                branch_aa=str(ctx.get("branch_aa") or "0"),
+                employee_afm=emp_afm,
+                employee_last_name=last,
+                employee_first_name=first,
+                reference_date=str(body.get("reference_date") or ""),
+                schedule_type=str(body.get("schedule_type") or "ΕΡΓ"),
+                hour_from=body.get("hour_from"),
+                hour_to=body.get("hour_to"),
+                intervals=body.get("intervals") if isinstance(body.get("intervals"), list) else None,
+                comments=body.get("comments"),
+            )
+        except WorkCardPayloadError:
+            continue
+        work_date_ergani = day_payload["WTOS"]["WTO"][0]["f_from_date"]
+        old_schedule = _current_schedule_snapshot(
+            ctx, employee_afm=emp_afm, work_date_ergani=work_date_ergani
+        )
+        updated = _persist_local_schedule_after_wto_daily(
+            ctx,
             employee_afm=emp_afm,
-            employee_last_name=last,
-            employee_first_name=first,
+            body=body,
+            payload=day_payload,
+        )
+        if updated:
+            local_updated_days += 1
+        record_wto_daily_schedule_audit(
+            ctx,
+            employee_afm=emp_afm,
+            eponymo=last,
+            onoma=first,
+            work_date_ergani=work_date_ergani,
+            body=body,
+            old_schedule=old_schedule,
+            protocol=protocol,
+            ergani_submission_id=ergani_id,
+            local_schedule_updated=updated,
+            http_status=http_status,
+            success=True,
+            source=str(meta.get("source") or "excel_import_wtoweek"),
+            import_batch_id=meta.get("batch_id"),
+            import_row_id=row.get("id"),
+            original_filename=meta.get("original_filename"),
+            week_label=meta.get("week_label"),
+            error_message=None,
+        )
+    return local_updated_days
+
+
+def apply_import_employee_week(
+    ctx: dict[str, Any],
+    *,
+    employee_rows: list[dict[str, Any]],
+    apply_rows: list[dict[str, Any]],
+    bearer: str,
+    batch_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Συμβατότητα: ένα WTOWeek για έναν εργαζόμενο (χρησιμοποιεί το batch path)."""
+    result = apply_import_week_batch(
+        ctx,
+        employee_groups=[
+            {"employee_rows": employee_rows, "apply_rows": apply_rows},
+        ],
+        bearer=bearer,
+        batch_meta=batch_meta,
+    )
+    apply_ids = [int(r["id"]) for r in apply_rows if r.get("id") is not None]
+    return {
+        "success": bool(result.get("success")),
+        "protocol": result.get("protocol"),
+        "submit_date": result.get("submit_date"),
+        "ergani_submission_id": result.get("ergani_submission_id"),
+        "http_status": result.get("http_status"),
+        "local_schedule_updated_days": int(result.get("local_schedule_updated_days") or 0),
+        "auth_retry": bool(result.get("auth_retry")),
+        "error": result.get("error"),
+        "data": result.get("data"),
+        "employee_afm": (
+            str((apply_rows[0] if apply_rows else employee_rows[0]).get("employee_afm") or "").strip()
+            if (apply_rows or employee_rows)
+            else None
+        ),
+        "apply_row_ids": apply_ids,
+    }
+
+
+def apply_import_week_batch(
+    ctx: dict[str, Any],
+    *,
+    employee_groups: list[dict[str, Any]],
+    bearer: str,
+    batch_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Μία υποβολή WTOWeek για όλους τους εργαζόμενους του batch → ένα πρωτόκολλο.
+    Οι ημέρες χωρίς συμπλήρωση στο Excel συμπληρώνονται από το τρέχον ωράριο.
+    """
+    if not employee_groups:
+        return {"success": False, "error": "Κενή λίστα εργαζομένων", "http_status": 400}
+
+    employee_specs: list[dict[str, Any]] = []
+    prepared: list[dict[str, Any]] = []
+    from_iso: str | None = None
+    to_iso: str | None = None
+
+    for group in employee_groups:
+        employee_rows = list(group.get("employee_rows") or [])
+        apply_rows = list(group.get("apply_rows") or [])
+        try:
+            spec = _week_employee_spec_from_rows(employee_rows or apply_rows)
+        except WorkCardPayloadError as ex:
+            return {"success": False, "error": str(ex), "http_status": 400}
+        except ValueError as ex:
+            return {"success": False, "error": str(ex), "http_status": 400}
+        employee_specs.append(
+            {
+                "employee_afm": spec["employee_afm"],
+                "employee_last_name": spec["employee_last_name"],
+                "employee_first_name": spec["employee_first_name"],
+                "days": spec["days"],
+            }
+        )
+        prepared.append(
+            {
+                "spec": spec,
+                "apply_rows": apply_rows,
+            }
+        )
+        if spec.get("from_iso") and (from_iso is None or str(spec["from_iso"]) < from_iso):
+            from_iso = str(spec["from_iso"])
+        if spec.get("to_iso") and (to_iso is None or str(spec["to_iso"]) > to_iso):
+            to_iso = str(spec["to_iso"])
+
+    try:
+        payload = build_wto_week_batch_payload(
+            branch_aa=str(ctx.get("branch_aa") or "0"),
             from_date=str(from_iso or ""),
             to_date=str(to_iso or "") or None,
             comments="Εισαγωγή εβδομαδιαίου ωραρίου από Excel",
-            days=days_payload,
+            employees=employee_specs,
         )
     except WorkCardPayloadError as ex:
         return {"success": False, "error": str(ex), "http_status": 400}
@@ -328,57 +480,18 @@ def apply_import_employee_week(
 
     local_updated_days = 0
     if resp.ok:
-        with cursor() as cur:
-            upsert_employee(cur, emp_afm, last, first)
-        meta = batch_meta if isinstance(batch_meta, dict) else {}
-        for row in apply_rows:
-            body = _import_row_to_body(row)
-            try:
-                day_payload = build_wto_daily_payload(
-                    branch_aa=str(ctx.get("branch_aa") or "0"),
-                    employee_afm=emp_afm,
-                    employee_last_name=last,
-                    employee_first_name=first,
-                    reference_date=str(body.get("reference_date") or ""),
-                    schedule_type=str(body.get("schedule_type") or "ΕΡΓ"),
-                    hour_from=body.get("hour_from"),
-                    hour_to=body.get("hour_to"),
-                    intervals=body.get("intervals") if isinstance(body.get("intervals"), list) else None,
-                    comments=body.get("comments"),
-                )
-            except WorkCardPayloadError:
-                continue
-            work_date_ergani = day_payload["WTOS"]["WTO"][0]["f_from_date"]
-            old_schedule = _current_schedule_snapshot(
-                ctx, employee_afm=emp_afm, work_date_ergani=work_date_ergani
-            )
-            updated = _persist_local_schedule_after_wto_daily(
+        for item in prepared:
+            spec = item["spec"]
+            local_updated_days += _persist_week_apply_rows_local(
                 ctx,
-                employee_afm=emp_afm,
-                body=body,
-                payload=day_payload,
-            )
-            if updated:
-                local_updated_days += 1
-            record_wto_daily_schedule_audit(
-                ctx,
-                employee_afm=emp_afm,
-                eponymo=last,
-                onoma=first,
-                work_date_ergani=work_date_ergani,
-                body=body,
-                old_schedule=old_schedule,
+                apply_rows=item["apply_rows"],
+                emp_afm=str(spec["employee_afm"]),
+                last=str(spec["employee_last_name"]),
+                first=str(spec["employee_first_name"]),
                 protocol=protocol,
-                ergani_submission_id=ergani_id,
-                local_schedule_updated=updated,
+                ergani_id=ergani_id,
                 http_status=resp.status_code,
-                success=True,
-                source=str(meta.get("source") or "excel_import_wtoweek"),
-                import_batch_id=meta.get("batch_id"),
-                import_row_id=row.get("id"),
-                original_filename=meta.get("original_filename"),
-                week_label=meta.get("week_label"),
-                error_message=None,
+                batch_meta=batch_meta,
             )
 
     err_msg = None
@@ -387,6 +500,12 @@ def apply_import_employee_week(
             err_msg = str(parsed.get("message") or parsed.get("Message") or "").strip() or None
         if not err_msg:
             err_msg = response_body_text(resp)[:500] or "Αποτυχία WTOWeek"
+
+    apply_row_ids: list[int] = []
+    for item in prepared:
+        apply_row_ids.extend(
+            int(r["id"]) for r in item["apply_rows"] if r.get("id") is not None
+        )
 
     return {
         "success": resp.ok,
@@ -398,8 +517,9 @@ def apply_import_employee_week(
         "auth_retry": auth_retry,
         "error": err_msg,
         "data": parsed,
-        "employee_afm": emp_afm,
-        "apply_row_ids": [int(r["id"]) for r in apply_rows if r.get("id") is not None],
+        "employees_submitted": len(prepared),
+        "apply_row_ids": apply_row_ids,
+        "submission": "WTOWeek",
     }
 
 
@@ -477,9 +597,6 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
             by_employee_apply[afm].append(row)
 
     update_batch_status(batch_id, "applying")
-    applied = 0
-    failed = 0
-    results: list[dict[str, Any]] = []
     batch_meta = {
         "batch_id": batch_id,
         "original_filename": batch.get("original_filename"),
@@ -487,55 +604,76 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
         "source": "excel_import_wtoweek",
     }
 
-    for afm, emp_apply_rows in by_employee_apply.items():
-        try:
-            result = apply_import_employee_week(
-                ctx,
-                employee_rows=by_employee_all.get(afm) or [],
-                apply_rows=emp_apply_rows,
-                bearer=bearer,
-                batch_meta=batch_meta,
-            )
-        except Exception as ex:
-            current_app.logger.exception("schedule import WTOWeek apply failed")
-            result = {"success": False, "error": str(ex), "http_status": 500, "apply_row_ids": [int(r["id"]) for r in emp_apply_rows if r.get("id") is not None]}
+    employee_groups = [
+        {
+            "employee_rows": by_employee_all.get(afm) or [],
+            "apply_rows": emp_apply_rows,
+        }
+        for afm, emp_apply_rows in by_employee_apply.items()
+    ]
 
-        ok = bool(result.get("success"))
-        protocol = str(result.get("protocol") or "") or None
-        message = "Εφαρμόστηκε στο Ergani (WTOWeek)" if ok else str(result.get("error") or "Αποτυχία")[:500]
-        for row in emp_apply_rows:
-            row_id = int(row["id"])
-            if ok:
-                applied += 1
-                update_import_row_result(
-                    row_id,
-                    apply_status="success",
-                    apply_message=message,
-                    ergani_protocol=protocol,
-                )
-            else:
-                failed += 1
-                update_import_row_result(
-                    row_id,
-                    apply_status="failed",
-                    apply_message=message,
-                )
-            results.append(
-                {
-                    "row_id": row_id,
-                    "employee_afm": row.get("employee_afm"),
-                    "work_date": row.get("work_date"),
-                    "success": ok,
-                    "protocol": protocol,
-                    "error": None if ok else result.get("error"),
-                }
+    try:
+        result = apply_import_week_batch(
+            ctx,
+            employee_groups=employee_groups,
+            bearer=bearer,
+            batch_meta=batch_meta,
+        )
+    except Exception as ex:
+        current_app.logger.exception("schedule import WTOWeek batch apply failed")
+        result = {
+            "success": False,
+            "error": str(ex),
+            "http_status": 500,
+            "apply_row_ids": [int(r["id"]) for r in apply_rows if r.get("id") is not None],
+        }
+
+    ok = bool(result.get("success"))
+    protocol = str(result.get("protocol") or "") or None
+    message = (
+        "Εφαρμόστηκε στο Ergani (WTOWeek · 1 πρωτόκολλο)"
+        if ok
+        else str(result.get("error") or "Αποτυχία")[:500]
+    )
+
+    applied = 0
+    failed = 0
+    results: list[dict[str, Any]] = []
+    for row in apply_rows:
+        row_id = int(row["id"])
+        if ok:
+            applied += 1
+            update_import_row_result(
+                row_id,
+                apply_status="success",
+                apply_message=message,
+                ergani_protocol=protocol,
             )
+        else:
+            failed += 1
+            update_import_row_result(
+                row_id,
+                apply_status="failed",
+                apply_message=message,
+            )
+        results.append(
+            {
+                "row_id": row_id,
+                "employee_afm": row.get("employee_afm"),
+                "work_date": row.get("work_date"),
+                "success": ok,
+                "protocol": protocol,
+                "error": None if ok else result.get("error"),
+            }
+        )
 
     summary = summarize_import_rows(list_import_rows(batch_id))
     summary["applied_ok"] = applied
     summary["applied_failed"] = failed
     summary["employees_submitted"] = len(by_employee_apply)
     summary["submission"] = "WTOWeek"
+    summary["protocols"] = 1 if ok and protocol else (0 if ok else None)
+    summary["shared_protocol"] = protocol
     final_status = "applied" if failed == 0 else "failed"
     schedule_sync = None
     if applied > 0 or failed > 0:
@@ -559,6 +697,8 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
             "failed": failed,
             "employees_submitted": len(by_employee_apply),
             "submission": "WTOWeek",
+            "shared_protocol": protocol,
+            "protocols": 1 if ok and protocol else 0,
             "final_status": final_status,
             "summary": summary,
             "schedule_sync": schedule_sync,
@@ -570,6 +710,7 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
         "failed": failed,
         "employees_submitted": len(by_employee_apply),
         "submission": "WTOWeek",
+        "protocol": protocol,
         "results": results,
         "summary": summary,
         "schedule_sync": schedule_sync,

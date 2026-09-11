@@ -29,7 +29,7 @@ def setup(tmp_path):
     app = Flask(__name__, template_folder="../app/templates", static_folder="../app/static")
     app.config.update(TESTING=True, SECRET_KEY="test", SCANNER_DB_PATH=str(tmp_path / "scanner.sqlite3"))
     app.register_blueprint(scanner_bp)
-    with patch("app.routes_scanner.store_menu_details", return_value={"legal_name":"Official Company SA","branch_description":"Athens","last_card_at":"09/09/2026 11:00"}), patch("app.routes_scanner.get_store_config", return_value=STORE), patch("app.routes_scanner.list_store_configs", return_value=[STORE]), patch("app.routes_scanner.list_active_employees_for_store", return_value=[EMP]):
+    with patch("app.routes_scanner.store_menu_details", return_value={"legal_name":"Official Company SA","branch_description":"Athens","last_card_at":"09/09/2026 11:00"}), patch("app.routes_scanner.get_store_config", return_value=STORE), patch("app.routes_scanner.list_store_configs", return_value=[STORE]), patch("app.routes_scanner.list_active_employees_for_store", return_value=[EMP]), patch("app.routes_scanner.Config.SCANNER_DRY_RUN", False):
         yield app, app.test_client()
 
 
@@ -95,7 +95,34 @@ def test_submit_idempotency_and_employee_scope(setup):
         assert submit.call_count==1
         assert submit.call_args.kwargs['aa_s']=='2'
     body['qr']='111111111'
-    assert client.post('/scanner/api/preview',json=body,headers=HEADERS).status_code==400
+    preview = client.post('/scanner/api/preview',json=body,headers=HEADERS)
+    assert preview.status_code==400
+    assert preview.json['reason']=='no_match'
+    assert 'παραρτήματος' in preview.json['error']
+
+
+def test_preview_explains_missing_and_ambiguous_afm(setup):
+    app, client = setup
+    sign_in(app, client)
+    missing = client.post(
+        '/scanner/api/preview',
+        json={'qr': 'NO-DIGITS-HERE', 'event': 'in'},
+        headers=HEADERS,
+    )
+    assert missing.status_code == 400
+    assert missing.json['reason'] == 'no_afm'
+    assert 'ΑΦΜ' in missing.json['error']
+
+    other = dict(EMP, afm='111222333', eponymo='OTHER', onoma='PERSON')
+    with patch('app.routes_scanner.list_active_employees_for_store', return_value=[EMP, other]):
+        ambiguous = client.post(
+            '/scanner/api/preview',
+            json={'qr': f"{EMP['afm']} / {other['afm']}", 'event': 'out'},
+            headers=HEADERS,
+        )
+    assert ambiguous.status_code == 400
+    assert ambiguous.json['reason'] == 'ambiguous'
+    assert 'περισσότερα από ένα' in ambiguous.json['error']
 
 
 def test_unknown_submission_never_replayed(setup):
@@ -197,8 +224,8 @@ def test_recent_punches_pagination_is_store_scoped_without_totals(setup):
     with patch('app.repo_scanner.recent_punches',return_value=([{'id':42,'event':'out'}],True)) as query:
         response=client.get('/scanner/api/recent?page=1')
     assert response.status_code==200
-    assert response.json=={'events':[{'id':42,'event':'out'}],'has_next':True,'has_previous':True}
-    query.assert_called_once_with('123456789','2',1)
+    assert response.json=={'events':[{'id':42,'event':'out'}],'has_next':True,'has_previous':True,'page':1,'limit':20}
+    query.assert_called_once_with('123456789','2',1, page_size=20)
     assert client.get('/scanner/api/recent?page=-1').status_code==400
 
 
@@ -211,6 +238,40 @@ def test_scanner_session_does_not_unlock_office_routes(setup):
     sign_in(app,client)
     assert client.get('/scanner/api/session').status_code==200
     assert client.get('/api/private-office').status_code==401
+
+
+def test_dry_run_submit_skips_ergani_and_returns_preview(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "dry-run-0123456789-0123456789",
+        "qr": EMP["afm"],
+        "event": "in",
+        "event_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with patch("app.routes_scanner.Config") as cfg, patch("app.routes_scanner.ErganiClient") as cls, patch(
+        "app.routes_work_card._submit_work_card"
+    ) as submit:
+        cfg.SCANNER_DRY_RUN = True
+        cfg.PUBLIC_BASE_URL = "https://erganios.gr"
+        response = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+        assert response.status_code == 200
+        data = response.json
+        assert data["success"] is True
+        assert data["dry_run"] is True
+        assert data["persisted"] is False
+        assert data["protocol"] is None
+        assert "DRY-RUN" in data["preview"]
+        assert data["would_send"]["employee_afm"] == EMP["afm"]
+        assert data["would_send"]["branch_aa"] == "2"
+        assert data["would_send"]["ergani_body"]["Cards"]["Card"][0]["f_aa"] == "2"
+        cls.assert_not_called()
+        submit.assert_not_called()
+    with patch("app.routes_scanner.Config") as cfg:
+        cfg.SCANNER_DRY_RUN = True
+        session = client.get("/scanner/api/session").json
+        assert session["dry_run"] is True
 
 
 def test_offline_iso_timestamp_and_late_reason_reach_existing_submit(setup):

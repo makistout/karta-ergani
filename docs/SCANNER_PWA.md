@@ -24,10 +24,11 @@ scanner session and no office/admin login. No App Store / Google Play package.
 - Choose arrival/departure, camera scan (vendored jsQR 1.4.0), branch roster check,
   confirmation, submission through existing `_submit_work_card`, preserving the
   store's listener/direct routing and existing card guards.
-- Αποστολές: latest punches from **karta_work_log**, including other sources,
-  20 per page, previous/next arrows without page counts. The scanner's former
-  date-filtered history and manual sync endpoints have been removed. Existing
-  erganiOS background synchronization remains the source of updates.
+- Αποστολές: κάθε άνοιγμα φορτώνει φρέσκα δεδομένα από τη βάση (`no-store`),
+  με ορατό spinner «Φόρτωση από τη βάση…». Πρώτη σελίδα: **TOP 20** χτυπήματα
+  από `karta_work_log`· επόμενες σελίδες με OFFSET, 20 ανά σελίδα, βέλη χωρίς
+  συνολικό πλήθος. Τα παλιά date-filtered history και manual sync endpoints έχουν
+  αφαιρεθεί· ο συγχρονισμός υποβάθρου του erganiOS παραμένει η πηγή ενημερώσεων.
 - Εκκρεμείς: separate tab and count of local unconfirmed submissions, with retry,
   late reason selection and explicit unknown-result handling.
 - Local IndexedDB outbox records intent before sending. Replays reuse request id.
@@ -47,17 +48,19 @@ scanner session and no office/admin login. No App Store / Google Play package.
   5 seconds; nonce validation and `no-store` prevent cached success responses.
 - Online means that the **erganiOS server is reachable**, not that Ergani or the
   database is available. On localhost it does not prove internet access.
-- Automatic pending submission runs every 60 seconds while the page is running,
+- Automatic pending submission runs every 30 seconds while the page is visible,
   and after connectivity is restored. The original request id is reused.
 - The menu “Συγχρονισμός” submits eligible pending
-  events. Empty queue: “Δεν βρέθηκαν δηλώσεις προς υποβολή.” A result dialog includes
+  events and updates «Τελ. συγχρ.» with the current date/time. Empty queue:
+  “Δεν βρέθηκαν δηλώσεις προς υποβολή.” A result dialog includes
   date/time and OK. Offline, late, failed and uncertain outcomes stay visible in
   Εκκρεμείς; reasons and reconciliation are not bypassed.
 
 ## Appearance
 
-- Shared official erganiOS logo on login, main header and drawer; primary blue
-  `#1062fe`, white Online/Offline badge with blue text.
+- Shared official erganiOS logo on login, main header and drawer.
+  Προσέλευση light green `#b8e6b8`, Αποχώρηση light red `#f5b4b4`.
+  White Online/Offline badge.
 - Header contains the Online/Offline indicator next to the hamburger menu;
   synchronization is available only inside the drawer.
 - Returning from another app resets the view, title and selected menu item to
@@ -69,7 +72,7 @@ scanner session and no office/admin login. No App Store / Google Play package.
 - Ministry logo on login and scanner home uses the supplied remote image with
   CSS multiply blending to visually remove its white background. The JPEG itself
   is not an alpha-transparent asset and requires network access to load.
-- Service worker v4 replaces old shell caches and refreshes successful cached
+- Service worker v9 replaces old shell caches and refreshes successful cached
   shell responses. Business data and API responses are excluded.
 - Πλαϊνό μενού σε κινητό: στενότερο (~78vw / max 300px) και μικρότερα γράμματα
   (επωνυμία ~15px, στοιχεία ~12px, στοιχεία μενού ~14px).

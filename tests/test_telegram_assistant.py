@@ -592,6 +592,19 @@ def test_schedule_change_validation_and_description():
     assert proposed == "ΔΟΚΙΜΗ ΧΡΗΣΤΗΣ · 16/08/2026 · Αλλαγή ωραρίου σε 09:00–17:00"
 
 
+def test_tomorrow_urai_does_not_match_kyri_surname():
+    """«Αύριο ο Urai …» must not fuzzy-match Κυριμοπούλου via stem distance."""
+    from app.telegram_assistant_service import _mentioned_afms, _query_tokens
+
+    employees = [
+        {"store_id": 17, "afm": "159120892", "name": "ΚΥΡΙΜΟΠΟΥΛΟΥ ΜΑΡΙΑ ΓΕΩΡΓΙΑ"},
+        {"store_id": 17, "afm": "127603625", "name": "URAJ ARTUR"},
+    ]
+    text = "Αυριο ο Urai 16:00-00:00"
+    assert _query_tokens(text) == ["urai"]
+    assert _mentioned_afms(text, employees, 17) == ["127603625"]
+
+
 def test_schedule_card_uses_real_start_time_and_greek_date():
     parsed = {
         "intent": "card_check_in_schedule", "store_id": 4,

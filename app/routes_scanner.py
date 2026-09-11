@@ -231,6 +231,7 @@ def status():
         pin_enabled=bool(g.scanner["pin"]),
         needs_store_selection=current_id is None and len(stores) > 1,
         last_sync=str(cfg.get("work_log_last_sync_at") or cfg.get("last_sync_at") or ""),
+        dry_run=bool(Config.SCANNER_DRY_RUN),
     )
 
 
@@ -286,21 +287,79 @@ def recent():
         page = int(request.args.get("page", "0"))
         if not 0 <= page <= 100000:
             raise ValueError()
+        limit = int(request.args.get("limit", "20"))
+        if not 1 <= limit <= 20:
+            raise ValueError()
     except ValueError:
         return jsonify(error="Μη έγκυρη σελίδα"), 400
     from app.repo_scanner import recent_punches
-    events, has_next = recent_punches(ctx["employer_afm"], ctx["branch_aa"], page)
-    return jsonify(events=events, has_next=has_next, has_previous=page > 0)
+    events, has_next = recent_punches(ctx["employer_afm"], ctx["branch_aa"], page, page_size=limit)
+    return jsonify(events=events, has_next=has_next, has_previous=page > 0, page=page, limit=limit)
+
+
+def resolve_employee_from_qr(raw, ctx):
+    """
+    Αντιστοίχιση QR → ενεργός εργαζόμενος του παραρτήματος.
+    Επιστρέφει dict με employee ή error/reason για σαφή μήνυμα στον χρήστη.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return {
+            "employee": None,
+            "error": "Κενό περιεχόμενο κάρτας. Ξανασαρώστε το QR.",
+            "reason": "empty",
+        }
+    if len(raw) > 4096:
+        return {
+            "employee": None,
+            "error": "Μη έγκυρο περιεχόμενο κάρτας (πολύ μεγάλο).",
+            "reason": "too_large",
+        }
+    candidates = sorted(set(re.findall(r"(?<!\d)\d{9}(?!\d)", raw)))
+    if not candidates:
+        return {
+            "employee": None,
+            "error": (
+                "Δεν εντοπίστηκε ΑΦΜ 9 ψηφίων στην κάρτα. "
+                "Ξανασαρώστε με καλύτερο φωτισμό ή την πίσω κάμερα."
+            ),
+            "reason": "no_afm",
+            "candidates": [],
+        }
+    employees = list_active_employees_for_store(ctx["employer_afm"], ctx["branch_aa"])
+    matches = {str(e["afm"]): e for e in employees if str(e["afm"]) in candidates}
+    if len(matches) == 1:
+        return {"employee": next(iter(matches.values())), "reason": "ok", "candidates": candidates}
+    branch = str(ctx.get("branch_aa") or "0")
+    if not matches:
+        shown = ", ".join(candidates[:5])
+        extra = f" (+{len(candidates) - 5})" if len(candidates) > 5 else ""
+        return {
+            "employee": None,
+            "error": (
+                f"Το ΑΦΜ από την κάρτα ({shown}{extra}) δεν ανήκει σε ενεργό εργαζόμενο "
+                f"του παραρτήματος ΑΑ {branch}. Ελέγξτε το επιλεγμένο παράρτημα στο μενού."
+            ),
+            "reason": "no_match",
+            "candidates": candidates,
+            "branch_aa": branch,
+        }
+    shown = ", ".join(sorted(matches)[:5])
+    return {
+        "employee": None,
+        "error": (
+            f"Η κάρτα περιέχει περισσότερα από ένα ΑΦΜ ενεργών εργαζομένων αυτού του "
+            f"παραρτήματος ({shown}). Χρησιμοποιήστε κάρτα με μοναδικό ΑΦΜ."
+        ),
+        "reason": "ambiguous",
+        "candidates": candidates,
+        "matches": sorted(matches),
+        "branch_aa": branch,
+    }
 
 
 def employee_from_qr(raw, ctx):
-    # Accept only a single unambiguous AFM present in this branch's active roster.
-    if not isinstance(raw, str) or len(raw) > 4096:
-        return None
-    candidates = set(re.findall(r"(?<!\d)\d{9}(?!\d)", raw))
-    employees = list_active_employees_for_store(ctx["employer_afm"], ctx["branch_aa"])
-    matches = {str(e["afm"]): e for e in employees if str(e["afm"]) in candidates}
-    return next(iter(matches.values())) if len(matches) == 1 else None
+    # Συμβατότητα: μοναδικό match ή None.
+    return resolve_employee_from_qr(raw, ctx).get("employee")
 
 
 @scanner_bp.post("/api/preview")
@@ -309,10 +368,23 @@ def preview():
     if not ctx:
         return jsonify(error="Επιλέξτε κατάστημα"), 400
     body = request.get_json(silent=True) or {}
-    employee = employee_from_qr(body.get("qr"), ctx)
-    if not employee or body.get("event") not in ("in", "out"):
-        return jsonify(error="Η κάρτα δεν αντιστοιχεί σε ενεργό εργαζόμενο του παραρτήματος"), 400
-    return jsonify(employee_afm=employee["afm"], name=f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip(), event=body["event"], event_at=datetime.now(tz_athens()).isoformat(timespec="seconds"))
+    if body.get("event") not in ("in", "out"):
+        return jsonify(error="Μη έγκυρη ενέργεια (προσέλευση/αποχώρηση)"), 400
+    resolved = resolve_employee_from_qr(body.get("qr"), ctx)
+    employee = resolved.get("employee")
+    if not employee:
+        return jsonify(
+            error=resolved.get("error") or "Η κάρτα δεν αντιστοιχεί σε ενεργό εργαζόμενο του παραρτήματος",
+            reason=resolved.get("reason"),
+            candidates=resolved.get("candidates") or [],
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        ), 400
+    return jsonify(
+        employee_afm=employee["afm"],
+        name=f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip(),
+        event=body["event"],
+        event_at=datetime.now(tz_athens()).isoformat(timespec="seconds"),
+    )
 
 
 @scanner_bp.post("/api/submit")
@@ -326,9 +398,17 @@ def submit():
     key = str(body.get("request_id", ""))
     if not re.fullmatch(r"[a-zA-Z0-9-]{20,64}", key):
         return jsonify(error="Μη έγκυρο αναγνωριστικό αποστολής"), 400
-    employee = employee_from_qr(body.get("qr"), ctx)
-    if not employee or body.get("event") not in ("in", "out"):
-        return jsonify(error="Μη έγκυρη κάρτα ή ενέργεια"), 400
+    if body.get("event") not in ("in", "out"):
+        return jsonify(error="Μη έγκυρη ενέργεια (προσέλευση/αποχώρηση)"), 400
+    resolved = resolve_employee_from_qr(body.get("qr"), ctx)
+    employee = resolved.get("employee")
+    if not employee:
+        return jsonify(
+            error=resolved.get("error") or "Μη έγκυρη κάρτα ή ενέργεια",
+            reason=resolved.get("reason"),
+            candidates=resolved.get("candidates") or [],
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        ), 400
     try:
         at = datetime.fromisoformat(str(body.get("event_at", "")).replace("Z", "+00:00"))
         if at.tzinfo is None or (at - datetime.now(tz_athens())).total_seconds() > 30:
@@ -354,18 +434,79 @@ def submit():
             payload["aitiologia"] = body["aitiologia"]
         db.execute("INSERT INTO submissions VALUES(?,?,?,?,NULL,NULL,?)", (key, g.scanner["id"], ctx["id"], canonical, time.time()))
     try:
-        client = ErganiClient(ctx["api_base_url"], timeout=20)
-        auth = client.authenticate(ctx["web_username"], ctx["web_password"], "02")
-        data = json_or_text(auth)
-        if not auth.ok or not isinstance(data, dict) or not data.get("accessToken"):
-            result, code = {"error": "Αποτυχία σύνδεσης ΕΡΓΑΝΗ", "success": False}, 401
+        if Config.SCANNER_DRY_RUN:
+            from app.work_card_payload import (
+                WorkCardPayloadError,
+                build_wrk_card_se_payload,
+                f_type_from_event,
+            )
+
+            event_label = "Προσέλευση" if body["event"] == "in" else "Αποχώρηση"
+            name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
+            try:
+                f_type = f_type_from_event(body["event"], None)
+                ergani_body = build_wrk_card_se_payload(
+                    employer_afm=ctx["employer_afm"],
+                    branch_aa=ctx["branch_aa"],
+                    employee_afm=employee["afm"],
+                    employee_last_name=str(employee.get("eponymo") or ""),
+                    employee_first_name=str(employee.get("onoma") or ""),
+                    event=body["event"],
+                    reference_date=payload["reference_date"],
+                    event_at=payload["event_at"],
+                    aitiologia=payload.get("aitiologia"),
+                )
+                preview_lines = [
+                    "DRY-RUN — δεν στάλθηκε τίποτα στο ΕΡΓΑΝΗ",
+                    f"Ενέργεια: {event_label} (f_type={f_type})",
+                    f"Εργαζόμενος: {name}",
+                    f"ΑΦΜ εργαζομένου: {employee['afm']}",
+                    f"ΑΦΜ εργοδότη: {ctx['employer_afm']}",
+                    f"Παράρτημα ΑΑ: {ctx['branch_aa']}",
+                    f"Ημ. αναφοράς: {payload['reference_date']}",
+                    f"Ώρα χτυπήματος: {payload['event_at']}",
+                ]
+                if payload.get("aitiologia"):
+                    preview_lines.append(f"Αιτιολογία: {payload['aitiologia']}")
+                preview_lines.append("Σώμα WRKCardSE:")
+                preview_lines.append(json.dumps(ergani_body, ensure_ascii=False, indent=2))
+                preview_text = "\n".join(preview_lines)
+                result, code = {
+                    "success": True,
+                    "dry_run": True,
+                    "persisted": False,
+                    "protocol": None,
+                    "f_type_label": event_label,
+                    "preview": preview_text,
+                    "would_send": {
+                        "submission_code": "WRKCardSE",
+                        "employer_afm": ctx["employer_afm"],
+                        "branch_aa": ctx["branch_aa"],
+                        "employee_afm": employee["afm"],
+                        "employee_name": name,
+                        "event": body["event"],
+                        "f_type": f_type,
+                        "event_at": payload["event_at"],
+                        "reference_date": payload["reference_date"],
+                        "aitiologia": payload.get("aitiologia"),
+                        "ergani_body": ergani_body,
+                    },
+                }, 200
+            except WorkCardPayloadError as ex:
+                result, code = {"success": False, "dry_run": True, "error": str(ex)}, 400
         else:
-            from app.routes_work_card import _submit_work_card
-            response, code = _submit_work_card(body=payload, erg_s=ctx["employer_afm"], aa_s=ctx["branch_aa"], bearer=data["accessToken"], api_base_url=ctx["api_base_url"], store_id=ctx["id"], client_ip=request.remote_addr, client_device="scanner_pwa")
-            raw = response.get_json()
-            result = {k: raw.get(k) for k in ("success", "error", "protocol", "persisted", "f_type_label")}
-            if code == 202 or code >= 500:
-                result["uncertain"] = True
+            client = ErganiClient(ctx["api_base_url"], timeout=20)
+            auth = client.authenticate(ctx["web_username"], ctx["web_password"], "02")
+            data = json_or_text(auth)
+            if not auth.ok or not isinstance(data, dict) or not data.get("accessToken"):
+                result, code = {"error": "Αποτυχία σύνδεσης ΕΡΓΑΝΗ", "success": False}, 401
+            else:
+                from app.routes_work_card import _submit_work_card
+                response, code = _submit_work_card(body=payload, erg_s=ctx["employer_afm"], aa_s=ctx["branch_aa"], bearer=data["accessToken"], api_base_url=ctx["api_base_url"], store_id=ctx["id"], client_ip=request.remote_addr, client_device="scanner_pwa")
+                raw = response.get_json()
+                result = {k: raw.get(k) for k in ("success", "error", "protocol", "persisted", "f_type_label")}
+                if code == 202 or code >= 500:
+                    result["uncertain"] = True
     except Exception:
         current_app.logger.exception("Scanner submission outcome unknown")
         return jsonify(error="Δεν επιβεβαιώθηκε το αποτέλεσμα. Ελέγξτε τις αποστολές.", uncertain=True), 503

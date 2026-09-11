@@ -622,7 +622,9 @@ def _name_token_score(token: str, employee: dict[str, Any]) -> int | None:
             scores.append(2)
         else:
             dist = _edit_distance(last_stem, needle_stem)
-            if dist <= 2 and min(len(last_stem), len(needle_stem)) >= 4:
+            # Strict fuzzy: one edit only, and stems long enough to avoid
+            # false hits like «αυριο» ↔ stem «κυριμο» (Κυριμοπούλου).
+            if dist == 1 and min(len(last_stem), len(needle_stem)) >= 4:
                 scores.append(3 + dist)
     if first:
         folded_first = _fold_text(first)
@@ -676,8 +678,8 @@ def _query_tokens(text: str) -> list[str]:
     folded = _fold_text(text)
     stop = {
         "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τουσ", "τισ",
-        "τωρα", "σημερα", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
-        "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today",
+        "τωρα", "σημερα", "αυριο", "μεθαυριο", "χθεσ", "χθες", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
+        "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today", "tomorrow", "yesterday",
         "χτυπα", "χτυπησε", "punch", "στισ", "στις", "πριν", "λεπτα", "ωρες",
         "ολουσ", "ολεσ", "ολα", "οσουσ", "οσοι", "εισοδο", "εξοδο",
         "αυτουσ", "αυτεσ", "αυτα",

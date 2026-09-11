@@ -14,6 +14,7 @@ SUBMISSION_CODE_WTO_WEEK = "WTOWeek"
 _VALID_TYPES = frozenset({"ΕΡΓ", "ΤΗΛ", "ΑΝ", "ΜΕ"})
 _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _ALL_DAYS = frozenset(range(7))
+_DAY_ORDER = (1, 2, 3, 4, 5, 6, 0)
 
 
 def _blank_field(value: str | None) -> str:
@@ -100,17 +101,13 @@ def _normalize_day_entries(day: int, entries: Any) -> list[dict[str, str]]:
     return analytics
 
 
-def build_wto_week_payload(
+def _employee_week_rows(
     *,
-    branch_aa: str,
     employee_afm: str,
     employee_last_name: str,
     employee_first_name: str,
-    from_date: str,
     days: list[dict[str, Any]],
-    to_date: str | None = None,
-    comments: str | None = None,
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     emp = norm_afm(employee_afm)
     last = str(employee_last_name or "").strip()
     first = str(employee_first_name or "").strip()
@@ -118,11 +115,6 @@ def build_wto_week_payload(
         raise WorkCardPayloadError("Απαιτούνται επώνυμο και όνομα εργαζομένου")
     if not isinstance(days, list):
         raise WorkCardPayloadError("Απαιτείται λίστα επτά ημερών")
-
-    start = _parse_iso_date(from_date, "Ημερομηνία έναρξης")
-    end = _parse_iso_date(to_date, "Ημερομηνία λήξης") if to_date else None
-    if end and end < start:
-        raise WorkCardPayloadError("Η ημερομηνία λήξης δεν μπορεί να προηγείται της έναρξης")
 
     by_day: dict[int, list[dict[str, str]]] = {}
     for row in days:
@@ -146,7 +138,7 @@ def build_wto_week_payload(
             detail.append(f"μη έγκυρες ημέρες {extra}")
         raise WorkCardPayloadError("Απαιτούνται ακριβώς οι ημέρες 0–6 (" + ", ".join(detail) + ")")
 
-    employee_rows = [
+    return [
         {
             "f_afm": emp,
             "f_eponymo": last[:50],
@@ -156,8 +148,52 @@ def build_wto_week_payload(
                 "ErgazomenosWTOAnalytics": by_day[day],
             },
         }
-        for day in (1, 2, 3, 4, 5, 6, 0)
+        for day in _DAY_ORDER
     ]
+
+
+def build_wto_week_batch_payload(
+    *,
+    branch_aa: str,
+    from_date: str,
+    employees: list[dict[str, Any]],
+    to_date: str | None = None,
+    comments: str | None = None,
+) -> dict[str, Any]:
+    """Ένα WTOWeek με πολλούς εργαζόμενους → ένα πρωτόκολλο ΕΡΓΑΝΗ."""
+    if not isinstance(employees, list) or not employees:
+        raise WorkCardPayloadError("Απαιτείται τουλάχιστον ένας εργαζόμενος")
+
+    start = _parse_iso_date(from_date, "Ημερομηνία έναρξης")
+    end = _parse_iso_date(to_date, "Ημερομηνία λήξης") if to_date else None
+    if end and end < start:
+        raise WorkCardPayloadError("Η ημερομηνία λήξης δεν μπορεί να προηγείται της έναρξης")
+
+    seen_afms: set[str] = set()
+    employee_rows: list[dict[str, Any]] = []
+    for index, employee in enumerate(employees, start=1):
+        if not isinstance(employee, dict):
+            raise WorkCardPayloadError(f"Εργαζόμενος {index}: αναμενόταν αντικείμενο")
+        afm = norm_afm(str(employee.get("employee_afm") or employee.get("afm") or ""))
+        if afm in seen_afms:
+            raise WorkCardPayloadError(f"Το ΑΦΜ {afm} δηλώθηκε περισσότερες από μία φορές")
+        seen_afms.add(afm)
+        label = f"ΑΦΜ {afm}"
+        try:
+            employee_rows.extend(
+                _employee_week_rows(
+                    employee_afm=afm,
+                    employee_last_name=str(
+                        employee.get("employee_last_name") or employee.get("eponymo") or ""
+                    ),
+                    employee_first_name=str(
+                        employee.get("employee_first_name") or employee.get("onoma") or ""
+                    ),
+                    days=list(employee.get("days") or []),
+                )
+            )
+        except WorkCardPayloadError as ex:
+            raise WorkCardPayloadError(f"{label}: {ex}") from ex
 
     return {
         "WTOS": {
@@ -176,4 +212,35 @@ def build_wto_week_payload(
     }
 
 
-__all__ = ["SUBMISSION_CODE_WTO_WEEK", "build_wto_week_payload"]
+def build_wto_week_payload(
+    *,
+    branch_aa: str,
+    employee_afm: str,
+    employee_last_name: str,
+    employee_first_name: str,
+    from_date: str,
+    days: list[dict[str, Any]],
+    to_date: str | None = None,
+    comments: str | None = None,
+) -> dict[str, Any]:
+    return build_wto_week_batch_payload(
+        branch_aa=branch_aa,
+        from_date=from_date,
+        to_date=to_date,
+        comments=comments,
+        employees=[
+            {
+                "employee_afm": employee_afm,
+                "employee_last_name": employee_last_name,
+                "employee_first_name": employee_first_name,
+                "days": days,
+            }
+        ],
+    )
+
+
+__all__ = [
+    "SUBMISSION_CODE_WTO_WEEK",
+    "build_wto_week_batch_payload",
+    "build_wto_week_payload",
+]

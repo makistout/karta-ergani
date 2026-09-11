@@ -42,9 +42,10 @@ def store_menu_details(employer_afm, branch_aa):
 
 
 def recent_punches(employer_afm, branch_aa, page, page_size=20):
-    with cursor(commit=False) as cur:
-        cur.execute("""
-            SELECT w.id, w.employee_afm, w.work_date AS date,
+    page = max(0, int(page or 0))
+    page_size = max(1, min(int(page_size or 20), 20))
+    body = """
+            w.id, w.employee_afm, w.work_date AS date,
                    CONCAT(emp.eponymo, N' ', emp.onoma) AS name,
                    p.event, p.hour AS time, p.protocol, p.next_day
             FROM dbo.karta_work_log w
@@ -58,7 +59,18 @@ def recent_punches(employer_afm, branch_aa, page, page_size=20):
               AND NULLIF(LTRIM(RTRIM(p.hour)), '') IS NOT NULL
             ORDER BY DATEADD(day, p.next_day, TRY_CONVERT(date, w.work_date, 103)) DESC,
                      TRY_CONVERT(time, p.hour) DESC, w.id DESC, p.event DESC
-            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-        """, (employer_afm, branch_aa, page * page_size, page_size + 1))
+    """
+    with cursor(commit=False) as cur:
+        # Page 0 uses TOP for a cheaper first paint; later pages keep OFFSET.
+        if page == 0:
+            cur.execute(
+                f"SELECT TOP ({page_size + 1}) {body}",
+                (employer_afm, branch_aa),
+            )
+        else:
+            cur.execute(
+                f"SELECT {body} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+                (employer_afm, branch_aa, page * page_size, page_size + 1),
+            )
         rows = rows_to_dicts(cur)
     return rows[:page_size], len(rows) > page_size

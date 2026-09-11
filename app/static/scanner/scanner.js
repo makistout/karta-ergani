@@ -19,6 +19,21 @@ async function storage(method, value) {
   });
 }
 function message(text, error = false) { $('message').textContent = text; $('message').className = error ? 'error' : ''; $('message').hidden = !text; }
+function setDryRunBanner(enabled) {
+  const banner = $('dry-run-banner');
+  if (!banner) return;
+  banner.hidden = !enabled;
+}
+function showDryRunPreview(text) {
+  const preview = $('dry-run-preview');
+  const dialog = $('dry-run-dialog');
+  if (!preview || !dialog) {
+    message(text || 'DRY-RUN — δεν στάλθηκε τίποτα στο ΕΡΓΑΝΗ');
+    return;
+  }
+  preview.textContent = text || 'DRY-RUN — δεν στάλθηκε τίποτα στο ΕΡΓΑΝΗ';
+  if (!dialog.open) dialog.showModal();
+}
 function preferenceKey(username) {
   const name = String(username || loginUsername || '').trim().toLowerCase();
   return name ? `${PREF_STORE_KEY}:${name}` : PREF_STORE_KEY;
@@ -37,8 +52,14 @@ function writePreferredStoreId(storeId, username) {
     else localStorage.setItem(preferenceKey(username), String(storeId));
   } catch {}
 }
-async function api(path, body) {
-  const response = await fetch('/scanner/api/' + path, {method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-Scanner-Request': '1'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
+async function api(path, body, options = {}) {
+  const response = await fetch('/scanner/api/' + path, {
+    method: body === undefined ? 'GET' : 'POST',
+    credentials: 'same-origin',
+    cache: options.cache || (body === undefined ? 'no-store' : 'default'),
+    headers: {'Content-Type': 'application/json', 'X-Scanner-Request': '1'},
+    ...(body === undefined ? {} : {body: JSON.stringify(body)}),
+  });
   let data; try { data = await response.json(); } catch { throw new Error('Μη αναμενόμενη απάντηση από τον server'); }
   if (!response.ok) { const error = new Error(data.error || 'Η ενέργεια απέτυχε'); error.data = data; error.status = response.status; throw error; }
   return data;
@@ -72,7 +93,7 @@ function updateStorePanel() {
   $('store-name').textContent=store.name || (multi ? 'Επιλέξτε παράρτημα' : '');
   $('store-afm').textContent=store.employer_afm ? 'ΑΦΜ: '+store.employer_afm : '';
   $('store-branch').textContent=store.branch_aa!=null ? 'Παράρτημα: ('+store.branch_aa+') '+(store.branch_description || '') : '';
-  $('store-last-card').textContent=store.last_card_at || session?.last_sync || 'Δεν υπάρχει καταχωρημένη κάρτα';
+  $('store-last-card').textContent=session?.last_sync || store.last_card_at || 'Δεν υπάρχει καταχωρημένη κάρτα';
   $('store-user').textContent=store.username ? 'Όνομα χρήστη: '+store.username : '';
   $('store-switch-hint').hidden=!multi;
   $('drawer-store').classList.toggle('switchable', multi);
@@ -106,13 +127,16 @@ function openBranchPicker({required=false}={}) {
     : null;
 }
 async function refreshSession({promptBranch=true}={}) {
+  const previousSync=session?.last_sync;
   session = await api('session');
+  if (previousSync) session.last_sync=previousSync;
   if (!loginUsername) {
     const current=session.stores.find(s=>s.id===session.store_id);
     loginUsername = current?.username || '';
   }
   $('login').hidden = true; $('workspace').hidden = false;
   $('menu-toggle').hidden=false;
+  setDryRunBanner(Boolean(session.dry_run));
   updateStorePanel();
   await renderPending();
   if (promptBranch && (session.needs_store_selection || (!session.store_id && session.stores.length > 1))) {
@@ -139,9 +163,22 @@ async function page(name) {
     openBranchPicker({required:true});
     throw new Error('Επιλέξτε πρώτα παράρτημα');
   }
-  if (name === 'recent') await unlock();
+  if (name === 'recent') {
+    showPage(name);
+    showRecentLoading();
+    try {
+      await unlock();
+      await loadRecent(0);
+    } catch (error) {
+      $('recent').removeAttribute('aria-busy');
+      if (!recentLoading) {
+        $('recent-list').replaceChildren(textNode('p', error.message || 'Η φόρτωση ακυρώθηκε.', 'muted'));
+      }
+      throw error;
+    }
+    return;
+  }
   showPage(name);
-  if(name === 'recent') await loadRecent(0);
   if(name === 'pending') await renderPending();
 }
 function safeTask(fn) { return async event => { try { await fn(event); } catch(error) { message(error.message, true); } }; }
@@ -174,7 +211,7 @@ function onDrawerStoreActivate(event) {
 $('drawer-store').onclick=onDrawerStoreActivate;
 $('drawer-store').onkeydown=onDrawerStoreActivate;
 document.querySelectorAll('nav button[data-page]').forEach(el => el.onclick = safeTask(() => page(el.dataset.page)));
-$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; loginUsername=''; $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
+$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; loginUsername=''; setDryRunBanner(false); $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
 function stopCamera() { scanning=false; if(stream) stream.getTracks().forEach(track=>track.stop()); stream=null; $('video').srcObject=null; }
 async function openCamera(event) {
   if(!session?.store_id) {
@@ -183,7 +220,14 @@ async function openCamera(event) {
   }
   action=event; preview=null; stopCamera();
   if(!navigator.mediaDevices?.getUserMedia) throw new Error('Η κάμερα απαιτεί HTTPS και υποστηριζόμενο browser.');
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+  stream=await navigator.mediaDevices.getUserMedia({
+    video:{
+      facingMode:{ideal:facing},
+      width:{ideal:1920},
+      height:{ideal:1080},
+    },
+    audio:false,
+  });
   $('video').srcObject=stream; await $('video').play();
   $('scan-title').textContent=event==='in'?'Προσέλευση':'Αποχώρηση';
   if(!$('camera-dialog').open) $('camera-dialog').showModal();
@@ -191,30 +235,57 @@ async function openCamera(event) {
   scanning=true; scanFrame();
 }
 const canvas=document.createElement('canvas'), context=canvas.getContext('2d',{willReadFrequently:true});
+function decodeQrFromVideo(video) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  // Υψηλότερη ανάλυση + εναλλακτικά μεγέθη (tablet συχνά χρειάζεται >640).
+  const widths = [];
+  for (const maxW of [1280, 960, 640]) {
+    const w = Math.min(vw, maxW);
+    if (!widths.includes(w)) widths.push(w);
+  }
+  for (const width of widths) {
+    canvas.width = width;
+    canvas.height = Math.max(1, Math.round(vh * width / vw));
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const qr = jsQR(pixels.data, pixels.width, pixels.height, {inversionAttempts: 'attemptBoth'});
+    if (qr?.data) return qr.data;
+  }
+  // Κεντρικό crop ~70% σε 960px — βοηθά σε tablets με παραμόρφωση στις άκρες.
+  const cropW = Math.floor(vw * 0.7);
+  const cropH = Math.floor(vh * 0.7);
+  const sx = Math.floor((vw - cropW) / 2);
+  const sy = Math.floor((vh - cropH) / 2);
+  const outW = Math.min(960, cropW);
+  canvas.width = outW;
+  canvas.height = Math.max(1, Math.round(cropH * outW / cropW));
+  context.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  const cropPixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  const cropQr = jsQR(cropPixels.data, cropPixels.width, cropPixels.height, {inversionAttempts: 'attemptBoth'});
+  return cropQr?.data || null;
+}
 async function scanFrame() {
   if(!scanning) return;
   const video=$('video');
   if(video.readyState>=2 && video.videoWidth) {
-    canvas.width=640; canvas.height=Math.round(video.videoHeight*640/video.videoWidth);
-    context.drawImage(video,0,0,canvas.width,canvas.height);
-    const pixels=context.getImageData(0,0,canvas.width,canvas.height);
-    const qr=jsQR(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'});
-    if(qr?.data) {
+    const qrData=decodeQrFromVideo(video);
+    if(qrData) {
       stopCamera(); $('camera-dialog').close();
       try {
-        const data=await api('preview',{qr:qr.data,event:action});
-        preview={...data,qr:qr.data};
+        const data=await api('preview',{qr:qrData,event:action});
+        preview={...data,qr:qrData};
       } catch(error) {
         if(error.status) { message(error.message,true); return; }
         serverOnline=false; network();
-        preview={qr:qr.data,event:action,event_at:new Date().toISOString(),name:'Κάρτα εκτός σύνδεσης'};
+        preview={qr:qrData,event:action,event_at:new Date().toISOString(),name:'Κάρτα εκτός σύνδεσης'};
       }
       $('confirm-name').textContent=preview.name;
       $('confirm-detail').textContent=`${action==='in'?'Προσέλευση':'Αποχώρηση'} · ${new Date(preview.event_at).toLocaleTimeString('el-GR')} ${preview.employee_afm?'· ΑΦΜ '+preview.employee_afm:'· Τα στοιχεία θα ελεγχθούν όταν συνδεθεί η συσκευή.'}`;
       $('confirm-dialog').showModal(); return;
     }
   }
-  setTimeout(scanFrame,180);
+  setTimeout(scanFrame,160);
 }
 $('arrival').onclick=safeTask(()=>openCamera('in')); $('departure').onclick=safeTask(()=>openCamera('out'));
 $('close-camera').onclick=()=>{stopCamera();$('camera-dialog').close();}; $('camera-dialog').oncancel=stopCamera;
@@ -239,8 +310,17 @@ async function sendPending() {
       item.state='sending'; await storage('put',item);
       try {
         const data=await api('submit',item);
-        item.state=data.success?'success':data.uncertain?'uncertain':'failed'; item.note=data.success?`Υποβλήθηκε${data.protocol?' · '+data.protocol:''}`:(data.error||'Δεν επιβεβαιώθηκε η υποβολή');
-        if(data.success) { beep(); message(`${item.name}: ${item.note}`); }
+        item.state=data.success?'success':data.uncertain?'uncertain':'failed';
+        if (data.dry_run && data.success) {
+          item.note='DRY-RUN · δεν στάλθηκε στο ΕΡΓΑΝΗ';
+          item.preview=data.preview || '';
+          beep();
+          message(`${item.name}: προσομοίωση — δείτε τι θα στελνόταν`);
+          showDryRunPreview(data.preview);
+        } else {
+          item.note=data.success?`Υποβλήθηκε${data.protocol?' · '+data.protocol:''}`:(data.error||'Δεν επιβεβαιώθηκε η υποβολή');
+          if(data.success) { beep(); message(`${item.name}: ${item.note}`); }
+        }
       } catch(error) {
         if(!error.status) {item.state='sending';item.note='Αναμονή ελέγχου αποτελέσματος με το ίδιο αναγνωριστικό';}
         else { item.state=error.data?.late?'late':error.data?.uncertain?'uncertain':'failed'; item.note=error.message; }
@@ -270,9 +350,15 @@ async function renderPending() {
 }
 $('retry').onclick=safeTask(sendPending);
 let manualSyncRunning=false;
+function syncStamp() {
+  return new Intl.DateTimeFormat('el-GR',{timeZone:'Europe/Athens',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
+}
 function syncResult(text) {
+  const stamp=syncStamp();
   $('sync-result').textContent=text;
-  $('sync-time').textContent=new Intl.DateTimeFormat('el-GR',{timeZone:'Europe/Athens',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
+  $('sync-time').textContent=stamp;
+  if(session) session.last_sync=stamp;
+  $('store-last-card').textContent=stamp;
   if(!$('sync-dialog').open) $('sync-dialog').showModal();
 }
 async function synchronizePending() {
@@ -298,10 +384,11 @@ async function synchronizePending() {
 $('sync-menu').onclick=synchronizePending;
 async function loadRecent(pageIndex) {
   if(recentLoading) return;
-  recentLoading=true; $('recent-prev').disabled=$('recent-next').disabled=true;
-  $('recent-list').replaceChildren(textNode('p','Φόρτωση χτυπημάτων…','muted'));
+  recentLoading=true;
+  showRecentLoading();
   try {
-    const data=await api(`recent?page=${pageIndex}`); recentPage=pageIndex;
+    const data=await api(`recent?page=${pageIndex}&limit=20&_=${Date.now()}`, undefined, {cache:'no-store'});
+    recentPage=pageIndex;
     $('recent-list').replaceChildren();
     for(const row of data.events) {
       const el=document.createElement('article');el.className='event';
@@ -317,7 +404,23 @@ async function loadRecent(pageIndex) {
   } catch(error) {
     $('recent-list').replaceChildren(textNode('p','Δεν ήταν δυνατή η φόρτωση των χτυπημάτων.','muted'));
     throw error;
-  } finally { recentLoading=false; }
+  } finally {
+    recentLoading=false;
+    $('recent').removeAttribute('aria-busy');
+  }
+}
+function showRecentLoading() {
+  $('recent').setAttribute('aria-busy','true');
+  $('recent-prev').disabled=true;
+  $('recent-next').disabled=true;
+  const state=document.createElement('div');
+  state.className='loading-state';
+  state.setAttribute('role','status');
+  const spinner=document.createElement('div');
+  spinner.className='spinner';
+  spinner.setAttribute('aria-hidden','true');
+  state.append(spinner, textNode('p','Φόρτωση από τη βάση…'));
+  $('recent-list').replaceChildren(state);
 }
 $('recent-prev').onclick=safeTask(()=>loadRecent(Math.max(0,recentPage-1)));
 $('recent-next').onclick=safeTask(()=>loadRecent(recentPage+1));
@@ -327,6 +430,6 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera
 network();clock();setInterval(clock,10000);
 checkConnectivity().catch(error=>message(error.message,true));
 setInterval(()=>{if(!document.hidden)checkConnectivity().catch(error=>message(error.message,true));},30000);
-setInterval(()=>sendPending().catch(error=>message(error.message,true)),60000);
+setInterval(()=>{if(!document.hidden)sendPending().catch(error=>message(error.message,true));},30000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/scanner/sw.js',{scope:'/scanner/'}).catch(()=>message('Δεν ενεργοποιήθηκε η λειτουργία εκτός σύνδεσης.',true));
 refreshSession().catch(error=>{if(error.status!==401)message(error.message,true);});
