@@ -4,12 +4,31 @@ from __future__ import annotations
 
 import ipaddress
 import time
+from pathlib import Path
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request, send_file
 
 from app import repo_card_listener as repo
 
 card_listener_bp = Blueprint("card_listener", __name__, url_prefix="/api/card-listener/v1")
+listener_download_bp = Blueprint("listener_download", __name__)
+
+_LISTENER_SETUP_RAR = Path(__file__).resolve().parents[1] / "listener" / "setup.rar"
+
+
+@listener_download_bp.get("/listener/setup.rar")
+def download_listener_setup():
+    """Δημόσιο κατέβασμα του Windows listener installer."""
+    if not _LISTENER_SETUP_RAR.is_file():
+        abort(404)
+    return send_file(
+        _LISTENER_SETUP_RAR,
+        as_attachment=True,
+        download_name="setup.rar",
+        mimetype="application/vnd.rar",
+        max_age=3600,
+        conditional=True,
+    )
 
 
 def _authenticate():

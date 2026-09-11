@@ -267,6 +267,10 @@
   color: #334155;
 }
 
+.work-card-punches-table .work-card-punch-channel--scanner {
+  color: #1d4ed8;
+}
+
 .work-card-punches-table .work-card-punch-col-emp {
   min-width: 9rem;
   max-width: 14rem;
@@ -284,7 +288,8 @@
   margin: 0;
 }
 
-#workCardPunchesWrap {
+#workCardPunchesWrap,
+#scannerPunchesWrap {
   overflow-x: auto;
 }
 

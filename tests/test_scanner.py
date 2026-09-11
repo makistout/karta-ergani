@@ -303,3 +303,57 @@ def test_offline_iso_timestamp_and_late_reason_reach_existing_submit(setup):
         assert submit.call_args.kwargs['body']['aitiologia']=='003'
         client.post('/scanner/api/submit',json=body,headers=HEADERS)
         assert submit.call_count==1
+
+
+def test_submit_forwards_correction_offer_and_correction_mode(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "0123456789-corr-offer-0000001",
+        "qr": EMP["afm"],
+        "event": "in",
+        "event_at": datetime.now(timezone.utc).isoformat(),
+    }
+    auth = Mock(ok=True)
+    auth.json.return_value = {"accessToken": "token"}
+    offer = {
+        "success": False,
+        "correction_available": True,
+        "error": "Υπάρχει ήδη ίδιο χτύπημα",
+        "existing_event": {"time": "09:00", "protocol": "P-OLD"},
+        "attempted_event": {"time": "10:15"},
+        "employee_afm": EMP["afm"],
+        "employee_name": "TEST EMPLOYEE",
+        "reference_date": "2026-09-11",
+        "f_type": "0",
+    }
+    with patch("app.routes_scanner.ErganiClient") as cls, patch(
+        "app.routes_work_card._submit_work_card"
+    ) as submit:
+        cls.return_value.authenticate.return_value = auth
+        submit.side_effect = lambda **kwargs: (jsonify(**offer), 409)
+        first = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+        assert first.status_code == 409
+        assert first.json["correction_available"] is True
+        assert first.json["existing_event"]["protocol"] == "P-OLD"
+        assert submit.call_args.kwargs["client_device"] == "scanner_pwa"
+        assert submit.call_args.kwargs["body"].get("correction_mode") is None
+
+    body2 = dict(body)
+    body2["request_id"] = "0123456789-corr-mode-0000002"
+    body2["correction_mode"] = True
+    with patch("app.routes_scanner.ErganiClient") as cls, patch(
+        "app.routes_work_card._submit_work_card"
+    ) as submit:
+        cls.return_value.authenticate.return_value = auth
+        submit.side_effect = lambda **kwargs: (
+            jsonify(success=True, persisted=True, protocol="P-NEW", correction_mode=True),
+            200,
+        )
+        second = client.post("/scanner/api/submit", json=body2, headers=HEADERS)
+        assert second.status_code == 200
+        assert second.json["success"] is True
+        assert second.json["correction_mode"] is True
+        assert submit.call_args.kwargs["body"]["correction_mode"] is True
+        assert submit.call_args.kwargs["body"]["source"] == "scanner_pwa"

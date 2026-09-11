@@ -30,7 +30,7 @@ from app.access_control import register_access_context
 from app.routes_users import users_bp
 from app.routes_apologistic import apologistic_bp
 from app.routes_wto_apologistic import wto_apologistic_bp
-from app.routes_card_listener import card_listener_bp
+from app.routes_card_listener import card_listener_bp, listener_download_bp
 from app.routes_assistant import assistant_bp
 from app.routes_scanner import scanner_bp
 
@@ -59,6 +59,7 @@ def create_app() -> Flask:
     app.register_blueprint(local_bp)
     app.register_blueprint(store_bp)
     app.register_blueprint(card_listener_bp)
+    app.register_blueprint(listener_download_bp)
     app.register_blueprint(ergani_bp)
     app.register_blueprint(sync_bp)
     app.register_blueprint(period_sync_bp)

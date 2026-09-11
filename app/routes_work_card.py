@@ -108,6 +108,19 @@ def _f_type_label(f_type: str | None) -> str:
     return t or "—"
 
 
+def _submission_channel_for_request(
+    *,
+    client_device: str | None = None,
+    body: dict[str, Any] | None = None,
+) -> str:
+    """Κανάλι υποβολής για declaration + audit (scanner / erganios)."""
+    source = str((body or {}).get("source") or "").strip().lower()
+    device = str(client_device or "").strip().lower()
+    if source in {"scanner_pwa", "scanner"} or device in {"scanner_pwa", "scanner"}:
+        return "scanner"
+    return "erganios"
+
+
 def _wrk_card_error_message(resp, parsed: Any) -> str | None:
     """Αναλυτικό μήνυμα σφάλματος Ergani για καταγραφές/UI."""
     if resp.ok:
@@ -767,6 +780,9 @@ def _submit_work_card(
     persisted = False
     from app.submission_identity import server_submission_identity
     submission_ip, executor_instance = server_submission_identity()
+    submission_channel = _submission_channel_for_request(
+        client_device=client_device, body=body,
+    )
     try:
         persist_wrk_card_submit(
             SUBMISSION_CODE_WRK_CARD,
@@ -780,7 +796,7 @@ def _submit_work_card(
             replace_existing=correction_mode,
             client_ip=client_ip,
             client_device=client_device,
-            submission_channel="erganios",
+            submission_channel=submission_channel,
             submission_ip=submission_ip,
             executor_instance=executor_instance,
         )
@@ -826,7 +842,7 @@ def _submit_work_card(
             "error": err_msg,
             "error_message": err_msg,
             "ergani_http_status": int(resp.status_code or 0),
-            "submission_channel": "erganios",
+            "submission_channel": submission_channel,
             "listener_routing_selected": listener_routing_selected,
             "listener_fallback_reason": listener_fallback_reason,
             "submission_ip": submission_ip,
@@ -867,7 +883,7 @@ def _submit_work_card(
         "persisted": persisted,
         "correction_mode": correction_mode,
         "work_log_sync_triggered": False,
-        "submission_channel": "erganios",
+        "submission_channel": submission_channel,
         "listener_routing_selected": listener_routing_selected,
         "listener_fallback_reason": listener_fallback_reason,
         "error": err_msg,

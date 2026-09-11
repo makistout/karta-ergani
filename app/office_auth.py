@@ -51,6 +51,7 @@ _PUBLIC_EXACT = frozenset({
     "/api/contact",
     "/api/users/verify-email",
     "/favicon.ico",
+    "/listener/setup.rar",
 }) | seo_public_paths()
 
 _PUBLIC_PREFIXES = ("/static/", "/api/card-listener/v1/")

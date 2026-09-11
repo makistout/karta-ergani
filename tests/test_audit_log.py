@@ -62,6 +62,36 @@ class AuditLogTests(unittest.TestCase):
         self.assertEqual(ctx.cur.params[0], 11)  # limit+1
         self.assertEqual(ctx.cur.params[-1], 100)  # before_id
 
+    def test_scanner_punches_kind_filters_channel(self):
+        class FakeCursor:
+            description = []
+            sql = ""
+
+            def execute(self, sql, params):
+                self.sql = sql
+                self.params = params
+
+            def fetchall(self):
+                return []
+
+        class FakeContext:
+            cur = FakeCursor()
+
+            def __enter__(self):
+                return self.cur
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        ctx = FakeContext()
+
+        with patch("app.audit_log.cursor", return_value=ctx):
+            list_audit_events(kind="scanner_punches", limit=10)
+
+        self.assertIn("action = N'work_card_punch_submit'", ctx.cur.sql)
+        self.assertIn('%"submission_channel":"scanner"%', ctx.cur.sql)
+        self.assertIn("details_json LIKE", ctx.cur.sql)
+
 
 if __name__ == "__main__":
     unittest.main()

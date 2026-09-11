@@ -415,7 +415,15 @@ def submit():
             raise ValueError()
     except ValueError:
         return jsonify(error="Μη έγκυρη ώρα σάρωσης"), 400
-    payload = {"employee_afm": employee["afm"], "event": body["event"], "event_at": at.isoformat(), "reference_date": at.astimezone(tz_athens()).date().isoformat(), "source": "scanner_pwa"}
+    payload = {
+        "employee_afm": employee["afm"],
+        "event": body["event"],
+        "event_at": at.isoformat(),
+        "reference_date": at.astimezone(tz_athens()).date().isoformat(),
+        "source": "scanner_pwa",
+    }
+    if body.get("correction_mode"):
+        payload["correction_mode"] = True
     canonical = json.dumps(payload, sort_keys=True)
     # Commit intent before contacting Ergani. Unknown results are never resent.
     with database() as db:
@@ -503,10 +511,29 @@ def submit():
             else:
                 from app.routes_work_card import _submit_work_card
                 response, code = _submit_work_card(body=payload, erg_s=ctx["employer_afm"], aa_s=ctx["branch_aa"], bearer=data["accessToken"], api_base_url=ctx["api_base_url"], store_id=ctx["id"], client_ip=request.remote_addr, client_device="scanner_pwa")
-                raw = response.get_json()
-                result = {k: raw.get(k) for k in ("success", "error", "protocol", "persisted", "f_type_label")}
+                raw = response.get_json() if hasattr(response, "get_json") else {}
+                if not isinstance(raw, dict):
+                    raw = {}
+                result = {
+                    k: raw.get(k)
+                    for k in (
+                        "success", "error", "protocol", "persisted", "f_type_label",
+                        "correction_available", "correction_mode", "existing_event",
+                        "attempted_event", "f_type", "employee_afm", "employee_name",
+                        "reference_date",
+                    )
+                    if k in raw
+                }
+                if "success" not in result:
+                    result["success"] = bool(raw.get("success"))
+                if "error" not in result and raw.get("error"):
+                    result["error"] = raw.get("error")
                 if code == 202 or code >= 500:
                     result["uncertain"] = True
+                if code == 409 and raw.get("correction_available"):
+                    result["correction_available"] = True
+                    result["success"] = False
+                    result["error"] = raw.get("error") or result.get("error")
     except Exception:
         current_app.logger.exception("Scanner submission outcome unknown")
         return jsonify(error="Δεν επιβεβαιώθηκε το αποτέλεσμα. Ελέγξτε τις αποστολές.", uncertain=True), 503

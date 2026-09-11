@@ -230,6 +230,19 @@ def _audit_kind_filters(
         )
     elif kind == "work_card_punches":
         filters.append("action = N'work_card_punch_submit'")
+    elif kind == "scanner_punches":
+        filters.append("action = N'work_card_punch_submit'")
+        filters.append(
+            """
+            (
+                details_json LIKE N'%"submission_channel":"scanner"%'
+                OR details_json LIKE N'%"submission_channel": "scanner"%'
+                OR details_json LIKE N'%"source":"scanner_pwa"%'
+                OR details_json LIKE N'%"source": "scanner_pwa"%'
+                OR client_device LIKE N'%scanner%'
+            )
+            """
+        )
     elif kind == "auth":
         filters.append("action LIKE N'auth.%'")
     elif kind == "schedule_changes":

@@ -6,6 +6,8 @@ const syncLogState = {
   sentCursors: [null],
   punchesPage: 1,
   punchesCursors: [null],
+  scannerPage: 1,
+  scannerCursors: [null],
   schedulePage: 1,
   scheduleCursors: [null],
   apologisticPage: 1,
@@ -18,6 +20,7 @@ const syncLogState = {
   actionsLoaded: false,
   sentLoaded: false,
   punchesLoaded: false,
+  scannerLoaded: false,
   scheduleLoaded: false,
   scheduleStoreId: "",
   scheduleStoreAc: null,
@@ -27,6 +30,8 @@ const syncLogState = {
   authLoaded: false,
   punchesStoreId: "",
   punchesStoreAc: null,
+  scannerStoreId: "",
+  scannerStoreAc: null,
   storeId: "",
   query: "",
   sentQuery: "",
@@ -136,6 +141,10 @@ document.addEventListener("DOMContentLoaded", () => {
     resetCursorPager("punches");
     loadWorkCardPunches();
   });
+  document.getElementById("btnRefreshScannerPunches")?.addEventListener("click", () => {
+    resetCursorPager("scanner");
+    loadScannerPunches();
+  });
   document.getElementById("btnRefreshScheduleChanges")?.addEventListener("click", () => {
     resetCursorPager("schedule");
     loadScheduleChanges();
@@ -169,6 +178,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("workCardPunchesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
     loadWorkCardPunches();
   });
+  document.getElementById("btnClearScannerPunchesStore")?.addEventListener("click", () => {
+    syncLogState.scannerStoreId = "";
+    resetCursorPager("scanner");
+    syncLogState.scannerStoreAc?.clearValue();
+    document.getElementById("scannerPunchesStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
+    loadScannerPunches();
+  });
   document.getElementById("notifySentSearchInput")?.addEventListener("input", (e) => {
     syncLogState.sentQuery = String(e.target.value || "").trim();
     resetCursorPager("sent");
@@ -187,6 +203,10 @@ document.addEventListener("DOMContentLoaded", () => {
     initWorkCardPunchesStorePicker().finally(() => setLogTab("punches"));
     return;
   }
+  if (location.hash === "#scanner") {
+    initScannerPunchesStorePicker().finally(() => setLogTab("scanner"));
+    return;
+  }
   if (location.hash === "#schedule") {
     initScheduleChangesStorePicker().finally(() => setLogTab("schedule"));
     return;
@@ -201,6 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   initSyncLogStorePicker().finally(() => loadRuns());
   initWorkCardPunchesStorePicker();
+  initScannerPunchesStorePicker();
   initScheduleChangesStorePicker();
   initApologisticChangesStorePicker();
 });
@@ -292,7 +313,13 @@ function rememberApologisticCursor(hasMore, nextBefore) {
 
 function setLogTab(tab) {
   const next =
-    tab === "actions" || tab === "sent" || tab === "punches" || tab === "schedule" || tab === "apologistic" || tab === "auth"
+    tab === "actions" ||
+    tab === "sent" ||
+    tab === "punches" ||
+    tab === "scanner" ||
+    tab === "schedule" ||
+    tab === "apologistic" ||
+    tab === "auth"
       ? tab
       : "sync";
   syncLogState.activeTab = next;
@@ -305,6 +332,7 @@ function setLogTab(tab) {
   document.getElementById("notifyActionsPanel")?.classList.toggle("hidden", next !== "actions");
   document.getElementById("notifySentPanel")?.classList.toggle("hidden", next !== "sent");
   document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
+  document.getElementById("scannerPunchesPanel")?.classList.toggle("hidden", next !== "scanner");
   document.getElementById("scheduleChangesPanel")?.classList.toggle("hidden", next !== "schedule");
   document.getElementById("apologisticChangesPanel")?.classList.toggle("hidden", next !== "apologistic");
   document.getElementById("authLogsPanel")?.classList.toggle("hidden", next !== "auth");
@@ -317,6 +345,9 @@ function setLogTab(tab) {
   } else if (next === "punches") {
     history.replaceState(null, "", `${location.pathname}#punches`);
     loadWorkCardPunches();
+  } else if (next === "scanner") {
+    history.replaceState(null, "", `${location.pathname}#scanner`);
+    loadScannerPunches();
   } else if (next === "schedule") {
     history.replaceState(null, "", `${location.pathname}#schedule`);
     loadScheduleChanges();
@@ -559,12 +590,49 @@ async function initWorkCardPunchesStorePicker() {
   input.addEventListener("click", openAllStores);
 }
 
+async function initScannerPunchesStorePicker() {
+  const input = document.getElementById("scannerPunchesStoreInput");
+  if (!input || syncLogState.scannerStoreAc) return;
+  syncLogState.scannerStoreAc = Office.createAutocomplete({
+    inputId: "scannerPunchesStoreInput",
+    listId: "scannerPunchesStoreList",
+    hiddenId: "scannerPunchesStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.scannerStoreId = String(item.value || "");
+      resetCursorPager("scanner");
+      loadScannerPunches();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
+    syncLogState.scannerStoreAc?.setItems(
+      (stores || []).map((s) => ({
+        value: String(s.id),
+        description: s.name || "Κατάστημα",
+      }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => {
+    syncLogState.scannerStoreAc?.openAll(false);
+  };
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
 function workCardPunchSourceLabel(source) {
   const s = String(source || "").trim();
   if (s === "close_all") return "Κλείστε όλα";
   if (s === "telegram_retro") return "Telegram retro";
   if (s === "office_ui") return "Ψηφ. κάρτα";
   if (s === "auto_close_prev_day") return "Αυτόματο κλείσιμο";
+  if (s === "scanner_pwa" || s === "scanner") return "Scanner";
   return s || "—";
 }
 
@@ -572,6 +640,7 @@ function workCardPunchChannelLabel(details) {
   const d = details && typeof details === "object" ? details : {};
   const channel = String(d.submission_channel || "").trim().toLowerCase();
   const fallback = String(d.listener_fallback_reason || "").trim();
+  if (channel === "scanner") return "Scanner";
   if (channel === "listener") return "listener";
   if (channel === "erganios") {
     if (fallback === "listener_timeout") return "erganiOS (timeout listener)";
@@ -685,19 +754,61 @@ async function loadWorkCardPunches() {
       return;
     }
     rememberNextCursor("punches", data.next_before_id, data.has_more);
-    renderWorkCardPunches(data.audit || [], Boolean(data.has_more));
+    renderWorkCardPunches(data.audit || [], Boolean(data.has_more), {
+      wrapId: "workCardPunchesWrap",
+      pagerKey: "punches",
+      loadFn: loadWorkCardPunches,
+      emptyMsg: "Δεν υπάρχουν ακόμα καταγραφές χτυπημάτων κάρτας.",
+    });
     syncLogState.punchesLoaded = true;
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
 }
 
-function renderWorkCardPunches(rows, hasMore) {
-  const wrap = document.getElementById("workCardPunchesWrap");
+async function loadScannerPunches() {
+  const wrap = document.getElementById("scannerPunchesWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({
+      kind: "scanner_punches",
+      limit: String(pageSize()),
+    });
+    if (syncLogState.scannerStoreId) qs.set("store_id", syncLogState.scannerStoreId);
+    const beforeId = currentBeforeId("scanner");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    rememberNextCursor("scanner", data.next_before_id, data.has_more);
+    renderWorkCardPunches(data.audit || [], Boolean(data.has_more), {
+      wrapId: "scannerPunchesWrap",
+      pagerKey: "scanner",
+      loadFn: loadScannerPunches,
+      emptyMsg: "Δεν υπάρχουν ακόμα χτυπήματα από Scanner.",
+    });
+    syncLogState.scannerLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
+  }
+}
+
+function renderWorkCardPunches(rows, hasMore, options = {}) {
+  const wrapId = options.wrapId || "workCardPunchesWrap";
+  const pagerKey = options.pagerKey || "punches";
+  const loadFn = options.loadFn || loadWorkCardPunches;
+  const emptyMsg =
+    options.emptyMsg || "Δεν υπάρχουν ακόμα καταγραφές χτυπημάτων κάρτας.";
+  const wrap = document.getElementById(wrapId);
   if (!wrap) return;
   if (!rows.length) {
     wrap.innerHTML =
-      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα καταγραφές χτυπημάτων κάρτας.</span></p>`;
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">${Office.escapeHtml(emptyMsg)}</span></p>`;
     return;
   }
 
@@ -743,7 +854,9 @@ function renderWorkCardPunches(rows, hasMore) {
     tdChannel.className = "work-card-punch-col-channel";
     const channel = workCardPunchChannelLabel(d);
     tdChannel.textContent = channel;
-    if (channel.startsWith("listener")) {
+    if (channel === "Scanner" || channel.startsWith("Scanner")) {
+      tdChannel.classList.add("work-card-punch-channel--scanner");
+    } else if (channel.startsWith("listener")) {
       tdChannel.classList.add("work-card-punch-channel--listener");
     } else if (channel.startsWith("erganiOS")) {
       tdChannel.classList.add("work-card-punch-channel--erganios");
@@ -794,7 +907,7 @@ function renderWorkCardPunches(rows, hasMore) {
 
   wrap.innerHTML = "";
   wrap.appendChild(t);
-  appendCursorPager(wrap, "punches", rows.length, hasMore, loadWorkCardPunches);
+  appendCursorPager(wrap, pagerKey, rows.length, hasMore, loadFn);
 }
 
 function actionLabel(action, path) {

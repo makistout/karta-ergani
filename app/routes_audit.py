@@ -152,7 +152,7 @@ def audit_list():
     raw_store = request.args.get("store_id")
     store_id = int(raw_store) if raw_store and raw_store.isdigit() else None
     kind = str(request.args.get("kind") or "").strip() or None
-    if kind not in (None, "today_notifications", "work_card_punches", "auth", "schedule_changes"):
+    if kind not in (None, "today_notifications", "work_card_punches", "scanner_punches", "auth", "schedule_changes"):
         kind = None
     try:
         limit = int(request.args.get("limit", "20"))
@@ -169,7 +169,7 @@ def audit_list():
     )
     rows = result.get("rows") or []
     json_rows = _json_rows(rows)
-    if kind == "work_card_punches":
+    if kind in {"work_card_punches", "scanner_punches"}:
         _attach_employee_names(json_rows)
     return jsonify({
         "count": len(rows),

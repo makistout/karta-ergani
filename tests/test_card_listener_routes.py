@@ -114,3 +114,29 @@ def test_listener_job_long_poll_is_capped_at_eight_seconds():
     assert response.status_code == 200
     assert response.json["job"] is None
     sleep.assert_not_called()
+
+
+def test_setup_rar_download_serves_attachment(tmp_path):
+    from app.routes_card_listener import listener_download_bp
+
+    setup = tmp_path / "setup.rar"
+    setup.write_bytes(b"Rar!\x00fake-listener-setup")
+    app = Flask(__name__)
+    app.register_blueprint(listener_download_bp)
+    with patch("app.routes_card_listener._LISTENER_SETUP_RAR", setup):
+        response = app.test_client().get("/listener/setup.rar")
+    assert response.status_code == 200
+    assert response.data.startswith(b"Rar!")
+    assert "attachment" in (response.headers.get("Content-Disposition") or "")
+    assert "setup.rar" in (response.headers.get("Content-Disposition") or "")
+
+
+def test_setup_rar_download_404_when_missing(tmp_path):
+    from app.routes_card_listener import listener_download_bp
+
+    missing = tmp_path / "missing.rar"
+    app = Flask(__name__)
+    app.register_blueprint(listener_download_bp)
+    with patch("app.routes_card_listener._LISTENER_SETUP_RAR", missing):
+        response = app.test_client().get("/listener/setup.rar")
+    assert response.status_code == 404

@@ -164,9 +164,12 @@ dotnet publish listener/Erganios.Listener/Erganios.Listener.csproj -c Release --
 
 ## Εγκατάσταση
 
+Δημόσιο κατέβασμα installer: [`/listener/setup.rar`](https://erganios.gr/listener/setup.rar)
+(αρχείο στον server: `listener/setup.rar`).
+
 1. Deploy/restart του backend.
 2. Ρυθμίσεις καταστήματος → **Νέο pairing**.
-3. Διπλό κλικ στο `erganios-listener.exe`.
+3. Κατέβασμα `/listener/setup.rar` και διπλό κλικ στο `erganios-listener.exe`.
 4. Συμπλήρωση Device ID/token και API credentials (`Usertype 01`, προεπιλεγμένο).
 5. **Έλεγχος και αποθήκευση**.
 6. Έλεγχος disabled πεδίου **Περιβάλλον Ergani API**.

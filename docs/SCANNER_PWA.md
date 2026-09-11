@@ -33,11 +33,17 @@ scanner session and no office/admin login. No App Store / Google Play package.
   παραμένει η πηγή ενημερώσεων work_log.
 - Εκκρεμείς: separate tab and count of local unconfirmed submissions, with retry,
   late reason selection and explicit unknown-result handling.
+- Duplicate same-day / same-type punch: the server returns `409` with
+  `correction_available`. The PWA shows a confirmation dialog; on approve it
+  resubmits with a new `request_id` and `correction_mode=true`. Pending items
+  can also use «Επιβεβαίωση διόρθωσης».
 - Local IndexedDB outbox records intent before sending. Replays reuse request id.
   Server SQLite commits intent before the upstream call and stores the response.
   Unknown upstream outcomes are not automatically submitted again.
 - Late events require an explicit reason. The existing
   erganiOS card validation still applies; the scanner does not bypass it.
+- Successful submissions are audited with `source=scanner_pwa` and
+  `submission_channel=scanner` so they appear under `/ui/sync-log#scanner`.
 - PIN protects only the Αποστολές view for the current scanner login (12 hours), with
   short server unlock and rate limiting. New login requires setting PIN again.
 - App shell only is cached. No history, passwords, tokens or API responses in the
@@ -74,7 +80,7 @@ scanner session and no office/admin login. No App Store / Google Play package.
 - Ministry logo on login and scanner home uses the supplied remote image with
   CSS multiply blending to visually remove its white background. The JPEG itself
   is not an alpha-transparent asset and requires network access to load.
-- Service worker v9 replaces old shell caches and refreshes successful cached
+- Service worker v12 replaces old shell caches and refreshes successful cached
   shell responses. Business data and API responses are excluded.
 - Πλαϊνό μενού σε κινητό: στενότερο (~78vw / max 300px) και μικρότερα γράμματα
   (επωνυμία ~15px, στοιχεία ~12px, στοιχεία μενού ~14px).

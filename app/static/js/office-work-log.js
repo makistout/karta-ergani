@@ -41,6 +41,7 @@ Object.assign(window.Office, {
     if (data?.listener_fallback_reason === "listener_offline") {
       return ` · listener offline, μέσω erganiOS${elapsed}`;
     }
+    if (data?.submission_channel === "scanner") return ` · μέσω Scanner${elapsed}`;
     if (data?.submission_channel === "erganios") return ` · μέσω erganiOS${elapsed}`;
     return elapsed;
   },

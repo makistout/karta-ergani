@@ -11,7 +11,14 @@ listener receives newly queued punches within 10 seconds while remaining lightwe
 dotnet publish .\listener\Erganios.Listener\Erganios.Listener.csproj -c Release
 ```
 
-## Install / configure
+## Εγκατάσταση / κατέβασμα
+
+Δημόσιο κατέβασμα του Windows installer:
+
+- URL: `/listener/setup.rar` (π.χ. https://erganios.gr/listener/setup.rar)
+- Αρχείο στον server: `listener/setup.rar`
+
+Μετά το κατέβασμα:
 
 1. Create a device from the per-store erganiOS settings.
 2. Double-click `erganios-listener.exe`.

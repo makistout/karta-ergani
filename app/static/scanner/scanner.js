@@ -323,19 +323,90 @@ async function sendPending() {
         }
       } catch(error) {
         if(!error.status) {item.state='sending';item.note='Αναμονή ελέγχου αποτελέσματος με το ίδιο αναγνωριστικό';}
-        else { item.state=error.data?.late?'late':error.data?.uncertain?'uncertain':'failed'; item.note=error.message; }
-        message(item.note,true);
+        else if(error.status===409 && error.data?.correction_available) {
+          item.state='needs_correction';
+          item.note=error.data.error || 'Υπάρχει ήδη ίδιο χτύπημα· απαιτείται επιβεβαίωση διόρθωσης';
+          item.correction=error.data;
+          await storage('put',item);
+          message(item.note,true);
+          const approved=await askCorrection(item);
+          if(approved) {
+            item.correction_mode=true;
+            item.request_id=crypto.randomUUID();
+            item.state='pending';
+            item.note='Εγκρίθηκε διόρθωση · σε αναμονή αποστολής';
+            delete item.correction;
+            await storage('put',item);
+            // Re-queue same item in this pass without nested sendPending.
+            try {
+              item.state='sending'; await storage('put',item);
+              const data=await api('submit',item);
+              item.state=data.success?'success':data.uncertain?'uncertain':'failed';
+              item.note=data.success?`Διόρθωση υποβλήθηκε${data.protocol?' · '+data.protocol:''}`:(data.error||'Δεν επιβεβαιώθηκε η διόρθωση');
+              if(data.success) { beep(); message(`${item.name}: ${item.note}`); }
+              else message(item.note,true);
+            } catch(retryError) {
+              if(!retryError.status) {item.state='sending';item.note='Αναμονή ελέγχου αποτελέσματος με το ίδιο αναγνωριστικό';}
+              else { item.state=retryError.data?.late?'late':retryError.data?.uncertain?'uncertain':'failed'; item.note=retryError.message; message(item.note,true); }
+            }
+          } else {
+            item.note=(item.correction?.error || item.note) + ' · διόρθωση ακυρώθηκε';
+          }
+        }
+        else { item.state=error.data?.late?'late':error.data?.uncertain?'uncertain':'failed'; item.note=error.message; message(item.note,true); }
       }
       await storage('put',item);
     }
   } finally {sending=false;await renderPending();}
 }
+let correctionResolve=null;
+function askCorrection(item) {
+  return new Promise(resolve=>{
+    correctionResolve=resolve;
+    const existing=item.correction?.existing_event || {};
+    const attempted=item.correction?.attempted_event || {};
+    const base=item.correction?.error || `Υπάρχει ήδη χτύπημα για ${item.name || 'τον εργαζόμενο'}.`;
+    $('correction-detail').textContent=
+      `${base}\n\nΥπάρχον: ${existing.time || '—'}${existing.protocol ? ' · '+existing.protocol : ''}` +
+      `\nΝέο: ${attempted.time || new Date(item.event_at).toLocaleTimeString('el-GR')}` +
+      `\n\nΑν εγκρίνετε, θα σταλεί ξανά ως διόρθωση.`;
+    if(!$('correction-dialog').open) $('correction-dialog').showModal();
+  });
+}
+async function approveCorrection(item) {
+  item.correction_mode=true;
+  item.request_id=crypto.randomUUID();
+  item.state='pending';
+  item.note='Εγκρίθηκε διόρθωση · σε αναμονή αποστολής';
+  delete item.correction;
+  await storage('put',item);
+  message(`${item.name}: στάλθηκε ξανά ως διόρθωση…`);
+  await sendPending();
+}
+$('cancel-correction').onclick=()=>{
+  $('correction-dialog').close();
+  if(correctionResolve) { const done=correctionResolve; correctionResolve=null; done(false); }
+};
+$('confirm-correction').onclick=()=>{
+  $('correction-dialog').close();
+  if(correctionResolve) { const done=correctionResolve; correctionResolve=null; done(true); }
+};
+$('correction-dialog').addEventListener('cancel',event=>{
+  event.preventDefault();
+  $('correction-dialog').close();
+  if(correctionResolve) { const done=correctionResolve; correctionResolve=null; done(false); }
+});
 function textNode(tag,text,className='') {const el=document.createElement(tag);el.textContent=text;el.className=className;return el;}
 async function renderPending() {
-  const items=(await outbox()).filter(i=>i.state!=='success');$('pending-count').textContent=items.length; $('retry').disabled=!navigator.onLine || serverOnline!==true || sending || !items.some(i=>['pending','sending'].includes(i.state));$('pending-list').replaceChildren();
+  const items=(await outbox()).filter(i=>i.state!=='success');$('pending-count').textContent=items.length; $('retry').disabled=!navigator.onLine || serverOnline!==true || sending || !items.some(i=>['pending','sending','needs_correction'].includes(i.state));$('pending-list').replaceChildren();
   for(const item of items.reverse()) {
     const el=document.createElement('article');el.className='event';const info=document.createElement('div');
     info.append(textNode('strong',item.name),textNode('p',`${item.event==='in'?'Προσέλευση':'Αποχώρηση'} · ${new Date(item.event_at).toLocaleString('el-GR')}`),textNode('p',item.note));
+    if(item.state==='needs_correction') {
+      const button=textNode('button','Επιβεβαίωση διόρθωσης','primary');
+      button.onclick=safeTask(async()=>approveCorrection(item));
+      info.append(button);
+    }
     if(item.state==='late') {
       const reason=document.createElement('select');reason.setAttribute('aria-label','Αιτιολογία εκπρόθεσμης υποβολής');
       reason.add(new Option('Επιλέξτε αιτιολογία',''));
