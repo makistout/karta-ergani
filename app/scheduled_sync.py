@@ -1025,9 +1025,14 @@ def sync_store_today(
             cfg,
             work_date_iso=today,
             parent_run_id=run_id,
+            skip_late_check_in_auto=bool(work_log.get("empty_uncertain")),
         )
         if post_sync_notifications_enqueued:
             log.info("Έγινε enqueue ασύγχρονων ειδοποιήσεων μετά το sync")
+            if work_log.get("empty_uncertain"):
+                log.info(
+                    "Παράλειψη αυτόματου late_check_in — αβέβαιο κενό πραγματικής από portal"
+                )
 
     auto_actions = None
     if op == OPERATION and run_configured_auto_actions:

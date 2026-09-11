@@ -205,8 +205,12 @@ def _search_work_log(
     *,
     run_id: str | None = None,
     log: KartaLogger | None = None,
-) -> tuple[list[list[str]], str]:
-    """Αναζήτηση πραγματικής — επιστρέφει (grid_rows, source: excel|html)."""
+) -> tuple[list[list[str]], str, bool]:
+    """Αναζήτηση πραγματικής — επιστρέφει (grid_rows, source, empty_uncertain).
+
+    empty_uncertain=True όταν το Excel απέτυχε/δεν επέστρεψε αρχείο και δεν
+    υπάρχει HTML fallback: δεν σημαίνει αξιόπιστα «χωρίς χτυπήματα».
+    """
     date_to = date_to or date_from
     form = _find_search_form(page_html)
     if not form:
@@ -248,7 +252,7 @@ def _search_work_log(
     excel_rows: list[list[str]] = []
     excel_err: str | None = None
     try:
-        excel_rows = fetch_work_log_rows_via_excel(
+        excel_rows, excel_err = fetch_work_log_rows_via_excel(
             session,
             r.text,
             r.url,
@@ -261,7 +265,7 @@ def _search_work_log(
 
     if excel_rows:
         _log_excel_archive(excel_archive, log)
-        return excel_rows, "excel"
+        return excel_rows, "excel", False
 
     html_rows = _collect_all_grid_rows(session, r.url, r.text)
 
@@ -272,7 +276,9 @@ def _search_work_log(
                 fetch_source="empty",
             )
         _log_excel_archive(excel_archive, log)
-        return [], "empty"
+        # Excel «δεν επέστρεψε αρχείο» ≠ βέβαιο κενό· συχνά καθυστερεί το portal.
+        uncertain = bool(excel_err) and _work_log_excel_err_means_empty(excel_err)
+        return [], "empty", uncertain
 
     if html_rows:
         src = "html"
@@ -285,9 +291,9 @@ def _search_work_log(
                 fetch_source=src,
             )
         _log_excel_archive(excel_archive, log)
-        return html_rows, src
+        return html_rows, src, False
     _log_excel_archive(excel_archive, log)
-    return [], "empty"
+    return [], "empty", False
 
 
 def _log_excel_archive(archive: Any | None, log: KartaLogger | None) -> None:
@@ -331,13 +337,20 @@ def _work_log_sync_result(
     portal_base: str,
     log: KartaLogger,
     fetch_source: str = "excel",
+    empty_uncertain: bool = False,
 ) -> dict[str, Any]:
     ok = len(errors) == 0
     single = len(dates) == 1
     if ok and total == 0:
-        detail = (
-            f"0 εγγραφές portal ({len(dates)} ημέρες, {fetch_source}) — δεν υπάρχουν καταγραφές"
-        )
+        if empty_uncertain:
+            detail = (
+                f"0 εγγραφές portal ({len(dates)} ημέρες, {fetch_source}) — "
+                "αβέβαιο κενό (Excel χωρίς αρχείο)· δεν αντικαταστάθηκε η βάση"
+            )
+        else:
+            detail = (
+                f"0 εγγραφές portal ({len(dates)} ημέρες, {fetch_source}) — δεν υπάρχουν καταγραφές"
+            )
     else:
         detail = (
             f"{total} εγγραφές portal ({len(dates)} ημέρες, {fetch_source})"
@@ -349,6 +362,7 @@ def _work_log_sync_result(
         count=total,
         days_synced=days_synced,
         errors=len(errors),
+        empty_uncertain=empty_uncertain,
     )
     return {
         "success": ok,
@@ -361,6 +375,7 @@ def _work_log_sync_result(
         "logs": log.tail(100),
         "source": "portal",
         "fetch_source": fetch_source,
+        "empty_uncertain": empty_uncertain,
         "portal_base": portal_base,
     }
 
@@ -418,6 +433,7 @@ def iter_work_log_sync_events(
     days_synced = 0
     date_from, date_to = dates[0], dates[-1]
     fetch_source = "excel"
+    empty_uncertain = False
 
     yield {
         "event": "progress",
@@ -431,7 +447,7 @@ def iter_work_log_sync_events(
             date_from=date_from,
             date_to=date_to,
         )
-        grid_rows, fetch_source = _search_work_log(
+        grid_rows, fetch_source, empty_uncertain = _search_work_log(
             session,
             page_html,
             page_url,
@@ -445,7 +461,14 @@ def iter_work_log_sync_events(
             f"Πραγματική απασχόληση: {date_from} – {date_to} — "
             f"{len(grid_rows)} γραμμές ({fetch_source})"
         )
-        log.info(range_msg, source=fetch_source, count=len(grid_rows))
+        if empty_uncertain:
+            range_msg += " · αβέβαιο κενό"
+        log.info(
+            range_msg,
+            source=fetch_source,
+            count=len(grid_rows),
+            empty_uncertain=empty_uncertain,
+        )
         yield {
             "event": "range_ok",
             "message": range_msg,
@@ -453,39 +476,71 @@ def iter_work_log_sync_events(
             "date_to": date_to,
             "count": len(grid_rows),
             "source": fetch_source,
+            "empty_uncertain": empty_uncertain,
         }
-        items = portal_rows_to_work_log_items(
-            grid_rows,
-            default_work_date=date_from,
-            default_branch_aa=str(ctx.get("branch_aa") or "0").strip(),
-        )
-        by_day: dict[str, int] = {}
-        for it in items:
-            wd = str(it.get("work_date") or "").strip()
-            if wd:
-                by_day[wd] = by_day.get(wd, 0) + 1
+        if empty_uncertain and not grid_rows:
+            # Μην σβήνουμε υπάρχουσα πραγματική όταν το portal δεν έδωσε Excel.
+            days_synced = len(dates)
+            total = 0
+            for wd in dates:
+                yield {
+                    "event": "day_ok",
+                    "message": (
+                        f"Πραγματική απασχόληση: {wd} — διατηρήθηκαν οι υπάρχουσες "
+                        "(αβέβαιο κενό portal)"
+                    ),
+                    "work_date": wd,
+                    "count": 0,
+                    "empty_uncertain": True,
+                }
+        else:
+            items = portal_rows_to_work_log_items(
+                grid_rows,
+                default_work_date=date_from,
+                default_branch_aa=str(ctx.get("branch_aa") or "0").strip(),
+            )
+            by_day: dict[str, int] = {}
+            for it in items:
+                wd = str(it.get("work_date") or "").strip()
+                if wd:
+                    by_day[wd] = by_day.get(wd, 0) + 1
 
-        total = _persist_work_log_items(ctx, dates, items)
-        days_synced = len(dates)
-        for wd in dates:
-            n = by_day.get(wd, 0)
-            yield {
-                "event": "day_ok",
-                "message": f"Πραγματική απασχόληση: {wd} — {n} εγγραφές",
-                "work_date": wd,
-                "count": n,
-            }
+            total = _persist_work_log_items(ctx, dates, items)
+            days_synced = len(dates)
+            for wd in dates:
+                n = by_day.get(wd, 0)
+                yield {
+                    "event": "day_ok",
+                    "message": f"Πραγματική απασχόληση: {wd} — {n} εγγραφές",
+                    "work_date": wd,
+                    "count": n,
+                }
     except (requests.RequestException, ValueError, RuntimeError) as ex:
         msg = str(ex)
         if _work_log_empty_not_error(msg):
             fetch_source = "empty"
+            empty_uncertain = _work_log_excel_err_means_empty(msg)
             days_synced = len(dates)
-            total = _persist_work_log_items(ctx, dates, [])
-            info = (
-                f"Πραγματική απασχόληση: {date_from} – {date_to} — "
-                "0 εγγραφές (δεν υπάρχουν καταγραφές)"
+            if empty_uncertain:
+                total = 0
+                info = (
+                    f"Πραγματική απασχόληση: {date_from} – {date_to} — "
+                    "0 εγγραφές (αβέβαιο κενό· δεν αντικαταστάθηκε η βάση)"
+                )
+            else:
+                total = _persist_work_log_items(ctx, dates, [])
+                info = (
+                    f"Πραγματική απασχόληση: {date_from} – {date_to} — "
+                    "0 εγγραφές (δεν υπάρχουν καταγραφές)"
+                )
+            log.info(
+                info,
+                date_from=date_from,
+                date_to=date_to,
+                count=0,
+                source=fetch_source,
+                empty_uncertain=empty_uncertain,
             )
-            log.info(info, date_from=date_from, date_to=date_to, count=0, source=fetch_source)
             yield {
                 "event": "range_ok",
                 "message": info,
@@ -493,6 +548,7 @@ def iter_work_log_sync_events(
                 "date_to": date_to,
                 "count": 0,
                 "source": fetch_source,
+                "empty_uncertain": empty_uncertain,
             }
             for wd in dates:
                 yield {
@@ -515,6 +571,7 @@ def iter_work_log_sync_events(
         portal_base=portal_base,
         log=log,
         fetch_source=fetch_source,
+        empty_uncertain=empty_uncertain,
     )
     if finalize_run:
         from app import repo_sync_log

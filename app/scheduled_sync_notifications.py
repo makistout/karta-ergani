@@ -44,6 +44,7 @@ _SKIP_REASON_LABELS = {
     "no_alert": "δεν ισχύει πλέον ενεργή ειδοποίηση",
     "snoozed": "υπάρχει ενεργό snooze",
     "invalid_kind": "μη έγκυρος τύπος ειδοποίησης",
+    "work_log_empty_uncertain": "αβέβαιο κενό πραγματικής από portal (χωρίς Excel)",
 }
 
 
@@ -65,12 +66,13 @@ def _send_post_sync_notifications(
     *,
     work_date_iso: str,
     parent_run_id: str | None = None,
+    skip_late_check_in_auto: bool = False,
 ) -> dict[str, Any]:
     """Αποστολή ειδοποιήσεων καμπάνας μετά από sync καταστήματος."""
     from app.card_report import build_card_status_report
     from app.repo_today_alert import enrich_card_report_rows_with_today_notify
     from app.today_alert_service import send_today_punch_notifications
-    from app.today_notify_logic import merge_notify_work_hours
+    from app.today_notify_logic import merge_notify_work_hours, notify_kind_base
 
     ctx = store_api_context(cfg)
     sid = int(cfg["id"])
@@ -130,8 +132,45 @@ def _send_post_sync_notifications(
             repo_sync_log.finish_run(run_id, status="done", message=msg, result=result)
             return result
 
+        if skip_late_check_in_auto:
+            log.info(
+                "Παράλειψη αυτόματου late_check_in — αβέβαιο κενό πραγματικής από portal",
+                work_date=today,
+            )
+
         for idx, row in enumerate(notify_rows, start=1):
             kind = str(row.get("today_notify_kind") or "").strip()
+            employee_afm = str(row.get("employee_afm") or "").strip()
+            employee_name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
+
+            if skip_late_check_in_auto and notify_kind_base(kind) == "late_check_in":
+                skipped += 1
+                skip_counts["work_log_empty_uncertain"] = (
+                    skip_counts.get("work_log_empty_uncertain", 0) + 1
+                )
+                attempted.append(
+                    {
+                        "employee_afm": employee_afm,
+                        "employee_name": employee_name,
+                        "notify_kind": kind,
+                        "sent": 0,
+                        "total": 0,
+                        "skipped": "work_log_empty_uncertain",
+                        "errors": [],
+                    }
+                )
+                log.info(
+                    (
+                        "Παράλειψη ειδοποίησης καμπάνας "
+                        f"{idx}/{len(notify_rows)}: {employee_name or employee_afm} ({kind}) "
+                        "— αβέβαιο κενό πραγματικής"
+                    ),
+                    employee_afm=employee_afm,
+                    notify_kind=kind,
+                    skip_reason="work_log_empty_uncertain",
+                )
+                continue
+
             wl = _card_report_work_log(row)
             sched = row.get("schedule") if isinstance(row.get("schedule"), dict) else None
             card = row.get("card") if isinstance(row.get("card"), dict) else {}
@@ -140,8 +179,6 @@ def _send_post_sync_notifications(
                 hour_to=wl.get("hour_to") or row.get("hour_to"),
                 card=card,
             )
-            employee_afm = str(row.get("employee_afm") or "").strip()
-            employee_name = f"{row.get('eponymo') or ''} {row.get('onoma') or ''}".strip()
             repo_sync_log.update_run_progress(
                 run_id,
                 message=f"Αποστολή ειδοποίησης {idx}/{len(notify_rows)}: {employee_name or employee_afm}",
@@ -281,11 +318,15 @@ def enqueue_post_sync_notifications(
     work_date_iso: str,
     parent_run_id: str | None = None,
     background: bool = False,
+    skip_late_check_in_auto: bool = False,
 ) -> bool:
     """Post-sync ειδοποιήσεις για ένα κατάστημα.
 
     Προεπιλογή συγχρονή εκτέλεση — το CLI του Task Scheduler τερματίζει αμέσως
     μετά το sync και θα σκότωνε daemon thread πριν σταλούν τα μηνύματα.
+
+    skip_late_check_in_auto: όταν το sync πραγματικής γύρισε αβέβαιο κενό
+    (Excel χωρίς αρχείο), μην στέλνεις αυτόματο late_check_in.
     """
     if not Config.KARTA_POST_SYNC_NOTIFY_ENABLED:
         return False
@@ -310,6 +351,7 @@ def enqueue_post_sync_notifications(
                 cfg_snapshot,
                 work_date_iso=ref,
                 parent_run_id=parent_run_id,
+                skip_late_check_in_auto=skip_late_check_in_auto,
             )
         finally:
             with _POST_SYNC_NOTIFY_LOCK:
@@ -322,6 +364,7 @@ def enqueue_post_sync_notifications(
                 cfg_snapshot,
                 work_date_iso=ref,
                 parent_run_id=parent_run_id,
+                skip_late_check_in_auto=skip_late_check_in_auto,
             )
         finally:
             with _POST_SYNC_NOTIFY_LOCK:

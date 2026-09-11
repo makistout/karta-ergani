@@ -106,7 +106,12 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             "days_synced": 3,
             "fetch_source": "excel",
         }
-        work_log_result = {"success": True, "count": 1, "fetch_source": "excel"}
+        work_log_result = {
+            "success": True,
+            "count": 0,
+            "fetch_source": "empty",
+            "empty_uncertain": True,
+        }
 
         with (
             patch("app.scheduled_sync.KartaLogger", FakeLogger),
@@ -123,7 +128,7 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             patch(
                 "app.scheduled_sync.enqueue_post_sync_notifications",
                 return_value=False,
-            ),
+            ) as enqueue_notify,
             patch("app.scheduled_sync._run_configured_auto_actions", return_value=None),
         ):
             result = scheduled_sync.sync_store_today(
@@ -140,6 +145,8 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         self.assertEqual(work_log_kwargs["from_iso"], "2026-07-02")
         self.assertEqual(work_log_kwargs["to_iso"], "2026-07-02")
         self.assertEqual(work_log_kwargs["max_days"], 1)
+        enqueue_kwargs = enqueue_notify.call_args.kwargs
+        self.assertTrue(enqueue_kwargs["skip_late_check_in_auto"])
 
     def test_future_schedule_auto_action_runs_once_after_configured_time(self):
         cfg = {
@@ -353,6 +360,105 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
 
         self.assertFalse(should_run)
         self.assertEqual(reason, "δεν είναι ημέρα weekly repair")
+
+    def test_skip_summary_includes_work_log_empty_uncertain(self):
+        summary = scheduled_sync_notifications._skip_summary(
+            {"work_log_empty_uncertain": 2}
+        )
+        self.assertIn(
+            "2 αβέβαιο κενό πραγματικής από portal (χωρίς Excel)",
+            summary,
+        )
+
+    def test_send_post_sync_skips_late_check_in_when_empty_uncertain(self):
+        class FakeLogger:
+            def __init__(self, *args, **kwargs):
+                self.run_id = "notify-run"
+
+            def info(self, *args, **kwargs):
+                return None
+
+            def warning(self, *args, **kwargs):
+                return None
+
+            def error(self, *args, **kwargs):
+                return None
+
+        cfg = {
+            "id": 8,
+            "name": "MALLI CRAFT",
+            "employer_afm": "170970246",
+            "branch_aa": "0",
+            "username": "u",
+            "password": "p",
+        }
+        report = {
+            "rows": [
+                {
+                    "employee_afm": "123456789",
+                    "eponymo": "ΠΑΡΔΑΛΗ",
+                    "onoma": "ΜΑΤΙΝΑ",
+                    "today_notify_kind": "late_check_in",
+                    "today_notify_snoozed": False,
+                    "work_date": "2026-09-11",
+                },
+                {
+                    "employee_afm": "987654321",
+                    "eponymo": "ΑΛΛΟΣ",
+                    "onoma": "ΕΡΓ",
+                    "today_notify_kind": "late_check_out",
+                    "today_notify_snoozed": False,
+                    "work_date": "2026-09-11",
+                },
+            ]
+        }
+
+        with (
+            patch(
+                "app.scheduled_sync_notifications.store_api_context",
+                return_value={
+                    "employer_afm": "170970246",
+                    "branch_aa": "0",
+                },
+            ),
+            patch(
+                "app.scheduled_sync_notifications.KartaLogger",
+                FakeLogger,
+            ),
+            patch(
+                "app.card_report.build_card_status_report",
+                return_value=report,
+            ),
+            patch(
+                "app.repo_today_alert.enrich_card_report_rows_with_today_notify",
+            ),
+            patch(
+                "app.today_alert_service.send_today_punch_notifications",
+                return_value={"sent": 1, "total": 1, "errors": []},
+            ) as send_notify,
+            patch("app.scheduled_sync_notifications.repo_sync_log.finish_run"),
+            patch(
+                "app.scheduled_sync_notifications.repo_sync_log.update_run_progress"
+            ),
+            patch(
+                "app.scheduled_sync_notifications._today_iso",
+                return_value="2026-09-11",
+            ),
+        ):
+            result = scheduled_sync_notifications._send_post_sync_notifications(
+                cfg,
+                work_date_iso="2026-09-11",
+                skip_late_check_in_auto=True,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["skip_reasons"]["work_log_empty_uncertain"], 1)
+        send_notify.assert_called_once()
+        self.assertEqual(
+            send_notify.call_args.kwargs["notify_kind"],
+            "late_check_out",
+        )
 
 
 if __name__ == "__main__":

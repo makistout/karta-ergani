@@ -325,3 +325,43 @@ def test_card_report_uses_card_event_fallback_for_missing_exit(monkeypatch):
     assert row["work_log"]["hour_to"] == "20:00"
     assert row["status"] == "completed"
     assert row["status_label"] == "Ολοκληρωμένη μέρα"
+
+
+def test_search_work_log_marks_empty_uncertain_when_excel_no_file(monkeypatch):
+    from app import portal_work_log_sync as wl
+
+    class FakeResp:
+        url = "https://example.test/worklog"
+        text = "<html></html>"
+
+    class FakeSession:
+        def post(self, *args, **kwargs):
+            return FakeResp()
+
+    monkeypatch.setattr(wl, "_find_search_form", lambda html: {"action": "/search"})
+    monkeypatch.setattr(wl, "_extract_aspnet_form_data", lambda *a, **k: {})
+    monkeypatch.setattr(wl, "_pick_pararthma", lambda *a, **k: "0")
+    monkeypatch.setattr(wl, "set_portal_dates", lambda *a, **k: None)
+    monkeypatch.setattr(
+        wl,
+        "fetch_work_log_rows_via_excel",
+        lambda *a, **k: (
+            [],
+            "Το Excel export δεν επέστρεψε αρχείο Excel (.xlsx/.xls)",
+        ),
+    )
+    monkeypatch.setattr(wl, "_collect_all_grid_rows", lambda *a, **k: [])
+    monkeypatch.setattr(wl, "PortalExcelArchive", type("NoArchive", (), {"for_sync": staticmethod(lambda **k: None)}))
+    monkeypatch.setattr(wl, "_log_excel_archive", lambda *a, **k: None)
+
+    rows, source, uncertain = wl._search_work_log(
+        FakeSession(),
+        "<html></html>",
+        "https://example.test/page",
+        {"branch_aa": "0"},
+        "11/09/2026",
+    )
+
+    assert rows == []
+    assert source == "empty"
+    assert uncertain is True

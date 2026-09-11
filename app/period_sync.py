@@ -84,6 +84,7 @@ def _merge_portal_results(parts: list[dict[str, Any]], *, label: str) -> dict[st
     days_synced = 0
     fetch_sources: list[str] = []
     portal_base = ""
+    empty_uncertain = False
     for part in parts:
         count += int(part.get("count") or 0)
         days_synced += int(part.get("days_synced") or 0)
@@ -94,6 +95,8 @@ def _merge_portal_results(parts: list[dict[str, Any]], *, label: str) -> dict[st
         if src and src not in fetch_sources:
             fetch_sources.append(src)
         portal_base = portal_base or str(part.get("portal_base") or "").strip()
+        if part.get("empty_uncertain"):
+            empty_uncertain = True
     fetch_desc = fetch_sources[0] if len(fetch_sources) == 1 else "multiple"
     detail = f"{count} εγγραφές portal ({days_synced} ημέρες, {fetch_desc})"
     return {
@@ -107,6 +110,7 @@ def _merge_portal_results(parts: list[dict[str, Any]], *, label: str) -> dict[st
         "logs": logs[-100:],
         "source": "portal",
         "fetch_source": fetch_desc,
+        "empty_uncertain": empty_uncertain,
         "portal_base": portal_base or None,
     }
 
@@ -451,6 +455,9 @@ def iter_period_sync_events(
                 cfg,
                 work_date_iso=today_iso,
                 parent_run_id=run_id,
+                skip_late_check_in_auto=bool(
+                    results["work_log"].get("empty_uncertain")
+                ),
             )
             if post_sync_notifications_enqueued:
                 log.info(

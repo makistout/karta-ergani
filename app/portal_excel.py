@@ -229,7 +229,12 @@ def fetch_work_log_rows_via_excel(
     grid_event_target: str,
     default_branch_aa: str = "",
     archive: Any | None = None,
-) -> list[list[str]]:
+) -> tuple[list[list[str]], str | None]:
+    """Excel πραγματικής → (rows, soft_empty_error).
+
+    soft_empty_error: μήνυμα όταν το export δείχνει «κενό/χωρίς αρχείο»
+    (όχι σκληρή αποτυχία) — ο caller αποφασίζει αν είναι αβέβαιο κενό.
+    """
     try:
         content, ctype = download_grid_excel(
             session, html, page_url, grid_event_target=grid_event_target
@@ -247,7 +252,7 @@ def fetch_work_log_rows_via_excel(
                     row_count=len(rows or []),
                     fetch_source="excel",
                 )
-        return rows or []
+        return rows or [], None
     except RuntimeError as ex:
         if archive is not None:
             from app.portal_excel_archive import PortalExcelArchive
@@ -255,7 +260,7 @@ def fetch_work_log_rows_via_excel(
             if isinstance(archive, PortalExcelArchive):
                 archive.record_failure(str(ex), fetch_source="excel")
         if _work_log_excel_err_means_empty(str(ex)):
-            return []
+            return [], str(ex)
         raise
 
 
