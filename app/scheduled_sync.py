@@ -13,7 +13,7 @@ from app.karta_log import KartaLogger
 from app.portal_schedule_sync import sync_schedule_from_portal
 from app.portal_work_log_sync import sync_work_log_from_portal
 from app.portal_card_protocol_sync import sync_card_protocols_from_portal
-from app.work_card_payload import tz_athens
+from app.work_card_payload import norm_afm, tz_athens
 from app import repo_store, repo_sync_log
 from app.scheduled_sync_notifications import (
     _post_sync_notify_key,
@@ -679,17 +679,13 @@ def enqueue_employment_enrichment_if_needed(
     *,
     parent_run_id: str | None = None,
 ) -> bool:
-    """Αν υπάρχουν ΑΦΜ χωρίς σύνδεση/QR, τρέξε Μητρώο στο παρασκήνιο."""
-    from app.repo_entities import list_afms_needing_employment_enrichment
+    """Μετά το 15λεπτο: νέες προσλήψεις από Μητρώο + τοπικά κενά QR/σύνδεσης.
 
+    Ανεξάρτητα από ωράριο: συγκρίνει τρέχον Μητρώο με snapshot· ό,τι εμφανίστηκε
+    νέο κατεβαίνει άμεσα (σύμβαση + QR + σύνδεση). Πρώτο snapshot γίνεται seed
+    χωρίς μαζικό κατέβασμα όλων.
+    """
     if not is_store_syncable(cfg):
-        return False
-    ctx = store_api_context(cfg)
-    needed = list_afms_needing_employment_enrichment(
-        str(ctx.get("employer_afm") or ""),
-        str(ctx.get("branch_aa") or "0"),
-    )
-    if not needed:
         return False
 
     sid = int(cfg["id"])
@@ -699,14 +695,11 @@ def enqueue_employment_enrichment_if_needed(
         _EMPLOYMENT_ENRICH_RUNNING.add(sid)
 
     cfg_snapshot = dict(cfg)
-    afms = list(needed)
 
     def _run() -> None:
         try:
-            run_employment_contract_sync_for_store(
+            _run_employment_enrichment_discovery(
                 cfg_snapshot,
-                only_afms=afms,
-                operation=OPERATION_EMPLOYMENT_ENRICHMENT,
                 parent_run_id=parent_run_id,
             )
         finally:
@@ -719,6 +712,99 @@ def enqueue_employment_enrichment_if_needed(
         name=f"employment-enrich-{sid}",
     ).start()
     return True
+
+
+def _run_employment_enrichment_discovery(
+    cfg: dict[str, Any],
+    *,
+    parent_run_id: str | None = None,
+) -> dict[str, Any]:
+    from app.mitroo_afm_snapshot import (
+        load_mitroo_afm_snapshot,
+        save_mitroo_afm_snapshot,
+    )
+    from app.portal_employment_contract_sync import list_current_mitroo_employee_afms
+    from app.repo_entities import (
+        list_active_employees_for_store,
+        list_afms_needing_employment_enrichment,
+    )
+
+    ctx = store_api_context(cfg)
+    employer_afm = str(ctx.get("employer_afm") or "")
+    branch_aa = str(ctx.get("branch_aa") or "0")
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+
+    local_needed = set(
+        list_afms_needing_employment_enrichment(employer_afm, branch_aa)
+    )
+    brand_new: set[str] = set()
+    mitroo_afms: set[str] = set()
+    seeded = False
+
+    try:
+        mitroo_list = list_current_mitroo_employee_afms(ctx)
+        mitroo_afms = {norm_afm(a) for a in mitroo_list if norm_afm(a)}
+        previous = load_mitroo_afm_snapshot(employer_afm, branch_aa)
+        if previous is None:
+            # Seed: μην κατεβάσεις όλο το Μητρώο· από εδώ και πέρα μόνο νέες εμφανίσεις.
+            save_mitroo_afm_snapshot(employer_afm, branch_aa, mitroo_afms)
+            seeded = True
+        else:
+            brand_new = mitroo_afms - previous
+    except Exception as ex:
+        # Χωρίς Μητρώο λίστα, συνέχισε μόνο με τοπικά κενά (ωράριο/ενεργοί χωρίς QR).
+        KartaLogger(
+            OPERATION_EMPLOYMENT_ENRICHMENT,
+            store_id=sid,
+            store_name=name,
+            register_run=False,
+            extra={"parent_run_id": parent_run_id},
+        ).error(f"Αποτυχία ανάγνωσης Μητρώου για νέες προσλήψεις: {ex}")
+
+    needed = sorted(local_needed | brand_new)
+    if not needed:
+        return {
+            "success": True,
+            "skipped": True,
+            "seeded_snapshot": seeded,
+            "mitroo_count": len(mitroo_afms),
+            "brand_new": 0,
+            "local_needed": len(local_needed),
+        }
+
+    result = run_employment_contract_sync_for_store(
+        cfg,
+        only_afms=needed,
+        operation=OPERATION_EMPLOYMENT_ENRICHMENT,
+        parent_run_id=parent_run_id,
+    )
+
+    # Ενημέρωση snapshot: κράτα για επανάληψη όσους νέους δεν πήραν ακόμα QR.
+    if mitroo_afms:
+        complete = {
+            norm_afm(e.get("afm"))
+            for e in list_active_employees_for_store(
+                employer_afm, branch_aa, limit=5000
+            )
+            if e.get("has_work_time_qr") and norm_afm(e.get("afm"))
+        }
+        still_missing_new = {a for a in brand_new if a not in complete}
+        save_mitroo_afm_snapshot(
+            employer_afm,
+            branch_aa,
+            mitroo_afms - still_missing_new,
+        )
+
+    return {
+        "success": bool(result.get("success")),
+        "seeded_snapshot": seeded,
+        "mitroo_count": len(mitroo_afms),
+        "brand_new": len(brand_new),
+        "local_needed": len(local_needed),
+        "synced": len(needed),
+        "employment_contract": result.get("employment_contract"),
+    }
 
 
 def run_work_log_range_sync_for_store(
@@ -1092,7 +1178,9 @@ def sync_store_today(
     )
 
     employment_enrichment_enqueued = False
-    if schedule.get("success"):
+    # Πάντα μετά το sync καταστήματος: ανίχνευση νέων προσλήψεων στο Μητρώο
+    # (ανεξάρτητα ωραρίου) + συμπλήρωση τοπικών κενών QR.
+    if is_store_syncable(cfg):
         try:
             employment_enrichment_enqueued = enqueue_employment_enrichment_if_needed(
                 cfg,
@@ -1100,7 +1188,7 @@ def sync_store_today(
             )
             if employment_enrichment_enqueued:
                 log.info(
-                    "Έγινε enqueue enrichment Μητρώου/QR για ΑΦΜ χωρίς σύνδεση ή QR"
+                    "Έγινε enqueue enrichment Μητρώου/QR (νέες προσλήψεις + κενά)"
                 )
         except Exception as ex:
             log.error(f"Σφάλμα enqueue enrichment Μητρώου: {ex}")

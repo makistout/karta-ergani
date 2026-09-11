@@ -2,7 +2,9 @@
 Συγχρονισμός στοιχείων σύμβασης από Ergani Μητρώα
 (Mitroa/ErgazomenosSearch.aspx → Ergazomenos.aspx).
 
-Μόνο εργαζόμενοι που εμφανίζονται στο τοπικό ψηφιακό ωράριο (karta_schedule).
+Ημερήσιο/χειροκίνητο: στόχος = ωράριο ∩ ενεργοί (+ ορφανές δραστηριότητες).
+Opportunistic enrichment: νέες εμφανίσεις στο τρέχον Μητρώο (ανεξάρτητα ωραρίου)
+μέσω only_afms από snapshot diff.
 """
 
 from __future__ import annotations
@@ -127,6 +129,25 @@ def _collect_select_ids(
         html, url = r.text, r.url
         pages += 1
     return all_ids
+
+
+def list_current_mitroo_employee_afms(ctx: dict[str, Any]) -> list[str]:
+    """Τρέχοντες εργαζόμενοι Μητρώου για το παράρτημα (μόνο λίστα ΑΦΜ, χωρίς καρτέλες)."""
+    portal_base = _portal_base(ctx)
+    session = _login_session(ctx)
+    page_html, page_url = _open_search_page(session, portal_base)
+    page_html, page_url = _search_current_employees(
+        session, page_html, page_url, ctx
+    )
+    all_ids = _collect_select_ids(session, page_url, page_html)
+    out: list[str] = []
+    seen: set[str] = set()
+    for _ergodoti_id, afm, _stamp in all_ids:
+        value = norm_afm(afm)
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
 
 
 def _fetch_contract_detail(

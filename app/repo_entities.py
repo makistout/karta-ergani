@@ -355,7 +355,7 @@ def list_unlinked_activity_employees(
 def list_afms_needing_employment_enrichment(
     employer_afm: str, branch_aa: str
 ) -> list[str]:
-    """ΑΦΜ στο ωράριο που χρειάζονται Μητρώο: χωρίς σύνδεση ή χωρίς QR κάρτας.
+    """ΑΦΜ που χρειάζονται Μητρώο/QR: στο ωράριο χωρίς σύνδεση/QR, ή ενεργοί χωρίς QR.
 
     Χωρίς σύνδεση `karta_employment` ο scanner δεν τους αναγνωρίζει· χωρίς QR
     λείπει η κάρτα εργασίας στο UI / τοπικό αντίγραφο από το portal.
@@ -370,35 +370,57 @@ def list_afms_needing_employment_enrichment(
                 FROM dbo.karta_schedule
                 WHERE employer_afm=? AND branch_aa=?
                   AND employee_afm IS NOT NULL AND LTRIM(RTRIM(employee_afm)) <> N''
-            )
-            SELECT s.employee_afm
-            FROM sched s
-            WHERE NOT EXISTS (
-                SELECT 1
+                  -- Μόνο πρόσφατο ωράριο: παλιά ορφανά δεν είναι στο τρέχον Μητρώο.
+                  AND TRY_CONVERT(date, work_date, 103) >= DATEADD(
+                      day, -14, CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'GTB Standard Time' AS date)
+                  )
+            ),
+            from_schedule AS (
+                SELECT s.employee_afm
+                FROM sched s
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.karta_employment e
+                    INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
+                    INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
+                    LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
+                    WHERE emp.afm = s.employee_afm
+                      AND em.afm = ?
+                      AND p.code_aa = ?
+                      AND e.active = 1
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM dbo.karta_employment e
+                    INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
+                    INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
+                    LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
+                    WHERE emp.afm = s.employee_afm
+                      AND em.afm = ?
+                      AND p.code_aa = ?
+                      AND e.active = 1
+                      AND NULLIF(e.work_time_qr_data_url, N'') IS NULL
+                )
+            ),
+            from_active AS (
+                SELECT emp.afm AS employee_afm
                 FROM dbo.karta_employment e
                 INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
                 INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
                 LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
-                WHERE emp.afm = s.employee_afm
-                  AND em.afm = ?
-                  AND p.code_aa = ?
-                  AND e.active = 1
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM dbo.karta_employment e
-                INNER JOIN dbo.karta_employee emp ON emp.id = e.employee_id
-                INNER JOIN dbo.karta_employer em ON em.id = e.employer_id
-                LEFT JOIN dbo.karta_parartima p ON p.id = e.parartima_id
-                WHERE emp.afm = s.employee_afm
-                  AND em.afm = ?
+                WHERE em.afm = ?
                   AND p.code_aa = ?
                   AND e.active = 1
                   AND NULLIF(e.work_time_qr_data_url, N'') IS NULL
             )
-            ORDER BY s.employee_afm
+            SELECT employee_afm FROM (
+                SELECT employee_afm FROM from_schedule
+                UNION
+                SELECT employee_afm FROM from_active
+            ) u
+            ORDER BY employee_afm
             """,
-            (afm, aa, afm, aa, afm, aa),
+            (afm, aa, afm, aa, afm, aa, afm, aa),
         )
         out: list[str] = []
         for row in cur.fetchall():
