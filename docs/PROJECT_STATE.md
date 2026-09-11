@@ -472,7 +472,8 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
   Στο **Χτυπήματα κάρτας** η στήλη **Κανάλι** δείχνει `listener`, `erganiOS`
   ή `Scanner` (και fallback αν ο listener ήταν offline/timeout).
   Το tab **Scanner** (`#scanner`) φιλτράρει μόνο χτυπήματα από CardScanner PWA
-  (`kind=scanner_punches`).
+  (`GET /api/audit/list?kind=scanner_punches`, φίλτρο σε `details_json` /
+  `source=scanner_pwa` / `submission_channel=scanner` / `client_device`).
   Η στήλη εργαζομένου εμφανίζει μόνο το ΑΦΜ και το ονοματεπώνυμο σε hover. Οι νέες
   εγγραφές Listener κρατούν και τα δύο στο audit, ενώ οι παλιές εμπλουτίζονται
   μαζικά από το μητρώο εργαζομένων κατά την ανάγνωση.

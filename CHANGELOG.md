@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-09-11 — Sync-log tab Scanner: φίλτρο `details_json`
+
+- Το `kind=scanner_punches` φιλτράρει σωστά τη στήλη `details_json` (όχι
+  `details`), ώστε το `/ui/sync-log#scanner` να μην επιστρέφει 500.
+
 ## 2026-09-11 — Listener setup.rar δημόσιο κατέβασμα
 
 - Νέο endpoint `GET /listener/setup.rar` που σερβίρει το `listener/setup.rar`

@@ -89,10 +89,17 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
   ή τα αντίστοιχα `sql/alter_add_*.sql`.
 - Οι νέες φάσεις γράφουν ξεχωριστά runs στα sync logs και προστατεύονται με ημερήσιο /
   εβδομαδιαίο guard ώστε να εκτελούνται μία φορά ανά κατάστημα.
-- Sync logs από `/ui/sync-log`.
+- Sync logs από `/ui/sync-log` (tabs: συγχρονισμός, ειδοποιήσεις, χτυπήματα κάρτας,
+  **Scanner** `#scanner`, ωράριο, απολογιστικό, συνδέσεις).
 - Post-sync Telegram/Email notifications καταγράφονται ως ξεχωριστή operation.
 - Νέο κατάστημα (wizard): επιλογή → period sync 30 ημερών → αρχείο ψηφιακής
   οργάνωσης `1/1`–`2 μήνες πριν` (`new_store_schedule_archive`· παράλειψη Ιαν/Φεβ).
+
+## Card Listener installer
+
+- Δημόσιο κατέβασμα: `GET /listener/setup.rar`
+  (αρχείο στον server: `listener/setup.rar`, χωρίς office login).
+- Λεπτομέρειες pairing/install: `docs/CARD_LISTENER.md`, `listener/README.md`.
 
 ## Common Failure Checks
 
