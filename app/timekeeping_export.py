@@ -89,7 +89,6 @@ def build_timekeeping_export_xlsx(
     families = (
         ("Υπερεργασία 20%", "overwork_breakdown"),
         ("Πρόσθετη μερικής 12%", "partial_additional_12_breakdown"),
-        ("Επέκταση ανισομερούς", "uneven_extension_breakdown"),
         ("Υπερωρία 40%", "overtime_40_breakdown"),
         ("Υπερωρία 60%", "overtime_60_breakdown"),
         ("Κατ’ εξαίρεση", "overtime_120_breakdown"),
@@ -103,10 +102,6 @@ def build_timekeeping_export_xlsx(
     summary_headers = ["Εργαζόμενος", "ΑΦΜ", "Αναγνωρισμένη βάση (ώρες)"] + _family_headers("Βάση")
     for label, _ in families:
         summary_headers += _family_headers(label)
-    summary_headers += [
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία (ώρες)",
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία νύχτα (ώρες)",
-    ]
     summary_headers += ["Ετήσιες νόμιμες υπερωρίες μετά την περίοδο"]
     header_row = _style_sheet(
         summary, title=title, meta=meta_line, headers=summary_headers,
@@ -122,10 +117,6 @@ def build_timekeeping_export_xlsx(
         ]
         for _, field in families:
             values += _breakdown_values(item, field)
-        values += [
-            _duration(item.get("exception_sixth_day_holiday_minutes")),
-            _duration(item.get("exception_sixth_day_holiday_night_minutes")),
-        ]
         values.append(_duration(item.get("annual_legal_overtime_minutes_after_period")))
         summary.append(values)
     _finish_table(summary, header_row, 3, len(summary_headers))
@@ -137,10 +128,6 @@ def build_timekeeping_export_xlsx(
     ] + _family_headers("Βάση")
     for label, _ in families:
         daily_headers += _family_headers(label)
-    daily_headers += [
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία (ώρες)",
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία νύχτα (ώρες)",
-    ]
     daily_headers += ["Παρατηρήσεις"]
     daily_header = _style_sheet(
         daily, title=daily_title, meta=meta_line, headers=daily_headers,
@@ -158,10 +145,6 @@ def build_timekeeping_export_xlsx(
         ]
         for _, field in families:
             values += _breakdown_values(item, field)
-        values += [
-            _duration(item.get("exception_sixth_day_holiday_minutes")),
-            _duration(item.get("exception_sixth_day_holiday_night_minutes")),
-        ]
         values.append(" · ".join(str(value) for value in item.get("warnings") or []))
         daily.append(values)
     _finish_table(daily, daily_header, 8, len(daily_headers) - 1)
@@ -197,28 +180,21 @@ def build_timekeeping_detailed_export_xlsx(
     ]
     headers += _family_headers("Υπερεργασία 20%")
     headers += _family_headers("Πρόσθετη μερικής 12%") + ["Διάστημα πρόσθετης μερικής"]
-    headers += _family_headers("Επέκταση ανισομερούς")
     headers += _family_headers("Υπερωρία 40%")
     headers += _family_headers("Υπερωρία 60%")
     headers += _family_headers("Κατ’ εξαίρεση")
     headers += _family_headers("6η ημέρα 30%") + ["Σύνολο 6ης ημέρας"]
     headers += _family_headers("6η ημέρα άνω των 48 ωρών") + ["Σύνολο 6ης άνω των 48"]
     headers += _family_headers("Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών") + ["Σύνολο κατ’ εξαίρεση 6ης άνω των 48"]
-    headers += [
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία (ώρες)",
-        "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία νύχτα (ώρες)",
-    ]
     headers += ["Κατάσταση ημέρας", "Πηγή βάσης", "Παρατηρήσεις"]
     groups = [
         (1, 3, "Επιχείρηση"), (4, 7, "Εργαζόμενος"), (8, 15, "Ημερήσια στοιχεία"),
         (16, 19, "Προσαυξήσεις βάσης"), (20, 23, "Υπερεργασία 20%"),
-        (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Επέκταση ανισομερούς"),
-        (33, 36, "Υπερωρία 40%"), (37, 40, "Υπερωρία 60%"),
-        (41, 44, "Κατ’ εξαίρεση"), (45, 49, "6η ημέρα 30%"),
-        (50, 54, "6η ημέρα άνω των 48 ωρών"),
-        (55, 59, "Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών"),
-        (60, 61, "Κατ’ εξαίρεση 6η ημέρα Κυρ/Αργία"),
-        (62, 64, "Έλεγχος"),
+        (24, 28, "Πρόσθετη μερικής 12%"), (29, 32, "Υπερωρία 40%"),
+        (33, 36, "Υπερωρία 60%"), (37, 40, "Κατ’ εξαίρεση"),
+        (41, 45, "6η ημέρα 30%"), (46, 50, "6η ημέρα άνω των 48 ωρών"),
+        (51, 55, "Κατ’ εξαίρεση 6η ημέρα άνω των 48 ωρών"),
+        (56, 58, "Έλεγχος"),
     ]
     for start, end, label in groups:
         ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
@@ -263,7 +239,6 @@ def build_timekeeping_detailed_export_xlsx(
             *_breakdown_values(item, "overwork_breakdown"),
             *_breakdown_values(item, "partial_additional_12_breakdown"),
             " · ".join(str(value) for value in item.get("partial_additional_12_intervals") or []),
-            *_breakdown_values(item, "uneven_extension_breakdown"),
             *_breakdown_values(item, "overtime_40_breakdown"),
             *_breakdown_values(item, "overtime_60_breakdown"),
             *_breakdown_values(item, "overtime_120_breakdown"),
@@ -273,20 +248,18 @@ def build_timekeeping_detailed_export_xlsx(
             _duration(item.get("sixth_day_above_48_minutes")),
             *_breakdown_values(item, "exception_sixth_day_above_48_breakdown"),
             _duration(item.get("exception_sixth_day_above_48_minutes")),
-            _duration(item.get("exception_sixth_day_holiday_minutes")),
-            _duration(item.get("exception_sixth_day_holiday_night_minutes")),
             item.get("day_state") or "",
             item.get("basis_source") or "", " · ".join(str(value) for value in item.get("warnings") or []),
         ])
 
     widths = [15, 15, 24, 22, 18, 16, 16, 10, 13, 30, 24, 25, 15, 18, 15,
-              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 33 + [18, 20, 42]
+              15, 17, 19, 23] + [18] * 8 + [24] + [18] * 24 + [18, 18, 18, 20, 42]
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "J5"
     if ws.max_row > 4:
         ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
-    duration_columns = {13} | set(range(15, 28)) | set(range(29, 62))
+    duration_columns = {13} | set(range(15, 28)) | set(range(29, 56))
     for row in range(5, ws.max_row + 1):
         if row % 2:
             for cell in ws[row]:
@@ -299,7 +272,7 @@ def build_timekeeping_detailed_export_xlsx(
             cell.border = Border(bottom=_BORDER)
             cell.font = Font(name="Aptos", size=9)
             if cell.column not in duration_columns:
-                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 64))
+                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 48))
     ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
     ws.print_title_rows = "1:4"
     ws.sheet_properties.pageSetUpPr.fitToPage = True

@@ -1,7 +1,5 @@
 from datetime import date
 
-import pytest
-
 from app.timekeeping import build_timekeeping_report
 
 
@@ -14,13 +12,6 @@ def _row(**overrides):
     }
     row.update(overrides)
     return row
-
-
-def _rest_work_row(*, work_date: str, proposed: str = "09:00–17:00", **overrides):
-    return _row(
-        work_date=work_date, status="change", declared="ΑΝΑΠΑΥΣΗ/ΡΕΠΟ",
-        proposed=proposed, day_state="Ανάπαυση/Ρεπό", **overrides,
-    )
 
 
 def test_change_uses_effective_proposed_schedule():
@@ -85,7 +76,7 @@ def test_non_working_day_does_not_warn_that_break_cannot_fit():
 
 def test_overwork_and_overtime_are_split_by_actual_premium_zone():
     row = _row(
-        work_date="16/08/2026", status="change", proposed="14:30–01:30",
+        work_date="16/08/2026", status="change", proposed="14:30–22:30",
         declared="14:30–22:30", contract_kind="Πλήρης", weekly_days=5,
         overwork_minutes=60, overtime_minutes=120,
         overtime_segments=[{
@@ -141,288 +132,6 @@ def test_full_time_ten_hour_declaration_does_not_double_count_overwork_or_overti
     ) == 600
 
 
-def test_declared_ten_hour_schedule_without_punch_is_split_into_daily_bands():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-        overwork_minutes=0, overtime_minutes=0,
-    )])["days"][0]
-    assert day["basis_source"] == "declared_no_punch"
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-    assert day["overwork_breakdown"]["day"] == 60
-    assert day["overtime_40_breakdown"]["day"] == 60
-
-
-def test_approved_ten_hour_proposal_without_punch_uses_the_same_split():
-    day = build_timekeeping_report([_row(
-        status="change", declared="09:00–17:00", proposed="09:00–19:00",
-        punch_count=0, contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )])["days"][0]
-    assert day["basis_source"] == "effective_proposed"
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-
-
-def test_full_six_day_long_declared_schedule_uses_six_forty_eight_hour_bands():
-    day = build_timekeeping_report([_row(
-        declared="08:00–17:00", proposed="08:00–17:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=6,
-        daily_overtime_basis_minutes=400,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 400
-    assert day["overwork_minutes"] == 80
-    assert day["overtime_minutes"] == 60
-
-
-def test_declared_and_punched_ten_hours_are_not_counted_twice():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00",
-        actual="09:00–19:00", punch_recorded="09:00–19:00", punch_count=2,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-        overwork_minutes=60, overtime_minutes=60,
-        overtime_segments=[{
-            "date": "17/08/2026", "from": "18:00", "to": "19:00", "minutes": 60,
-        }],
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-
-
-def test_valid_ten_hour_punch_can_supply_bands_when_upstream_values_are_missing():
-    day = build_timekeeping_report([_row(
-        declared="09:00–17:00", proposed="09:00–17:00",
-        actual="09:00–19:00", punch_recorded="09:00–19:00", punch_count=2,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-        overwork_minutes=0, overtime_minutes=0,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-
-
-@pytest.mark.parametrize("weekly_days,daily_base,schedule,base,overwork,overtime", [
-    (5, 480, "09:00–17:00", 480, 0, 0),
-    (5, 480, "09:00–18:00", 480, 60, 0),
-    (5, 480, "09:00–19:00", 480, 60, 60),
-    (5, 480, "09:00–22:00", 480, 60, 240),
-    (6, 400, "08:00–14:40", 400, 0, 0),
-    (6, 400, "08:00–16:00", 400, 80, 0),
-    (6, 400, "08:00–17:00", 400, 80, 60),
-    (6, 400, "08:00–20:00", 400, 80, 240),
-])
-def test_declared_schedule_matrix_without_card(
-    weekly_days, daily_base, schedule, base, overwork, overtime,
-):
-    day = build_timekeeping_report([_row(
-        declared=schedule, proposed=schedule, punch_count=0,
-        contract_kind="Πλήρης", weekly_days=weekly_days,
-        daily_overtime_basis_minutes=daily_base,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == base
-    assert day["overwork_minutes"] == overwork
-    assert day["overtime_minutes"] == overtime
-
-
-@pytest.mark.parametrize("declared,actual,expected_overwork,expected_overtime", [
-    ("09:00–19:00", "09:00–17:00", 60, 60),
-    ("09:00–17:00", "09:00–18:00", 60, 0),
-    ("09:00–17:00", "09:00–19:00", 60, 60),
-    ("09:00–19:00", "09:00–20:00", 60, 120),
-])
-def test_complete_card_extends_but_does_not_reduce_declared_extra_bands(
-    declared, actual, expected_overwork, expected_overtime,
-):
-    day = build_timekeeping_report([_row(
-        declared=declared, proposed=declared, actual=actual,
-        punch_recorded=actual, punch_count=2,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )])["days"][0]
-    assert day["overwork_minutes"] == expected_overwork
-    assert day["overtime_minutes"] == expected_overtime
-
-
-@pytest.mark.parametrize("actual,base,overwork,overtime", [
-    ("09:00–16:00", 480, 60, 60),
-    ("09:00–17:00", 480, 60, 60),
-    ("09:00–17:30", 480, 60, 60),
-    ("09:00–18:00", 480, 60, 60),
-    ("09:00–18:30", 480, 60, 60),
-    ("09:00–19:00", 480, 60, 60),
-    ("09:00–20:00", 480, 60, 120),
-])
-def test_declared_ten_hours_keeps_its_bands_with_shorter_complete_card(
-    actual, base, overwork, overtime,
-):
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00",
-        actual=actual, punch_recorded=actual, punch_count=2,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-        overwork_minutes=0, overtime_minutes=0,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == base
-    assert day["overwork_minutes"] == overwork
-    assert day["overtime_minutes"] == overtime
-
-
-def test_declared_extra_band_derivation_is_limited_to_full_time():
-    for contract_kind in ("Μερική", "Εκ περιτροπής"):
-        day = build_timekeeping_report([_row(
-            declared="09:00–19:00", proposed="09:00–19:00", punch_count=2,
-            actual="09:00–17:00", contract_kind=contract_kind, weekly_days=5,
-            daily_overtime_basis_minutes=480, contract_weekly_minutes=20 * 60,
-        )])["days"][0]
-        assert day["overwork_minutes"] == 0
-        assert day["overtime_40"] == 0
-        assert day["overtime_60"] == 0
-
-
-def test_declared_ten_hour_uneven_keeps_overtime_separate_from_extension():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480, uneven_distribution=True,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 480
-    assert day["uneven_extension_minutes"] == 60
-    assert day["overwork_minutes"] == 0
-    assert day["overtime_minutes"] == 60
-
-
-def test_declared_overtime_participates_once_in_annual_legal_total():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )], annual_context_by_employee={
-        "123456789": {"legal_overtime_minutes_before_period": 0, "data_complete": True},
-    })["days"][0]
-    assert day["overtime_40"] == 60
-    assert day["overtime_60"] == 0
-
-
-def test_incomplete_inferred_card_does_not_override_declared_ten_hour_basis():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00",
-        actual="09:00–17:00", punch_count=1, punch_completeness="Τεκμαρτό",
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )])["days"][0]
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-
-
-def test_overnight_declared_ten_hours_splits_premium_zones_on_actual_intervals():
-    day = build_timekeeping_report([_row(
-        work_date="17/08/2026", declared="20:00–06:00", proposed="20:00–06:00",
-        punch_count=0, contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )])["days"][0]
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-    assert day["overwork_breakdown"]["night"] == 60
-    assert day["overtime_40_breakdown"]["night"] == 60
-
-
-def test_outside_break_extends_clock_span_but_not_extra_work_bands():
-    day = build_timekeeping_report([_row(
-        declared="09:00–19:00", proposed="09:00–19:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480, break_minutes=30,
-        break_in_work=0, outside_break_minutes=30,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-
-
-def test_split_declared_ten_hours_without_card_uses_total_clean_duration():
-    day = build_timekeeping_report([_row(
-        declared="09:00–14:00 · 16:00–21:00",
-        proposed="09:00–14:00 · 16:00–21:00", punch_count=0,
-        contract_kind="Πλήρης", weekly_days=5,
-        daily_overtime_basis_minutes=480,
-    )])["days"][0]
-    assert day["recognized_work_minutes"] == 480
-    assert day["overwork_minutes"] == 60
-    assert day["overtime_minutes"] == 60
-    assert sum(day["overwork_breakdown"].values()) == 60
-    assert sum(day["overtime_40_breakdown"].values()) == 60
-
-
-def test_full_time_uneven_extension_fills_week_to_40_before_overwork():
-    rows = [
-        _row(
-            work_date=f"{day:02d}/08/2026", declared=declared,
-            proposed=declared, contract_kind="Πλήρης", weekly_days=5,
-            daily_overtime_basis_minutes=480, uneven_distribution=True,
-            overwork_minutes=overwork,
-        )
-        for day, declared, overwork in (
-            (17, "09:00–18:00", 60), (18, "09:00–16:00", 0),
-            (19, "09:00–17:00", 0), (20, "09:00–17:00", 0),
-            (21, "09:00–17:00", 0),
-        )
-    ]
-    report = build_timekeeping_report(rows)
-    monday = report["days"][0]
-    assert sum(day["recognized_work_minutes"] for day in report["days"]) == 39 * 60
-    assert monday["uneven_extension_minutes"] == 60
-    assert monday["overwork_minutes"] == 0
-    assert monday["uneven_extension_breakdown"]["day"] == 60
-
-
-def test_full_time_uneven_allocation_is_chronological_monday_to_sunday():
-    rows = [
-        _row(
-            work_date=f"{day:02d}/08/2026", declared=declared,
-            proposed=declared, contract_kind="Πλήρης", weekly_days=5,
-            daily_overtime_basis_minutes=480, uneven_distribution=True,
-            overwork_minutes=overwork,
-        )
-        for day, declared, overwork in (
-            (17, "09:00–18:00", 60), (18, "09:00–16:00", 0),
-            (19, "09:00–18:00", 60), (20, "09:00–17:00", 0),
-            (21, "09:00–17:00", 0),
-        )
-    ]
-    days = build_timekeeping_report(rows)["days"]
-    monday, wednesday = days[0], days[2]
-    assert monday["uneven_extension_minutes"] == 60
-    assert monday["overwork_minutes"] == 0
-    assert wednesday["uneven_extension_minutes"] == 0
-    assert wednesday["overwork_minutes"] == 60
-
-
-def test_full_six_day_uneven_uses_six_forty_base_and_eight_hour_band():
-    rows = [
-        _row(
-            work_date=f"{day:02d}/08/2026", declared=declared,
-            proposed=declared, contract_kind="Πλήρης", weekly_days=6,
-            daily_overtime_basis_minutes=400, uneven_distribution=True,
-            overwork_minutes=overwork,
-        )
-        for day, declared, overwork in (
-            (17, "09:00–17:00", 80), (18, "09:00–14:20", 0),
-            (19, "09:00–15:40", 0), (20, "09:00–15:40", 0),
-            (21, "09:00–15:40", 0), (22, "09:00–15:40", 0),
-        )
-    ]
-    days = build_timekeeping_report(rows)["days"]
-    assert sum(day["recognized_work_minutes"] for day in days) == 38 * 60 + 40
-    assert days[0]["uneven_extension_minutes"] == 80
-    assert days[0]["overwork_minutes"] == 0
-
-
 def test_visible_full_time_cap_keeps_outside_break_extension():
     day = build_timekeeping_report([_row(
         declared="09:00–18:00", proposed="09:00–18:00", actual="09:00–18:30",
@@ -449,7 +158,7 @@ def test_visible_rotating_basis_uses_contract_cap():
     assert day["basis_label"] == "09:00–17:00"
 
 
-def test_persisted_legacy_six_forty_basis_is_ignored_for_five_day_contract():
+def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_days():
     day = build_timekeeping_report([_row(
         declared="09:00–18:00", proposed="09:00–18:00",
         contract_kind="Πλήρης", weekly_days=5,
@@ -460,11 +169,10 @@ def test_persisted_legacy_six_forty_basis_is_ignored_for_five_day_contract():
         }],
     )])["days"][0]
 
-    assert day["recognized_work_minutes"] == 480
-    assert day["basis_label"] == "09:00–17:00"
-    assert day["overwork_minutes"] == 60
-    assert day["overwork_breakdown"]["day"] == 60
-    assert day["overtime_minutes"] == 0
+    assert day["recognized_work_minutes"] == 400
+    assert day["basis_label"] == "09:00–15:40"
+    assert day["overwork_breakdown"]["day"] == 80
+    assert day["overtime_40_breakdown"]["day"] == 60
 
 
 def test_actual_non_extra_night_premium_cannot_be_lost_by_declared_flex_basis():
@@ -525,9 +233,6 @@ def test_sixth_day_base_is_removed_from_ordinary_premium_buckets():
         )
         for day in range(3, 9)
     ]
-    rows[-1] = _rest_work_row(
-        work_date="08/08/2026", contract_kind="Πλήρης", weekly_days=5,
-    )
     report = build_timekeeping_report(rows)
     sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
     assert sixth["work_date"] == "08/08/2026"
@@ -536,7 +241,7 @@ def test_sixth_day_base_is_removed_from_ordinary_premium_buckets():
     assert sixth["base_allocation_integrity_minutes"] == 480
 
 
-def test_rotating_multiple_extra_days_are_selected_from_monday_towards_sunday():
+def test_rotating_multiple_extra_days_are_selected_from_sunday_towards_monday():
     rows = [
         _row(
             work_date=f"{day:02d}/08/2026", declared="09:00–17:00",
@@ -544,16 +249,9 @@ def test_rotating_multiple_extra_days_are_selected_from_monday_towards_sunday():
         )
         for day in range(3, 8)
     ]
-    rows[0] = _rest_work_row(
-        work_date="03/08/2026", contract_kind="Εκ περιτροπής", weekly_days=3,
-    )
-    rows[1] = _rest_work_row(
-        work_date="04/08/2026", contract_kind="Εκ περιτροπής", weekly_days=3,
-    )
     report = build_timekeeping_report(rows)
-    assert all(not day["uneven_distribution"] for day in report["days"])
     extras = [day for day in report["days"] if day["rotation_extra_day"]]
-    assert [day["work_date"] for day in extras] == ["03/08/2026", "04/08/2026"]
+    assert [day["work_date"] for day in extras] == ["06/08/2026", "07/08/2026"]
     for day in extras:
         assert day["partial_additional_12"] == 480
         assert sum(day["premium_minutes"].values()) == 0
@@ -561,56 +259,31 @@ def test_rotating_multiple_extra_days_are_selected_from_monday_towards_sunday():
         assert day["base_allocation_integrity_minutes"] == 480
 
 
-def test_rotating_without_rest_candidate_falls_back_from_sunday_to_monday():
-    rows = [
-        _row(
-            work_date=f"{day:02d}/08/2026", contract_kind="Εκ περιτροπής",
-            weekly_days=3,
-        )
-        for day in range(3, 8)
-    ]
-    report = build_timekeeping_report(rows)
-    extras = [day for day in report["days"] if day["rotation_extra_day"]]
-    assert [day["work_date"] for day in extras] == ["06/08/2026", "07/08/2026"]
-    assert all(any("fallback Κυριακή→Δευτέρα" in warning for warning in day["warnings"]) for day in extras)
-
-
 def test_rotating_extra_day_splits_12_and_120_and_keeps_zones_exclusive():
     rows = [
         _row(
-            work_date=f"{day:02d}/08/2026",
-            declared="20:00–06:00" if day == 3 else "09:00–17:00",
-            proposed="20:00–06:00" if day == 3 else "09:00–17:00",
-            contract_kind="Εκ περιτροπής", weekly_days=5,
+            work_date=f"{day:02d}/08/2026", declared="09:00–17:00",
+            proposed="09:00–17:00", contract_kind="Εκ περιτροπής", weekly_days=5,
         )
         for day in range(3, 9)
     ]
     rows.append(_row(
-        work_date="09/08/2026", declared="09:00–17:00", proposed="09:00–17:00",
+        work_date="09/08/2026", declared="20:00–06:00", proposed="20:00–06:00",
         contract_kind="Εκ περιτροπής", weekly_days=5,
     ))
-    rows[0] = _rest_work_row(
-        work_date="03/08/2026", proposed="20:00–06:00",
-        contract_kind="Εκ περιτροπής", weekly_days=5,
-    )
-    rows[1] = _rest_work_row(
-        work_date="04/08/2026", contract_kind="Εκ περιτροπής", weekly_days=5,
-    )
     report = build_timekeeping_report(rows)
-    monday = next(day for day in report["days"] if day["work_date"] == "03/08/2026")
-    tuesday = next(day for day in report["days"] if day["work_date"] == "04/08/2026")
-    assert monday["rotation_extra_day"] is True
-    assert tuesday["rotation_extra_day"] is True
-    assert monday["partial_additional_12"] == 480
-    assert monday["partial_overtime_120_minutes"] == 120
-    assert monday["overtime_120"] == 120
-    assert sum(monday["premium_minutes"].values()) == 0
-    assert sum(monday["partial_additional_12_breakdown"].values()) == 480
-    assert sum(monday["overtime_120_breakdown"].values()) == 120
-    assert monday["partial_base_integrity_minutes"] == 480
-    # The 120% portion is outside the capped clean basis and therefore is not
-    # part of the base-allocation integrity equation.
-    assert monday["base_allocation_integrity_minutes"] == 480
+    sunday = next(day for day in report["days"] if day["work_date"] == "09/08/2026")
+    saturday = next(day for day in report["days"] if day["work_date"] == "08/08/2026")
+    assert sunday["rotation_extra_day"] is True
+    assert saturday["rotation_extra_day"] is True
+    assert sunday["partial_additional_12"] == 480
+    assert sunday["partial_overtime_120_minutes"] == 120
+    assert sunday["overtime_120"] == 120
+    assert sum(sunday["premium_minutes"].values()) == 0
+    assert sum(sunday["partial_additional_12_breakdown"].values()) == 480
+    assert sum(sunday["overtime_120_breakdown"].values()) == 120
+    assert sunday["partial_base_integrity_minutes"] == 480
+    assert sunday["base_allocation_integrity_minutes"] == 600
 
 
 def test_partial_employment_never_generates_40_or_60_overtime():
@@ -769,35 +442,17 @@ def test_review_blocks_timekeeping():
         raise AssertionError("review row should block timekeeping")
 
 
-def test_six_days_below_40_hours_still_create_sixth_day_band():
+def test_six_days_do_not_create_sixth_day_band():
     rows = [
         _row(work_date=f"{day:02d}/08/2026", declared="09:00–15:00", contract_kind="Πλήρης")
         for day in range(17, 23)
     ]
-    rows[-1] = _rest_work_row(work_date="22/08/2026", proposed="09:00–15:00", contract_kind="Πλήρης")
     report = build_timekeeping_report(rows)
-    marked = [day for day in report["days"] if day["sixth_day_minutes"]]
-    assert [day["work_date"] for day in marked] == ["22/08/2026"]
-    assert marked[0]["sixth_day_minutes"] == 360
-
-
-def test_seven_short_days_still_mark_sixth_day_after_sunday_exception():
-    rows = [
-        _row(work_date=f"{day:02d}/08/2026", declared="09:00–14:00", contract_kind="Πλήρης")
-        for day in range(17, 24)
-    ]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", proposed="09:00–14:00", contract_kind="Πλήρης")
-    report = build_timekeeping_report(rows)
-
-    marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
-    assert marked == ["22/08/2026"]
-    sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
-    assert sunday["exception_reason"] == "7η αναγνωρισμένη ημέρα (Κυριακή)"
+    assert sum(day["sixth_day_minutes"] for day in report["days"]) == 0
 
 
 def test_seven_equal_days_put_sunday_in_exception_and_only_saturday_in_sixth_day():
     rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(rows)
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
     assert marked == ["22/08/2026"]
@@ -809,35 +464,26 @@ def test_seven_equal_days_put_sunday_in_exception_and_only_saturday_in_sixth_day
 
 def test_six_days_above_40_hours_mark_only_shortest_tie_priority_day():
     rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 23)]
-    rows[-1] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(rows)
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
     assert marked == ["22/08/2026"]
 
 
-def test_seven_days_choose_worked_scheduled_rest_not_shortest_day():
+def test_seven_days_choose_shortest_before_sunday_priority():
     rows = [
         _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης",
              declared="09:00–11:00" if day == 19 else "09:00–17:00")
         for day in range(17, 24)
     ]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(rows)
     marked = [day["work_date"] for day in report["days"] if day["sixth_day_minutes"]]
-    assert marked == ["22/08/2026"]
-
-
-def test_sixth_day_without_scheduled_rest_falls_back_from_sunday_to_monday():
-    rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 23)]
-    report = build_timekeeping_report(rows)
-    sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
-    assert sixth["work_date"] == "22/08/2026"
-    assert any("fallback Κυριακή→Δευτέρα" in warning for warning in sixth["warnings"])
+    assert marked == ["19/08/2026"]
+    sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
+    assert sunday["overtime_120"] == 480
 
 
 def test_next_week_three_explicit_rests_suppress_any_sixth_day_when_sunday_over_five_hours():
     rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(
         rows,
         sunday_work_enabled=False,
@@ -854,7 +500,6 @@ def test_exactly_five_sunday_hours_do_not_trigger_next_week_rest_exemption():
              declared="09:00–14:00" if day == 23 else "09:00–17:00")
         for day in range(17, 24)
     ]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(
         rows,
         sunday_work_enabled=False,
@@ -866,9 +511,7 @@ def test_exactly_five_sunday_hours_do_not_trigger_next_week_rest_exemption():
 def test_sixth_day_breakdown_splits_sunday_night_at_midnight():
     work_dates = ("17/08/2026", "18/08/2026", "19/08/2026", "20/08/2026", "21/08/2026")
     rows = [_row(work_date=value, contract_kind="Πλήρης") for value in work_dates]
-    rows.append(_rest_work_row(
-        work_date="23/08/2026", proposed="23:00–01:00", contract_kind="Πλήρης",
-    ))
+    rows.append(_row(work_date="23/08/2026", contract_kind="Πλήρης", declared="23:00–01:00"))
     report = build_timekeeping_report(rows, sunday_work_enabled=True)
     sunday = next(day for day in report["days"] if day["work_date"] == "23/08/2026")
     assert sunday["sixth_day_minutes"] == 120
@@ -882,38 +525,11 @@ def test_sixth_day_contains_only_clean_basis_not_overtime():
         _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", overtime_minutes=60)
         for day in range(17, 23)
     ]
-    rows[-1] = _rest_work_row(
-        work_date="22/08/2026", contract_kind="Πλήρης", overtime_minutes=60,
-    )
     report = build_timekeeping_report(rows)
     sixth = next(day for day in report["days"] if day["sixth_day_minutes"])
     assert sixth["sixth_day_minutes"] == 480
-    assert sixth["overtime_40"] == 60
-    assert sixth["overtime_120"] == 0
-
-
-def test_declared_ten_hour_sixth_day_keeps_base_overwork_and_overtime_exclusive():
-    rows = [
-        _row(
-            work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", weekly_days=5,
-            declared="09:00–19:00" if day == 22 else "09:00–17:00",
-            proposed="09:00–19:00" if day == 22 else "09:00–17:00",
-            punch_count=0, daily_overtime_basis_minutes=480,
-        )
-        for day in range(17, 23)
-    ]
-    rows[-1] = _rest_work_row(
-        work_date="22/08/2026", proposed="09:00–19:00", contract_kind="Πλήρης",
-        weekly_days=5, punch_count=0, daily_overtime_basis_minutes=480,
-    )
-    saturday = build_timekeeping_report(rows)["days"][-1]
-    assert saturday["sixth_day_minutes"] == 480
-    assert sum(saturday["sixth_day_breakdown"].values()) == 480
-    assert saturday["overwork_minutes"] == 60
-    assert sum(saturday["overwork_breakdown"].values()) == 60
-    assert saturday["overtime_40"] == 60
-    assert sum(saturday["overtime_40_breakdown"].values()) == 60
-    assert saturday["overtime_120"] == 0
+    assert sixth["overtime_40"] == 0
+    assert sixth["overtime_120"] == 60
 
 
 def test_catering_sixth_day_splits_exactly_at_weekly_48_hours():
@@ -921,14 +537,12 @@ def test_catering_sixth_day_splits_exactly_at_weekly_48_hours():
         _row(
             work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης",
             weekly_days=5, is_catering=True,
-            declared="09:00–18:00" if day < 21 else "09:00–17:00",
-            proposed="09:00–18:00" if day < 21 else "09:00–17:00",
+            overwork_minutes=240 if day == 21 else 0,
         )
         for day in range(17, 22)
     ]
-    rows.append(_rest_work_row(
-        work_date="22/08/2026", proposed="09:00–18:00",
-        contract_kind="Πλήρης",
+    rows.append(_row(
+        work_date="22/08/2026", declared="09:00–18:00", contract_kind="Πλήρης",
         weekly_days=5, is_catering=True, overtime_minutes=60,
         daily_overtime_basis_minutes=480,
     ))
@@ -936,12 +550,10 @@ def test_catering_sixth_day_splits_exactly_at_weekly_48_hours():
     saturday = next(day for day in report["days"] if day["work_date"] == "22/08/2026")
     assert saturday["sixth_day_minutes"] == 240
     assert saturday["sixth_day_above_48_minutes"] == 240
-    assert saturday["exception_sixth_day_above_48_minutes"] == 0
-    assert saturday["overwork_minutes"] == 60
-    assert saturday["overtime_40"] == 0
+    assert saturday["exception_sixth_day_above_48_minutes"] == 60
     assert saturday["overtime_120"] == 0
     assert sum(saturday["sixth_day_above_48_breakdown"].values()) == 240
-    assert sum(saturday["exception_sixth_day_above_48_breakdown"].values()) == 0
+    assert sum(saturday["exception_sixth_day_above_48_breakdown"].values()) == 60
     assert saturday["base_allocation_integrity_minutes"] == 480
 
 
@@ -974,25 +586,6 @@ def test_catering_seventh_day_after_48_hours_moves_to_special_exception():
     assert sunday["overtime_120"] == 0
     assert sunday["exception_sixth_day_above_48_minutes"] == 120
     assert sunday["exception_sixth_day_above_48_breakdown"]["sunday_holiday"] == 120
-    assert sunday["exception_sixth_day_holiday_minutes"] == 120
-    assert sunday["exception_sixth_day_holiday_night_minutes"] == 0
-
-
-def test_exception_sixth_day_sunday_night_has_dedicated_holiday_night_column():
-    rows = [
-        _row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης", weekly_days=5,
-             is_catering=True)
-        for day in range(17, 23)
-    ]
-    rows.append(_row(
-        work_date="23/08/2026", declared="23:00–01:00", contract_kind="Πλήρης",
-        weekly_days=5, is_catering=True,
-    ))
-    sunday = build_timekeeping_report(rows)["days"][-1]
-    assert sunday["exception_sixth_day_holiday_minutes"] == 0
-    assert sunday["exception_sixth_day_holiday_night_minutes"] == 60
-    assert sunday["exception_sixth_day_above_48_breakdown"]["night"] == 60
-    assert sunday["exception_sixth_day_above_48_breakdown"]["night_sunday_holiday"] == 60
 
 
 def test_midweek_part_time_departure_prorates_weekly_cap_by_recognized_days():
@@ -1032,7 +625,6 @@ def test_midweek_part_time_hours_change_uses_each_days_contract_share():
 
 def test_unknown_next_week_does_not_suppress_sixth_day():
     rows = [_row(work_date=f"{day:02d}/08/2026", contract_kind="Πλήρης") for day in range(17, 24)]
-    rows[-2] = _rest_work_row(work_date="22/08/2026", contract_kind="Πλήρης")
     report = build_timekeeping_report(
         rows,
         sunday_work_enabled=False,
@@ -1063,7 +655,7 @@ def test_partial_extra_is_allocated_only_from_weekly_excess():
     assert sum(day["partial_additional_12"] for day in report["days"]) == 300
 
 
-def test_partial_extra_is_allocated_from_monday_to_sunday_with_tail_intervals():
+def test_partial_extra_is_allocated_from_sunday_back_to_monday_with_tail_intervals():
     durations = {
         "17/08/2026": "09:00–15:00",  # Monday: 2 h above imputed base
         "18/08/2026": "09:00–13:00",
@@ -1077,14 +669,13 @@ def test_partial_extra_is_allocated_from_monday_to_sunday_with_tail_intervals():
         for work_date, declared in durations.items()
     ]
     days = {day["work_date"]: day for day in build_timekeeping_report(rows)["days"]}
-    assert all(not day["uneven_distribution"] for day in days.values())
     assert days["23/08/2026"]["partial_additional_12"] == 60
     assert days["23/08/2026"]["partial_additional_12_intervals"] == ["13:00–14:00"]
     assert days["17/08/2026"]["partial_additional_12"] == 120
     assert days["17/08/2026"]["partial_additional_12_intervals"] == ["13:00–15:00"]
 
 
-def test_partial_extra_fallback_uses_monday_then_moves_forwards():
+def test_partial_extra_fallback_uses_last_workday_then_moves_backwards():
     rows = [
         _row(work_date=work_date, declared="09:00–13:00", contract_kind="Μερική",
              weekly_days=5, contract_weekly_minutes=1200)
@@ -1092,8 +683,8 @@ def test_partial_extra_fallback_uses_monday_then_moves_forwards():
     ]
     days = {day["work_date"]: day for day in build_timekeeping_report(rows)["days"]}
     assert sum(day["partial_additional_12"] for day in days.values()) == 240
-    assert days["17/08/2026"]["partial_additional_12"] == 240
-    assert days["17/08/2026"]["partial_additional_12_intervals"] == ["09:00–13:00"]
+    assert days["23/08/2026"]["partial_additional_12"] == 240
+    assert days["23/08/2026"]["partial_additional_12_intervals"] == ["09:00–13:00"]
 
 
 def test_partial_above_full_daily_cap_is_overtime_120_outside_partial_base():

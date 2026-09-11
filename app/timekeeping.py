@@ -226,11 +226,9 @@ def _apply_exclusive_base_allocation(day: dict[str, Any]) -> None:
     day["base_allocation_integrity_minutes"] = allocated
     base_allocated = allocated - _breakdown_total(day.get("_partial_overtime_120_breakdown"))
     day["partial_base_integrity_minutes"] = base_allocated
-    overtime_inside_base = (
-        int(day.get("partial_overtime_120_minutes") or 0)
-        if day.get("partial_overtime_inside_recognized_basis") else 0
+    expected_base = int(day.get("recognized_work_minutes") or 0) - int(
+        day.get("partial_overtime_120_minutes") or 0
     )
-    expected_base = int(day.get("recognized_work_minutes") or 0) - overtime_inside_base
     if allocated != int(day.get("recognized_work_minutes") or 0):
         day["warnings"].append(
             "Ασυμφωνία κατανομής χρόνου: βάση + 6η ημέρα + 6η άνω των 48 + πρόσθετη μερικής + υπερωρία 120% δεν ισούνται με τον αναγνωρισμένο χρόνο"
@@ -268,7 +266,7 @@ def _overwork_timeline(
         else:
             anchor = datetime.combine(_work_date(day["work_date"]), datetime.min.time())
             actual_start = source.get("actual_start_minutes")
-            base = day.get("daily_base_cap_minutes")
+            base = source.get("daily_overtime_basis_minutes")
             if actual_start is None or base is None:
                 return []
             end = anchor + timedelta(
@@ -344,16 +342,6 @@ def is_timekeeping_leave_row(row: dict[str, Any]) -> bool:
     return any("ΑΔΕΙΑ" in marker_text(value) for value in values)
 
 
-def _was_scheduled_rest(item: dict[str, Any]) -> bool:
-    """True only when the original program explicitly marked a non-work day."""
-    text = " ".join(str(item.get(key) or "") for key in ("declared", "day_state")).upper()
-    normalized = "".join(
-        char for char in unicodedata.normalize("NFD", text)
-        if unicodedata.category(char) != "Mn"
-    )
-    return any(marker in normalized for marker in ("ΑΝΑΠΑΥΣ", "ΡΕΠΟ", "ΜΗ ΕΡΓΑΣΙΑ"))
-
-
 def _display_interval(start: datetime, end: datetime) -> str:
     suffix = " (+1)" if end.date() > start.date() else ""
     return f"{start:%H:%M}–{end:%H:%M}{suffix}"
@@ -387,17 +375,14 @@ def _tail_timeline(
     return timeline[start:end]
 
 
-def _assign_partial_overtime_120(
-    item: dict[str, Any], minutes: int, *, inside_recognized_basis: bool = True,
-) -> None:
+def _assign_partial_overtime_120(item: dict[str, Any], minutes: int) -> None:
     """Move the part-time tail above 8:00/6:40 into the common overtime 120% family."""
     amount = max(0, int(minutes or 0))
-    timeline = item.get("_uncapped_recognized_timeline") or item.get("_recognized_timeline") or []
+    timeline = item.get("_recognized_timeline") or []
     selected = _tail_timeline(timeline, amount)
     breakdown = _categorize_timeline(selected, item.get("_premium_holidays") or set())
     item["partial_overtime_120_minutes"] = amount
-    item["partial_overtime_inside_recognized_basis"] = inside_recognized_basis
-    item["_partial_overtime_120_breakdown"] = breakdown if inside_recognized_basis else _empty_breakdown()
+    item["_partial_overtime_120_breakdown"] = breakdown
     item["overtime_120"] = int(item.get("overtime_120") or 0) + amount
     item["overtime_minutes"] = int(item.get("overtime_minutes") or 0) + amount
     target = item.setdefault("overtime_120_breakdown", _empty_breakdown())
@@ -432,15 +417,15 @@ def build_recognized_day(
     ]
     # In full-time employment the final/approved schedule is evidence of the
     # recognized temporal span, not permission to turn overwork or overtime
-    # into ordinary base time.  The active basis comes exclusively from the
-    # employee's contractual five/six-day system.  Do not trust a persisted
-    # legacy declaration-driven basis on the retrospective row.
-    contract_kind = str(row.get("contract_kind") or "")
-    weekly_days = int(row.get("weekly_days") or 0)
-    daily_base = 480 if weekly_days == 5 else 400 if weekly_days == 6 else None
+    # into ordinary base time.  The retrospective engine has already selected
+    # the applicable clean daily basis (8:00, 6:40, or the contract basis when
+    # the declaration has another duration).  Apply that basis here as a hard
+    # payroll cap.  This is especially important when an incorrect declaration
+    # is identical to a 9+ hour card span.
+    daily_base = row.get("daily_overtime_basis_minutes")
     base_cap = (
         max(0, int(daily_base))
-        if contract_kind in ("Πλήρης", "Εκ περιτροπής")
+        if str(row.get("contract_kind") or "") in ("Πλήρης", "Εκ περιτροπής")
         and daily_base is not None
         else None
     )
@@ -500,8 +485,6 @@ def build_recognized_day(
         "contract_specialty": row.get("contract_specialty"),
         "catering_override": row.get("catering_override"),
         "is_catering": bool(row.get("is_catering")),
-        "work_arrangement": bool(row.get("work_arrangement")),
-        "uneven_distribution": bool(row.get("uneven_distribution")),
         "special_arrangement": bool(row.get("work_arrangement") or row.get("uneven_distribution")),
         # Keep the approved retrospective facts on the common calculation row.
         # Exporters are projections of this report and must never recalculate rules.
@@ -518,7 +501,6 @@ def build_recognized_day(
         "overwork_minutes": int(row.get("overwork_minutes") or 0),
         "unlawful_overtime_minutes": int(row.get("unlawful_overtime_minutes") or 0),
         "_recognized_timeline": recognized_timeline,
-        "_uncapped_recognized_timeline": uncapped_recognized_timeline,
     }
 
 
@@ -567,54 +549,12 @@ def build_timekeeping_report(
     for day in sorted(days, key=lambda item: (_work_date(item["work_date"]), item["employee_afm"])):
         key = (day["employee_afm"], day["work_date"])
         source = source_by_key[key]
-        contract_kind = str(day.get("contract_kind") or "")
-        weekly_days = int(day.get("weekly_days") or 0)
-        base_cap = day.get("daily_base_cap_minutes")
-        evidence_timeline = list(day.get("_uncapped_recognized_timeline") or [])
-        has_complete_card = (
-            int(source.get("punch_count") or 0) >= 2
-            and str(source.get("punch_completeness") or "") != "Τεκμαρτό"
-        )
-        if has_complete_card:
-            actual_timeline = _interval_minutes(parse_intervals(
-                str(source.get("actual") or ""), day["work_date"]
-            ))
-            if actual_timeline:
-                outside_break = max(0, int(source.get("outside_break_minutes") or 0))
-                actual_break = _allocate_contiguous_break(actual_timeline, outside_break, holiday_dates)
-                clean_actual_timeline = [minute for minute in actual_timeline if minute not in actual_break]
-                # A complete card may extend the declared extra zones, but a
-                # shorter card does not erase overwork/overtime already present
-                # in an approved declared/proposed long schedule.
-                if len(clean_actual_timeline) > len(evidence_timeline):
-                    evidence_timeline = clean_actual_timeline
-
-        derived_overwork = 0
-        derived_overtime = 0
-        derived_overtime_timeline: list[datetime] = []
-        if contract_kind == "Πλήρης" and base_cap is not None:
-            extra = max(0, len(evidence_timeline) - int(base_cap))
-            # Reclassify the entire tail from the contract-derived basis.  This
-            # also makes migrated rows safe when their stored categories were
-            # produced by the inactive declaration-driven legacy strategy.
-            overwork_room = 60 if int(base_cap) == 480 else 80 if int(base_cap) == 400 else 0
-            derived_overwork = min(extra, overwork_room)
-            derived_overtime = max(0, extra - derived_overwork)
-            derived_overtime_timeline = evidence_timeline[
-                int(base_cap) + derived_overwork:int(base_cap) + derived_overwork + derived_overtime
-            ]
-            day["overwork_minutes"] = derived_overwork
-
-        overtime = (
-            derived_overtime
-            if contract_kind == "Πλήρης" and base_cap is not None
-            else int(source.get("overtime_minutes") or 0)
-        )
-        if contract_kind in ("Μερική", "Εκ περιτροπής"):
+        overtime = max(0, int(source.get("overtime_minutes") or 0))
+        if str(day.get("contract_kind") or "") == "Μερική":
             overtime = 0
-        if day["work_arrangement"]:
+        if day["special_arrangement"]:
             day["warnings"].append(
-                "Ειδικό καθεστώς διευθέτησης χρόνου: δεν έγινε τελικός χαρακτηρισμός υπερωρίας"
+                "Ειδικό καθεστώς διευθέτησης/ανισομερούς κατανομής: δεν έγινε τελικός χαρακτηρισμός υπερωρίας"
             )
             overtime = 0
         split, annual_after, daily_after = _split_overtime(
@@ -626,11 +566,7 @@ def build_timekeeping_report(
         daily_overtime[key] = daily_after
         day.update(split)
         day["overtime_minutes"] = overtime
-        overtime_timeline = (
-            derived_overtime_timeline
-            if contract_kind == "Πλήρης" and base_cap is not None
-            else _overtime_timeline(source, day["work_date"])
-        )
+        overtime_timeline = _overtime_timeline(source, day["work_date"])
         if len(overtime_timeline) > overtime:
             overtime_timeline = overtime_timeline[:overtime]
         if overtime and len(overtime_timeline) < overtime:
@@ -664,38 +600,10 @@ def build_timekeeping_report(
     for day in days:
         by_employee_days[day["employee_afm"]].append(day)
     next_week_contexts = next_week_context_by_employee or {}
+    sixth_day_priority = {6: 0, 5: 1, 4: 2, 3: 3, 2: 4, 1: 5, 0: 6}
     for employee_afm, employee_days in by_employee_days.items():
         employee_days.sort(key=lambda item: _work_date(item["work_date"]))
         working_days = [item for item in employee_days if item["recognized_work_minutes"] > 0]
-
-        # Full-time uneven distribution: the daily band above 8:00 (five-day)
-        # or 6:40 (six-day) stays outside ordinary base.  Chronologically from
-        # Monday to Sunday, only the part needed to bring base + extensions to
-        # 40:00 is uneven-distribution extension; the remainder is overwork.
-        for item in employee_days:
-            item["uneven_extension_minutes"] = 0
-            item["uneven_extension_breakdown"] = _empty_breakdown()
-        uneven_days = [
-            item for item in working_days
-            if str(item.get("contract_kind") or "") == "Πλήρης"
-            and bool(item.get("uneven_distribution"))
-        ]
-        if uneven_days:
-            extension_room = max(
-                0, 40 * 60 - sum(int(item.get("recognized_work_minutes") or 0) for item in working_days)
-            )
-            for item in uneven_days:
-                extension = min(extension_room, int(item.get("overwork_minutes") or 0))
-                if extension <= 0:
-                    continue
-                selected = (item.get("_overwork_timeline") or [])[:extension]
-                _move_timeline_breakdown(
-                    item["overwork_breakdown"], item["uneven_extension_breakdown"],
-                    selected, item.get("_premium_holidays") or set(), extension,
-                )
-                item["overwork_minutes"] -= extension
-                item["uneven_extension_minutes"] = extension
-                extension_room -= extension
 
         # Full-time sixth/seventh-day rule.  Seven recognized bases necessarily
         # include Sunday: Sunday is exceptional work, never a sixth day.  After
@@ -719,23 +627,17 @@ def build_timekeeping_report(
             )
             remaining.remove(seventh)
             seventh["exception_reason"] = "7η αναγνωρισμένη ημέρα (Κυριακή)"
-            rest_candidates = [item for item in remaining if _was_scheduled_rest(item)]
-            pool = rest_candidates or list(reversed(remaining))
-            candidate = pool[0]
-            candidates.append(candidate)
-            if not rest_candidates:
-                candidate["warnings"].append(
-                    "Η 6η ημέρα δεν προέκυψε από δηλωμένο ρεπό και επιλέχθηκε με fallback Κυριακή→Δευτέρα"
-                )
-        elif contract_kind == "Πλήρης" and len(remaining) == 6:
-            rest_candidates = [item for item in remaining if _was_scheduled_rest(item)]
-            pool = rest_candidates or list(reversed(remaining))
-            candidate = pool[0]
-            candidates.append(candidate)
-            if not rest_candidates:
-                candidate["warnings"].append(
-                    "Η 6η ημέρα δεν προέκυψε από δηλωμένο ρεπό και επιλέχθηκε με fallback Κυριακή→Δευτέρα"
-                )
+            if sum(item["recognized_work_minutes"] for item in remaining) > 2400:
+                candidates.append(min(
+                    remaining,
+                    key=lambda item: (item["recognized_work_minutes"], sixth_day_priority[_work_date(item["work_date"]).weekday()]),
+                ))
+        elif contract_kind == "Πλήρης" and len(remaining) == 6 \
+                and sum(item["recognized_work_minutes"] for item in remaining) > 2400:
+            candidates.append(min(
+                remaining,
+                key=lambda item: (item["recognized_work_minutes"], sixth_day_priority[_work_date(item["work_date"]).weekday()]),
+            ))
 
         sunday = next((item for item in working_days if _work_date(item["work_date"]).weekday() == 6), None)
         next_context = next_week_contexts.get(employee_afm, {})
@@ -755,9 +657,10 @@ def build_timekeeping_report(
             candidate["sixth_day_minutes"] = candidate["recognized_work_minutes"]
             candidate["sixth_day_breakdown"] = dict(candidate["premium_minutes"])
 
-        # A seventh Sunday is exceptional work and moves its whole base plus
-        # extras to 120%. A sixth day is different: only its clean base belongs
-        # to the sixth-day family; overwork and overtime stay in their own boxes.
+        # "Κατ' εξαίρεση" is the existing overtime_120 family (also used by
+        # part-time work above the full daily cap), not a separate output box.
+        # A seventh Sunday contributes its whole base plus all extras.  A sixth
+        # day contributes only its overwork/overtime; its base remains in 6η.
         for item in employee_days:
             exceptional_base = bool(item.get("exception_reason"))
             expected_exception = int(item.get("overtime_120") or 0)
@@ -765,7 +668,9 @@ def build_timekeeping_report(
                 _add_breakdown(item["overtime_120_breakdown"], item.get("premium_minutes"))
                 item["_exception_base_breakdown"] = dict(item.get("premium_minutes") or _empty_breakdown())
                 expected_exception += int(item.get("recognized_work_minutes") or 0)
-            if exceptional_base:
+            if exceptional_base or int(item.get("sixth_day_minutes") or 0) > 0:
+                if not item.get("exception_reason"):
+                    item["exception_reason"] = "Υπερεργασία/υπερωρία ημέρας χαρακτηρισμένης ως 6η"
                 _add_breakdown(item["overtime_120_breakdown"], item.get("overwork_breakdown"))
                 expected_exception += int(item.get("overwork_minutes") or 0)
                 item["overwork_breakdown"] = _empty_breakdown()
@@ -820,7 +725,7 @@ def build_timekeeping_report(
 
                 room_after_base = max(0, room_before_48 - base_minutes)
                 extras_above = max(0, extra_minutes - room_after_base)
-                if extras_above and is_seventh:
+                if extras_above:
                     extra_timeline = sorted(set(
                         (item.get("_overwork_timeline") or [])
                         + (item.get("_overtime_timeline") or [])
@@ -834,17 +739,6 @@ def build_timekeeping_report(
                     item["overtime_120"] -= extras_above
                     item["exception_sixth_day_above_48_minutes"] += extras_above
             weekly_running_minutes += base_minutes + extra_minutes
-
-        # Dedicated payroll views of the already classified exceptional sixth
-        # day.  These are aliases of two breakdown buckets, never extra time.
-        for item in employee_days:
-            exceptional_sixth = item.get("exception_sixth_day_above_48_breakdown") or {}
-            item["exception_sixth_day_holiday_minutes"] = int(
-                exceptional_sixth.get("sunday_holiday") or 0
-            )
-            item["exception_sixth_day_holiday_night_minutes"] = int(
-                exceptional_sixth.get("night_sunday_holiday") or 0
-            )
 
         # Weekly allocator for part-time work. The weekly excess is authoritative;
         # daily excess alone never creates the 12% category.
@@ -908,9 +802,8 @@ def build_timekeeping_report(
                 remaining_excess = max(
                     0, excess - sum(item["partial_overtime_120_minutes"] for item in partial_days)
                 )
-                # One deterministic weekly direction is used by every allocator:
-                # chronological Monday to Sunday.
-                for item in partial_days:
+                # The labour-law allocation order is Sunday backwards to Monday.
+                for item in reversed(partial_days):
                     item_weekly_days = int(item.get("weekly_days") or 0)
                     item_full_day_cap = 480 if item_weekly_days == 5 else 400 if item_weekly_days == 6 else None
                     item_daily_imputed = int(item.get("contract_weekly_minutes") or 0) // max(1, item_weekly_days)
@@ -919,7 +812,7 @@ def build_timekeeping_report(
                     item["partial_additional_12"] = allocated
                     remaining_excess -= allocated
                 if remaining_excess:
-                    for item in partial_days:
+                    for item in reversed(partial_days):
                         room = max(0, item["recognized_work_minutes"] - item["partial_overtime_120_minutes"] - item["partial_additional_12"])
                         allocated = min(remaining_excess, room)
                         item["partial_additional_12"] += allocated
@@ -945,51 +838,37 @@ def build_timekeeping_report(
 
         # Rotating employment: every recognized day beyond the contractual
         # weekly day count is an extra-part-time day. Selection runs from
-        # Monday forwards to Sunday and may yield more than one day.
+        # Sunday backwards to Monday and may yield more than one day.
         if working_days and str(working_days[0].get("contract_kind") or "") == "Εκ περιτροπής":
             contractual_days = int(working_days[0].get("weekly_days") or 0)
             extra_count = max(0, len(working_days) - contractual_days) if contractual_days > 0 else 0
             full_day_cap = 480 if contractual_days == 5 else 400 if contractual_days == 6 else None
-            for item in working_days:
-                _assign_partial_overtime_120(
-                    item,
-                    max(0, item["recognized_uncapped_work_minutes"] - full_day_cap)
-                    if full_day_cap is not None else 0,
-                    inside_recognized_basis=False,
-                )
-            rest_worked_days = [item for item in working_days if _was_scheduled_rest(item)]
-            selected_extra_days = rest_worked_days[:extra_count]
-            if len(selected_extra_days) < extra_count:
-                fallback_days = [
-                    item for item in reversed(working_days)
-                    if item not in selected_extra_days
-                ]
-                selected_fallback = fallback_days[:extra_count - len(selected_extra_days)]
-                selected_extra_days.extend(selected_fallback)
-                for item in selected_fallback:
-                    item["warnings"].append(
-                        "Η επιπλέον ημέρα εκ περιτροπής δεν προέκυψε από δηλωμένο ρεπό και επιλέχθηκε με fallback Κυριακή→Δευτέρα"
-                    )
-            for item in selected_extra_days:
+            for item in reversed(working_days):
+                if extra_count <= 0:
+                    break
                 timeline = item.get("_recognized_timeline") or []
                 item["rotation_extra_day"] = True
+                _assign_partial_overtime_120(
+                    item,
+                    max(0, item["recognized_work_minutes"] - full_day_cap)
+                    if full_day_cap is not None else 0,
+                )
                 item["partial_additional_12"] = max(
-                    0, item["recognized_work_minutes"]
+                    0, item["recognized_work_minutes"] - item["partial_overtime_120_minutes"]
                 )
                 item["partial_additional_12_intervals"] = _tail_interval_labels(
                     timeline, item["partial_additional_12"],
-                    # Rotating-work 120% starts outside the capped recognized
-                    # basis, so it must not displace minutes inside that basis.
-                    tail_offset=0,
+                    tail_offset=item["partial_overtime_120_minutes"],
                 )
                 premium_holidays = item.get("_premium_holidays") or set()
                 item["partial_additional_12_breakdown"] = _categorize_timeline(
                     _tail_timeline(
                         timeline, item["partial_additional_12"],
-                        tail_offset=0,
+                        tail_offset=item["partial_overtime_120_minutes"],
                     ),
                     premium_holidays,
                 )
+                extra_count -= 1
 
         for item in employee_days:
             item.setdefault("rotation_extra_day", False)
@@ -1004,11 +883,8 @@ def build_timekeeping_report(
             "sunday_holiday": 0, "night_sunday_holiday": 0,
             "overtime_40": 0, "overtime_60": 0, "overtime_120": 0,
             "partial_additional_12": 0, "sixth_day_minutes": 0,
-            "uneven_extension_minutes": 0,
             "sixth_day_above_48_minutes": 0,
             "exception_sixth_day_above_48_minutes": 0,
-            "exception_sixth_day_holiday_minutes": 0,
-            "exception_sixth_day_holiday_night_minutes": 0,
         })
         total["recognized_work_minutes"] += day["recognized_work_minutes"]
         for key, value in day["premium_minutes"].items():
@@ -1017,15 +893,12 @@ def build_timekeeping_report(
             total[key] += day[key]
         for key in (
             "partial_additional_12", "sixth_day_minutes",
-            "uneven_extension_minutes",
             "sixth_day_above_48_minutes", "exception_sixth_day_above_48_minutes",
-            "exception_sixth_day_holiday_minutes",
-            "exception_sixth_day_holiday_night_minutes",
         ):
             total[key] += day[key]
         for family in (
             "overwork", "overtime_40", "overtime_60", "overtime_120",
-            "partial_additional_12", "uneven_extension", "sixth_day", "sixth_day_above_48",
+            "partial_additional_12", "sixth_day", "sixth_day_above_48",
             "exception_sixth_day_above_48",
         ):
             target = total.setdefault(f"{family}_breakdown", _empty_breakdown())
@@ -1036,7 +909,6 @@ def build_timekeeping_report(
 
     for day in days:
         day.pop("_recognized_timeline", None)
-        day.pop("_uncapped_recognized_timeline", None)
         day.pop("_premium_holidays", None)
         day.pop("_partial_overtime_120_breakdown", None)
         day.pop("_exception_base_breakdown", None)
@@ -1044,7 +916,7 @@ def build_timekeeping_report(
         day.pop("_overwork_timeline", None)
 
     return {
-        "calculation_version": "timekeeping-v18-rest-first-sunday-fallback",
+        "calculation_version": "timekeeping-v12-catering-sixth-above-48",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},

@@ -77,7 +77,7 @@ def test_declared_leave_without_punch_is_omitted_from_report():
     assert result["counts"] == {"all": 0, "ok": 0, "change": 0, "review": 0}
 
 
-def test_exact_eight_hour_declaration_does_not_override_six_day_contract():
+def test_exact_eight_hour_declaration_changes_daily_basis_not_six_day_contract():
     schedules, punches = [], []
     for index in range(5):
         day = f"{3 + index:02d}/08/2026"
@@ -89,13 +89,13 @@ def test_exact_eight_hour_declaration_does_not_override_six_day_contract():
     friday = next(row for row in rows if row["work_date"] == "07/08/2026")
     assert friday["weekly_days"] == 6
     assert friday["weekly_days_source"] == "Σύμβαση εργαζομένου"
-    assert friday["daily_overtime_basis_days"] == 6
-    assert friday["daily_overtime_basis_source"] == "Σύμβαση εργαζομένου"
-    assert friday["overwork_minutes"] == 80
-    assert friday["overtime_minutes"] == 30
+    assert friday["daily_overtime_basis_days"] == 5
+    assert friday["daily_overtime_basis_source"] == "Δηλωμένο ωράριο ημέρας ακριβώς 8:00"
+    assert friday["overwork_minutes"] == 30
+    assert friday["overtime_minutes"] == 0
 
 
-def test_exact_six_forty_declaration_does_not_override_five_day_contract():
+def test_exact_six_forty_declaration_changes_daily_basis_not_five_day_contract():
     schedules, punches = [], []
     for index in range(6):
         day = f"{3 + index:02d}/08/2026"
@@ -107,10 +107,10 @@ def test_exact_six_forty_declaration_does_not_override_five_day_contract():
     saturday = next(row for row in rows if row["work_date"] == "08/08/2026")
     assert saturday["weekly_days"] == 5
     assert saturday["weekly_days_source"] == "Σύμβαση εργαζομένου"
-    assert saturday["daily_overtime_basis_days"] == 5
-    assert saturday["daily_overtime_basis_source"] == "Σύμβαση εργαζομένου"
-    assert saturday["overwork_minutes"] == 30
-    assert saturday["overtime_minutes"] == 0
+    assert saturday["daily_overtime_basis_days"] == 6
+    assert saturday["daily_overtime_basis_source"] == "Δηλωμένο ωράριο ημέρας ακριβώς 6:40"
+    assert saturday["overwork_minutes"] == 80
+    assert saturday["overtime_minutes"] == 30
 
 
 def test_non_standard_declared_duration_falls_back_to_contract():
@@ -125,7 +125,7 @@ def test_non_standard_declared_duration_falls_back_to_contract():
     assert row["daily_overtime_basis_source"] == "Σύμβαση εργαζομένου"
 
 
-def test_mixed_exact_durations_always_use_contract():
+def test_mixed_exact_durations_fall_back_to_contract():
     schedules = [
         sched(day="03/08/2026", start="09:00", end="17:00"),
         sched(day="04/08/2026", start="09:00", end="15:40"),
@@ -134,7 +134,7 @@ def test_mixed_exact_durations_always_use_contract():
     assert {row["weekly_days"] for row in rows} == {6}
     assert {row["weekly_days_source"] for row in rows} == {"Σύμβαση εργαζομένου"}
     by_date = {row["work_date"]: row for row in rows}
-    assert by_date["03/08/2026"]["daily_overtime_basis_days"] == 6
+    assert by_date["03/08/2026"]["daily_overtime_basis_days"] == 5
     assert by_date["04/08/2026"]["daily_overtime_basis_days"] == 6
 
 
@@ -783,41 +783,6 @@ def test_split_schedule_matches_each_punch_independently():
     assert row["actual"] == "09:05–13:05 · 17:05–21:05"
     assert row["matched_parts"] == 2
     assert row["orphan_punch_count"] == 0
-
-
-def test_split_schedule_single_entry_uses_nearest_part_and_never_requires_review():
-    schedules = [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")]
-    expected = {
-        "07:00": ("change", "07:00–13:00 · 17:00–19:00"),
-        "14:00": ("change", "09:00–11:00 · 14:00–20:00"),
-        "18:00": ("ok", "09:00–13:00 · 17:00–21:00"),
-        "10:00": ("ok", "09:00–13:00 · 17:00–21:00"),
-    }
-
-    for hit, (status, proposed) in expected.items():
-        row = build_weekly_report(
-            schedules, [punch(hit, None)], [contract(flex=0, break_minutes=0, break_in_work=0)]
-        )["days"][0]
-        assert row["status"] == status
-        if status == "ok":
-            assert row["rule_id"] == "SPLIT_SINGLE_PUNCH_WITHIN_DECLARED"
-        else:
-            assert row["rule_id"] in {"SPLIT_REBUILT", "SPLIT_GAP_ADJUSTED"}
-        assert row["proposed"] == proposed
-        assert row["overtime_minutes"] == 0
-
-
-def test_compliant_split_uses_sum_of_parts_not_full_clock_envelope():
-    schedules = [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")]
-    punches = [punch("09:00", "13:00"), punch("17:00", "21:00")]
-
-    row = build_weekly_report(schedules, punches, [contract(flex=0)])["days"][0]
-
-    assert row["status"] == "ok"
-    assert row["rule_id"] == "SPLIT_COMPLIANT"
-    assert row["overtime_worked_minutes"] == 480
-    assert row["overwork_minutes"] == 0
-    assert row["overtime_minutes"] == 0
 
 
 def test_flexible_arrival_keeps_normal_schedule_and_declares_only_overtime():

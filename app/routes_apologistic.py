@@ -53,15 +53,6 @@ class TimekeepingPeriodError(ValueError):
         self.problem_weeks = problem_weeks or []
 
 
-def _apply_sunday_rest_visibility(report: dict, *, enabled: bool) -> None:
-    """Expose Sunday-rest obligations only for stores opted into the rule."""
-    if enabled:
-        return
-    report["rest_obligations"] = []
-    for day in report.get("days") or []:
-        day["incoming_rest_obligations"] = []
-
-
 def _saved_range_response(ctx: dict, date_from: date, date_to: date):
     days = list_store_days(store_id=int(ctx["id"]), date_from=date_from, date_to=date_to)
     enrich_employee_month_days(
@@ -165,10 +156,6 @@ def apologistic_week():
     if loaded is None:
         return jsonify({"error": "Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτή την εβδομάδα"}), 404
     report, snapshot = loaded
-    _apply_sunday_rest_visibility(
-        report,
-        enabled=get_sunday_rest_transfer_enabled(int(ctx["id"])),
-    )
     snapshot["source"] = "database"
     return jsonify({
         "store": {"id": ctx["id"], "name": ctx["name"], "employer_afm": ctx["employer_afm"],
@@ -295,7 +282,7 @@ def _merge_timekeeping_days(
     premium_keys = ("day", "night", "sunday_holiday", "night_sunday_holiday")
     breakdown_families = (
         "overwork", "overtime_40", "overtime_60", "overtime_120",
-        "partial_additional_12", "uneven_extension", "sixth_day", "sixth_day_above_48",
+        "partial_additional_12", "sixth_day", "sixth_day_above_48",
         "exception_sixth_day_above_48",
     )
     employees: dict[str, dict[str, object]] = {}
@@ -314,23 +301,17 @@ def _merge_timekeeping_days(
             "overtime_60": 0,
             "overtime_120": 0,
             "partial_additional_12": 0,
-            "uneven_extension_minutes": 0,
             "sixth_day_minutes": 0,
             "sixth_day_above_48_minutes": 0,
             "exception_sixth_day_above_48_minutes": 0,
-            "exception_sixth_day_holiday_minutes": 0,
-            "exception_sixth_day_holiday_night_minutes": 0,
         })
         total["recognized_work_minutes"] += int(day.get("recognized_work_minutes") or 0)
         for key, value in (day.get("premium_minutes") or {}).items():
             total[str(key)] += int(value or 0)
         for key in (
             "overtime_40", "overtime_60", "overtime_120", "partial_additional_12",
-            "uneven_extension_minutes",
             "sixth_day_minutes", "sixth_day_above_48_minutes",
             "exception_sixth_day_above_48_minutes",
-            "exception_sixth_day_holiday_minutes",
-            "exception_sixth_day_holiday_night_minutes",
         ):
             total[key] += int(day.get(key) or 0)
         for family in breakdown_families:
@@ -343,7 +324,7 @@ def _merge_timekeeping_days(
             annual_after_by_employee.get(afm) or 0
         )
     return {
-        "calculation_version": "timekeeping-v18-rest-first-sunday-fallback-month",
+        "calculation_version": "timekeeping-v12-catering-sixth-above-48-month",
         "days": sorted(days, key=lambda item: (datetime.strptime(str(item["work_date"]), "%d/%m/%Y"), str(item["employee_afm"]))),
         "employees": sorted(employees.values(), key=lambda item: (str(item["eponymo"]), str(item["onoma"]), str(item["employee_afm"]))),
         "counts": {"days": len(days), "employees": len(employees)},

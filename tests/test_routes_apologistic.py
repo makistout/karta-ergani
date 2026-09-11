@@ -27,7 +27,6 @@ def test_existing_week_is_returned_from_database(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
     monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
     monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
-    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
     monkeypatch.setattr(
         routes_apologistic,
         "load_report",
@@ -36,46 +35,6 @@ def test_existing_week_is_returned_from_database(monkeypatch):
     response = _app().test_client().get("/api/apologistic/week?from=2026-08-03&to=2026-08-09")
     assert response.status_code == 200
     assert response.get_json()["snapshot"]["source"] == "database"
-
-
-def test_week_hides_old_rest_obligations_when_store_sunday_rule_is_disabled(monkeypatch):
-    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
-    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
-    monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
-    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
-    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: ({
-        "days": [{
-            "employee_afm": "123456789",
-            "incoming_rest_obligations": [{"source_work_date": "02/08/2026"}],
-        }],
-        "rest_obligations": [{"employee_afm": "123456789"}],
-    }, {"id": 7, "status": "draft"}))
-
-    body = _app().test_client().get(
-        "/api/apologistic/week?from=2026-08-03&to=2026-08-09"
-    ).get_json()
-
-    assert body["days"][0]["incoming_rest_obligations"] == []
-    assert body["rest_obligations"] == []
-
-
-def test_week_keeps_rest_obligations_when_store_sunday_rule_is_enabled(monkeypatch):
-    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
-    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
-    monkeypatch.setattr(routes_apologistic, "tables_available", lambda: True)
-    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: True)
-    obligation = {"source_work_date": "02/08/2026"}
-    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: ({
-        "days": [{"employee_afm": "123456789", "incoming_rest_obligations": [obligation]}],
-        "rest_obligations": [{"employee_afm": "123456789", **obligation}],
-    }, {"id": 7, "status": "draft"}))
-
-    body = _app().test_client().get(
-        "/api/apologistic/week?from=2026-08-03&to=2026-08-09"
-    ).get_json()
-
-    assert body["days"][0]["incoming_rest_obligations"] == [obligation]
-    assert len(body["rest_obligations"]) == 1
 
 
 def test_missing_past_snapshot_does_not_calculate_on_the_fly(monkeypatch):
