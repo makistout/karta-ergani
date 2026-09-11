@@ -8,6 +8,17 @@
 
 ---
 
+## 2026-09-11 — Νέοι εργαζόμενοι: άμεσο enrichment + AI συγχρονισμός προσωπικού
+
+- Μετά από επιτυχές sync ωραρίου στο 15λεπτο (`scheduled_today_sync`), αν υπάρχουν
+  ΑΦΜ χωρίς σύνδεση `karta_employment` ή χωρίς QR, γίνεται background
+  `opportunistic_employment_enrichment` (Μητρώο + QR) χωρίς να περιμένει το 04:00.
+- Νέα AI εντολή `sync_employees`: «συγχρόνισε/συγχρονισμός προσωπικού/εργαζομένων»
+  (και greeklish/sync employees) → άμεσος συγχρονισμός στοιχείων σύμβασης από Μητρώο.
+- Helper `list_afms_needing_employment_enrichment` · `only_afms` στο portal employment sync.
+
+---
+
 ## 2026-09-11 — Επαναφορά κανόνων πριν από 7/9/2026
 
 - Οι κανόνες Απολογιστικού και Ωρομέτρησης που εισήχθησαν στις 7/9 και η

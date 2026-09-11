@@ -179,6 +179,7 @@ def iter_employment_contract_sync_events(
     ctx: dict[str, Any],
     *,
     run_id: str | None = None,
+    only_afms: set[str] | list[str] | None = None,
 ) -> Iterator[dict[str, Any]]:
     log = logger_for_store("employment_contract_sync", ctx, run_id=run_id)
     finalize_run = run_id is None
@@ -199,7 +200,11 @@ def iter_employment_contract_sync_events(
     unlinked_afms.discard("")
     # Κανονικοί στόχοι + ορφανές δραστηριότητες. Η σύνδεση των ορφανών γίνεται
     # μόνο αν το ΑΦΜ επιβεβαιωθεί από την αναζήτηση τρέχοντος προσωπικού Μητρώου.
-    target_afms = (schedule_afms & active_afms if active_afms else schedule_afms) | unlinked_afms
+    if only_afms is not None:
+        target_afms = {norm_afm(a) for a in only_afms}
+        target_afms.discard("")
+    else:
+        target_afms = (schedule_afms & active_afms if active_afms else schedule_afms) | unlinked_afms
     log.info(
         "Έναρξη συγχρονισμού στοιχείων σύμβασης",
         portal_base=portal_base,
@@ -209,11 +214,14 @@ def iter_employment_contract_sync_events(
         active_employees=len(active_afms),
         target_employees=len(target_afms),
         unlinked_activity_employees=len(unlinked_afms),
+        only_afms=bool(only_afms is not None),
     )
     yield {
         "event": "progress",
         "message": (
             f"Σύμβαση για ενεργούς στο ψηφιακό ωράριο ({len(target_afms)})…"
+            if only_afms is None
+            else f"Σύμβαση/QR για {len(target_afms)} εργαζομένους…"
         ),
         "step": 0,
         "total": len(target_afms),
@@ -308,7 +316,10 @@ def iter_employment_contract_sync_events(
                 row.get("onoma"),
                 flex_arrival_minutes=flex,
             )
-            if afm in unlinked_afms and link_employee_to_store(
+            # Νέοι (χωρίς γραμμή) ή ανενεργοί με ωράριο: ενεργοποίηση σύνδεσης.
+            # Το unlinked κοιτάει ύπαρξη γραμμής (όχι active)· χωρίς αυτό οι ανενεργοί
+            # παίρνουν QR αλλά μένουν active=0 και ξαναμπαίνουν στο enrichment.
+            if (afm in unlinked_afms or afm not in active_afms) and link_employee_to_store(
                 employer_afm,
                 branch_aa,
                 afm,
@@ -317,7 +328,10 @@ def iter_employment_contract_sync_events(
                 flex_arrival_minutes=flex,
             ):
                 linked += 1
-                log.info("Συνδέθηκε ορφανή δραστηριότητα με το κατάστημα", employee_afm=afm)
+                log.info(
+                    "Συνδέθηκε/ενεργοποιήθηκε εργαζόμενος στο κατάστημα",
+                    employee_afm=afm,
+                )
             if update_employment_work_time_qr(
                 employer_afm,
                 branch_aa,
@@ -385,13 +399,16 @@ def sync_employment_contracts_from_portal(
     ctx: dict[str, Any],
     *,
     run_id: str | None = None,
+    only_afms: set[str] | list[str] | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "success": False,
         "detail": "Δεν ολοκληρώθηκε",
         "count": 0,
     }
-    for ev in iter_employment_contract_sync_events(ctx, run_id=run_id):
+    for ev in iter_employment_contract_sync_events(
+        ctx, run_id=run_id, only_afms=only_afms
+    ):
         if ev.get("event") == "done":
             result = ev.get("result") or result
         elif ev.get("event") == "error":

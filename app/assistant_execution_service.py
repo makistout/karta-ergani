@@ -147,6 +147,38 @@ def _execute_command(
     wall_start = float(queue_wall_start) if queue_wall_start is not None else time.monotonic()
     base_now = queue_base_now or datetime.now(_ATHENS)
 
+    if intent == "sync_employees":
+        from app.ergani_env import store_api_context
+        from app.portal_employment_contract_sync import sync_employment_contracts_from_portal
+
+        store_for_ctx = dict(store)
+        store_for_ctx.setdefault("name", store.get("name") or f"store-{store_id}")
+        ctx = store_api_context(store_for_ctx)
+        sync_result = sync_employment_contracts_from_portal(ctx)
+        ok = bool(sync_result.get("success"))
+        detail = str(sync_result.get("detail") or ("OK" if ok else "Αποτυχία"))
+        count = sync_result.get("count")
+        qr_synced = sync_result.get("qr_synced")
+        linked = sync_result.get("linked_employees")
+        parts = [detail]
+        if count is not None:
+            parts.append(f"συμβάσεις={count}")
+        if qr_synced is not None:
+            parts.append(f"QR={qr_synced}")
+        if linked is not None:
+            parts.append(f"συνδέσεις={linked}")
+        summary = " · ".join(str(p) for p in parts if p is not None and str(p).strip())
+        return [{
+            "employee": "Προσωπικό",
+            "success": ok,
+            "protocol": None,
+            "detail": summary,
+            "count": count,
+            "qr_synced": qr_synced,
+            "linked_employees": linked,
+            "error": None if ok else summary,
+        }]
+
     for index, employee in enumerate(employees, start=1):
         name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
         global_batch_index = punch_index_offset + index
@@ -352,8 +384,14 @@ def execution_answer(task_id: int, result: dict[str, Any]) -> str:
     lines = [f"Εντολή #{task_id}:"]
     for row in result.get("results") or []:
         if row.get("success"):
-            protocol = str(row.get("protocol") or "—")
-            lines.append(f"{row.get('employee') or 'Εργαζόμενος'} · Επιτυχία · Πρωτόκολλο: {protocol}")
+            protocol = str(row.get("protocol") or "").strip()
+            detail = str(row.get("detail") or "").strip()
+            if protocol:
+                lines.append(f"{row.get('employee') or 'Εργαζόμενος'} · Επιτυχία · Πρωτόκολλο: {protocol}")
+            elif detail:
+                lines.append(f"{row.get('employee') or 'Εργαζόμενος'} · Επιτυχία · {detail}")
+            else:
+                lines.append(f"{row.get('employee') or 'Εργαζόμενος'} · Επιτυχία · Πρωτόκολλο: —")
         else:
             lines.append(f"{row.get('employee') or 'Εργαζόμενος'} · Αποτυχία · {row.get('error') or 'Άγνωστο σφάλμα'}")
     if not result.get("results"):

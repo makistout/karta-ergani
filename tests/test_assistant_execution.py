@@ -159,3 +159,42 @@ def test_ergani_authentication_token_is_reused(monkeypatch):
     assert first_token == second_token == "cached-token"
     assert calls["authenticate"] == 1
     service._clear_auth_cache()
+
+
+def test_confirmed_sync_employees_runs_employment_contract_sync():
+    task = {
+        "id": 21,
+        "store_id": 4,
+        "payload_json": json.dumps({
+            "intent": "sync_employees",
+            "store_id": 4,
+            "employee_afms": [],
+        }),
+    }
+    store = {"id": 4, "name": "ERATO", "employer_afm": "123456789", "branch_aa": "0"}
+    client = SimpleNamespace(base_url="https://example.invalid/")
+    with patch("app.assistant_execution_service.get_store_config", return_value=store), \
+         patch("app.assistant_execution_service.get_action_settings", return_value={"ai_agent_enabled": True}), \
+         patch("app.assistant_execution_service._authenticate", return_value=("token", client)), \
+         patch(
+             "app.portal_employment_contract_sync.sync_employment_contracts_from_portal",
+             return_value={
+                 "success": True,
+                 "detail": "OK",
+                 "count": 3,
+                 "qr_synced": 2,
+                 "linked_employees": 1,
+             },
+         ) as sync, \
+         patch("app.repo_telegram_assistant.finish_task_execution") as finish:
+        result = execute_confirmed_task(task, source="assistant_ui")
+
+    assert result["success"] is True
+    assert result["results"][0]["success"] is True
+    assert result["results"][0]["employee"] == "Προσωπικό"
+    assert "QR=2" in str(result["results"][0].get("detail") or "")
+    sync.assert_called_once()
+    finish.assert_called_once_with(21, success=True, result=result)
+    answer = execution_answer(21, result)
+    assert "Προσωπικό" in answer
+    assert "Επιτυχία" in answer

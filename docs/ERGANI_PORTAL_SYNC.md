@@ -36,6 +36,13 @@
   συνδέονται αυτόματα.
 - Ημερήσιο scheduled: `scheduled_employment_contract_sync` (default `04:00`,
   `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
+- **Opportunistic enrichment:** μετά από επιτυχές sync ωραρίου στο 15λεπτο
+  (`scheduled_today_sync`), αν υπάρχουν ΑΦΜ στο `karta_schedule` χωρίς active
+  `karta_employment` ή χωρίς `work_time_qr_data_url`, τρέχει στο παρασκήνιο
+  `opportunistic_employment_enrichment` μόνο για αυτά τα ΑΦΜ (`only_afms`), ώστε
+  ο scanner να τους αναγνωρίζει χωρίς να περιμένει το 04:00.
+- AI Agent: intent `sync_employees` («συγχρόνισε προσωπικό/εργαζομένους») καλεί
+  πλήρη `sync_employment_contracts_from_portal` για το κατάστημα.
 - Migration: `sql/alter_add_karta_employment_contract.sql` /
   `python scripts/ensure_karta_employment_contract_table.py`.
 - Η ίδια καρτέλα περιέχει και την ενότητα **Ψηφιακή Οργάνωση Χρόνου Εργασίας**.

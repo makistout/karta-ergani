@@ -967,3 +967,23 @@ def test_empty_commands_array_with_today_info_is_answered():
     assert validation["valid"] is True
     assert "SALTY" in proposed
     assert "Δεν αναγνωρίστηκε καμία εντολή" not in (validation.get("errors") or [])
+
+
+def test_sync_employees_draft_without_employee_or_date():
+    parsed = {
+        "intent": "sync_employees",
+        "store_id": 4,
+        "employee_afms": [],
+        "date": None,
+    }
+    status, validation, proposed = validate_and_describe(
+        parsed,
+        contexts=[{"store_id": 4, "store_name": "ERATO"}],
+        employees=[],
+        user_text="συγχρόνισε προσωπικό",
+    )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert "Μητρώο" in proposed
+    assert "εργαζόμενοι" not in " ".join(validation.get("errors") or []).casefold()
+    assert "ημερομηνία" not in " ".join(validation.get("errors") or []).casefold()

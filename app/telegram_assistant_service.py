@@ -28,11 +28,14 @@ ALLOWED_INTENTS = {
     "schedule_change",
     "rest_day",
     "leave",
+    "sync_employees",
     "today_info",
     "cancel_pending",
     "unknown",
 }
 _INFO_INTENTS = {"today_info", "cancel_pending"}
+# Εντολές επιπέδου καταστήματος: χωρίς εργαζόμενο/ημερομηνία.
+_STORE_ACTION_INTENTS = {"sync_employees"}
 
 _GEMINI_RETRY_STATUSES = {429, 500, 502, 503, 504}
 # Gemini attempts within one provider slot.
@@ -243,6 +246,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
         "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας. «κλείσε όλους εκτός από Χ/Υ» = ανοιχτοί ΜΕΙΟΝ τους εξαιρούμενους. «άνοιξε όλους/όσους» = μόνο όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα (όχι ρεπό/χωρίς ωράριο)· «εκτός από» αφαιρεί εξαιρέσεις.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to ή intervals για σπαστό.",
+        "Συγχρονισμός προσωπικού/εργαζομένων/Μητρώου/QR («συγχρόνισε προσωπικό», «συγχρονισμός εργαζομένων») → intent=sync_employees. Χωρίς employee_afms και χωρίς date. ΜΗΝ το μπερδεύεις με συγχρονισμό ωραρίου/πραγματικής.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
     ]
 
@@ -354,6 +358,11 @@ def parse_command(
             (isinstance(fast_afms, list) and bool(fast_afms))
             or (isinstance(fast_ambiguous, list) and bool(fast_ambiguous))
         ):
+            fast_metadata["fast_path"] = True
+            fast_metadata["llm_order"] = ["rules_fast"]
+            return fast_parsed, employees, fast_metadata
+
+        if fast_intent == "sync_employees":
             fast_metadata["fast_path"] = True
             fast_metadata["llm_order"] = ["rules_fast"]
             return fast_parsed, employees, fast_metadata
@@ -1042,6 +1051,12 @@ def _inherit_conversation_context(
         "ωραριο": "schedule_change",
         "αλλαγη_ωραριου": "schedule_change",
         "αλλαγηωραριου": "schedule_change",
+        "sync_staff": "sync_employees",
+        "sync_personnel": "sync_employees",
+        "συγχρονισμος_προσωπικου": "sync_employees",
+        "συγχρονισμος_εργαζομενων": "sync_employees",
+        "συγχρονισε_προσωπικο": "sync_employees",
+        "συγχρονισε_εργαζομενους": "sync_employees",
     }
     alias_key = _fold_text(intent).replace(" ", "_").replace("-", "_")
     if alias_key in intent_aliases:
@@ -1082,7 +1097,10 @@ def _inherit_conversation_context(
         from app.assistant_card_intent import correct_card_intent_from_text
 
         correct_card_intent_from_text(parsed, user_text)
-    if str(parsed.get("intent") or "unknown") not in {"unknown", "today_info"} and not str(parsed.get("date") or "").strip():
+    if (
+        str(parsed.get("intent") or "unknown") not in {"unknown", "today_info", *_STORE_ACTION_INTENTS}
+        and not str(parsed.get("date") or "").strip()
+    ):
         parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
 
 
@@ -1319,7 +1337,7 @@ def _validate_single_command(
         parsed.pop("ambiguous_employee_afms", None)
         parsed.pop("pending_intent", None)
     if (
-        intent not in {"unknown", *_INFO_INTENTS}
+        intent not in {"unknown", *_INFO_INTENTS, *_STORE_ACTION_INTENTS}
         and not ambiguous_afms
         and (not afms or len(matches) != len(afms))
         and not (
@@ -1334,7 +1352,7 @@ def _validate_single_command(
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
-    if intent not in {"unknown", *_INFO_INTENTS} and not _is_iso_date(date):
+    if intent not in {"unknown", *_INFO_INTENTS, *_STORE_ACTION_INTENTS} and not _is_iso_date(date):
         errors.append("Δεν προσδιορίστηκε έγκυρη ημερομηνία")
     today_iso = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
     if intent.startswith("card_check_") and _is_iso_date(date) and date > today_iso:
@@ -1562,6 +1580,7 @@ def _validate_single_command(
         "schedule_change": _format_schedule_change_label(parsed),
         "rest_day": "Δήλωση ρεπό",
         "leave": f"Δήλωση άδειας ({parsed.get('leave_type') or 'τύπος προς διευκρίνιση'})",
+        "sync_employees": "Συγχρονισμός προσωπικού",
         "today_info": "Πληροφορία σήμερα",
         "cancel_pending": "Ακύρωση εντολής",
         "unknown": "Μη αναγνωρισμένη εντολή",
@@ -1570,6 +1589,8 @@ def _validate_single_command(
         proposed = str(parsed.get("clarification_question") or "").strip()
     elif intent == "cancel_pending":
         proposed = str(parsed.get("clarification_question") or "Ακυρώθηκε η εντολή.").strip()
+    elif intent == "sync_employees":
+        proposed = "Συγχρονισμός προσωπικού από Μητρώο Ergani (σύνδεση + QR)"
     elif parsed.get("card_action_all_skipped"):
         action_noun = "άνοιγμα" if "check_in" in intent else "κλείσιμο"
         if len(skipped_card) == 1:

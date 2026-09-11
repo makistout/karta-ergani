@@ -26,6 +26,7 @@ _OPERATION_LABELS = {
     "scheduled_weekly_repair_work_log_sync": "Κυριακάτικο 90ήμερο repair πραγματικής",
     "scheduled_apologistic_snapshot": "Εβδομαδιαίο απολογιστικό",
     "scheduled_employment_contract_sync": "Ημερήσιο στοιχεία σύμβασης",
+    "opportunistic_employment_enrichment": "Εμπλουτισμός νέων εργαζομένων (Μητρώο/QR)",
     "scheduled_post_sync_notify": "Ειδοποιήσεις μετά το sync",
 }
 

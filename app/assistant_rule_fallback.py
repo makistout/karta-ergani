@@ -65,6 +65,45 @@ _CHECKIN_STATUSES = frozenset({"needs_checkin", "late_arrival"})
 _CHECKOUT_STATUSES = frozenset({"at_work", "needs_checkout"})
 
 
+def looks_like_sync_employees(text: str) -> bool:
+    """«Συγχρόνισε προσωπικό/εργαζομένους» — όχι συγχρονισμός ωραρίου/πραγματικής."""
+    folded = _fold(text)
+    if not folded:
+        return False
+    has_sync = any(
+        token in folded
+        for token in (
+            "συγχρονισ",
+            "κατεβασ",
+        )
+    )
+    if not has_sync and re.search(r"\bsync\b", folded):
+        has_sync = True
+    if not has_sync:
+        return False
+    has_staff = any(
+        token in folded
+        for token in (
+            "προσωπικ",
+            "εργαζομεν",
+            "μητρω",
+            "staff",
+            "employee",
+            "employees",
+        )
+    )
+    if not has_staff:
+        return False
+    # Αποφυγή σύγχυσης με portal sync ωραρίου/πραγματικής χωρίς αναφορά προσωπικού.
+    if any(token in folded for token in ("ωραρι", "πραγματικ", "work log", "schedule")):
+        if not any(
+            token in folded
+            for token in ("προσωπικ", "εργαζομεν", "μητρω", "staff", "employee")
+        ):
+            return False
+    return True
+
+
 def looks_like_today_info(text: str) -> bool:
     folded = _fold(text)
     if not folded:
@@ -897,6 +936,13 @@ def rule_based_parse(
     )
     if punch is not None:
         return punch
+
+    if looks_like_sync_employees(text):
+        return _empty_parsed(
+            intent="sync_employees",
+            store_id=store_id,
+            confidence=0.85,
+        )
 
     if not looks_like_today_info(text):
         return None

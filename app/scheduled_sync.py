@@ -27,12 +27,15 @@ OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
 OPERATION_NIGHTLY_PROTOCOL_SYNC = "scheduled_nightly_protocol_sync"
 OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
 OPERATION_EMPLOYMENT_CONTRACT_SYNC = "scheduled_employment_contract_sync"
+OPERATION_EMPLOYMENT_ENRICHMENT = "opportunistic_employment_enrichment"
 OPERATION_APOLOGISTIC_SNAPSHOT = "scheduled_apologistic_snapshot"
 FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
 _RUNNING_GRACE_MINUTES = 15
 AFTER_LOGIN_SYNC_COOLDOWN_SECONDS = 15 * 60
 _after_login_sync_lock = threading.Lock()
 _after_login_sync_seen: dict[str, float] = {}
+_EMPLOYMENT_ENRICH_LOCK = threading.Lock()
+_EMPLOYMENT_ENRICH_RUNNING: set[int] = set()
 
 
 def _enqueue_auto_close_prev_day_action(
@@ -607,46 +610,115 @@ def _should_run_schedule_archive(
     return True, "έτοιμο"
 
 
-def run_employment_contract_sync_for_store(cfg: dict[str, Any]) -> dict[str, Any]:
+def run_employment_contract_sync_for_store(
+    cfg: dict[str, Any],
+    *,
+    only_afms: set[str] | list[str] | None = None,
+    operation: str | None = None,
+    parent_run_id: str | None = None,
+) -> dict[str, Any]:
     from app.portal_employment_contract_sync import sync_employment_contracts_from_portal
 
     ctx = store_api_context(cfg)
     sid = int(cfg["id"])
     name = str(cfg.get("name") or sid)
+    op = (operation or OPERATION_EMPLOYMENT_CONTRACT_SYNC).strip() or OPERATION_EMPLOYMENT_CONTRACT_SYNC
     run_id = str(uuid.uuid4())
     log = KartaLogger(
-        OPERATION_EMPLOYMENT_CONTRACT_SYNC,
+        op,
         store_id=sid,
         store_name=name,
         run_id=run_id,
         extra={
             "employer_afm": ctx.get("employer_afm"),
             "branch_aa": ctx.get("branch_aa"),
+            "parent_run_id": parent_run_id,
+            "only_afms_count": len(only_afms or []),
         },
     )
-    log.info("Έναρξη ημερήσιου συγχρονισμού στοιχείων σύμβασης")
+    if only_afms is not None:
+        log.info(
+            f"Έναρξη συγχρονισμού στοιχείων σύμβασης για {len(list(only_afms))} ΑΦΜ",
+            only_afms_count=len(list(only_afms)),
+        )
+    else:
+        log.info("Έναρξη ημερήσιου συγχρονισμού στοιχείων σύμβασης")
     try:
-        result = sync_employment_contracts_from_portal(ctx, run_id=run_id)
+        result = sync_employment_contracts_from_portal(
+            ctx, run_id=run_id, only_afms=only_afms
+        )
         ok = bool(result.get("success"))
-        detail = result.get("detail") or "Συγχρονισμός στοιχείων σύμβασης"
-        log.info(detail, success=ok, count=result.get("count"))
+        detail = str(result.get("detail") or ("OK" if ok else "Αποτυχία"))
+        log.info(
+            f"Ολοκλήρωση συγχρονισμού σύμβασης: {detail}",
+            success=ok,
+            count=result.get("count"),
+            qr_synced=result.get("qr_synced"),
+            linked_employees=result.get("linked_employees"),
+        )
         repo_sync_log.finish_run(
             run_id,
             status="done" if ok else "error",
-            message=detail,
+            message=f"{name}: {detail}",
             result={"success": ok, "employment_contract": result},
         )
         return {"success": ok, "employment_contract": result}
     except Exception as ex:
-        err = str(ex)
-        log.error(f"Σφάλμα συγχρονισμού σύμβασης: {err}")
+        log.error(f"Σφάλμα συγχρονισμού σύμβασης: {ex}")
         repo_sync_log.finish_run(
             run_id,
             status="error",
-            message=err,
-            result={"success": False, "error": err},
+            message=f"{name}: {ex}",
+            result={"success": False, "error": str(ex)},
         )
-        return {"success": False, "error": err}
+        return {"success": False, "error": str(ex)}
+
+
+def enqueue_employment_enrichment_if_needed(
+    cfg: dict[str, Any],
+    *,
+    parent_run_id: str | None = None,
+) -> bool:
+    """Αν υπάρχουν ΑΦΜ χωρίς σύνδεση/QR, τρέξε Μητρώο στο παρασκήνιο."""
+    from app.repo_entities import list_afms_needing_employment_enrichment
+
+    if not is_store_syncable(cfg):
+        return False
+    ctx = store_api_context(cfg)
+    needed = list_afms_needing_employment_enrichment(
+        str(ctx.get("employer_afm") or ""),
+        str(ctx.get("branch_aa") or "0"),
+    )
+    if not needed:
+        return False
+
+    sid = int(cfg["id"])
+    with _EMPLOYMENT_ENRICH_LOCK:
+        if sid in _EMPLOYMENT_ENRICH_RUNNING:
+            return False
+        _EMPLOYMENT_ENRICH_RUNNING.add(sid)
+
+    cfg_snapshot = dict(cfg)
+    afms = list(needed)
+
+    def _run() -> None:
+        try:
+            run_employment_contract_sync_for_store(
+                cfg_snapshot,
+                only_afms=afms,
+                operation=OPERATION_EMPLOYMENT_ENRICHMENT,
+                parent_run_id=parent_run_id,
+            )
+        finally:
+            with _EMPLOYMENT_ENRICH_LOCK:
+                _EMPLOYMENT_ENRICH_RUNNING.discard(sid)
+
+    threading.Thread(
+        target=_run,
+        daemon=False,
+        name=f"employment-enrich-{sid}",
+    ).start()
+    return True
 
 
 def run_work_log_range_sync_for_store(
@@ -1019,6 +1091,20 @@ def sync_store_today(
         success=ok,
     )
 
+    employment_enrichment_enqueued = False
+    if schedule.get("success"):
+        try:
+            employment_enrichment_enqueued = enqueue_employment_enrichment_if_needed(
+                cfg,
+                parent_run_id=run_id,
+            )
+            if employment_enrichment_enqueued:
+                log.info(
+                    "Έγινε enqueue enrichment Μητρώου/QR για ΑΦΜ χωρίς σύνδεση ή QR"
+                )
+        except Exception as ex:
+            log.error(f"Σφάλμα enqueue enrichment Μητρώου: {ex}")
+
     post_sync_notifications_enqueued = False
     if ok and op == OPERATION:
         post_sync_notifications_enqueued = enqueue_post_sync_notifications(
@@ -1059,6 +1145,7 @@ def sync_store_today(
         "schedule": schedule,
         "work_log": work_log,
         "post_sync_notifications_enqueued": post_sync_notifications_enqueued,
+        "employment_enrichment_enqueued": employment_enrichment_enqueued,
         "auto_actions": auto_actions,
         "schedule_last_sync_at": sync_times.get("schedule_last_sync_at"),
         "work_log_last_sync_at": sync_times.get("work_log_last_sync_at"),

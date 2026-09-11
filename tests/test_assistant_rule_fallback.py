@@ -517,3 +517,24 @@ def test_before_another_event_is_not_silently_now():
     time_value, suffix = _extract_punch_time("κλείσε την κάρτα 10 λεπτά πριν την έξοδο")
     assert suffix == "_unresolved"
     assert time_value is None
+
+
+def test_looks_like_sync_employees_phrases():
+    from app.assistant_rule_fallback import looks_like_sync_employees, rule_based_parse
+
+    assert looks_like_sync_employees("συγχρόνισε προσωπικό")
+    assert looks_like_sync_employees("συγχρονισμός εργαζομένων")
+    assert looks_like_sync_employees("κατέβασε το μητρώο")
+    assert looks_like_sync_employees("sync employees")
+    assert not looks_like_sync_employees("συγχρόνισε ωράριο")
+    assert not looks_like_sync_employees("ποιοι εργαζόμενοι δουλεύουν")
+
+    parsed = rule_based_parse(
+        text="συγχρόνισε προσωπικό",
+        store_id=4,
+        store_name="ERATO",
+        today_home={"stores": []},
+    )
+    assert parsed is not None
+    assert parsed["intent"] == "sync_employees"
+    assert parsed["store_id"] == 4
