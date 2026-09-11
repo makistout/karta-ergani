@@ -25,10 +25,12 @@ scanner session and no office/admin login. No App Store / Google Play package.
   confirmation, submission through existing `_submit_work_card`, preserving the
   store's listener/direct routing and existing card guards.
 - Αποστολές: κάθε άνοιγμα φορτώνει φρέσκα δεδομένα από τη βάση (`no-store`),
-  με ορατό spinner «Φόρτωση από τη βάση…». Πρώτη σελίδα: **TOP 20** χτυπήματα
-  από `karta_work_log`· επόμενες σελίδες με OFFSET, 20 ανά σελίδα, βέλη χωρίς
-  συνολικό πλήθος. Τα παλιά date-filtered history και manual sync endpoints έχουν
-  αφαιρεθεί· ο συγχρονισμός υποβάθρου του erganiOS παραμένει η πηγή ενημερώσεων.
+  με ορατό spinner «Φόρτωση από τη βάση…». Πρώτη σελίδα: έως **20** χτυπήματα
+  από `karta_work_log` **και** επιτυχημένες δηλώσεις `karta_card_event` (ώστε
+  ανοιχτή κάρτα από scanner να φαίνεται πριν τον portal sync)· επόμενες σελίδες
+  20 ανά σελίδα, βέλη χωρίς συνολικό πλήθος. Τα παλιά date-filtered history και
+  manual sync endpoints έχουν αφαιρεθεί· ο συγχρονισμός υποβάθρου του erganiOS
+  παραμένει η πηγή ενημερώσεων work_log.
 - Εκκρεμείς: separate tab and count of local unconfirmed submissions, with retry,
   late reason selection and explicit unknown-result handling.
 - Local IndexedDB outbox records intent before sending. Replays reuse request id.

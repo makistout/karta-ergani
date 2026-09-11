@@ -219,6 +219,23 @@ def test_database_failure_is_json_not_debug_html(setup):
     assert response.is_json and 'error' in response.json
 
 
+def test_dedupe_recent_punches_prefers_card_with_protocol():
+    from app.repo_scanner import _dedupe_recent_punches
+
+    rows = [
+        {"employee_afm": "1", "date": "11/09/2026", "event": "in", "time": "11:01",
+         "src": "work", "protocol": None, "src_id": 1},
+        {"employee_afm": "1", "date": "11/09/2026", "event": "in", "time": "11:01",
+         "src": "card", "protocol": "ΚΕ1", "src_id": 2},
+        {"employee_afm": "2", "date": "11/09/2026", "event": "in", "time": "09:03",
+         "src": "work", "protocol": None, "src_id": 3},
+    ]
+    out = _dedupe_recent_punches(rows)
+    assert len(out) == 2
+    assert out[0]["protocol"] == "ΚΕ1" and out[0]["src"] == "card"
+    assert out[1]["employee_afm"] == "2"
+
+
 def test_recent_punches_pagination_is_store_scoped_without_totals(setup):
     app,client=setup;sign_in(app,client)
     with patch('app.repo_scanner.recent_punches',return_value=([{'id':42,'event':'out'}],True)) as query:
