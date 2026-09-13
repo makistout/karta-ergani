@@ -104,23 +104,8 @@
         <div id="protocolsWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
       </div>
       <div id="protocolsMsg" class="msg"></div>
-
-      <div id="protocolPdfModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="protocolPdfTitle">
-        <div class="office-modal-backdrop" data-protocol-pdf-close></div>
-        <div class="office-modal-panel office-modal-panel--history protocol-pdf-modal-panel">
-          <h2 id="protocolPdfTitle" class="office-modal-title">PDF δήλωσης</h2>
-          <p id="protocolPdfSub" class="office-modal-sub"></p>
-          <div class="protocol-pdf-frame-wrap">
-            <iframe id="protocolPdfFrame" title="PDF δήλωσης πρωτοκόλλου"></iframe>
-          </div>
-          <div class="office-modal-actions">
-            <a id="protocolPdfOpenTab" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Άνοιγμα σε νέα καρτέλα</a>
-            <button type="button" class="btn btn-secondary" data-protocol-pdf-close>Κλείσιμο</button>
-          </div>
-        </div>
-      </div>
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260611gr2"></script>
-  <script src="/static/js/protocols-list.js?v=20260908typefilter1"></script>
+  <script src="/static/js/protocols-list.js?v=20260913pdflink1"></script>
 {% endblock %}

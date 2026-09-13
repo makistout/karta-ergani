@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderTablePage();
     });
   }
-  bindProtocolPdfModal();
+  Office.bindProtocolPdfModal();
 
   try {
     const activeData = await Office.fetchActiveStore();
@@ -238,7 +238,12 @@ function renderTablePage() {
       btn.title = "Προβολή PDF";
       btn.setAttribute("aria-label", `PDF ${row.protocol || ""}`);
       btn.innerHTML = Office.icon("file-earmark-pdf");
-      btn.addEventListener("click", () => openProtocolPdfModal(row));
+      btn.addEventListener("click", () =>
+        Office.openProtocolPdfModal({
+          protocol: `${row.protocol || ""} · ${formatSubmitAt(row)}`.replace(/^ · | · $/g, ""),
+          pdf_url: row.pdf_url,
+        })
+      );
       pdfTd.appendChild(btn);
     } else {
       pdfTd.textContent = "—";
@@ -275,42 +280,6 @@ function formatOverdue(value) {
   if (value === true || value === 1 || value === "1") return "Ναι";
   if (value === false || value === 0 || value === "0") return "Όχι";
   return "—";
-}
-
-function bindProtocolPdfModal() {
-  const modal = document.getElementById("protocolPdfModal");
-  if (!modal || modal.dataset.bound) return;
-  modal.dataset.bound = "1";
-  modal.querySelectorAll("[data-protocol-pdf-close]").forEach((el) => {
-    el.addEventListener("click", closeProtocolPdfModal);
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !modal.classList.contains("hidden")) {
-      closeProtocolPdfModal();
-    }
-  });
-}
-
-function openProtocolPdfModal(row) {
-  const modal = document.getElementById("protocolPdfModal");
-  const frame = document.getElementById("protocolPdfFrame");
-  const sub = document.getElementById("protocolPdfSub");
-  const openTab = document.getElementById("protocolPdfOpenTab");
-  const url = row.pdf_url;
-  if (!modal || !frame || !url) return;
-  if (sub) {
-    sub.textContent = `${row.protocol || ""} · ${formatSubmitAt(row)}`;
-  }
-  frame.src = url;
-  if (openTab) openTab.href = url;
-  modal.classList.remove("hidden");
-}
-
-function closeProtocolPdfModal() {
-  const modal = document.getElementById("protocolPdfModal");
-  const frame = document.getElementById("protocolPdfFrame");
-  if (frame) frame.src = "about:blank";
-  modal?.classList.add("hidden");
 }
 
 async function runSync() {

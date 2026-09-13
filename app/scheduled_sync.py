@@ -1085,17 +1085,27 @@ def sync_store_today(
 ) -> dict[str, Any]:
     """Συγχρονισμός μίας ημέρας (προεπιλογή σήμερα): ωράριο + πραγματική + καταγραφή."""
     ctx = store_api_context(cfg)
-    today = (work_date_iso or _today_iso()).strip()[:10]
     sid = int(cfg["id"])
     name = str(cfg.get("name") or sid)
     run_id = str(uuid.uuid4())
     op = (operation or OPERATION).strip() or OPERATION
 
     # 00:00–02:59: syncάρουμε και χθες για overnight (*) εγγραφές.
+    # Σημαντικό: το run_scheduled_sync περνάει work_date_iso=σήμερα· δεν πρέπει
+    # αυτό να απενεργοποιεί το overnight window (παλιά: `not work_date_iso`).
     local_now = datetime.now(tz_athens())
-    _include_previous_day = local_now.hour < 3 and not work_date_iso
-    sync_from = _add_iso_days(today, -1) if _include_previous_day else today
+    today_athens = local_now.date().isoformat()
+    requested = (work_date_iso or "").strip()[:10] or None
+    effective_today = requested or today_athens
+    _include_previous_day = (
+        local_now.hour < 3
+        and (requested is None or requested == today_athens)
+    )
+    sync_from = (
+        _add_iso_days(effective_today, -1) if _include_previous_day else effective_today
+    )
     sync_days = 2 if _include_previous_day else 1
+    today = effective_today
 
     log = KartaLogger(
         op,
@@ -1106,11 +1116,16 @@ def sync_store_today(
             "employer_afm": ctx.get("employer_afm"),
             "branch_aa": ctx.get("branch_aa"),
             "work_date": today,
+            "sync_from": sync_from,
+            "include_previous_day": _include_previous_day,
         },
     )
     log.info(
-        f"Έναρξη αυτόματου συγχρονισμού για {today}",
+        f"Έναρξη αυτόματου συγχρονισμού για {today}"
+        + (f" (+χθες {sync_from})" if _include_previous_day else ""),
         work_date=today,
+        sync_from=sync_from,
+        include_previous_day=_include_previous_day,
     )
 
     try:

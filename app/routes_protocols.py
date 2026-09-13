@@ -18,6 +18,10 @@ from app.repo_ergani_protocol import (
     list_protocols_for_store_range,
     table_missing_message,
 )
+from app.protocol_pdf_ui import (
+    normalize_protocol_code,
+    resolve_protocol_pdf_path_for_store,
+)
 from app.sync_jobs import get_sync_job
 from app.sync_route_util import (
     parse_sync_request,
@@ -69,14 +73,7 @@ def _enrich_protocols_with_pdf(
 ) -> list[dict]:
     pdf_set = index_protocol_pdfs_for_range(employer_afm, branch_aa, from_iso, to_iso)
     for row in rows:
-        proto = (
-            str(row.get("protocol") or "")
-            .strip()
-            .upper()
-            .replace("KE", "ΚΕ")
-            .replace("OP", "ΟΡ")
-            .replace("ΟΠ", "ΟΡ")
-        )
+        proto = normalize_protocol_code(row.get("protocol"))
         has = proto in pdf_set
         row["has_pdf"] = has
         row["pdf_url"] = (
@@ -121,6 +118,37 @@ def protocols_list():
         "count": len(rows),
         "protocols": rows,
     })
+
+
+@protocols_bp.get("/by-code/pdf")
+def protocols_pdf_by_code():
+    """PDF δήλωσης με βάση αριθμό πρωτοκόλλου (για links σε πραγματική κ.λπ.)."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    code = normalize_protocol_code(request.args.get("protocol"))
+    if not code:
+        return jsonify({"error": "Λείπει protocol"}), 400
+    try:
+        path, row = resolve_protocol_pdf_path_for_store(
+            store_id=int(ctx["id"]),
+            employer_afm=str(ctx.get("employer_afm") or ""),
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+            protocol=code,
+        )
+    except pyodbc.Error as ex:
+        return _db_error(ex)
+    if path is None or not path.is_file():
+        return jsonify({"error": "Δεν υπάρχει αποθηκευμένο PDF για το πρωτόκολλο"}), 404
+    if row and int(row.get("store_id") or 0) not in (0, int(ctx["id"])):
+        return jsonify({"error": "Το πρωτόκολλο δεν ανήκει στο ενεργό κατάστημα"}), 403
+    return send_file(
+        path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=path.name,
+        max_age=300,
+    )
 
 
 @protocols_bp.get("/<int:protocol_id>/pdf")

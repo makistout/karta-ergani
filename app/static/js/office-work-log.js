@@ -657,6 +657,103 @@ Object.assign(window.Office, {
     return timelineNow < expectedExit;
   },
 
+  formatProtocolHtml(protocol, opts = {}) {
+    const p = String(protocol || "").trim();
+    if (!p) return "";
+    const struck = opts.struck
+      ? " work-log-protocol--struck"
+      : opts.superseded
+        ? " work-log-protocol--superseded"
+        : "";
+    const hasPdf = Boolean(opts.hasPdf || opts.protocol_has_pdf);
+    const url = String(opts.pdfUrl || opts.protocol_pdf_url || "").trim();
+    if (hasPdf && url) {
+      return (
+        `<a href="${this.escapeHtml(url)}" ` +
+        `class="work-log-protocol work-log-protocol--link${struck}" ` +
+        `data-protocol-pdf="${this.escapeHtml(p)}" ` +
+        `data-protocol-pdf-url="${this.escapeHtml(url)}" ` +
+        `title="Προβολή PDF δήλωσης">${this.escapeHtml(p)}</a>`
+      );
+    }
+    return `<span class="work-log-protocol${struck}">${this.escapeHtml(p)}</span>`;
+  },
+
+  protocolPdfUrlFromCode(protocol) {
+    const p = String(protocol || "").trim();
+    if (!p) return "";
+    return `/api/protocols/by-code/pdf?protocol=${encodeURIComponent(p)}`;
+  },
+
+  ensureProtocolPdfModal() {
+    if (document.getElementById("protocolPdfModal")) return;
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      `<div id="protocolPdfModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="protocolPdfTitle">` +
+      `<div class="office-modal-backdrop" data-protocol-pdf-close></div>` +
+      `<div class="office-modal-panel office-modal-panel--history protocol-pdf-modal-panel">` +
+      `<h2 id="protocolPdfTitle" class="office-modal-title">PDF δήλωσης</h2>` +
+      `<p id="protocolPdfSub" class="office-modal-sub"></p>` +
+      `<div class="protocol-pdf-frame-wrap">` +
+      `<iframe id="protocolPdfFrame" title="PDF δήλωσης πρωτοκόλλου"></iframe>` +
+      `</div>` +
+      `<div class="office-modal-actions">` +
+      `<a id="protocolPdfOpenTab" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Άνοιγμα σε νέα καρτέλα</a>` +
+      `<button type="button" class="btn btn-secondary" data-protocol-pdf-close>Κλείσιμο</button>` +
+      `</div></div></div>`;
+    document.body.appendChild(wrap.firstElementChild);
+  },
+
+  bindProtocolPdfModal() {
+    this.ensureProtocolPdfModal();
+    const modal = document.getElementById("protocolPdfModal");
+    if (!modal || modal.dataset.bound) return;
+    modal.dataset.bound = "1";
+    modal.querySelectorAll("[data-protocol-pdf-close]").forEach((el) => {
+      el.addEventListener("click", () => this.closeProtocolPdfModal());
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && !modal.classList.contains("hidden")) {
+        this.closeProtocolPdfModal();
+      }
+    });
+    document.addEventListener("click", (ev) => {
+      const a = ev.target?.closest?.("a[data-protocol-pdf]");
+      if (!a) return;
+      const url = a.getAttribute("data-protocol-pdf-url") || a.getAttribute("href");
+      if (!url) return;
+      ev.preventDefault();
+      this.openProtocolPdfModal({
+        protocol: a.getAttribute("data-protocol-pdf") || "",
+        pdf_url: url,
+      });
+    });
+  },
+
+  openProtocolPdfModal(row) {
+    this.ensureProtocolPdfModal();
+    this.bindProtocolPdfModal();
+    const modal = document.getElementById("protocolPdfModal");
+    const frame = document.getElementById("protocolPdfFrame");
+    const sub = document.getElementById("protocolPdfSub");
+    const openTab = document.getElementById("protocolPdfOpenTab");
+    const url = row?.pdf_url || row?.protocol_pdf_url || "";
+    if (!modal || !frame || !url) return;
+    if (sub) {
+      sub.textContent = String(row.protocol || row.submit_date_text || "").trim() || "PDF δήλωσης";
+    }
+    frame.src = url;
+    if (openTab) openTab.href = url;
+    modal.classList.remove("hidden");
+  },
+
+  closeProtocolPdfModal() {
+    const modal = document.getElementById("protocolPdfModal");
+    const frame = document.getElementById("protocolPdfFrame");
+    if (frame) frame.src = "about:blank";
+    modal?.classList.add("hidden");
+  },
+
   formatWorkLogTimeCell(value, title = "Λείπει ώρα", cardMeta = null) {
     const txt = String(value || "").trim();
     const proto = String(cardMeta?.protocol || "").trim();
@@ -664,6 +761,10 @@ Object.assign(window.Office, {
     const portalProto = String(
       cardMeta?.portal_protocol || cardMeta?.corrected_previous_protocol || ""
     ).trim();
+    const protoOpts = {
+      hasPdf: Boolean(cardMeta?.protocol_has_pdf),
+      pdfUrl: cardMeta?.protocol_pdf_url || "",
+    };
     if (txt) {
       const corrected =
         cardMeta &&
@@ -673,20 +774,21 @@ Object.assign(window.Office, {
         String(cardMeta.time || "").trim() === txt;
 
       if (cardMeta?.superseded_by_portal && cardTime && cardTime !== txt) {
-        const cardLabel = proto
-          ? `${cardTime} · ${proto}`
-          : cardTime;
         return {
           html:
             `<span class="work-log-time-stack">` +
             `<span class="work-log-time-current">` +
             `${this.escapeHtml(txt)}` +
             (portalProto
-              ? `<span class="work-log-protocol">${this.escapeHtml(portalProto)}</span>`
+              ? this.formatProtocolHtml(portalProto, {
+                  hasPdf: Boolean(cardMeta?.portal_protocol_has_pdf),
+                  pdfUrl: cardMeta?.portal_protocol_pdf_url || "",
+                })
               : "") +
             `</span>` +
             `<span class="work-log-time-old" title="Δήλωση κάρτας erganiOS — η πραγματική από portal είναι αργότερη">` +
-            `<span class="work-log-time-struck">${this.escapeHtml(cardLabel)}</span>` +
+            `<span class="work-log-time-struck">${this.escapeHtml(cardTime)}</span>` +
+            (proto ? this.formatProtocolHtml(proto, { ...protoOpts, struck: true }) : "") +
             `</span>` +
             `</span>`,
           isMissing: false,
@@ -694,15 +796,16 @@ Object.assign(window.Office, {
       }
 
       if (!corrected) {
-        const protoHtml = proto
-          ? `<br><span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
-          : "";
-        return { html: this.escapeHtml(txt) + protoHtml, isMissing: false };
+        const protoHtml = proto ? this.formatProtocolHtml(proto, protoOpts) : "";
+        return {
+          html: this.escapeHtml(txt) + (protoHtml ? `<br>${protoHtml}` : ""),
+          isMissing: false,
+        };
       }
 
       const previousBlocks = [];
       const seenTimes = new Set();
-      const pushPrev = (timeRaw, protocolRaw) => {
+      const pushPrev = (timeRaw, protocolRaw, evMeta = null) => {
         const time = String(timeRaw || "").trim();
         if (!time || seenTimes.has(time)) return;
         seenTimes.add(time);
@@ -711,7 +814,11 @@ Object.assign(window.Office, {
           `<span class="work-log-time-old" title="Προηγούμενο χτύπημα που αντικαταστάθηκε">` +
             `<span class="work-log-time-struck">${this.escapeHtml(time)}</span>` +
             (p
-              ? `<span class="work-log-protocol work-log-protocol--struck">${this.escapeHtml(p)}</span>`
+              ? this.formatProtocolHtml(p, {
+                  struck: true,
+                  hasPdf: Boolean(evMeta?.protocol_has_pdf),
+                  pdfUrl: evMeta?.protocol_pdf_url || "",
+                })
               : "") +
             `</span>`
         );
@@ -719,17 +826,16 @@ Object.assign(window.Office, {
       const prevEvents = Array.isArray(cardMeta.previous_events)
         ? cardMeta.previous_events
         : [];
-      prevEvents.forEach((ev) => pushPrev(ev?.time, ev?.protocol));
+      prevEvents.forEach((ev) => pushPrev(ev?.time, ev?.protocol, ev));
       pushPrev(
         cardMeta.corrected_previous_time,
-        cardMeta.corrected_previous_protocol || portalProto
+        cardMeta.corrected_previous_protocol || portalProto,
+        cardMeta
       );
       const currentHtml =
         `<span class="work-log-time-current">` +
         `${this.escapeHtml(txt)}` +
-        (proto
-          ? `<span class="work-log-protocol">${this.escapeHtml(proto)}</span>`
-          : "") +
+        (proto ? this.formatProtocolHtml(proto, protoOpts) : "") +
         `</span>`;
       return {
         html:
@@ -1029,6 +1135,27 @@ Object.assign(window.Office, {
     };
   },
 
+  _historyProtocolMeta(row, kind) {
+    const isIn = kind === "in";
+    const card = (isIn ? row.card_db_in : row.card_db_out) || null;
+    const protocol = isIn ? row.protocol_from : row.protocol_to;
+    const hasPdf = isIn
+      ? row.protocol_from_has_pdf || card?.protocol_has_pdf
+      : row.protocol_to_has_pdf || card?.protocol_has_pdf;
+    const pdfUrl = isIn
+      ? row.protocol_from_pdf_url || card?.protocol_pdf_url
+      : row.protocol_to_pdf_url || card?.protocol_pdf_url;
+    const p = String(protocol || "").trim();
+    const base = card && typeof card === "object" ? { ...card } : {};
+    if (p && !base.protocol) base.protocol = p;
+    if (hasPdf || base.protocol_has_pdf) {
+      base.protocol_has_pdf = true;
+      base.protocol_pdf_url =
+        pdfUrl || base.protocol_pdf_url || this.protocolPdfUrlFromCode(p);
+    }
+    return Object.keys(base).length ? base : p ? { protocol: p } : null;
+  },
+
   renderWorkLogHistoryTable(rows, ctx = {}) {
     if (!rows.length) {
       return (
@@ -1047,12 +1174,12 @@ Object.assign(window.Office, {
       const apoCell = this.formatWorkLogTimeCell(
         hf,
         "Λείπει ώρα εισόδου",
-        row.card_db_in || null
+        this._historyProtocolMeta(row, "in")
       );
       const ewsCell = this.formatWorkLogTimeCell(
         ht,
         pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου",
-        row.card_db_out || null
+        this._historyProtocolMeta(row, "out")
       );
       const cardCell = this.renderWorkLogHistoryCardLinkCell(row, ctx);
       const sched = (row.schedule_label || "—").trim() || "—";

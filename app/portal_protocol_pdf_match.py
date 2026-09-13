@@ -260,6 +260,91 @@ def parse_protocol_pdf_file(path: Path) -> dict[str, Any]:
     return parse_protocol_pdf_text(text, filename=path.name)
 
 
+def reapply_local_protocol_pdf_matches_for_range(
+    employer_afm: str,
+    branch_aa: str,
+    from_iso: str,
+    to_iso: str,
+    *,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    """Ξανατρέχει PDF→work_log match από τοπικά αρχεία (χωρίς portal download)."""
+    start = datetime.strptime(str(from_iso)[:10], "%Y-%m-%d").date()
+    end = datetime.strptime(str(to_iso)[:10], "%Y-%m-%d").date()
+    if start > end:
+        start, end = end, start
+    summary: dict[str, Any] = {
+        "success": True,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "days": 0,
+        "pdfs": 0,
+        "parse_fail": 0,
+        "match_updated": 0,
+        "match_in": 0,
+        "match_out": 0,
+        "match_no_wl": 0,
+        "match_conflict": 0,
+        "match_already_ok": 0,
+        "day_rows": [],
+    }
+    day = start
+    while day <= end:
+        day_iso = day.isoformat()
+        day_dir = protocol_pdf_day_dir(
+            employer_afm, branch_aa, day_iso, root=root
+        )
+        day += timedelta(days=1)
+        if not day_dir.is_dir():
+            continue
+        paths = [
+            p
+            for p in sorted(day_dir.glob("*.pdf"))
+            if p.is_file() and p.stat().st_size > 1000
+        ]
+        if not paths:
+            continue
+        parsed: list[dict[str, Any]] = []
+        parse_fail = 0
+        for path in paths:
+            try:
+                parsed.append(parse_protocol_pdf_file(path))
+            except Exception:
+                parse_fail += 1
+        match = apply_pdf_content_matches(
+            employer_afm=employer_afm,
+            branch_aa=branch_aa,
+            day_iso=day_iso,
+            parsed_pdfs=parsed,
+        )
+        summary["days"] += 1
+        summary["pdfs"] += len(paths)
+        summary["parse_fail"] += parse_fail
+        summary["match_updated"] += int(match.get("updated") or 0)
+        summary["match_in"] += int(match.get("matched_in") or 0)
+        summary["match_out"] += int(match.get("matched_out") or 0)
+        summary["match_no_wl"] += int(match.get("no_wl") or 0)
+        summary["match_conflict"] += int(match.get("conflict") or 0)
+        summary["match_already_ok"] += int(match.get("already_ok") or 0)
+        upd = int(match.get("updated") or 0)
+        if upd:
+            summary["day_rows"].append(
+                {
+                    "day": day_iso,
+                    "pdfs": len(paths),
+                    "updated": upd,
+                    "matched_out": int(match.get("matched_out") or 0),
+                    "matched_in": int(match.get("matched_in") or 0),
+                    "no_wl": int(match.get("no_wl") or 0),
+                }
+            )
+    summary["detail"] = (
+        f"ημέρες {summary['days']}, pdf {summary['pdfs']}, "
+        f"ενημερώσεις {summary['match_updated']}"
+    )
+    return summary
+
+
 def search_workcard_items_for_day(
     session: requests.Session,
     page_html: str,
@@ -372,6 +457,54 @@ def _work_log_rows_for_day(
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
+def _work_log_rows_for_pdf_match_day(
+    employer_afm: str,
+    branch_aa: str,
+    day_iso: str,
+) -> list[dict[str, Any]]:
+    """Γραμμές πραγματικής για την ημέρα PDF + προηγούμενη (overnight έξοδοι).
+
+    Τα PDF overnight εξόδων αποθηκεύονται στον φάκελο ημερομηνίας υποβολής
+    (π.χ. 13/09), ενώ η πραγματική μένει στη work_date της βάρδιας (12/09).
+    """
+    day = str(day_iso or "").strip()[:10]
+    days = [day]
+    try:
+        days.append((date.fromisoformat(day) - timedelta(days=1)).isoformat())
+    except ValueError:
+        pass
+    by_id: dict[int, dict[str, Any]] = {}
+    for d in days:
+        for row in _work_log_rows_for_day(employer_afm, branch_aa, d):
+            wl_id = row.get("id")
+            if wl_id is None:
+                continue
+            by_id[int(wl_id)] = row
+    return list(by_id.values())
+
+
+def match_work_logs_for_pdf_row(
+    wls: list[dict[str, Any]],
+    *,
+    kind: str,
+    row: dict[str, str],
+) -> list[dict[str, Any]]:
+    """ΑΦΜ + ώρα (+ ημέρα PDF αν υπάρχει) → γραμμές πραγματικής."""
+    target_afm = norm_afm(row.get("afm"))
+    target_hm = _norm_hm(row.get("time"))
+    target_day = str(row.get("day") or "").strip()
+    out: list[dict[str, Any]] = []
+    for w in wls:
+        if norm_afm(w.get("employee_afm")) != target_afm:
+            continue
+        if target_day and str(w.get("work_date") or "").strip() != target_day:
+            continue
+        wl_hm = _norm_hm(w.get("hour_from") if kind == "in" else w.get("hour_to"))
+        if wl_hm == target_hm:
+            out.append(w)
+    return out
+
+
 def apply_pdf_content_matches(
     *,
     employer_afm: str,
@@ -380,7 +513,7 @@ def apply_pdf_content_matches(
     parsed_pdfs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Αντιστοίχιση parsed PDF → work_log (κενά protocol_from/to μόνο)."""
-    wls = _work_log_rows_for_day(employer_afm, branch_aa, day_iso)
+    wls = _work_log_rows_for_pdf_match_day(employer_afm, branch_aa, day_iso)
     used: set[tuple[int, str]] = set()
     stats = {
         "matched_in": 0,
@@ -395,16 +528,7 @@ def apply_pdf_content_matches(
     }
 
     def _find(kind: str, row: dict[str, str]) -> list[dict[str, Any]]:
-        target_afm = norm_afm(row.get("afm"))
-        target_hm = _norm_hm(row.get("time"))
-        out: list[dict[str, Any]] = []
-        for w in wls:
-            if norm_afm(w.get("employee_afm")) != target_afm:
-                continue
-            wl_hm = _norm_hm(w.get("hour_from") if kind == "in" else w.get("hour_to"))
-            if wl_hm == target_hm:
-                out.append(w)
-        return out
+        return match_work_logs_for_pdf_row(wls, kind=kind, row=row)
 
     updates: list[tuple[str, str, int]] = []  # col, protocol, wl_id
 

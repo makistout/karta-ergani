@@ -72,7 +72,12 @@
     με `pdf_match=True` όπου υποστηρίζεται, και PDF ΟΧΕ
     (`sync_wto_organization_pdfs_from_portal`) χωρίς 1-1 απαγωγή.
 - **PDF match:** `app/portal_protocol_pdf_match.py` · κατάλογος
-  `Config.PROTOCOL_PDF_DIR` (`data/protocol_pdfs/...`) · dependency `pypdf`
+  `Config.PROTOCOL_PDF_DIR` (`data/protocol_pdfs/...`) · dependency `pypdf` ·
+  overnight: φόρτωση και προηγούμενης `work_date` + φίλτρο ημέρας γραμμής PDF
+- **PDF links στο UI:** αριθμός πρωτοκόλλου σε πραγματική/ιστορικό/ελλιπή → modal
+  όταν υπάρχει αρχείο (`app/protocol_pdf_ui.py`, `/api/protocols/by-code/pdf`)
+- **Local rematch:** `scripts/reapply_protocol_pdf_match_local.py [from] [to]` —
+  ξανατρέχει parse/match από ήδη κατεβασμένα PDF (χωρίς portal).
   (lazy import στο parse). Γεμίζει μόνο κενά `protocol_from`/`protocol_to`.
 - **PDF ΟΧΕ:** `app/portal_wto_organization_pdf_sync.py` · ίδια `protocol_pdfs/` +
   upsert `karta_ergani_protocol` · χωρίς χωριστό UI sync και χωρίς απαγωγή σε

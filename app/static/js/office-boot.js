@@ -29,5 +29,6 @@ document.addEventListener("DOMContentLoaded", () => {
     window.Office.initResponsiveTables();
     window.Office.ensureLogoutLink();
     window.Office.loadActiveStore();
+    window.Office.bindProtocolPdfModal?.();
   }
 });

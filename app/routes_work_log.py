@@ -30,6 +30,7 @@ from app.repo_work_log import (
     list_work_log_missing_cards_paged,
     normalize_overnight_work_log_rows,
 )
+from app.protocol_pdf_ui import enrich_work_log_rows_with_protocol_pdf
 from app.repo_schedule import schedule_table_missing_message
 from app.work_card_payload import norm_afm, tz_athens
 from app.work_log_sync import fetch_and_save_work_log_for_ctx
@@ -110,6 +111,13 @@ def work_log_list():
     except pyodbc.Error:
         for r in rows:
             r.setdefault("today_notify_snoozed", False)
+    enrich_work_log_rows_with_protocol_pdf(
+        rows,
+        employer_afm=str(ctx.get("employer_afm") or ""),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+        from_iso=from_iso,
+        to_iso=to_iso,
+    )
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()
@@ -151,6 +159,11 @@ def work_log_history():
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
+    enrich_work_log_rows_with_protocol_pdf(
+        rows,
+        employer_afm=str(ctx.get("employer_afm") or ""),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+    )
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()
@@ -218,6 +231,11 @@ def work_log_missing_cards_close_all_plan():
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
+    enrich_work_log_rows_with_protocol_pdf(
+        rows,
+        employer_afm=str(ctx.get("employer_afm") or ""),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+    )
     for r in rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()
@@ -284,6 +302,11 @@ def work_log_missing_cards():
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):
             raise
+    enrich_work_log_rows_with_protocol_pdf(
+        all_rows,
+        employer_afm=str(ctx.get("employer_afm") or ""),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+    )
     for r in all_rows:
         if hasattr(r.get("synced_at"), "isoformat"):
             r["synced_at"] = r["synced_at"].isoformat()

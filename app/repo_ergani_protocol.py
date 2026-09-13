@@ -288,6 +288,49 @@ def get_protocol_by_id(protocol_id: int) -> dict[str, Any] | None:
     return data
 
 
+def get_latest_protocol_by_code(store_id: int, protocol: str) -> dict[str, Any] | None:
+    code = str(protocol or "").strip()
+    if not code:
+        return None
+    # Κανονικοποίηση όπως στο UI / PDF index.
+    norm = (
+        code.upper()
+        .replace("KE", "ΚΕ")
+        .replace("OP", "ΟΡ")
+        .replace("ΟΠ", "ΟΡ")[:128]
+    )
+    with cursor(commit=False) as cur:
+        cur.execute(
+            """
+            SELECT TOP (1)
+                p.id,
+                p.store_id,
+                p.employer_afm,
+                p.branch_aa,
+                p.protocol,
+                CAST(p.submit_at AS datetime2) AS submit_at,
+                p.submit_date_text
+            FROM dbo.karta_ergani_protocol p
+            WHERE p.store_id = ?
+              AND (
+                p.protocol = ?
+                OR UPPER(REPLACE(REPLACE(REPLACE(p.protocol, N'KE', N'ΚΕ'), N'OP', N'ΟΡ'), N'ΟΠ', N'ΟΡ')) = ?
+              )
+            ORDER BY p.submit_at DESC, p.id DESC
+            """,
+            (int(store_id), code[:128], norm),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        data = dict(zip(cols, row))
+    val = data.get("submit_at")
+    if hasattr(val, "isoformat"):
+        data["submit_at"] = val.isoformat()
+    return data
+
+
 def earliest_store_activity_date(
     store_id: int,
     employer_afm: str,

@@ -225,7 +225,10 @@ function formatCardDbCell(entry) {
   if (!entry || !entry.time) return "—";
   let html = `<span class="missing-cards-db-time">${Office.escapeHtml(entry.time)}</span>`;
   if (entry.protocol) {
-    html += `<br><span class="table-meta">${Office.escapeHtml(entry.protocol)}</span>`;
+    html += `<br>${Office.formatProtocolHtml(entry.protocol, {
+      hasPdf: Boolean(entry.protocol_has_pdf),
+      pdfUrl: entry.protocol_pdf_url || "",
+    })}`;
   } else if (entry.from_token) {
     html += `<br><span class="table-meta">ολοκλ. retro-hit</span>`;
   }

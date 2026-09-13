@@ -152,14 +152,24 @@ function renderTablePage() {
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,
           "Λείπει ώρα εισόδου",
-          workLogProtocolMeta(row.card_db_in, row.protocol_from)
+          workLogProtocolMeta(
+            row.card_db_in,
+            row.protocol_from,
+            row.protocol_from_has_pdf || row.card_db_in?.protocol_has_pdf,
+            row.protocol_from_pdf_url || row.card_db_in?.protocol_pdf_url
+          )
         ).html;
       } else if (i === colHourTo) {
         const pending = Office.workLogExitStillPending(row);
         td.innerHTML = Office.formatWorkLogTimeCell(
           txt,
           pending ? "Έξοδος μετά το τέλος βάρδιας" : "Λείπει ώρα εξόδου",
-          workLogProtocolMeta(row.card_db_out, row.protocol_to)
+          workLogProtocolMeta(
+            row.card_db_out,
+            row.protocol_to,
+            row.protocol_to_has_pdf || row.card_db_out?.protocol_has_pdf,
+            row.protocol_to_pdf_url || row.card_db_out?.protocol_pdf_url
+          )
         ).html;
       } else {
         td.textContent = txt;
@@ -183,13 +193,18 @@ function renderTablePage() {
   }
 }
 
-function workLogProtocolMeta(cardMeta, protocol) {
+function workLogProtocolMeta(cardMeta, protocol, hasPdf, pdfUrl) {
   const p = String(protocol || "").trim();
-  if (cardMeta && typeof cardMeta === "object") {
-    if (p && !cardMeta.protocol) return { ...cardMeta, protocol: p };
-    return cardMeta;
+  const base =
+    cardMeta && typeof cardMeta === "object" ? { ...cardMeta } : {};
+  if (p && !base.protocol) base.protocol = p;
+  if (hasPdf || base.protocol_has_pdf) {
+    base.protocol_has_pdf = true;
+    base.protocol_pdf_url =
+      pdfUrl || base.protocol_pdf_url || Office.protocolPdfUrlFromCode(p);
   }
-  return p ? { protocol: p } : null;
+  if (!base.protocol && !p) return cardMeta && typeof cardMeta === "object" ? cardMeta : null;
+  return Object.keys(base).length ? base : p ? { protocol: p } : null;
 }
 
 function appendWorkCardLinkCell(tr, row, range) {

@@ -6,6 +6,7 @@ from app.portal_protocol_pdf_match import (
     extract_select_items_from_html,
     find_protocol_pdf_path,
     index_protocol_pdfs_for_range,
+    match_work_logs_for_pdf_row,
     parse_protocol_pdf_text,
 )
 
@@ -57,3 +58,32 @@ def test_find_protocol_pdf_path(tmp_path):
         "091065232", "0", "2026-06-01", "2026-06-01", root=tmp_path
     )
     assert "ΚΕ195164713" in indexed
+
+
+def test_match_overnight_exit_uses_pdf_work_date():
+    """PDF στον φάκελο 13/09 με ημέρα βάρδιας 12/09 → βρίσκει overnight έξοδο."""
+    wls = [
+        {
+            "id": 1,
+            "employee_afm": "170809878",
+            "hour_from": "14:07",
+            "hour_to": "00:03",
+            "work_date": "12/09/2026",
+            "protocol_to": None,
+        },
+        {
+            "id": 2,
+            "employee_afm": "170809878",
+            "hour_from": "14:00",
+            "hour_to": "00:03",
+            "work_date": "13/09/2026",
+            "protocol_to": None,
+        },
+    ]
+    matches = match_work_logs_for_pdf_row(
+        wls,
+        kind="out",
+        row={"afm": "170809878", "time": "00:03", "day": "12/09/2026"},
+    )
+    assert len(matches) == 1
+    assert matches[0]["id"] == 1

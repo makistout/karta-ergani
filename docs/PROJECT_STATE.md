@@ -231,13 +231,18 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
 - Overnight merge: μεταγενέστερη πραγματική (π.χ. `00:33`) δεν χάνει από κάρτα
   `23:59` ίδιας βάρδιας· η κάρτα φαίνεται διαγραμμένη από κάτω.
 - **Πρωτόκολλα Ergani** (`protocol_from` / `protocol_to` στο `karta_work_log`): εμφανίζονται
-  διακριτικά κάτω από **Από/Έως**. Συμπλήρωση σε δύο βήματα: (1) δικά μας χτυπήματα από
-  `karta_declaration.protocol`· (2) 1-1 στα υπόλοιπα κενά (`hour_from`/`hour_to` ↔ `submit_at`).
+  διακριτικά κάτω από **Από/Έως**. Αν υπάρχει τοπικό PDF, ο αριθμός είναι **σύνδεσμος** και
+  ανοίγει το ίδιο modal PDF με `/ui/protocols` (`GET /api/protocols/by-code/pdf`). Χωρίς αρχείο
+  μένει σκέτο κείμενο. Συμπλήρωση σε δύο βήματα: (1) δικά μας χτυπήματα από
+  `karta_declaration.protocol`· (2) 1-1 στα υπόλοιπα κενά (`hour_from`/`hour_to` ↔ `submit_at`)
+  + PDF match (ΑΦΜ+ώρα από PrintPDF, συμπ. overnight: φάκελος υποβολής D+1 / `work_date` D).
   Δύο χτυπήματα την ίδια ώρα εκ των οποίων ένα δικό μας → το άλλο παίρνει το εναπομείναν
   πρωτόκολλο. Αν μείνουν πολλαπλά άγνωστα, μένουν κενά.
 - Νυχτερινό sync πρωτοκόλλων (`scheduled_nightly_protocol_sync`, ~03:00): κατέβασμα χθες +
   1-1 απαγωγή κάρτας (+ PDF match κάρτας) και PDF ΟΧΕ (χωρίς απαγωγή), μετά το 30ήμερο
   sync πραγματικής. Βλ. `docs/ERGANI_PORTAL_SYNC.md`.
+- Αναδρομικό local rematch: `scripts/reapply_protocol_pdf_match_local.py YYYY-MM-DD`
+  (χωρίς portal download).
 
 ## Πρωτόκολλα (`/ui/protocols`)
 
@@ -249,8 +254,10 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
 - Admin: `POST /api/protocols/sync` κατεβάζει πρωτόκολλα **κάρτας** από Ergani και τρέχει
   1-1 απαγωγή (όχι ΟΧΕ).
 - Στήλη **PDF**: κόκκινο εικονίδιο όταν υπάρχει τοπικό αρχείο· modal με iframe και
-  `GET /api/protocols/<id>/pdf`. Τα PDF γεμίζουν από portal match κάρτας και ΟΧΕ
-  (`app/portal_protocol_pdf_match.py`, `app/portal_wto_organization_pdf_sync.py`).
+  `GET /api/protocols/<id>/pdf` (κοινό modal με links πρωτοκόλλου στην πραγματική).
+  Τα PDF γεμίζουν από portal match κάρτας και ΟΧΕ
+  (`app/portal_protocol_pdf_match.py`, `app/portal_wto_organization_pdf_sync.py`,
+  `app/protocol_pdf_ui.py`).
 - Η client-side σελιδοποίηση χρησιμοποιεί το κοινό `Office.paginateSlice()` και
   διαβάζει τις ορατές εγγραφές από `items`. Μη αναμενόμενη ή κενή συλλογή API
   κανονικοποιείται σε κενό array, ώστε η οθόνη να μην αποτυγχάνει με JavaScript
@@ -543,7 +550,8 @@ Grace **15 / 30 / 45 λεπτά** ανά κατάστημα (`notify_grace_minut
   νέων προσλήψεων από Μητρώο (snapshot diff, ανεξάρτητα ωραρίου) + συμπλήρωση QR
   για ενεργούς/πρόσφατο ωράριο χωρίς κάρτα.
 - Από `00:00` έως `02:59` γίνεται sync και για την προηγούμενη ημερομηνία, ώστε να
-  πιάνουν οι overnight εγγραφές (`*`) στην πραγματική απασχόληση.
+  πιάνουν οι overnight εγγραφές (`*`) στην πραγματική απασχόληση — ακόμα κι όταν το
+  `run_scheduled_sync` περνάει ρητά `work_date_iso=σήμερα` (fix 2026-09-12).
 - Η ξεχωριστή operation `scheduled_future_schedule_sync` τρέχει μία φορά την ημέρα ανά
   κατάστημα, μετά την ώρα αυτόματου κλεισίματος προηγούμενης ημέρας (default `00:30`).
 - Η future phase συγχρονίζει μόνο ψηφιακό ωράριο για αύριο και μεθαύριο, ώστε η Αρχική να
