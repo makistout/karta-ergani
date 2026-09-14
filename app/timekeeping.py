@@ -277,109 +277,6 @@ def _overwork_timeline(
     return [start + timedelta(minutes=index) for index in range(minutes)]
 
 
-def _timelines_touch(left: list[datetime], right: list[datetime]) -> bool:
-    """Return whether two non-empty minute timelines are exactly adjacent."""
-    return bool(left and right and left[-1] + timedelta(minutes=1) == right[0])
-
-
-def _reconcile_recognized_base_timeline(
-    *, source: dict[str, Any], day: dict[str, Any], holidays: set[date],
-    overwork_timeline: list[datetime], overtime_timeline: list[datetime],
-) -> None:
-    """Repair only proven, safely reconstructable base/extra discontinuities.
-
-    The retrospective rules remain authoritative for the quantities of base,
-    overwork and overtime. This guard only gives those already calculated
-    quantities one common temporal boundary. Existing contiguous results are
-    deliberately left unchanged.
-    """
-    if not overwork_timeline:
-        return
-
-    recognized = day.get("_recognized_timeline") or []
-    base_touches_overwork = _timelines_touch(recognized, overwork_timeline)
-    overwork_touches_overtime = (
-        not overtime_timeline
-        or _timelines_touch(overwork_timeline, overtime_timeline)
-    )
-    if base_touches_overwork and overwork_touches_overtime:
-        return
-
-    rule_id = str(source.get("rule_id") or "")
-    daily_base = source.get("daily_overtime_basis_minutes")
-    try:
-        base_minutes = max(0, int(daily_base))
-    except (TypeError, ValueError):
-        base_minutes = 0
-    declared_minutes = max(0, int(source.get("declared_minutes") or 0))
-    safe_short_base_rule = (
-        rule_id in {"OVERTIME_ONLY", "EARLY_START_SHIFT", "LATE_SHORT_BACKWARD"}
-        and 0 < declared_minutes < base_minutes
-    )
-    safe_missing_entry_rule = (
-        rule_id == "MISSING_ENTRY_EXTRA_BACKWARD" and base_minutes > 0
-    )
-    if (
-        not overwork_touches_overtime
-        or not (safe_short_base_rule or safe_missing_entry_rule)
-    ):
-        raise ValueError(
-            "Ασυνέχεια αναγνωρισμένης βάσης, υπερεργασίας ή υπερωρίας· "
-            "η περίπτωση απαιτεί έλεγχο"
-        )
-
-    break_in_work = source.get("break_in_work")
-    is_outside_break = break_in_work in (0, False, "0")
-    outside_break = max(0, int(source.get("outside_break_minutes") or 0))
-    if is_outside_break and not outside_break:
-        outside_break = max(0, int(source.get("break_minutes") or 0))
-    physical_duration = base_minutes + (outside_break if is_outside_break else 0)
-    if physical_duration <= 0:
-        raise ValueError("Δεν υπάρχει ασφαλής ημερήσια βάση για χρονική ανακατασκευή")
-
-    physical_end = overwork_timeline[0]
-    physical_start = physical_end - timedelta(minutes=physical_duration)
-    physical = [
-        physical_start + timedelta(minutes=index)
-        for index in range(physical_duration)
-    ]
-    premium_holidays = day.get("_premium_holidays") or holidays
-    break_set = (
-        _allocate_contiguous_break(physical, outside_break, premium_holidays)
-        if is_outside_break and outside_break else set()
-    )
-    rebuilt = [minute for minute in physical if minute not in break_set]
-    if len(rebuilt) != base_minutes or not _timelines_touch(rebuilt, overwork_timeline):
-        raise ValueError(
-            "Η αναγνωρισμένη βάση δεν μπορεί να ανακατασκευαστεί με ασφάλεια· "
-            "η περίπτωση απαιτεί έλεγχο"
-        )
-
-    labels = _timeline_interval_labels(physical)
-    day["_recognized_timeline"] = rebuilt
-    day["recognized_base_segments"] = labels
-    day["basis_label"] = " · ".join(labels)
-    day["recognized_span_minutes"] = len(physical)
-    day["recognized_uncapped_work_minutes"] = len(rebuilt)
-    day["recognized_work_minutes"] = len(rebuilt)
-    day["base_cap_applied_minutes"] = 0
-    day["premium_minutes"] = _categorize_timeline(rebuilt, premium_holidays)
-    day["recognized_basis_rule"] = (
-        f"{day.get('recognized_basis_rule') or 'effective_schedule'}"
-        "+extra_timeline_reconciled"
-    )
-    if break_set:
-        ordered_break = sorted(break_set)
-        day["break_minutes"] = len(break_set)
-        day["break_interval"] = _display_interval(
-            ordered_break[0], ordered_break[-1] + timedelta(minutes=1)
-        )
-    day["warnings"].append(
-        "Η αναγνωρισμένη βάση ευθυγραμμίστηκε χρονικά με την ήδη "
-        "υπολογισμένη υπερεργασία και υπερωρία"
-    )
-
-
 def _apply_actual_premium_floor(
     *, source: dict[str, Any], day: dict[str, Any], holidays: set[date],
     overwork_timeline: list[datetime], overtime_timeline: list[datetime],
@@ -555,7 +452,6 @@ def build_recognized_day(
     if break_duration and physical_minutes and not break_set:
         warnings.append("Δεν βρέθηκε εσωτερικό συνεχόμενο διάστημα που να χωρά ολόκληρο το διάλειμμα")
 
-    basis_segments = _timeline_interval_labels(visible_basis_timeline)
     return {
         "employee_afm": str(row.get("employee_afm") or ""),
         "eponymo": row.get("eponymo") or "",
@@ -563,8 +459,7 @@ def build_recognized_day(
         "work_date": str(row.get("work_date") or ""),
         "status": row.get("status"),
         "basis_source": basis_source,
-        "basis_label": " · ".join(basis_segments),
-        "recognized_base_segments": basis_segments,
+        "basis_label": " · ".join(_timeline_interval_labels(visible_basis_timeline)),
         "recognized_basis_rule": recognized_basis_rule,
         "recognized_span_minutes": len(physical_minutes),
         "recognized_uncapped_work_minutes": len(uncapped_recognized_timeline),
@@ -685,11 +580,6 @@ def build_timekeeping_report(
             day[f"{field}_breakdown"] = _categorize_timeline(selected, holiday_dates)
             position += field_minutes
         overwork_timeline = _overwork_timeline(source, day, overtime_timeline)
-        _reconcile_recognized_base_timeline(
-            source=source, day=day, holidays=holiday_dates,
-            overwork_timeline=overwork_timeline,
-            overtime_timeline=overtime_timeline,
-        )
         day["_overtime_timeline"] = overtime_timeline
         day["_overwork_timeline"] = overwork_timeline
         day["overwork_breakdown"] = _categorize_timeline(overwork_timeline, holiday_dates)
@@ -1026,7 +916,7 @@ def build_timekeeping_report(
         day.pop("_overwork_timeline", None)
 
     return {
-        "calculation_version": "timekeeping-v13-recognized-extra-continuity",
+        "calculation_version": "timekeeping-v12-catering-sixth-above-48",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},
