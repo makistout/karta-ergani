@@ -190,7 +190,7 @@ def test_missing_entry_backward_base_uses_same_boundary_as_extras():
     assert day["overtime_minutes"] == 15
 
 
-def test_unsafe_extra_timeline_discontinuity_requires_review():
+def test_unsafe_extra_timeline_discontinuity_preserves_timekeeping_result():
     row = _row(
         declared="13:00–19:40", proposed="13:00–19:40",
         actual="13:24–19:41", status="change", rule_id="OVERTIME_ONLY",
@@ -202,12 +202,14 @@ def test_unsafe_extra_timeline_discontinuity_requires_review():
         }],
     )
 
-    try:
-        build_timekeeping_report([row])
-    except ValueError as exc:
-        assert "απαιτεί έλεγχο" in str(exc)
-    else:
-        raise AssertionError("unsafe temporal discontinuity must block timekeeping")
+    day = build_timekeeping_report([row])["days"][0]
+
+    assert day["basis_label"] == "13:01–19:41"
+    assert day["recognized_base_segments"] == ["13:01–19:41"]
+    assert day["overwork_minutes"] == 80
+    assert day["overtime_minutes"] == 240
+    assert any("διατηρήθηκε αμετάβλητο" in item for item in day["warnings"])
+    assert not any("απαιτεί έλεγχο" in item for item in day["warnings"])
 
 
 def test_visible_full_time_cap_keeps_outside_break_extension():
