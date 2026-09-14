@@ -20,6 +20,16 @@ _BREAKDOWN_KEYS = ("day", "night", "sunday_holiday", "night_sunday_holiday")
 _BREAKDOWN_LABELS = ("Ημέρας", "Νύχτας", "Κυρ/Αργίας", "Νύχτας/Κυρ-Αργίας")
 _HOURS_RE = re.compile(r"\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}")
 
+# Reused style objects — openpyxl είναι αργό αν φτιάχνεις PatternFill/Font ανά κελί.
+_FILL_LIGHT = PatternFill("solid", fgColor=_LIGHT)
+_FONT_BODY = Font(name="Aptos", size=10)
+_FONT_BODY_SMALL = Font(name="Aptos", size=9)
+_BORDER_BOTTOM = Border(bottom=_BORDER)
+_ALIGN_TOP = Alignment(vertical="top")
+_ALIGN_TOP_WRAP = Alignment(vertical="top", wrap_text=True)
+_ALIGN_RIGHT = Alignment(horizontal="right", vertical="top")
+_HEAVY_STYLE_ROW_LIMIT = 80
+
 
 def _duration(minutes: Any) -> float:
     return max(0, int(minutes or 0)) / 60
@@ -65,19 +75,31 @@ def _style_sheet(ws, *, title: str, meta: str, headers: list[str], widths: list[
 
 
 def _finish_table(ws, header_row: int, duration_from: int, duration_to: int) -> None:
-    if ws.max_row > header_row:
-        ws.auto_filter.ref = f"A{header_row}:{get_column_letter(ws.max_column)}{ws.max_row}"
+    max_col = ws.max_column
+    data_rows = max(0, ws.max_row - header_row)
+    if data_rows:
+        ws.auto_filter.ref = f"A{header_row}:{get_column_letter(max_col)}{ws.max_row}"
+    # Σε μήνα (εκατοντάδες γραμμές) το per-cell styling κοστίζει λεπτά· κράτα μόνο number format.
+    decorative = data_rows <= _HEAVY_STYLE_ROW_LIMIT
+    wrap_cols = {1, max_col}
     for row in range(header_row + 1, ws.max_row + 1):
-        if row % 2 == 0:
-            for cell in ws[row]:
-                cell.fill = PatternFill("solid", fgColor=_LIGHT)
         for col in range(duration_from, duration_to + 1):
-            ws.cell(row, col).number_format = "0.##"
-            ws.cell(row, col).alignment = Alignment(horizontal="right")
-        for cell in ws[row]:
-            cell.border = Border(bottom=_BORDER)
-            cell.font = Font(name="Aptos", size=10)
-            cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (1, ws.max_column))
+            cell = ws.cell(row, col)
+            cell.number_format = "0.##"
+            if decorative:
+                cell.alignment = _ALIGN_RIGHT
+        if not decorative:
+            continue
+        zebra = row % 2 == 0
+        for col in range(1, max_col + 1):
+            cell = ws.cell(row, col)
+            if zebra:
+                cell.fill = _FILL_LIGHT
+            cell.border = _BORDER_BOTTOM
+            cell.font = _FONT_BODY
+            if duration_from <= col <= duration_to:
+                continue
+            cell.alignment = _ALIGN_TOP_WRAP if col in wrap_cols else _ALIGN_TOP
 
 
 def build_timekeeping_export_xlsx(
@@ -260,19 +282,28 @@ def build_timekeeping_detailed_export_xlsx(
     if ws.max_row > 4:
         ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
     duration_columns = {13} | set(range(15, 28)) | set(range(29, 56))
+    data_rows = max(0, ws.max_row - 4)
+    decorative = data_rows <= _HEAVY_STYLE_ROW_LIMIT
+    wrap_cols = {10, 11, 12, 28, 58}
     for row in range(5, ws.max_row + 1):
-        if row % 2:
-            for cell in ws[row]:
-                cell.fill = PatternFill("solid", fgColor=_LIGHT)
         ws.cell(row, 9).number_format = "dd/mm/yyyy"
         for col in duration_columns:
-            ws.cell(row, col).number_format = "0.##"
-            ws.cell(row, col).alignment = Alignment(horizontal="right", vertical="top")
-        for cell in ws[row]:
-            cell.border = Border(bottom=_BORDER)
-            cell.font = Font(name="Aptos", size=9)
-            if cell.column not in duration_columns:
-                cell.alignment = Alignment(vertical="top", wrap_text=cell.column in (10, 11, 12, 28, 48))
+            cell = ws.cell(row, col)
+            cell.number_format = "0.##"
+            if decorative:
+                cell.alignment = _ALIGN_RIGHT
+        if not decorative:
+            continue
+        zebra = row % 2 == 1
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row, col)
+            if zebra:
+                cell.fill = _FILL_LIGHT
+            cell.border = _BORDER_BOTTOM
+            cell.font = _FONT_BODY_SMALL
+            if col in duration_columns:
+                continue
+            cell.alignment = _ALIGN_TOP_WRAP if col in wrap_cols else _ALIGN_TOP
     ws.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{ws.max_row}"
     ws.print_title_rows = "1:4"
     ws.sheet_properties.pageSetUpPr.fitToPage = True

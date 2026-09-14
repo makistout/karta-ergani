@@ -184,10 +184,12 @@ def _wants_yesterday(text: str) -> bool:
 
 def _wants_all(text: str) -> bool:
     folded = _fold(text)
+    if "καρτεσ" in folded or "καρτες" in folded:
+        return True
     return any(
-        token in folded
-        for token in ("ολεσ", "ολουσ", "οσουσ", "οσα", "ολα", "all")
-    ) or "καρτεσ" in folded or "καρτες" in folded
+        f" {token} " in f" {folded} "
+        for token in ("ολεσ", "ολουσ", "ολοι", "οσουσ", "οσοι", "οσεσ", "οσα", "ολα", "all")
+    )
 
 
 def _refers_to_listed_people(text: str) -> bool:
@@ -436,7 +438,8 @@ def _home_employees(
 
 
 _PERSON_STOP = frozenset({
-    "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "καρτες", "καρτεσ",
+    "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "κλειστουσ", "κλειστεσ", "κλειστα",
+    "καρτα", "καρτες", "καρτεσ",
     "την", "τον", "του", "της", "τουσ", "τισ", "τωρα", "σημερα", "παρακαλω",
     "για", "και", "στο", "στη", "στην", "απο", "με", "ρεπο", "αδεια", "ωραριο",
     "open", "close", "card", "now", "today", "χτυπα", "χτυπησε", "punch",
@@ -549,6 +552,8 @@ def build_card_punch_command(
     )
     today_iso = datetime.now(_ATHENS).date().isoformat()
     work_date = ydate if want_yesterday else today_iso
+    # Μετά τα μεσάνυχτα: αν δεν ζητήθηκε ρητά «χθες», κράτα σήμερα προς το παρόν
+    # και μετά τα ονόματα/ανοιχτές μετατόπισε σε χθες αν χρειάζεται.
 
     focus = [str(a).strip() for a in (focus_afms or []) if str(a or "").strip()]
     named_afms: list[str] = []
@@ -595,8 +600,7 @@ def build_card_punch_command(
 
     intent = f"card_{direction}{suffix}"
     wants_group = _wants_all(text) or (
-        direction == "check_out"
-        and any(t in _fold(text) for t in ("ανοιχτ", "ολεσ", "ολουσ", "οσουσ"))
+        direction == "check_out" and "ανοιχτ" in _fold(text)
     )
     refers_listed = _refers_to_listed_people(text)
 
@@ -646,6 +650,19 @@ def build_card_punch_command(
     elif wants_group or not named_afms:
         if direction == "check_out":
             eligible = _open_card_rows(home_rows)
+            if (
+                not eligible
+                and not want_yesterday
+                and datetime.now(_ATHENS).hour < 3
+            ):
+                y_rows, y_iso = _home_employees(
+                    today_home, store_id=store_id, yesterday=True,
+                )
+                y_eligible = _open_card_rows(y_rows)
+                if y_eligible and y_iso:
+                    home_rows = y_rows
+                    work_date = y_iso
+                    eligible = y_eligible
         else:
             eligible = _checkin_rows(home_rows)
         afms = [str(r.get("afm") or "").strip() for r in eligible if str(r.get("afm") or "").strip()]
@@ -680,6 +697,32 @@ def build_card_punch_command(
                 else "Δεν υπάρχουν ανοιχτές κάρτες για κλείσιμο αυτή τη στιγμή."
             ),
         )
+
+    # Μετά τα μεσάνυχτα (<03:00): αν τα επιλεγμένα ΑΦΜ δεν είναι ανοιχτά σήμερα,
+    # δοκίμασε χθεσινές ανοιχτές (overnight βάρδια).
+    if (
+        direction == "check_out"
+        and not want_yesterday
+        and work_date == today_iso
+        and datetime.now(_ATHENS).hour < 3
+    ):
+        today_open = {
+            str(r.get("afm") or "").strip()
+            for r in _open_card_rows(home_rows)
+            if str(r.get("afm") or "").strip()
+        }
+        if not any(afm in today_open for afm in afms):
+            y_rows, y_iso = _home_employees(
+                today_home, store_id=store_id, yesterday=True,
+            )
+            y_open = {
+                str(r.get("afm") or "").strip()
+                for r in _open_card_rows(y_rows)
+                if str(r.get("afm") or "").strip()
+            }
+            if any(afm in y_open for afm in afms) and y_iso:
+                work_date = y_iso
+                home_rows = y_rows
 
     return _empty_parsed(
         intent=intent,

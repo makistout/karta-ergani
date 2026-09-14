@@ -782,6 +782,81 @@ def test_followup_answer_updates_same_clarification_task(monkeypatch):
     assert result["answer"].startswith("Εντολή #52:")
 
 
+def test_close_all_supersedes_pending_clarification(monkeypatch):
+    """«Κλειστούς όλους» ακυρώνει ανοιχτή #914 και φτιάχνει νέα εντολή."""
+    cancelled: list[tuple] = []
+    created: dict = {}
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: {
+            "id": 914,
+            "store_id": 17,
+            "recipient_id": 45,
+            "task_status": "needs_clarification",
+            "proposed_action_text": "Η ώρα κίνησης δεν μπορεί να είναι μελλοντική",
+            "payload": {
+                "intent": "card_check_out_now",
+                "store_id": 17,
+                "employee_afms": ["106677000"],
+                "date": "2026-09-15",
+            },
+        },
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.cancel_assistant_task",
+        lambda *a, **k: cancelled.append((a, k)) or True,
+    )
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return 920
+
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.parse_command",
+        lambda **kwargs: (
+            {
+                "intent": "card_check_out_now",
+                "store_id": 17,
+                "employee_afms": ["111", "222"],
+                "date": "2026-09-14",
+                "confidence": 0.9,
+            },
+            [
+                {"store_id": 17, "afm": "111", "name": "A"},
+                {"store_id": 17, "afm": "222", "name": "B"},
+            ],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: (
+            "draft",
+            {"valid": True, "errors": [], "execution_enabled": True},
+            "A, B · 14/09/2026 · Κλείσιμο κάρτας τώρα",
+        ),
+    )
+
+    result = process_assistant_command(
+        text="Κλειστούς όλους τώρα",
+        contexts=[{
+            "store_id": 17, "store_name": "ΛΑΔΟΚΟΛΛΑ", "employer_afm": "1",
+            "branch_aa": "0", "recipient_id": 45,
+        }],
+        inbound_id=1574,
+        chat_id="1",
+        store_id=17,
+        confirmation_mode="pin",
+    )
+    assert cancelled and cancelled[0][0][0] == 914
+    assert result["task_id"] == 920
+    assert result["status"] == "draft"
+    assert created.get("store_id") == 17
+
+
 def test_name_choice_answer_sent_as_is_to_gemini(monkeypatch):
     """Raw answers like «διονυση» / greeklish go to Gemini with name_choice context."""
     employees = [

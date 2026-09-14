@@ -205,6 +205,69 @@ def test_close_all_open_cards_replaces_llm_list_with_open_only():
     assert "TOUMARAS" not in proposed
 
 
+def test_tzola_name_is_not_treated_as_close_all():
+    """«ολα» μέσα στο «Τζόλα» δεν πρέπει να ενεργοποιεί μαζικό κλείσιμο."""
+    from app.telegram_assistant_service import (
+        _asks_close_all_open_cards,
+        _is_group_or_criteria_query,
+    )
+    from app.assistant_rule_fallback import _wants_all
+
+    assert _asks_close_all_open_cards("Κλείσε τον Τζόλα") is False
+    assert _asks_close_all_open_cards("Κλείσε τον Τζόλα από χθες") is False
+    assert _asks_close_all_open_cards("κλείσε όλες") is True
+    assert _asks_close_all_open_cards("κλείσε όλα") is True
+    assert _is_group_or_criteria_query("Κλείσε τον Τζόλα") is False
+    assert _wants_all("Κλείσε τον Τζόλα") is False
+
+
+def test_overnight_named_close_falls_back_to_yesterday():
+    """Μετά τα μεσάνυχτα, «κλείσε τον Χ» χωρίς ανοιχτή σήμερα → χθεσινή ανοιχτή."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    parsed = {
+        "intent": "card_check_out_now",
+        "store_id": 12,
+        "employee_afms": ["999"],
+        "date": "2026-09-14",
+    }
+    employees = [{"store_id": 12, "afm": "999", "name": "ΤΖΟΛΑΣ ΠΑΝΤΕΛΕΗΜΩΝ"}]
+    yesterday_open = [{"store_id": 12, "afm": "999", "name": "ΤΖΟΛΑΣ ΠΑΝΤΕΛΕΗΜΩΝ"}]
+
+    def _open_for_date(**kwargs):
+        if kwargs.get("date_iso") == "2026-09-13":
+            return yesterday_open
+        return []
+
+    with patch(
+        "app.telegram_assistant_service._open_checkout_matches_for_date",
+        side_effect=lambda **kw: _open_for_date(**kw),
+    ), patch(
+        "app.telegram_assistant_service._in_overnight_close_window",
+        return_value=True,
+    ), patch(
+        "app.telegram_assistant_service._yesterday_iso",
+        return_value="2026-09-13",
+    ), patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None):
+        status, validation, proposed = validate_and_describe(
+            parsed,
+            contexts=[{
+                "store_id": 12,
+                "store_name": "APERIO",
+                "employer_afm": "800994796",
+                "branch_aa": "0",
+            }],
+            employees=employees,
+            user_text="Κλείσε τον Τζόλα",
+        )
+    assert status == "draft"
+    assert validation["valid"] is True
+    assert parsed["date"] == "2026-09-13"
+    assert parsed["employee_afms"] == ["999"]
+    assert "13/09/2026" in proposed
+
+
 def test_open_all_cards_fills_from_needs_checkin():
     """«άνοιξε τους όλους τώρα» → όσοι με ωράριο χωρίς είσοδο, χωρίς ΑΦΜ από το LLM."""
     parsed = {

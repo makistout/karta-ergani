@@ -44,10 +44,14 @@ scanner session and no office/admin login. No App Store / Google Play package.
   erganiOS card validation still applies; the scanner does not bypass it.
 - Successful submissions are audited with `source=scanner_pwa` and
   `submission_channel=scanner` so they appear under `/ui/sync-log#scanner`.
-- PIN protects only the Αποστολές view for the current scanner login (12 hours), with
-  short server unlock and rate limiting. New login requires setting PIN again.
-- App shell only is cached. No history, passwords, tokens or API responses in the
-  service worker cache. Local outbox contains scanned data; protect shared devices.
+- PIN protects only the Αποστολές view for the current scanner login (90-day
+  sliding session), with short server unlock and rate limiting. Explicit logout
+  clears the device-saved credentials; closing the app does not.
+- Login username/password are kept in device `localStorage` so a cold start can
+  restore the session automatically when the cookie is missing or expired.
+  App shell only is cached. No history, tokens or API responses in the
+  service worker cache. Local outbox and saved login live on the device; protect
+  shared tablets and use logout when handing the device off.
 
 ## Connectivity and manual synchronization
 

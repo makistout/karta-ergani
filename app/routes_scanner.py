@@ -28,6 +28,29 @@ from app.repo_scanner import store_menu_details
 
 scanner_bp = Blueprint("scanner", __name__, url_prefix="/scanner")
 COOKIE = "erganios_scanner"
+# Dedicated tablets stay signed in across app closes; explicit logout still clears.
+SESSION_TTL_SECONDS = 90 * 24 * 3600
+
+
+def _set_session_cookie(response, token: str):
+    response.set_cookie(
+        COOKIE,
+        token,
+        max_age=SESSION_TTL_SECONDS,
+        secure=request.is_secure,
+        httponly=True,
+        samesite="Strict",
+        path="/scanner/",
+    )
+    return response
+
+
+def _touch_session(digest: str) -> None:
+    with database() as db:
+        db.execute(
+            "UPDATE sessions SET expires=? WHERE id=?",
+            (time.time() + SESSION_TTL_SECONDS, digest),
+        )
 
 
 def binding_matches(cfg, binding):
@@ -100,6 +123,9 @@ def guard():
     if not row:
         return jsonify(error="Απαιτείται σύνδεση", login_required=True), 401
     g.scanner = dict(row)
+    g.scanner_sid = digest
+    g.scanner_token = sid
+    _touch_session(digest)
     if row["store_id"]:
         cfg = get_store_config(row["store_id"])
         allowed = json.loads(row["stores"])
@@ -114,6 +140,9 @@ def headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://pbs.twimg.com; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    token = getattr(g, "scanner_token", None)
+    if token and response.status_code < 400:
+        _set_session_cookie(response, token)
     return response
 
 
@@ -192,11 +221,10 @@ def login():
         db.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
         db.execute(
             "INSERT INTO sessions(id,stores,store_id,expires) VALUES(?,?,?,?)",
-            (sid, json.dumps(allowed), store_id, time.time() + 43200),
+            (sid, json.dumps(allowed), store_id, time.time() + SESSION_TTL_SECONDS),
         )
     response = jsonify(success=True, store_id=store_id, store_count=len(allowed))
-    response.set_cookie(COOKIE, token, max_age=43200, secure=request.is_secure, httponly=True, samesite="Strict", path="/scanner/")
-    return response
+    return _set_session_cookie(response, token)
 
 
 @scanner_bp.get("/api/session")
@@ -249,6 +277,7 @@ def select_store():
 def logout():
     with database() as db:
         db.execute("DELETE FROM sessions WHERE id=?", (g.scanner["id"],))
+    g.scanner_token = None
     response = jsonify(success=True)
     response.delete_cookie(COOKIE, path="/scanner/")
     return response

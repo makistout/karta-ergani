@@ -26,6 +26,8 @@ def test_looks_like_card_punch():
     assert looks_like_card_punch("έξοδος κάρτας")
     assert looks_like_card_punch("άνοιξε γκουμα")
     assert looks_like_card_punch("χτύπα")
+    assert looks_like_card_punch("Κλειστούς όλους")
+    assert looks_like_card_punch("κλειστούς όλους τώρα")
     assert not looks_like_card_punch("ποιες κάρτες είναι ανοιχτές")
     assert not looks_like_card_punch("ποιος έχει καθυστερημένη είσοδο")
     assert not looks_like_card_punch("στο salty ποιος έχει καθυστερημένη είσοδο/έξοδο")

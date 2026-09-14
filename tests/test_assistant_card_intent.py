@@ -9,6 +9,8 @@ def test_detect_open_from_greek_and_english():
     assert card_action_direction_from_text("κάνε clock in στον enkid haxhi") == "check_in"
     assert card_action_direction_from_text("κλείσε την κάρτα") == "check_out"
     assert card_action_direction_from_text("Κλειστόν") == "check_out"
+    assert card_action_direction_from_text("Κλειστούς όλους") == "check_out"
+    assert card_action_direction_from_text("κλειστούς όλους τώρα") == "check_out"
     assert card_action_direction_from_text("clock out please") == "check_out"
 
 

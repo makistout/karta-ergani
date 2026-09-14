@@ -303,9 +303,16 @@ def _resolve_access_store_id(
 def _looks_like_fresh_command(text: str) -> bool:
     """Νέα εντολή (όνομα + άνοιξε/κλείσε, ή ερώτηση Αρχικής) — όχι διόρθωση της ανοιχτής."""
     from app.assistant_rule_fallback import is_fast_today_info, looks_like_card_punch
-    from app.telegram_assistant_service import _query_tokens
+    from app.telegram_assistant_service import (
+        _asks_close_all_open_cards,
+        _asks_open_all_cards,
+        _query_tokens,
+    )
 
     if is_fast_today_info(text):
+        return True
+    # «Κλειστούς όλους» / «άνοιξε όλους» = νέα μαζική εντολή, όχι απάντηση στην ανοιχτή.
+    if _asks_close_all_open_cards(text) or _asks_open_all_cards(text):
         return True
     return bool(looks_like_card_punch(text) and _query_tokens(text))
 

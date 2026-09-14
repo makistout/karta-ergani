@@ -6,7 +6,7 @@ import json
 import re
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -580,11 +580,17 @@ def _relative_ago_clock_from_text(text: str) -> str:
 
 
 _GROUP_FOCUS_HINTS = (
-    "οσους", "οσοι", "οσες", "ολους", "ολες", "ολοι", "ολα",
+    "οσουσ", "οσοι", "οσεσ", "ολουσ", "ολεσ", "ολοι", "ολα",
     "τελειων", "ξεκινα", "δουλευ", "εργαζ", "ανοιχτ",
     "καθυστερ", "αργοπορ",
     "μετα τι", "μετα τις", "πριν τι", "πριν τις",
 )
+_GROUP_WHOLE_HINTS = frozenset({
+    "οσουσ", "οσοι", "οσεσ", "ολουσ", "ολεσ", "ολοι", "ολα", "οσα",
+})
+_ALL_GROUP_TOKENS = ("ολεσ", "ολουσ", "ολοι", "οσουσ", "οσοι", "οσεσ", "οσα", "ολα", "all")
+# Πριν τις 03:00, «κλείσε τώρα» κοιτάει και χθεσινές ανοιχτές (overnight).
+_OVERNIGHT_CLOSE_BEFORE_HOUR = 3
 
 
 def _fold_text(value: str) -> str:
@@ -592,6 +598,24 @@ def _fold_text(value: str) -> str:
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     # Greek casefold maps capital Σ to final ς; normalize to σ for matching.
     return text.replace("ς", "σ")
+
+
+def _has_whole_token(folded: str, token: str) -> bool:
+    """Whole-word match so «ολα» δεν ταιριάζει μέσα στο «τζολα»."""
+    needle = str(token or "").strip()
+    if not needle:
+        return False
+    return f" {needle} " in f" {folded} "
+
+
+def _in_overnight_close_window(*, now: datetime | None = None) -> bool:
+    current = now or datetime.now(ZoneInfo("Europe/Athens"))
+    return int(current.hour) < _OVERNIGHT_CLOSE_BEFORE_HOUR
+
+
+def _yesterday_iso(*, now: datetime | None = None) -> str:
+    current = now or datetime.now(ZoneInfo("Europe/Athens"))
+    return (current.date() - timedelta(days=1)).isoformat()
 
 
 _GREEK_TO_LATIN = str.maketrans({
@@ -608,8 +632,14 @@ def _greeklish_fold(value: str) -> str:
 
 
 def _is_group_or_criteria_query(text: str) -> bool:
-    folded = f" {_fold_text(text)} "
-    return any(hint in folded for hint in _GROUP_FOCUS_HINTS)
+    folded = _fold_text(text)
+    for hint in _GROUP_FOCUS_HINTS:
+        if hint in _GROUP_WHOLE_HINTS:
+            if _has_whole_token(folded, hint):
+                return True
+        elif hint in folded:
+            return True
+    return False
 
 
 def _edit_distance(left: str, right: str) -> int:
@@ -774,7 +804,8 @@ def _assign_query_tokens_to_employees(
 def _query_tokens(text: str) -> list[str]:
     folded = _fold_text(text)
     stop = {
-        "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "καρτα", "την", "τον", "του", "της", "τουσ", "τισ",
+        "ανοιξε", "ανοιξτε", "κλεισε", "κλειστε", "κλειστον", "κλειστουσ", "κλειστεσ", "κλειστα",
+        "καρτα", "την", "τον", "του", "της", "τουσ", "τισ",
         "τωρα", "σημερα", "αυριο", "μεθαυριο", "χθεσ", "χθες", "παρακαλω", "για", "και", "στο", "στη", "στην", "απο", "με",
         "ρεπο", "αδεια", "ωραριο", "open", "close", "card", "now", "today", "tomorrow", "yesterday",
         "χτυπα", "χτυπησε", "punch", "στισ", "στις", "πριν", "λεπτα", "ωρες",
@@ -1109,10 +1140,9 @@ def _asks_close_all_open_cards(text: str) -> bool:
     folded = _fold_text(text)
     if not any(token in folded for token in ("κλεισ", "close", "checkout", "clockout", "clock out")):
         return False
-    return any(
-        token in folded
-        for token in ("ολεσ", "ολουσ", "οσουσ", "οσα", "ολα", "ανοιχτ", "all")
-    )
+    if "ανοιχτ" in folded:
+        return True
+    return any(_has_whole_token(folded, token) for token in _ALL_GROUP_TOKENS)
 
 
 def _asks_open_all_cards(text: str) -> bool:
@@ -1125,10 +1155,7 @@ def _asks_open_all_cards(text: str) -> bool:
         for token in ("ανοιξ", "open", "checkin", "check in", "clockin", "clock in", "εισοδ")
     ):
         return False
-    return any(
-        token in folded
-        for token in ("ολεσ", "ολουσ", "ολοι", "οσουσ", "οσα", "ολα", "all")
-    )
+    return any(_has_whole_token(folded, token) for token in _ALL_GROUP_TOKENS)
 
 
 def _close_all_exclusion_clause(text: str) -> str | None:
@@ -1411,6 +1438,54 @@ def _validate_single_command(
             else:
                 errors.append(f"Δεν βρέθηκε ώρα {'έναρξης' if field == 'hour_from' else 'λήξης'} στο ωράριο για {match.get('name') or afm}")
         parsed["resolved_schedule_times"] = schedule_times
+
+    # Μετά τα μεσάνυχτα (<03:00): «κλείσε τώρα» χωρίς ανοιχτές σήμερα → χθες (overnight).
+    if (
+        intent.startswith("card_check_out")
+        and store_id in allowed_store_ids
+        and _is_iso_date(date)
+        and date == today_iso
+        and _in_overnight_close_window()
+        and not errors
+        and not any(token in _fold_text(user_text) for token in ("χθεσ", "εχθεσ", "yesterday"))
+    ):
+        store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+        today_open = _open_checkout_matches_for_date(
+            store_context=store_context,
+            employees=employees,
+            store_id=int(store_id),
+            date_iso=date,
+        )
+        today_open_afms = {
+            str(item.get("afm") or "").strip()
+            for item in today_open
+            if str(item.get("afm") or "").strip()
+        }
+        needs_yesterday = False
+        if _asks_close_all_open_cards(user_text) or not afms:
+            needs_yesterday = not today_open_afms
+        else:
+            needs_yesterday = not any(afm in today_open_afms for afm in afms)
+        if needs_yesterday:
+            ydate = _yesterday_iso()
+            y_open = _open_checkout_matches_for_date(
+                store_context=store_context,
+                employees=employees,
+                store_id=int(store_id),
+                date_iso=ydate,
+            )
+            y_open_afms = {
+                str(item.get("afm") or "").strip()
+                for item in y_open
+                if str(item.get("afm") or "").strip()
+            }
+            if _asks_close_all_open_cards(user_text) or not afms:
+                if y_open_afms:
+                    date = ydate
+                    parsed["date"] = ydate
+            elif any(afm in y_open_afms for afm in afms):
+                date = ydate
+                parsed["date"] = ydate
 
     # «κλείσε όλες» → μόνο πραγματικά ανοιχτές εκείνης της ημέρας (όχι επινόηση LLM).
     # «εκτός από ονόματα» αφαιρεί εξαιρέσεις από τη λίστα ανοιχτών.

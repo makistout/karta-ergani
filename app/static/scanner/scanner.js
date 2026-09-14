@@ -5,6 +5,7 @@ let recentPage = 0, recentLoading = false;
 let serverOnline = null, connectivityCheck = null;
 let loginUsername = '';
 const PREF_STORE_KEY = 'erganios-scanner-preferred-store';
+const CREDS_KEY = 'erganios-scanner-creds';
 const dbPromise = new Promise((resolve, reject) => {
   const req = indexedDB.open('erganios-scanner', 1);
   req.onupgradeneeded = () => req.result.createObjectStore('outbox', {keyPath: 'request_id'});
@@ -51,6 +52,36 @@ function writePreferredStoreId(storeId, username) {
     if (storeId == null) localStorage.removeItem(preferenceKey(username));
     else localStorage.setItem(preferenceKey(username), String(storeId));
   } catch {}
+}
+function readSavedCreds() {
+  try {
+    const raw = localStorage.getItem(CREDS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const username = String(data?.username || '').trim();
+    const password = String(data?.password || '');
+    if (!username || !password) return null;
+    return {username, password};
+  } catch { return null; }
+}
+function writeSavedCreds(username, password) {
+  try {
+    const name = String(username || '').trim();
+    const pwd = String(password || '');
+    if (!name || !pwd) return;
+    localStorage.setItem(CREDS_KEY, JSON.stringify({username: name, password: pwd}));
+  } catch {}
+}
+function clearSavedCreds() {
+  try { localStorage.removeItem(CREDS_KEY); } catch {}
+}
+function fillLoginForm(creds) {
+  const form = $('login-form');
+  if (!form || !creds) return;
+  const user = form.querySelector('input[name="username"]');
+  const pass = form.querySelector('input[name="password"]');
+  if (user) user.value = creds.username || '';
+  if (pass) pass.value = creds.password || '';
 }
 async function api(path, body, options = {}) {
   const response = await fetch('/scanner/api/' + path, {
@@ -187,12 +218,14 @@ $('login-form').onsubmit = safeTask(async event => {
   try {
     const form = new FormData(event.target);
     loginUsername = String(form.get('username') || '').trim();
+    const password = String(form.get('password') || '');
     const preferred = readPreferredStoreId(loginUsername);
     await api('login',{
       username:loginUsername,
-      password:form.get('password'),
+      password,
       ...(preferred ? {preferred_store_id: preferred} : {}),
     });
+    writeSavedCreds(loginUsername, password);
     event.target.reset(); message(''); await refreshSession();
   } finally { button.disabled = false; }
 });
@@ -211,7 +244,7 @@ function onDrawerStoreActivate(event) {
 $('drawer-store').onclick=onDrawerStoreActivate;
 $('drawer-store').onkeydown=onDrawerStoreActivate;
 document.querySelectorAll('nav button[data-page]').forEach(el => el.onclick = safeTask(() => page(el.dataset.page)));
-$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); $('menu-toggle').hidden=true; session=null; loginUsername=''; setDryRunBanner(false); $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
+$('logout').onclick = safeTask(async () => { stopCamera(); closeMenu(); await api('logout',{}); clearSavedCreds(); $('menu-toggle').hidden=true; session=null; loginUsername=''; setDryRunBanner(false); $('pending-list').replaceChildren(); $('workspace').hidden=true; $('login').hidden=false; message('Αποσυνδεθήκατε.'); });
 function stopCamera() { scanning=false; if(stream) stream.getTracks().forEach(track=>track.stop()); stream=null; $('video').srcObject=null; }
 async function openCamera(event) {
   if(!session?.store_id) {
@@ -503,4 +536,32 @@ checkConnectivity().catch(error=>message(error.message,true));
 setInterval(()=>{if(!document.hidden)checkConnectivity().catch(error=>message(error.message,true));},30000);
 setInterval(()=>{if(!document.hidden)sendPending().catch(error=>message(error.message,true));},30000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/scanner/sw.js',{scope:'/scanner/'}).catch(()=>message('Δεν ενεργοποιήθηκε η λειτουργία εκτός σύνδεσης.',true));
-refreshSession().catch(error=>{if(error.status!==401)message(error.message,true);});
+async function restoreSession() {
+  try {
+    await refreshSession();
+    return;
+  } catch (error) {
+    if (error.status !== 401) {
+      message(error.message, true);
+      return;
+    }
+  }
+  const creds = readSavedCreds();
+  if (!creds) return;
+  fillLoginForm(creds);
+  try {
+    loginUsername = creds.username;
+    const preferred = readPreferredStoreId(creds.username);
+    await api('login', {
+      username: creds.username,
+      password: creds.password,
+      ...(preferred ? {preferred_store_id: preferred} : {}),
+    });
+    await refreshSession();
+  } catch (error) {
+    if (error.status === 401) clearSavedCreds();
+    else message(error.message, true);
+  }
+}
+fillLoginForm(readSavedCreds());
+restoreSession();
