@@ -34,6 +34,54 @@ def test_split_short_gap_is_rebuilt_with_three_hour_gap():
     assert row["proposed"] == "09:00–13:00 · 16:00–20:00"
 
 
+def test_single_split_punch_before_first_part_moves_only_first_part():
+    row = one(
+        [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")],
+        [punch("07:00", None)],
+        contract(flex=0),
+    )
+    assert row["status"] == "change"
+    assert row["rule_id"] == "SPLIT_SINGLE_PUNCH_REBUILT"
+    assert row["proposed"] == "07:00–11:00 · 17:00–21:00"
+    assert row["overtime_minutes"] == 0
+
+
+def test_single_split_punch_between_parts_rebuilds_first_part_backwards():
+    row = one(
+        [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")],
+        [punch("14:00", None)],
+        contract(flex=0),
+    )
+    assert row["status"] == "change"
+    assert row["rule_id"] == "SPLIT_SINGLE_PUNCH_REBUILT"
+    assert row["proposed"] == "10:00–14:00 · 17:00–21:00"
+    assert row["overtime_minutes"] == 0
+
+
+def test_single_split_punch_between_parts_pushes_second_start_for_three_hour_gap():
+    row = one(
+        [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")],
+        [punch("15:00", None)],
+        contract(flex=0),
+    )
+    assert row["status"] == "change"
+    assert row["proposed"] == "11:00–15:00 · 18:00–21:00"
+    assert row["overtime_minutes"] == 0
+
+
+def test_single_split_punch_inside_either_part_keeps_declared_split():
+    for boundary in ("10:00", "18:00"):
+        row = one(
+            [sched(start="09:00", end="13:00"), sched(start="17:00", end="21:00")],
+            [punch(boundary, None)],
+            contract(flex=0),
+        )
+        assert row["status"] == "ok"
+        assert row["rule_id"] == "SPLIT_SINGLE_PUNCH_COMPLIANT"
+        assert row["proposed"] == "09:00–13:00 · 17:00–21:00"
+        assert row["overtime_minutes"] == 0
+
+
 def test_accented_ergani_leave_without_punch_is_omitted():
     report = build_weekly_report(
         [sched(shift="Κανονική άδεια Έτος Αναφοράς: 2026 Αρ. Δικαιούμενων ημερών: 21",
