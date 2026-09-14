@@ -973,7 +973,7 @@ def test_sync_employees_draft_without_employee_or_date():
     parsed = {
         "intent": "sync_employees",
         "store_id": 4,
-        "employee_afms": [],
+        "employee_afms": ["102624247"],
         "date": None,
     }
     status, validation, proposed = validate_and_describe(
@@ -985,5 +985,8 @@ def test_sync_employees_draft_without_employee_or_date():
     assert status == "draft"
     assert validation["valid"] is True
     assert "Μητρώο" in proposed
+    assert "ERATO" in proposed
+    assert parsed["employee_afms"] == []
+    assert parsed.get("employee_afm") is None
     assert "εργαζόμενοι" not in " ".join(validation.get("errors") or []).casefold()
     assert "ημερομηνία" not in " ".join(validation.get("errors") or []).casefold()

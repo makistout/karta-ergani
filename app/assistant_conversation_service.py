@@ -742,6 +742,7 @@ def process_assistant_command(
     reply_context: dict[str, Any] | None = None, confirmation_mode: str = "pin",
     office_user: str | None = None, chat_id: str | None = None,
 ) -> dict[str, Any]:
+    from app.assistant_rule_fallback import looks_like_sync_employees
     from app.repo_telegram_assistant import (
         cancel_open_assistant_tasks,
         create_task,
@@ -811,13 +812,28 @@ def process_assistant_command(
             return resolved
 
     # Phone/chat → stores: 1 auto · many → name in message · else ask list (no LLM yet).
+    # Συγχρονισμός προσωπικού: με πολλά καταστήματα ρώτα πάντα ποιο —
+    # το sticky από τελευταία ειδοποίηση δεν μετράει (εκτός αν ανέφερε όνομα).
+    access_stores = _authorized_store_rows(contexts)
+    if (
+        not office_user
+        and len(access_stores) > 1
+        and looks_like_sync_employees(text)
+        and len(_mentioned_store_ids(text, contexts)) != 1
+    ):
+        return _ask_store_choice(
+            text=text,
+            contexts=contexts,
+            inbound_id=inbound_id,
+            recipient_id=recipient_id,
+        )
+
     resolved_store = _resolve_access_store_id(
         text=text,
         contexts=contexts,
         store_id=store_id,
         reply_context=reply_context,
     )
-    access_stores = _authorized_store_rows(contexts)
     if resolved_store is None and len(access_stores) > 1 and not office_user:
         return _ask_store_choice(
             text=text,

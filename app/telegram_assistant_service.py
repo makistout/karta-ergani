@@ -1352,6 +1352,13 @@ def _validate_single_command(
         errors.append("Δεν προσδιορίστηκαν μοναδικά όλοι οι εργαζόμενοι του καταστήματος")
 
     date = str(parsed.get("date") or "").strip()
+    if intent in _STORE_ACTION_INTENTS:
+        # Εντολή επιπέδου καταστήματος: αγνόησε τυχόν AFM από sticky/LLM.
+        parsed["employee_afms"] = []
+        parsed["employee_afm"] = None
+        parsed.pop("employee_references", None)
+        afms = []
+        matches = []
     if intent not in {"unknown", *_INFO_INTENTS, *_STORE_ACTION_INTENTS} and not _is_iso_date(date):
         errors.append("Δεν προσδιορίστηκε έγκυρη ημερομηνία")
     today_iso = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
@@ -1590,7 +1597,18 @@ def _validate_single_command(
     elif intent == "cancel_pending":
         proposed = str(parsed.get("clarification_question") or "Ακυρώθηκε η εντολή.").strip()
     elif intent == "sync_employees":
+        store_label = ""
+        if store_id in allowed_store_ids:
+            store_label = str(
+                next(
+                    (c.get("store_name") for c in contexts if int(c["store_id"]) == store_id),
+                    "",
+                )
+                or ""
+            ).strip()
         proposed = "Συγχρονισμός προσωπικού από Μητρώο Ergani (σύνδεση + QR)"
+        if store_label:
+            proposed = f"{proposed} · {store_label}"
     elif parsed.get("card_action_all_skipped"):
         action_noun = "άνοιγμα" if "check_in" in intent else "κλείσιμο"
         if len(skipped_card) == 1:

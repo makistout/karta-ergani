@@ -114,6 +114,100 @@ def test_multi_store_asks_list_when_message_has_no_store(monkeypatch):
     assert created["store_id"] is None
 
 
+def test_sync_employees_asks_store_even_with_sticky_context(monkeypatch):
+    """Συγχρονισμός προσωπικού με πολλά καταστήματα: ρώτα, αγνόησε sticky APERIO."""
+    created: dict = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return 876
+
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
+
+    def boom(**kwargs):
+        raise AssertionError("LLM must not run before store choice for sync_employees")
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", boom)
+
+    contexts = [
+        {"store_id": 12, "store_name": "APERIO", "employer_afm": "1", "branch_aa": "0", "recipient_id": 44},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+        {"store_id": 7, "store_name": "VILLA SHARM", "employer_afm": "3", "branch_aa": "0", "recipient_id": 21},
+    ]
+    result = process_assistant_command(
+        text="Συγχρονισμός προσωπικού",
+        contexts=contexts,
+        inbound_id=1502,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+        reply_context={
+            "store_id": 12,
+            "message_text": "erganiOS — APERIO\nΚαθυστερημένη είσοδος...",
+            "context": {"store_id": 12, "employee_afm": "170809878"},
+        },
+    )
+    assert result["status"] == "needs_clarification"
+    assert "Επιλέξτε κατάστημα" in result["answer"]
+    assert "APERIO" in result["answer"]
+    assert "ERATO" in result["answer"]
+    assert created["parsed"]["clarification_kind"] == "store_choice"
+    assert created["parsed"]["original_message"] == "Συγχρονισμός προσωπικού"
+    assert created["store_id"] is None
+
+
+def test_sync_employees_named_store_skips_choice(monkeypatch):
+    """«…στο Ερατο» δεν ρωτάει λίστα καταστημάτων."""
+    monkeypatch.setattr(
+        "app.repo_telegram_assistant.latest_pending_clarification",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", lambda **kwargs: 877)
+
+    def fake_parse(**kwargs):
+        assert kwargs["reply_context"]["store_id"] == 9
+        return (
+            {
+                "intent": "sync_employees",
+                "store_id": 9,
+                "employee_afms": [],
+                "confidence": 0.85,
+            },
+            [],
+            {},
+        )
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
+    monkeypatch.setattr(
+        "app.telegram_assistant_service.validate_and_describe",
+        lambda *a, **k: (
+            "draft",
+            {"valid": True, "errors": [], "execution_enabled": False},
+            "Συγχρονισμός προσωπικού από Μητρώο Ergani (σύνδεση + QR) · ERATO",
+        ),
+    )
+    contexts = [
+        {"store_id": 12, "store_name": "APERIO", "employer_afm": "1", "branch_aa": "0", "recipient_id": 44},
+        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
+    ]
+    result = process_assistant_command(
+        text="συγχρόνισε προσωπικό στο Ερατο",
+        contexts=contexts,
+        inbound_id=1503,
+        chat_id="6809632515",
+        confirmation_mode="pin",
+        reply_context={"store_id": 12},
+    )
+    assert result["status"] == "draft"
+    assert "Επιλέξτε κατάστημα" not in result["answer"]
+    assert result["parsed"]["store_id"] == 9
+
+
 def test_reply_notification_text_selects_store_before_asking_list(monkeypatch):
     """Reply σε παλιό notification κρατά store και χωρίς store_id metadata."""
     monkeypatch.setattr(

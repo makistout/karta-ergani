@@ -44,7 +44,8 @@
   - συμπληρώνει και τοπικά κενά: ενεργοί χωρίς QR ή πρόσφατο ωράριο χωρίς σύνδεση
   - πρώτο snapshot γίνεται seed χωρίς μαζικό κατέβασμα όλου του Μητρώου
 - AI Agent: intent `sync_employees` («συγχρόνισε προσωπικό/εργαζομένους») καλεί
-  πλήρη `sync_employment_contracts_from_portal` για το κατάστημα.
+  πλήρη `sync_employment_contracts_from_portal` για το κατάστημα· με πολλά
+  καταστήματα ρωτάει ποιο (`store_choice`), χωρίς να κληρονομεί sticky.
 - Migration: `sql/alter_add_karta_employment_contract.sql` /
   `python scripts/ensure_karta_employment_contract_table.py`.
 - Η ίδια καρτέλα περιέχει και την ενότητα **Ψηφιακή Οργάνωση Χρόνου Εργασίας**.
