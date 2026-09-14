@@ -569,61 +569,6 @@ def _distance(punch: dict[str, Any], slot: dict[str, Any]) -> int:
     return abs((ps if ps is not None else ds) - ds) + abs((pe if pe is not None else de) - de)
 
 
-def _single_punch_split_match(
-    punches: list[dict[str, Any]], slots: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], bool] | None:
-    """Resolve one boundary against a two-part declared split without review.
-
-    A boundary inside either declared part keeps the split unchanged.  Before
-    the first part it is treated as its new entry; between the two parts it is
-    treated as the first part's new exit.  The declared part duration is kept,
-    while a second-part start is pushed only as far as needed for a three-hour
-    gap and its declared exit remains fixed.
-    """
-    declared = _working_slots(slots)
-    if len(punches) != 1 or len(declared) != 2:
-        return None
-    punch = punches[0]
-    boundaries = [
-        value for value in (punch.get("hour_from"), punch.get("hour_to"))
-        if _clock(value)
-    ]
-    if len(boundaries) != 1:
-        return None
-    boundary = _minute_of_day(boundaries[0])
-    first_start = _minute_of_day(declared[0].get("hour_from"))
-    first_end = _minute_of_day(declared[0].get("hour_to"), after=first_start)
-    second_start = _minute_of_day(declared[1].get("hour_from"), after=first_end)
-    second_end = _minute_of_day(declared[1].get("hour_to"), after=second_start)
-    if None in (boundary, first_start, first_end, second_start, second_end):
-        return None
-
-    changed = False
-    if first_start <= boundary <= first_end or second_start <= boundary <= second_end:
-        parts = [(first_start, first_end), (second_start, second_end)]
-    elif boundary < first_start:
-        first_duration = first_end - first_start
-        parts = [(boundary, boundary + first_duration), (second_start, second_end)]
-        changed = True
-    elif first_end < boundary < second_start:
-        first_duration = first_end - first_start
-        adjusted_second_start = max(second_start, boundary + 180)
-        if adjusted_second_start >= second_end:
-            return None
-        parts = [(boundary - first_duration, boundary), (adjusted_second_start, second_end)]
-        changed = True
-    else:
-        return None
-
-    matched = [{
-        "from": _hm(start), "to": _hm(end),
-        "inferred_from": False, "inferred_to": False,
-        "punch": punch if start <= boundary <= end else None,
-        "slot": slot,
-    } for (start, end), slot in zip(parts, declared)]
-    return matched, changed
-
-
 def _match_punches(
     punches: list[dict[str, Any]], slots: list[dict[str, Any]],
     *, max_inferred_overnight_minutes: int | None,
@@ -946,11 +891,6 @@ def build_weekly_report(
             day_punches, slots,
             max_inferred_overnight_minutes=max_inferred_overnight_minutes,
         )
-        single_split_match = _single_punch_split_match(day_punches, work_slots)
-        single_split_changed = False
-        if single_split_match is not None:
-            matched, single_split_changed = single_split_match
-            orphan_punches = []
         possible_split_parts = _possible_undeclared_split_parts(
             day_punches,
             work_slots,
@@ -1028,9 +968,7 @@ def build_weekly_report(
             day_punches, slots, matched
         )
         overtime_actual_minutes = (
-            actual_minutes or 0
-            if single_split_match is not None
-            else overtime_pe - overtime_ps
+            overtime_pe - overtime_ps
             if overtime_ps is not None and overtime_pe is not None and overtime_pe > overtime_ps
             else 0
         )
@@ -1104,21 +1042,6 @@ def build_weekly_report(
                     if split_decision.proposal_basis else "Εφαρμογή κανόνων σπαστού μετά από επιβεβαίωση"
                 ),
                 "POSSIBLE_SPLIT_REVIEW",
-            )
-        elif single_split_match is not None:
-            decision = RuleDecision(
-                "change" if single_split_changed else "ok",
-                (
-                    "Το μονό χτύπημα ανακατασκεύασε μόνο το αντίστοιχο μέρος του σπαστού"
-                    if single_split_changed
-                    else "Το μονό χτύπημα βρίσκεται μέσα σε δηλωμένο μέρος του σπαστού"
-                ),
-                actual_label,
-                "Δηλωμένη διάρκεια μέρους και ελάχιστο κενό τριών ωρών",
-                (
-                    "SPLIT_SINGLE_PUNCH_REBUILT"
-                    if single_split_changed else "SPLIT_SINGLE_PUNCH_COMPLIANT"
-                ),
             )
         elif len(work_slots) > 1:
             if len(matched) >= 2 and not inferred and not orphan_punches:
