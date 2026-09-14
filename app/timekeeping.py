@@ -293,13 +293,6 @@ def _reconcile_recognized_base_timeline(
     quantities one common temporal boundary. Existing contiguous results are
     deliberately left unchanged.
     """
-    def preserve_with_warning(reason: str) -> None:
-        day["warnings"].append(
-            "Η χρονική συνέχεια βάσης και πρόσθετων ωρών δεν ανακατασκευάστηκε "
-            f"αυτόματα ({reason})· διατηρήθηκε αμετάβλητο το αρχικό αποτέλεσμα "
-            "της Ωρομέτρησης"
-        )
-
     if not overwork_timeline:
         return
 
@@ -330,8 +323,10 @@ def _reconcile_recognized_base_timeline(
         not overwork_touches_overtime
         or not (safe_short_base_rule or safe_missing_entry_rule)
     ):
-        preserve_with_warning("μη ασφαλής περίπτωση")
-        return
+        raise ValueError(
+            "Ασυνέχεια αναγνωρισμένης βάσης, υπερεργασίας ή υπερωρίας· "
+            "η περίπτωση απαιτεί έλεγχο"
+        )
 
     break_in_work = source.get("break_in_work")
     is_outside_break = break_in_work in (0, False, "0")
@@ -340,8 +335,7 @@ def _reconcile_recognized_base_timeline(
         outside_break = max(0, int(source.get("break_minutes") or 0))
     physical_duration = base_minutes + (outside_break if is_outside_break else 0)
     if physical_duration <= 0:
-        preserve_with_warning("δεν υπάρχει ασφαλής ημερήσια βάση")
-        return
+        raise ValueError("Δεν υπάρχει ασφαλής ημερήσια βάση για χρονική ανακατασκευή")
 
     physical_end = overwork_timeline[0]
     physical_start = physical_end - timedelta(minutes=physical_duration)
@@ -356,8 +350,10 @@ def _reconcile_recognized_base_timeline(
     )
     rebuilt = [minute for minute in physical if minute not in break_set]
     if len(rebuilt) != base_minutes or not _timelines_touch(rebuilt, overwork_timeline):
-        preserve_with_warning("η βάση δεν ανακατασκευάζεται με ασφάλεια")
-        return
+        raise ValueError(
+            "Η αναγνωρισμένη βάση δεν μπορεί να ανακατασκευαστεί με ασφάλεια· "
+            "η περίπτωση απαιτεί έλεγχο"
+        )
 
     labels = _timeline_interval_labels(physical)
     day["_recognized_timeline"] = rebuilt
