@@ -28,6 +28,7 @@ _OPERATION_LABELS = {
     "scheduled_employment_contract_sync": "Ημερήσιο στοιχεία σύμβασης",
     "opportunistic_employment_enrichment": "Εμπλουτισμός νέων εργαζομένων (Μητρώο/QR)",
     "scheduled_post_sync_notify": "Ειδοποιήσεις μετά το sync",
+    "scheduled_contract_overage_notify": "Υπερβάσεις σύμβασης (αύριο)",
 }
 
 

@@ -125,6 +125,23 @@ def card_report():
             row.setdefault("today_notify_snoozed", False)
             row.setdefault("wto_notify_snoozed", False)
 
+    try:
+        from app.contract_home_alerts import enrich_card_report_rows_with_contract_alerts
+
+        contract_summary = enrich_card_report_rows_with_contract_alerts(
+            rows,
+            store_id=int(ctx["id"]),
+            employer_afm=str(ctx["employer_afm"]),
+            branch_aa=str(ctx["branch_aa"]),
+        )
+        summary = dict(report.get("summary") or {})
+        for key, value in contract_summary.items():
+            summary[key] = int(summary.get(key) or 0) + int(value or 0)
+        report["summary"] = summary
+    except Exception:
+        for row in rows:
+            row.setdefault("contract_alerts", [])
+
     return jsonify({
         "store": {
             "id": ctx["id"],

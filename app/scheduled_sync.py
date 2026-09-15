@@ -207,6 +207,27 @@ def _run_configured_auto_actions(
             "reason": contract_reason,
         }
 
+    from app.contract_overage_notifications import (
+        run_contract_overage_notify_for_store,
+        should_run_contract_overage_notify,
+    )
+
+    overage_should_run, overage_target, overage_reason = (
+        should_run_contract_overage_notify(cfg)
+    )
+    if overage_should_run:
+        actions["contract_overage_notify"] = run_contract_overage_notify_for_store(
+            cfg,
+            target_date_iso=overage_target,
+            parent_run_id=parent_run_id,
+        )
+    else:
+        actions["contract_overage_notify"] = {
+            "skipped": True,
+            "reason": overage_reason,
+            "target_date": overage_target or None,
+        }
+
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
     if not should_run:
         actions["auto_close_prev_day"] = {

@@ -198,6 +198,10 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 "app.auto_close_cards.should_run_auto_close_prev_day",
                 return_value=(False, "2026-07-01", "ρύθμιση ανενεργή"),
             ),
+            patch(
+                "app.contract_overage_notifications.should_run_contract_overage_notify",
+                return_value=(False, "2026-07-03", "skip"),
+            ),
         ):
             actions = scheduled_sync._run_configured_auto_actions(
                 cfg,
@@ -240,6 +244,10 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 "app.scheduled_sync._enqueue_auto_close_prev_day_action",
                 return_value=fake_job,
             ) as enqueue_job,
+            patch(
+                "app.contract_overage_notifications.should_run_contract_overage_notify",
+                return_value=(False, "2026-07-02", "skip"),
+            ),
         ):
             actions = scheduled_sync._run_configured_auto_actions(
                 cfg,

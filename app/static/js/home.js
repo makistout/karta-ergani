@@ -490,6 +490,9 @@ function renderSummary(el, summary, meta, store, workDate) {
     { key: "completed", label: "Ολοκληρωμένοι", cls: "status-ok" },
     { key: "rest", label: "Ρεπό/ανάπαυση", cls: "status-muted" },
     { key: "absent", label: "Χωρίς άφιξη", cls: "status-err" },
+    { key: "contract_sixth_day", label: "6η μέρα / 5ήμερο", cls: "status-err" },
+    { key: "contract_hours_over", label: "Υπέρβαση εβδομ. ωρών", cls: "status-err" },
+    { key: "contract_leave_over", label: "Υπέρβαση άδειας", cls: "status-err" },
   ];
   const parts = chips
     .filter((c) => (summary[c.key] || 0) > 0)
@@ -727,6 +730,16 @@ function buildActionCell(r) {
           .join("")}</ul>`
       : "";
   let html = Office.escapeHtml(r.action || "—") + notes;
+  const contractAlerts = Array.isArray(r.contract_alerts) ? r.contract_alerts : [];
+  for (const alert of contractAlerts) {
+    const label = Office.escapeHtml(String(alert?.label || "").trim() || "Παράβαση σύμβασης");
+    html =
+      `<div class="report-correction-box report-contract-alert">` +
+      `<div class="report-correction-title">${Office.icon("exclamation-triangle")} Παράβαση</div>` +
+      `<div class="report-correction-body">${label}</div>` +
+      `</div>` +
+      html;
+  }
   const notifyBase = String(r.today_notify_kind || "").trim().split("@", 1)[0];
   if (notifyBase === "exit_needs_correction") {
     const notifyRow = {
@@ -786,6 +799,27 @@ function buildActionCell(r) {
   return html;
 }
 
+function employeeDetailHref(r) {
+  const afm = String(r?.employee_afm || "").trim();
+  if (!afm) return "";
+  return (
+    `/ui/employees/detail?afm=${encodeURIComponent(afm)}` +
+    `&eponymo=${encodeURIComponent(r.eponymo || "")}` +
+    `&onoma=${encodeURIComponent(r.onoma || "")}`
+  );
+}
+
+function employeeNameCellHtml(r, text) {
+  const label = Office.escapeHtml(String(text || "").trim());
+  const href = employeeDetailHref(r);
+  if (!href || !label) return label || "—";
+  const full = `${r.eponymo || ""} ${r.onoma || ""}`.trim() || label;
+  return (
+    `<a class="employee-name-link" href="${href}" ` +
+    `title="Στοιχεία εργαζομένου — ${Office.escapeHtml(full)}">${label}</a>`
+  );
+}
+
 function renderTable(wrap, rows, meta, multiDay) {
   if (!meta.has_schedule && !meta.has_work_log) {
     wrap.innerHTML =
@@ -833,8 +867,8 @@ function renderTable(wrap, rows, meta, multiDay) {
 
     const cells = [
       badge.outerHTML,
-      r.eponymo || "",
-      r.onoma || "",
+      employeeNameCellHtml(r, r.eponymo || ""),
+      employeeNameCellHtml(r, r.onoma || ""),
     ];
     if (multiDay) cells.push(r.work_date || "");
     cells.push(
@@ -847,7 +881,7 @@ function renderTable(wrap, rows, meta, multiDay) {
     const colClass = ["", "col-name", "col-name"];
     if (multiDay) colClass.push("");
     colClass.push("col-flex", "col-hours", "col-hours", "work-log-action-cell", "col-action");
-    const htmlColumns = new Set([0, cells.length - 3, cells.length - 2, cells.length - 1]);
+    const htmlColumns = new Set([0, 1, 2, cells.length - 3, cells.length - 2, cells.length - 1]);
     cells.forEach((html, i) => {
       const td = document.createElement("td");
       if (colClass[i]) td.className = colClass[i];

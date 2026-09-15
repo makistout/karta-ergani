@@ -77,6 +77,17 @@ table.data.report-table td.col-name {
   color: var(--text);
 }
 
+table.data.report-table a.employee-name-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  font-weight: 600;
+}
+
+table.data.report-table a.employee-name-link:hover {
+  color: var(--accent, #0b5cab);
+}
+
 table.data.report-table td.col-afm {
   font-variant-numeric: tabular-nums;
   font-size: 0.7rem;

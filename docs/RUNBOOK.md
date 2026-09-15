@@ -81,6 +81,10 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
     (`scheduled_employment_contract_sync`, προεπιλογή `04:00`)
   - κυριακάτικο `90ήμερο` repair sync πραγματικής
     (`scheduled_weekly_repair_work_log_sync`, προεπιλογή `05:00`)
+  - στις **21:00** αποστολή υπερβάσεων σύμβασης **για αύριο** στους λήπτες
+    (`scheduled_contract_overage_notify`· env
+    `KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_ENABLED` /
+    `KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_TIME`)
 - Αν λείπει ο πίνακας συμβάσεων: `python scripts/ensure_karta_employment_contract_table.py`
   ή `sql/alter_add_karta_employment_contract.sql`.
 - Αν λείπουν πρωτόκολλα Ergani / στήλες πραγματικής:
