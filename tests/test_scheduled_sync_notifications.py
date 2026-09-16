@@ -146,7 +146,7 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         self.assertEqual(work_log_kwargs["to_iso"], "2026-07-02")
         self.assertEqual(work_log_kwargs["max_days"], 1)
         enqueue_kwargs = enqueue_notify.call_args.kwargs
-        self.assertTrue(enqueue_kwargs["skip_late_check_in_auto"])
+        self.assertFalse(enqueue_kwargs["skip_late_check_in_auto"])
 
     def test_future_schedule_auto_action_runs_once_after_configured_time(self):
         cfg = {
@@ -378,7 +378,7 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             summary,
         )
 
-    def test_send_post_sync_skips_late_check_in_when_empty_uncertain(self):
+    def test_send_post_sync_does_not_skip_late_check_in_when_empty_uncertain_disabled(self):
         class FakeLogger:
             def __init__(self, *args, **kwargs):
                 self.run_id = "notify-run"
@@ -460,13 +460,13 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             )
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["skipped"], 1)
-        self.assertEqual(result["skip_reasons"]["work_log_empty_uncertain"], 1)
-        send_notify.assert_called_once()
-        self.assertEqual(
-            send_notify.call_args.kwargs["notify_kind"],
-            "late_check_out",
-        )
+        self.assertEqual(result["skipped"], 0)
+        self.assertEqual(result.get("skip_reasons") or {}, {})
+        self.assertEqual(send_notify.call_count, 2)
+        kinds = {
+            call.kwargs["notify_kind"] for call in send_notify.call_args_list
+        }
+        self.assertEqual(kinds, {"late_check_in", "late_check_out"})
 
 
 if __name__ == "__main__":

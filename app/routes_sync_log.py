@@ -29,6 +29,7 @@ _OPERATION_LABELS = {
     "opportunistic_employment_enrichment": "Εμπλουτισμός νέων εργαζομένων (Μητρώο/QR)",
     "scheduled_post_sync_notify": "Ειδοποιήσεις μετά το sync",
     "scheduled_contract_overage_notify": "Υπερβάσεις σύμβασης (αύριο)",
+    "scheduled_specialty_catalog_sync": "Κατάλογος ειδικοτήτων ΣΤΕΠ",
 }
 
 

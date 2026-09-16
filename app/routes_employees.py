@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import date, datetime, timedelta
+from typing import Any
 
 import pyodbc
 from flask import Blueprint, jsonify, request
@@ -453,3 +454,567 @@ def employment_contract_sync_status(job_id: str):
     if not job:
         return jsonify({"error": "Άγνωστο ή ολοκληρωμένο job"}), 404
     return jsonify(job)
+
+
+@employees_bp.get("/contract/change/draft")
+def employment_contract_change_draft():
+    """Προσυμπληρωμένη φόρμα WebMA από τρέχουσα σύμβαση + EX_BASE_05."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    employee_afm = norm_afm(request.args.get("employee_afm") or "")
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+
+    from app.ergani_client import ErganiClient
+    from app.ergani_env import client_for_store
+    from app.ergani_parse import extract_raw_list
+    from app.http_helpers import ensure_ergani_bearer, json_or_text
+    from app.web_ma_payload import (
+        CHANGE_TYPES,
+        DIEUTHETISI_TYPES,
+        IDENTITY_DOCUMENT_TYPES,
+        MAIN_INSURANCE_FUNDS,
+        SUPPLEMENTARY_INSURANCE_FUNDS,
+        draft_from_contract,
+        personal_fields_from_ex_base_05,
+    )
+
+    contract = None
+    try:
+        history = list_history_for_employee(
+            str(ctx["employer_afm"]),
+            str(ctx.get("branch_aa") or "0"),
+            employee_afm,
+            limit=5,
+        )
+        contract = next(
+            (
+                row
+                for row in history
+                if row.get("is_current") in (True, 1, "1")
+            ),
+            history[0] if history else None,
+        )
+    except pyodbc.Error as ex:
+        return _contract_db_error(ex)
+
+    if not contract:
+        employees = list_employees_for_employer(
+            str(ctx["employer_afm"]),
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+            limit=5000,
+        )
+        emp = next(
+            (row for row in employees if norm_afm(row.get("afm") or "") == employee_afm),
+            None,
+        )
+        if not emp:
+            return jsonify({"error": "Δεν βρέθηκε εργαζόμενος στο κατάστημα"}), 404
+        contract = {
+            "employee_afm": employee_afm,
+            "eponymo": emp.get("eponymo"),
+            "onoma": emp.get("onoma"),
+            "branch_aa": ctx.get("branch_aa") or "0",
+        }
+
+    merged = dict(contract)
+    ergani_enriched = False
+    ergani_enrich_error = None
+    try:
+        from app.wto_submit import clear_ergani_bearer_session, ergani_authorization_denied
+
+        client: ErganiClient = client_for_store(ctx)
+        bearer = ensure_ergani_bearer(ctx)
+        if not bearer:
+            ergani_enrich_error = "Αποτυχία σύνδεσης Ergani API"
+        else:
+            resp = client.execute_service("EX_BASE_05", [], bearer)
+            parsed = json_or_text(resp)
+            if ergani_authorization_denied(resp, parsed):
+                clear_ergani_bearer_session()
+                bearer = ensure_ergani_bearer(ctx)
+                if bearer:
+                    resp = client.execute_service("EX_BASE_05", [], bearer)
+                    parsed = json_or_text(resp)
+            if not resp.ok:
+                ergani_enrich_error = (
+                    (parsed.get("message") if isinstance(parsed, dict) else None)
+                    or f"EX_BASE_05 HTTP {resp.status_code}"
+                )
+            else:
+                target_afm = employee_afm
+                for item in extract_raw_list(parsed):
+                    item_afm = norm_afm(str(item.get("afm") or item.get("Afm") or ""))
+                    if item_afm != target_afm:
+                        continue
+                    personal = personal_fields_from_ex_base_05(item)
+                    for key, value in personal.items():
+                        if value is None or str(value).strip() == "":
+                            continue
+                        # Συμπλήρωση κενών + αντικατάσταση προσωπικών από Ergani.
+                        if key in (
+                            "eponymo",
+                            "onoma",
+                            "onoma_patros",
+                            "onoma_mitros",
+                            "birthdate",
+                            "sex",
+                            "yphkoothta",
+                            "typos_taytothtas",
+                            "ar_taytothtas",
+                            "ekdousa_arxh",
+                            "date_ekdosis",
+                            "date_ekdosis_lixi",
+                            "amka",
+                            "amika",
+                            "code_anergias",
+                            "ar_vivliou_anilikou",
+                            "marital_status",
+                            "arithmos_teknon",
+                            "epipedo_morfosis",
+                            "kyria_asfalish",
+                            "epikourikiki_kod",
+                            "prosthetes_asfalistikes_paroxes",
+                            "xronos_katabolhs",
+                            "eidos_dieuthethshs",
+                            "specialty",
+                            "step92",
+                            "salary",
+                            "hourly_wage",
+                            "weekly_hours",
+                            "fulltime_contract_weekly_hours",
+                            "weekly_work_days",
+                            "employment_relation",
+                            "regime",
+                            "characterization",
+                            "prior_service",
+                            "break_minutes",
+                            "break_in_work",
+                            "flex_arrival_minutes",
+                            "working_card",
+                            "working_time_digital_organization",
+                        ) or not str(merged.get(key) or "").strip():
+                            merged[key] = value
+                    ergani_enriched = True
+                    break
+                if not ergani_enriched:
+                    ergani_enrich_error = (
+                        "Ο εργαζόμενος δεν βρέθηκε στην τρέχουσα κατάσταση Ergani (EX_BASE_05)"
+                    )
+    except Exception as ex:  # noqa: BLE001 — το draft συνεχίζει με τοπικά στοιχεία
+        ergani_enriched = False
+        ergani_enrich_error = str(ex) or ex.__class__.__name__
+
+    draft = draft_from_contract(
+        merged,
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+        employee_afm=employee_afm,
+    )
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx.get("branch_aa"),
+        },
+        "draft": draft,
+        "change_types": CHANGE_TYPES,
+        "identity_document_types": IDENTITY_DOCUMENT_TYPES,
+        "main_insurance_funds": MAIN_INSURANCE_FUNDS,
+        "supplementary_insurance_funds": SUPPLEMENTARY_INSURANCE_FUNDS,
+        "dieuthetisi_types": DIEUTHETISI_TYPES,
+        "ergani_enriched": ergani_enriched,
+        "ergani_enrich_error": ergani_enrich_error,
+        "available": True,
+        "submission_code": draft.get("submission_code"),
+    })
+
+
+@employees_bp.post("/contract/change/submit")
+def employment_contract_change_submit():
+    """Υποβολή Ψηφιακής Δήλωσης Μεταβολής Στοιχείων Εργασιακής Σχέσης (WebMA)."""
+    import base64
+    import json as json_lib
+
+    from app.ergani_client import ErganiClient
+    from app.ergani_env import client_for_store
+    from app.http_helpers import (
+        ensure_ergani_bearer,
+        json_or_text,
+        persist_safe,
+        response_body_text,
+    )
+    from app.web_ma_payload import (
+        SUBMISSION_CODE_WEB_MA,
+        build_web_ma_payload,
+    )
+    from app.work_card_payload import WorkCardPayloadError
+    from app.wto_submit import (
+        ergani_error_message,
+        parse_submit_response,
+        persist_wto_submit,
+        submit_wto_with_auth_retry,
+    )
+
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raw_payload = request.form.get("payload") or request.form.get("data")
+        if raw_payload:
+            try:
+                parsed = json_lib.loads(raw_payload)
+            except (TypeError, ValueError, json_lib.JSONDecodeError):
+                parsed = None
+            data = parsed if isinstance(parsed, dict) else {}
+        else:
+            data = {}
+    else:
+        data = dict(data)
+
+    upload = request.files.get("file") or request.files.get("f_file")
+    if upload and upload.filename:
+        raw = upload.read()
+        if not raw:
+            return jsonify({"error": "Το επισυναπτόμενο αρχείο είναι κενό"}), 400
+        name = str(upload.filename or "").lower()
+        if not name.endswith(".pdf"):
+            return jsonify({"error": "Το αρχείο πρέπει να είναι PDF"}), 400
+        data["f_file"] = base64.b64encode(raw).decode("ascii")
+
+    employee_afm = norm_afm(str(data.get("employee_afm") or ""))
+    if not employee_afm:
+        return jsonify({"error": "Λείπει employee_afm"}), 400
+
+    # Κωδικοί παραρτήματος από το κατάστημα (XSD απαιτεί σειρά πριν το f_eponymo).
+    data.setdefault("sepe_code", ctx.get("sepe_code"))
+    data.setdefault("oaed_code", ctx.get("oaed_code"))
+    data.setdefault("kad_code", ctx.get("kad_code"))
+    data.setdefault("kallikratis_code", ctx.get("kallikratis_code"))
+
+    try:
+        payload = build_web_ma_payload(
+            data,
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        )
+    except WorkCardPayloadError as ex:
+        return jsonify({"error": str(ex)}), 400
+
+    client: ErganiClient = client_for_store(ctx)
+    bearer = ensure_ergani_bearer(ctx)
+    if not bearer:
+        return jsonify({"error": "Αποτυχία σύνδεσης Ergani API"}), 401
+
+    # Έλεγχος διαθεσιμότητας WebMA στο Lookup/Submissions
+    codes_resp = client.submissions_list(bearer)
+    codes_parsed = json_or_text(codes_resp)
+    codes: list[str] = []
+    if isinstance(codes_parsed, list):
+        codes = [
+            str(item.get("code") or item.get("Code") or "").strip()
+            for item in codes_parsed
+            if isinstance(item, dict)
+        ]
+    if codes_resp.ok and codes and SUBMISSION_CODE_WEB_MA not in codes:
+        return jsonify({
+            "error": "Το Ergani API δεν διαθέτει WebMA για αυτόν τον λογαριασμό",
+            "submission_code": SUBMISSION_CODE_WEB_MA,
+        }), 400
+
+    resp, parsed, retried = submit_wto_with_auth_retry(
+        ctx,
+        client,
+        SUBMISSION_CODE_WEB_MA,
+        payload,
+        bearer,
+        refresh_bearer=ensure_ergani_bearer,
+    )
+    body_text = response_body_text(resp)
+    protocol, submit_date, ergani_id = parse_submit_response(parsed)
+    success = bool(resp.ok)
+    # Μην γράφουμε το PDF base64 στο sync log.
+    persist_payload = payload
+    try:
+        rows = (payload.get("AnaggeliesMA") or {}).get("AnaggeliaMA") or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("f_file"):
+            safe_row = dict(rows[0])
+            safe_row["f_file"] = f"[pdf {len(str(rows[0].get('f_file')))} chars]"
+            persist_payload = {
+                "AnaggeliesMA": {"AnaggeliaMA": [safe_row]},
+            }
+    except Exception:
+        persist_payload = {"omitted": True}
+
+    persist_safe(
+        lambda: persist_wto_submit(
+            SUBMISSION_CODE_WEB_MA,
+            str(ctx["employer_afm"]),
+            int(resp.status_code),
+            success,
+            {
+                "employee_afm": employee_afm,
+                "change_types": data.get("change_types"),
+                "change_date": data.get("change_date"),
+                "has_file": bool(data.get("f_file")),
+                "payload": persist_payload,
+            },
+            body_text,
+            protocol,
+            submit_date,
+            ergani_id,
+        )
+    )
+    if not success:
+        err = ergani_error_message(parsed) or body_text or "Αποτυχία υποβολής WebMA"
+        return jsonify({
+            "success": False,
+            "error": err,
+            "status": resp.status_code,
+            "submission_code": SUBMISSION_CODE_WEB_MA,
+            "response": parsed,
+            "retried_auth": retried,
+        }), 400
+
+    contract_sync: dict[str, Any] | None = None
+    try:
+        from app.portal_employment_contract_sync import sync_employment_contracts_from_portal
+
+        contract_sync = sync_employment_contracts_from_portal(
+            ctx,
+            only_afms={employee_afm},
+        )
+    except Exception as ex:  # noqa: BLE001 — η υποβολή πέτυχε· το sync είναι best-effort
+        contract_sync = {
+            "success": False,
+            "detail": f"Αποτυχία αυτόματου συγχρονισμού σύμβασης: {ex}",
+            "count": 0,
+        }
+
+    sync_ok = bool(contract_sync and contract_sync.get("success"))
+    message = (
+        f"Υποβλήθηκε μεταβολή σύμβασης"
+        + (f" · πρωτόκολλο {protocol}" if protocol else "")
+    )
+    if sync_ok:
+        message += " · ενημερώθηκε η λίστα αλλαγών"
+    elif contract_sync:
+        message += " · ο συγχρονισμός σύμβασης απέτυχε (τρέξτε χειροκίνητα)"
+
+    return jsonify({
+        "success": True,
+        "submission_code": SUBMISSION_CODE_WEB_MA,
+        "protocol": protocol,
+        "submit_date": submit_date,
+        "ergani_submission_id": ergani_id,
+        "employee_afm": employee_afm,
+        "retried_auth": retried,
+        "contract_sync": contract_sync,
+        "message": message,
+    })
+
+
+@employees_bp.get("/specialty-catalog")
+def employee_specialty_catalog():
+    """Τοπικός κατάλογος ειδικοτήτων ΣΤΕΠ'92 (αναζήτηση για autocomplete)."""
+    from app import repo_specialty_catalog
+
+    q = (request.args.get("q") or "").strip()
+    try:
+        lim = int(request.args.get("limit") or "40")
+    except ValueError:
+        lim = 40
+
+    if not repo_specialty_catalog.table_available() or repo_specialty_catalog.count_rows() == 0:
+        # Fallback: live Ergani αν λείπει τοπικός κατάλογος
+        from app.ergani_client import ErganiClient
+        from app.ergani_env import client_for_store
+        from app.ergani_parse import extract_catalog_items, unwrap_ergani_data
+        from app.http_helpers import ensure_ergani_bearer, json_or_text
+
+        ctx = resolve_active_store()
+        if not ctx:
+            return jsonify({
+                "error": "Κενός τοπικός κατάλογος ΣΤΕΠ — επιλέξτε κατάστημα ή τρέξτε sync",
+                "items": [],
+                "source": "empty",
+            }), 503
+        client: ErganiClient = client_for_store(ctx)
+        bearer = ensure_ergani_bearer(ctx)
+        if not bearer:
+            return jsonify({"error": "Αποτυχία σύνδεσης Ergani API", "items": []}), 401
+        params = [{"ParameterName": "Parameter", "ParameterValue": "Step92"}]
+        resp = client.execute_service("EX_BASE_03", params, bearer)
+        parsed = json_or_text(resp)
+        if not resp.ok:
+            return jsonify({
+                "error": "Αποτυχία φόρτωσης καταλόγου ΣΤΕΠ",
+                "status": resp.status_code,
+                "items": [],
+            }), resp.status_code if resp.status_code >= 400 else 502
+        items = extract_catalog_items(unwrap_ergani_data(parsed))
+        try:
+            repo_specialty_catalog.replace_all(items)
+        except Exception:
+            pass
+        filtered = items
+        if q:
+            needle = q.casefold()
+            filtered = [
+                it for it in items
+                if needle in str(it.get("value") or "").casefold()
+                or needle in str(it.get("description") or "").casefold()
+            ]
+        return jsonify({
+            "catalog": "step92",
+            "source": "ergani_live",
+            "items": filtered[: max(1, min(lim, 80))],
+            "count": len(filtered),
+            "total": len(items),
+        })
+
+    items = repo_specialty_catalog.search_specialties(q, limit=lim)
+    return jsonify({
+        "catalog": "step92",
+        "source": "local",
+        "items": items,
+        "count": len(items),
+        "total": repo_specialty_catalog.count_rows(),
+        "synced_at": repo_specialty_catalog.last_synced_at(),
+        "query": q,
+    })
+
+
+@employees_bp.get("/hire/draft")
+def employee_hire_draft():
+    """Κενή/προεπιλεγμένη φόρμα πρόσληψης (WebE3N) για το ενεργό κατάστημα."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+
+    from app.web_e3n_payload import BASICS_ACCEPTANCE_HIRE, empty_hire_draft
+
+    draft = empty_hire_draft(branch_aa=str(ctx.get("branch_aa") or "0"))
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx.get("branch_aa"),
+        },
+        "draft": draft,
+        "basics_acceptance_catalog": BASICS_ACCEPTANCE_HIRE,
+        "available": True,
+        "submission_code": draft.get("submission_code"),
+    })
+
+
+@employees_bp.post("/hire/submit")
+def employee_hire_submit():
+    """Υποβολή Ψηφιακής Αναγγελίας Έναρξης Εργασίας / Πρόσληψης (WebE3N)."""
+    from app.ergani_client import ErganiClient
+    from app.ergani_env import client_for_store
+    from app.http_helpers import (
+        ensure_ergani_bearer,
+        json_or_text,
+        persist_safe,
+        response_body_text,
+    )
+    from app.web_e3n_payload import SUBMISSION_CODE_WEB_E3N, build_web_e3n_payload
+    from app.work_card_payload import WorkCardPayloadError
+    from app.wto_submit import (
+        ergani_error_message,
+        parse_submit_response,
+        persist_wto_submit,
+        submit_wto_with_auth_retry,
+    )
+
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    data = request.get_json(silent=True) or {}
+
+    try:
+        payload = build_web_e3n_payload(
+            data,
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        )
+    except WorkCardPayloadError as ex:
+        return jsonify({"error": str(ex)}), 400
+
+    employee_afm = norm_afm(str(data.get("employee_afm") or data.get("f_afm") or ""))
+    client: ErganiClient = client_for_store(ctx)
+    bearer = ensure_ergani_bearer(ctx)
+    if not bearer:
+        return jsonify({"error": "Αποτυχία σύνδεσης Ergani API"}), 401
+
+    codes_resp = client.submissions_list(bearer)
+    codes_parsed = json_or_text(codes_resp)
+    codes: list[str] = []
+    if isinstance(codes_parsed, list):
+        codes = [
+            str(item.get("code") or item.get("Code") or "").strip()
+            for item in codes_parsed
+            if isinstance(item, dict)
+        ]
+    if codes_resp.ok and codes and SUBMISSION_CODE_WEB_E3N not in codes:
+        return jsonify({
+            "error": "Το Ergani API δεν διαθέτει WebE3N για αυτόν τον λογαριασμό",
+            "submission_code": SUBMISSION_CODE_WEB_E3N,
+        }), 400
+
+    resp, parsed, retried = submit_wto_with_auth_retry(
+        ctx,
+        client,
+        SUBMISSION_CODE_WEB_E3N,
+        payload,
+        bearer,
+        refresh_bearer=ensure_ergani_bearer,
+    )
+    body_text = response_body_text(resp)
+    protocol, submit_date, ergani_id = parse_submit_response(parsed)
+    success = bool(resp.ok)
+    persist_safe(
+        lambda: persist_wto_submit(
+            SUBMISSION_CODE_WEB_E3N,
+            str(ctx["employer_afm"]),
+            int(resp.status_code),
+            success,
+            {
+                "employee_afm": employee_afm,
+                "hire_date": data.get("hire_date"),
+                "eponymo": data.get("eponymo"),
+                "onoma": data.get("onoma"),
+                "payload": payload,
+            },
+            body_text,
+            protocol,
+            submit_date,
+            ergani_id,
+        )
+    )
+    if not success:
+        err = ergani_error_message(parsed) or body_text or "Αποτυχία υποβολής WebE3N"
+        return jsonify({
+            "success": False,
+            "error": err,
+            "status": resp.status_code,
+            "submission_code": SUBMISSION_CODE_WEB_E3N,
+            "response": parsed,
+            "retried_auth": retried,
+        }), 400
+    return jsonify({
+        "success": True,
+        "submission_code": SUBMISSION_CODE_WEB_E3N,
+        "protocol": protocol,
+        "submit_date": submit_date,
+        "ergani_submission_id": ergani_id,
+        "employee_afm": employee_afm,
+        "retried_auth": retried,
+        "message": (
+            f"Υποβλήθηκε αναγγελία πρόσληψης"
+            + (f" · πρωτόκολλο {protocol}" if protocol else "")
+        ),
+    })

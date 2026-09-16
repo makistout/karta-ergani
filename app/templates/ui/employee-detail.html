@@ -6,6 +6,7 @@
 {% block content %}
       <h1 class="page-title"><i class="bi bi-table" aria-hidden="true"></i> Στοιχεία σύμβασης</h1>
       <p id="employeeDetailDesc" class="page-desc">Στοιχεία σύμβασης από Ergani Μητρώα ανά εργαζόμενο.</p>
+      <div id="eccMsg" class="msg"></div>
 
       <div class="actions" style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
         <a class="btn btn-secondary" href="/ui/employees">
@@ -48,6 +49,166 @@
         </form>
       </section>
 
+      <section class="card employee-detail-card" id="employeeContractChangeSection">
+        <h2 class="employee-detail-section-title">Αλλαγή σύμβασης (Ergani WebMA)</h2>
+        <p class="page-desc">
+          Υποβολή «Ψηφιακής Δήλωσης Μεταβολής Στοιχείων Εργασιακής Σχέσης» στο Ergani API.
+          Προσυμπληρώνεται από την τρέχουσα σύμβαση· επιλέξτε τύπο/ους μεταβολής και αποδοχή ουσιωδών όρων.
+        </p>
+        <form id="employeeContractChangeForm" class="employee-contract-change-form">
+          <div class="employee-contract-change-grid">
+            <label class="dp-field"><span class="dp-field-label">Ημερομηνία μεταβολής</span>
+              <input id="eccChangeDate" type="text" placeholder="ηη/μμ/εεεε" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Αποδοχή ουσιωδών όρων</span>
+              <select id="eccBasicsAcceptance" class="field-input" required></select>
+            </label>
+            <div id="eccFileWrap" class="dp-field employee-contract-change-span2 hidden">
+              <span class="dp-field-label">Αρχείο αποδοχής ουσιωδών όρων (PDF)</span>
+              <input id="eccFile" type="file" class="field-input" accept="application/pdf,.pdf">
+              <span class="page-desc" style="margin:0.35rem 0 0;">Απαιτείται όταν επιλέγετε «Με επισυναπτόμενο αρχείο».</span>
+            </div>
+            <label class="dp-field employee-contract-change-span2"><span class="dp-field-label">Τύποι μεταβολής</span>
+              <select id="eccChangeTypes" class="field-input" multiple size="8" required></select>
+            </label>
+
+            <label class="dp-field"><span class="dp-field-label">Επώνυμο</span>
+              <input id="eccEponymo" type="text" class="field-input" maxlength="50" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα</span>
+              <input id="eccOnoma" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα πατρός</span>
+              <input id="eccFather" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα μητρός</span>
+              <input id="eccMother" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ημ. γέννησης</span>
+              <input id="eccBirthdate" type="text" placeholder="ηη/μμ/εεεε" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Φύλο</span>
+              <select id="eccSex" class="field-input" required>
+                <option value="">—</option>
+                <option value="0">Άνδρας</option>
+                <option value="1">Γυναίκα</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Τύπος ταυτότητας</span>
+              <select id="eccIdType" class="field-input" required></select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Αρ. ταυτότητας</span>
+              <input id="eccIdNo" type="text" class="field-input" maxlength="20" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">ΑΜΚΑ</span>
+              <input id="eccAmka" type="text" class="field-input" inputmode="numeric" maxlength="11" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">ΑΜΑ (ΙΚΑ)</span>
+              <input id="eccAmika" type="text" class="field-input" inputmode="numeric" maxlength="20">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Κύρια ασφάλιση</span>
+              <select id="eccKyriaAsfalish" class="field-input" required></select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Επικουρική ασφάλιση</span>
+              <select id="eccEpikourikiki" class="field-input" required></select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Χρόνος καταβολής αποδοχών</span>
+              <input id="eccXronosKatabolhs" type="text" class="field-input" maxlength="200" required
+                placeholder="π.χ. 1 φορά το μήνα">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Διευθέτηση χρόνου εργασίας</span>
+              <select id="eccDieuthetisi" class="field-input" required>
+                <option value="2">Όχι</option>
+                <option value="0">Ναι — συλλογική συμφωνία</option>
+                <option value="1">Ναι — ατομική συμφωνία</option>
+              </select>
+            </label>
+
+            <div class="dp-field employee-contract-change-span2 specialty-ac-field">
+              <span class="dp-field-label">Ειδικότητα (ΣΤΕΠ)</span>
+              <div class="ac-wrap specialty-ac-wrap">
+                <input id="eccSpecialtyStepInput" type="text" class="field-input" placeholder="Πληκτρολογήστε κωδικό ή περιγραφή…" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-controls="eccSpecialtyStepList" aria-expanded="false">
+                <ul id="eccSpecialtyStepList" class="ac-list" role="listbox"></ul>
+              </div>
+              <input type="hidden" id="eccSpecialtyCode">
+              <span class="page-desc" style="margin:0.35rem 0 0;">Τοπικός κατάλογος ΣΤΕΠ’92 — επιλέξτε από τη λίστα.</span>
+            </div>
+            <div class="dp-field employee-contract-change-span2 specialty-ac-field">
+              <span class="dp-field-label">Ειδικότητα αναλυτικά</span>
+              <div class="ac-wrap specialty-ac-wrap">
+                <input id="eccSpecialty" type="text" class="field-input" maxlength="255" placeholder="Αναζήτηση ή επεξεργασία λεκτικού…" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-controls="eccSpecialtyAnalList" aria-expanded="false">
+                <ul id="eccSpecialtyAnalList" class="ac-list" role="listbox"></ul>
+              </div>
+            </div>
+            <label class="dp-field"><span class="dp-field-label">Αποδοχές</span>
+              <input id="eccSalary" type="text" class="field-input" placeholder="π.χ. 850,00" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ωρομίσθιο</span>
+              <input id="eccHourly" type="text" class="field-input" placeholder="π.χ. 0,00">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρες εβδομαδιαίως</span>
+              <input id="eccWeeklyHours" type="text" class="field-input" placeholder="π.χ. 40,0" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρες πλήρους</span>
+              <input id="eccFulltimeHours" type="text" class="field-input">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ημέρες εβδομάδας</span>
+              <select id="eccWeekDays" class="field-input">
+                <option value="">—</option>
+                <option value="5">5ήμερο</option>
+                <option value="6">6ήμερο</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Καθεστώς</span>
+              <select id="eccRegime" class="field-input">
+                <option value="">—</option>
+                <option value="0">Πλήρης</option>
+                <option value="1">Μερική</option>
+                <option value="2">Εκ περιτροπής</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Σχέση απασχόλησης</span>
+              <select id="eccRelation" class="field-input">
+                <option value="">—</option>
+                <option value="0">Αορίστου χρόνου</option>
+                <option value="1">Ορισμένου χρόνου</option>
+                <option value="3">Δανειζόμενος</option>
+              </select>
+            </label>
+            <div class="dp-field ecc-fixed-term-dates hidden" id="eccFixedTermWrap">
+              <div class="ecc-fixed-term-dates-row">
+                <label class="ecc-fixed-term-date"><span class="dp-field-label">Ορισμένου από</span>
+                  <input id="eccFixedFrom" type="text" placeholder="ηη/μμ/εεεε">
+                </label>
+                <label class="ecc-fixed-term-date"><span class="dp-field-label">Ορισμένου έως</span>
+                  <input id="eccFixedTo" type="text" placeholder="ηη/μμ/εεεε">
+                </label>
+              </div>
+            </div>
+            <label class="dp-field"><span class="dp-field-label">Ψηφιακή οργάνωση χρόνου</span>
+              <select id="eccDigitalOrg" class="field-input" required>
+                <option value="1">Ναι</option>
+                <option value="0">Όχι</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Κάρτα εργασίας</span>
+              <select id="eccWorkingCard" class="field-input" required>
+                <option value="1">Ναι</option>
+                <option value="0">Όχι</option>
+              </select>
+            </label>
+            <label class="dp-field employee-contract-change-span2"><span class="dp-field-label">Παρατηρήσεις</span>
+              <input id="eccComments" type="text" class="field-input" maxlength="100">
+            </label>
+          </div>
+          <div class="actions" style="margin-top:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit" id="eccSubmitBtn">Υποβολή στο Ergani</button>
+          </div>
+        </form>
+      </section>
+
       <section id="employeeContractHistorySection" class="card employee-detail-card hidden">
         <h2 class="employee-detail-section-title">Προηγούμενες εκδόσεις</h2>
         <div id="employeeContractHistoryWrap"></div>
@@ -55,5 +216,6 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
-  <script src="/static/js/employee-detail.js?v=20260830catering1"></script>
+  <script src="/static/js/office-autocomplete.js?v=20260915acopen1"></script>
+  <script src="/static/js/employee-detail.js?v=20260916fixed3"></script>
 {% endblock %}

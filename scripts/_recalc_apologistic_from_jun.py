@@ -1,4 +1,9 @@
-"""Επαναϋπολογισμός απολογιστικού από 1/6/2026 — χρόνοι ανά κατάστημα/εβδομάδα."""
+"""Καθαρό μηδενισμό + επαναϋπολογισμός απολογιστικού από 1/6 έως χθες.
+
+1) Μηδενίζει override/effective/generated για week_from >= 1/6 (όχι approved/locked)
+2) Ξαναϋπολογίζει όλα τα καταστήματα με force + discard_overrides
+3) Νέα calculation_version από apologistic_snapshot
+"""
 from __future__ import annotations
 
 import sys
@@ -15,7 +20,10 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from app.apologistic_snapshot import CALCULATION_VERSION, generate_store_week  # noqa: E402
+from app.db import cursor  # noqa: E402
 from app.repo_store import list_store_configs  # noqa: E402
+
+CUTOFF = date(2026, 6, 1)
 
 
 def mondays_from(start: date, end: date) -> list[date]:
@@ -30,15 +38,58 @@ def mondays_from(start: date, end: date) -> list[date]:
     return weeks
 
 
+def wipe_from_june() -> dict[str, int]:
+    with cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE d
+            SET override_json = NULL,
+                override_reason = NULL,
+                updated_by = NULL,
+                override_updated_at = NULL,
+                generated_json = N'{}',
+                effective_json = N'{}',
+                updated_at = SYSDATETIMEOFFSET()
+            FROM dbo.karta_apologistic_day d
+            INNER JOIN dbo.karta_apologistic_run r ON r.id = d.run_id
+            WHERE r.week_from >= ?
+              AND r.status NOT IN (N'approved', N'locked')
+            """,
+            (CUTOFF,),
+        )
+        days = int(cur.rowcount or 0)
+        cur.execute(
+            """
+            UPDATE dbo.karta_apologistic_run
+            SET generated_report_json = NULL,
+                effective_report_json = NULL,
+                calculation_version = N'pending-clean',
+                error_summary = NULL,
+                updated_at = SYSDATETIMEOFFSET()
+            WHERE week_from >= ?
+              AND status NOT IN (N'approved', N'locked')
+            """,
+            (CUTOFF,),
+        )
+        runs = int(cur.rowcount or 0)
+    return {"days_wiped": days, "runs_wiped": runs}
+
+
 def main() -> int:
-    start = date(2026, 6, 1)
+    start = CUTOFF
     end = date.today() - timedelta(days=1)
     weeks = mondays_from(start, end)
     stores = list_store_configs()
 
     print(f"calculation_version={CALCULATION_VERSION}")
+    print(f"Εύρος: {start.isoformat()} .. {end.isoformat()}")
     print(f"Εβδομάδες ({len(weeks)}): {weeks[0].isoformat()} .. {weeks[-1].isoformat()}")
     print(f"Καταστήματα: {len(stores)}")
+    print()
+
+    print("=== ΜΗΔΕΝΙΣΜΟΣ παλιών effective/generated/override ===", flush=True)
+    wiped = wipe_from_june()
+    print(f"  days_wiped={wiped['days_wiped']} runs_wiped={wiped['runs_wiped']}", flush=True)
     print()
 
     results: list[dict] = []
@@ -46,11 +97,20 @@ def main() -> int:
 
     for wi, week_from in enumerate(weeks, 1):
         week_to = week_from + timedelta(days=6)
-        print(f"=== Εβδομάδα {wi}/{len(weeks)}: {week_from.isoformat()} – {week_to.isoformat()} ===", flush=True)
+        print(
+            f"=== Εβδομάδα {wi}/{len(weeks)}: {week_from.isoformat()} – {week_to.isoformat()} ===",
+            flush=True,
+        )
         for si, store in enumerate(stores, 1):
             name = store.get("name") or store.get("id")
             wall_start = perf_counter()
-            row = generate_store_week(store, week_from, week_to)
+            row = generate_store_week(
+                store,
+                week_from,
+                week_to,
+                force=True,
+                discard_overrides=True,
+            )
             wall = perf_counter() - wall_start
             results.append(row)
             if row.get("success") and not row.get("skipped"):
@@ -67,73 +127,6 @@ def main() -> int:
             )
 
     total_elapsed = round(perf_counter() - total_start, 3)
-
-    print()
-    print("=" * 90)
-    print("ΠΙΝΑΚΑΣ ΑΝΑ ΚΑΤΑΣΤΗΜΑ / ΕΒΔΟΜΑΔΑ")
-    print("=" * 90)
-    print(f"{'Κατάστημα':<28} {'Εβδομάδα':<26} {'Χρόνος':>9} {'Ημέρες':>7} {'Κατάσταση'}")
-    print("-" * 90)
-    for row in results:
-        name = str(row.get("store_name") or row.get("store_id") or "?")[:27]
-        week_label = f"{row['week_from']} – {row['week_to']}"
-        elapsed = f"{row.get('elapsed_seconds', 0):.3f}s"
-        days = str(row.get("days", "—"))
-        if row.get("success") and not row.get("skipped"):
-            status = "OK"
-        elif row.get("skipped"):
-            status = "SKIP"
-        else:
-            status = "FAIL"
-        print(f"{name:<28} {week_label:<26} {elapsed:>9} {days:>7} {status}")
-
-    print()
-    print("ΣΥΝΟΨΗ ΑΝΑ ΚΑΤΑΣΤΗΜΑ")
-    print("-" * 60)
-    by_store: dict[str, dict] = {}
-    for row in results:
-        key = str(row.get("store_name") or row.get("store_id"))
-        bucket = by_store.setdefault(key, {"ok": 0, "skip": 0, "fail": 0, "sec": 0.0, "weeks": 0})
-        bucket["weeks"] += 1
-        bucket["sec"] += float(row.get("elapsed_seconds") or 0)
-        if row.get("success") and not row.get("skipped"):
-            bucket["ok"] += 1
-        elif row.get("skipped"):
-            bucket["skip"] += 1
-        else:
-            bucket["fail"] += 1
-    for name in sorted(by_store):
-        bucket = by_store[name]
-        print(
-            f"{name:<28} εβδομάδες={bucket['weeks']} "
-            f"OK={bucket['ok']} SKIP={bucket['skip']} FAIL={bucket['fail']} "
-            f"χρόνος={bucket['sec']:.2f}s"
-        )
-
-    print()
-    print("ΣΥΝΟΨΗ ΑΝΑ ΕΒΔΟΜΑΔΑ")
-    print("-" * 60)
-    by_week: dict[str, dict] = {}
-    for row in results:
-        key = str(row["week_from"])
-        bucket = by_week.setdefault(key, {"ok": 0, "skip": 0, "fail": 0, "sec": 0.0, "stores": 0})
-        bucket["stores"] += 1
-        bucket["sec"] += float(row.get("elapsed_seconds") or 0)
-        if row.get("success") and not row.get("skipped"):
-            bucket["ok"] += 1
-        elif row.get("skipped"):
-            bucket["skip"] += 1
-        else:
-            bucket["fail"] += 1
-    for week_from in sorted(by_week):
-        bucket = by_week[week_from]
-        week_to = (date.fromisoformat(week_from) + timedelta(days=6)).isoformat()
-        print(
-            f"{week_from} – {week_to}: καταστήματα={bucket['stores']} "
-            f"OK={bucket['ok']} SKIP={bucket['skip']} FAIL={bucket['fail']} "
-            f"χρόνος={bucket['sec']:.2f}s"
-        )
-
     ok = sum(1 for row in results if row.get("success") and not row.get("skipped"))
     skip = sum(1 for row in results if row.get("skipped"))
     fail = sum(1 for row in results if not row.get("success"))

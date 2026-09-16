@@ -1,0 +1,202 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Πρόσληψη εργαζομένου' %}
+{% set shell = "office" %}
+{% set active_nav = 'employees' %}
+{% set body_class = "" %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-person-plus-fill" aria-hidden="true"></i> Πρόσληψη εργαζομένου</h1>
+      <p id="hireDesc" class="page-desc">
+        Υποβολή «Ψηφιακής Αναγγελίας Έναρξης Εργασίας» στο Ergani API
+        (<code>Documents/WebE3N</code>) για το ενεργό κατάστημα.
+      </p>
+
+      <div class="actions" style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <a class="btn btn-secondary" href="/ui/employees">
+          <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
+        </a>
+      </div>
+
+      <section class="card employee-detail-card">
+        <h2 class="employee-detail-section-title">Στοιχεία αναγγελίας (WebE3N)</h2>
+        <form id="employeeHireForm" class="employee-contract-change-form">
+          <div class="employee-contract-change-grid">
+            <label class="dp-field"><span class="dp-field-label">ΑΦΜ</span>
+              <input id="hireAfm" type="text" class="field-input" inputmode="numeric" maxlength="9" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Φύλο</span>
+              <select id="hireSex" class="field-input" required>
+                <option value="0">Άνδρας</option>
+                <option value="1">Γυναίκα</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Επώνυμο</span>
+              <input id="hireEponymo" type="text" class="field-input" maxlength="50" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα</span>
+              <input id="hireOnoma" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα πατρός</span>
+              <input id="hireFather" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Όνομα μητρός</span>
+              <input id="hireMother" type="text" class="field-input" maxlength="30" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ημ. γέννησης</span>
+              <input id="hireBirthdate" type="text" placeholder="ηη/μμ/εεεε" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">ΑΜΚΑ</span>
+              <input id="hireAmka" type="text" class="field-input" inputmode="numeric" maxlength="11">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">ΑΜΑ (ΙΚΑ)</span>
+              <input id="hireAmika" type="text" class="field-input" inputmode="numeric">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Τύπος ταυτότητας</span>
+              <select id="hireIdType" class="field-input" required>
+                <option value="ΔAT">ΔAT — ΔΕΛΤΙΟ ΑΣΤΥΝΟΜΙΚΗΣ ΤΑΥΤΟΤΗΤΑΣ</option>
+                <option value="ΔΙΑ">ΔΙΑ — ΔΙΑΒΑΤΗΡΙΟ</option>
+                <option value="ΑΔΑ">ΑΔΑ — ΑΔΕΙΑ ΔΙΑΜΟΝΗΣ (ΒΙΝΙΕΤΑ)</option>
+                <option value="ΑΔΠΑΕ">ΑΔΠΑΕ — ΑΔΕΙΑ ΔΙΑΜΟΝΗΣ ΜΕ ΔΙΚΑΙΩΜΑ ΕΡΓΑΣΙΑΣ</option>
+                <option value="ΒΕΕ">ΒΕΕ — ΒΕΒΑΙΩΣΗ ΕΓΓΡΑΦΗΣ ΠΟΛΙΤΩΝ Ε.Ε.</option>
+                <option value="ΒΚΑΕΑΔ">ΒΚΑΕΑΔ — ΒΕΒΑΙΩΣΗ ΚΑΤΑΘΕΣΗΣ ΑΙΤΗΣΗΣ ΓΙΑ ΑΔΕΙΑ ΔΙΑΜΟΝΗΣ</option>
+                <option value="ΔΑΑ">ΔΑΑ — ΔΕΛΤΙΟ ΑΙΤΟΥΝΤΟΣ ΑΣΥΛΟ</option>
+                <option value="ΔΔΤΧ">ΔΔΤΧ — ΔΕΛΤΙΟ ΔΙΑΜΟΝΗΣ ΠΟΛΙΤΩΝ ΤΡΙΤΩΝ ΧΩΡΩΝ</option>
+                <option value="ΔΕΕ">ΔΕΕ — ΔΕΛΤΙΟ ΜΟΝΙΜΗΣ ΔΙΑΜΟΝΗΣ ΠΟΛΙΤΩΝ Ε.Ε.</option>
+                <option value="ΕΒΝΔ">ΕΒΝΔ — ΕΙΔΙΚΗ ΒΕΒΑΙΩΣΗ ΝΟΜΙΜΗΣ ΔΙΑΜΟΝΗΣ</option>
+                <option value="ΕΔΤΟ">ΕΔΤΟ — ΕΙΔΙΚΟ ΔΕΛΤΙΟ ΤΑΥΤΟΤΗΤΑΣ ΟΜΟΓΕΝΟΥΣ</option>
+                <option value="ΤΧΕΕ">ΤΧΕΕ — ΤΑΥΤΟΤΗΤΑ ΧΩΡΩΝ ΕΥΡΩΠΑΪΚΗΣ ΕΝΩΣΗΣ</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Αρ. ταυτότητας</span>
+              <input id="hireIdNo" type="text" class="field-input" maxlength="20" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ημ. πρόσληψης</span>
+              <input id="hireDate" type="text" placeholder="ηη/μμ/εεεε" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρα έναρξης</span>
+              <input id="hireTimeFrom" type="text" class="field-input" placeholder="ΩΩ:ΛΛ" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρα λήξης</span>
+              <input id="hireTimeTo" type="text" class="field-input" placeholder="ΩΩ:ΛΛ" required>
+            </label>
+            <div class="dp-field employee-contract-change-span2 specialty-ac-field">
+              <span class="dp-field-label">Ειδικότητα (ΣΤΕΠ)</span>
+              <div class="ac-wrap specialty-ac-wrap">
+                <input id="hireSpecialtyStepInput" type="text" class="field-input" placeholder="Πληκτρολογήστε κωδικό ή περιγραφή…" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-controls="hireSpecialtyStepList" aria-expanded="false" required>
+                <ul id="hireSpecialtyStepList" class="ac-list" role="listbox"></ul>
+              </div>
+              <input type="hidden" id="hireSpecialtyCode">
+              <span class="page-desc" style="margin:0.35rem 0 0;">Τοπικός κατάλογος ΣΤΕΠ’92 — επιλέξτε από τη λίστα.</span>
+            </div>
+            <div class="dp-field employee-contract-change-span2 specialty-ac-field">
+              <span class="dp-field-label">Ειδικότητα αναλυτικά</span>
+              <div class="ac-wrap specialty-ac-wrap">
+                <input id="hireSpecialty" type="text" class="field-input" maxlength="255" placeholder="Αναζήτηση ή επεξεργασία λεκτικού…" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-controls="hireSpecialtyAnalList" aria-expanded="false">
+                <ul id="hireSpecialtyAnalList" class="ac-list" role="listbox"></ul>
+              </div>
+            </div>
+            <label class="dp-field"><span class="dp-field-label">Μεικτές αποδοχές</span>
+              <input id="hireSalary" type="text" class="field-input" placeholder="π.χ. 850,00" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ωρομίσθιο</span>
+              <input id="hireHourly" type="text" class="field-input">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρες εβδομαδιαίως</span>
+              <input id="hireWeeklyHours" type="text" class="field-input" placeholder="π.χ. 40,0" required>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ώρες πλήρους</span>
+              <input id="hireFulltimeHours" type="text" class="field-input">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ημέρες εβδομάδας</span>
+              <select id="hireWeekDays" class="field-input">
+                <option value="5">5ήμερο</option>
+                <option value="6">6ήμερο</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Καθεστώς</span>
+              <select id="hireRegime" class="field-input">
+                <option value="0">Πλήρης</option>
+                <option value="1">Μερική</option>
+                <option value="2">Εκ περιτροπής</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Σχέση απασχόλησης</span>
+              <select id="hireRelation" class="field-input">
+                <option value="0">Αορίστου χρόνου</option>
+                <option value="1">Ορισμένου χρόνου</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Χαρακτηρισμός</span>
+              <select id="hireCharacterization" class="field-input">
+                <option value="1">Υπάλληλος</option>
+                <option value="0">Εργάτης</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ορισμένου από</span>
+              <input id="hireFixedFrom" type="text" placeholder="ηη/μμ/εεεε">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ορισμένου έως</span>
+              <input id="hireFixedTo" type="text" placeholder="ηη/μμ/εεεε">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Διάλειμμα (λεπτά)</span>
+              <input id="hireBreakMinutes" type="text" class="field-input" inputmode="numeric">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Διάλειμμα εντός ωραρίου</span>
+              <select id="hireBreakInWork" class="field-input">
+                <option value="1">Ναι</option>
+                <option value="0">Όχι</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ευέλικτη προσέλευση (λεπτά)</span>
+              <input id="hireFlexMinutes" type="text" class="field-input" inputmode="numeric">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ψηφιακή οργάνωση χρόνου</span>
+              <select id="hireDigitalOrg" class="field-input">
+                <option value="1">Ναι</option>
+                <option value="0">Όχι</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Ψηφιακή κάρτα</span>
+              <select id="hireWorkingCard" class="field-input">
+                <option value="1">Ναι</option>
+                <option value="0">Όχι</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Δοκιμαστική περίοδος</span>
+              <select id="hireTrialPeriod" class="field-input">
+                <option value="0">Όχι</option>
+                <option value="1">Ναι</option>
+              </select>
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Δοκιμαστική έως</span>
+              <input id="hireTrialTo" type="text" placeholder="ηη/μμ/εεεε">
+            </label>
+            <label class="dp-field"><span class="dp-field-label">Αποδοχή ουσιωδών όρων</span>
+              <select id="hireBasicsAcceptance" class="field-input" required></select>
+            </label>
+            <label id="hireFileWrap" class="dp-field employee-contract-change-span2 hidden">
+              <span class="dp-field-label">Αρχείο αποδοχής ουσιωδών όρων (PDF)</span>
+              <input id="hireFile" type="file" class="field-input" accept="application/pdf,.pdf">
+              <span class="page-desc" style="margin:0.35rem 0 0;">Απαιτείται όταν επιλέγετε «Με επισυναπτόμενο αρχείο».</span>
+            </label>
+            <label class="dp-field employee-contract-change-span2">
+              <span class="dp-field-label">Σύμβαση εργασίας (PDF, προαιρετικό)</span>
+              <input id="hireFileSymbash" type="file" class="field-input" accept="application/pdf,.pdf">
+            </label>
+            <label class="dp-field employee-contract-change-span2"><span class="dp-field-label">Παρατηρήσεις</span>
+              <input id="hireComments" type="text" class="field-input" maxlength="100">
+            </label>
+          </div>
+          <div class="actions" style="margin-top:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit" id="hireSubmitBtn">Υποβολή στο Ergani</button>
+            <span id="hireStatus" class="page-desc"></span>
+          </div>
+        </form>
+      </section>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
+  <script src="/static/js/office-autocomplete.js?v=20260915acopen1"></script>
+  <script src="/static/js/employee-hire.js?v=20260915idtypes1"></script>
+{% endblock %}

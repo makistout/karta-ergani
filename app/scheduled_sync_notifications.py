@@ -47,6 +47,10 @@ _SKIP_REASON_LABELS = {
     "work_log_empty_uncertain": "αβέβαιο κενό πραγματικής από portal (χωρίς Excel)",
 }
 
+# Προσωρινά OFF: παρέλειπε πραγματικές καθυστερήσεις (π.χ. ERATO 12:15)
+# όταν το portal δεν έδινε Excel. Επαναφορά μόνο με ρητή εντολή.
+SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN = False
+
 
 def _skip_reason_label(reason: Any) -> str:
     key = str(reason or "").strip()
@@ -73,6 +77,9 @@ def _send_post_sync_notifications(
     from app.repo_today_alert import enrich_card_report_rows_with_today_notify
     from app.today_alert_service import send_today_punch_notifications
     from app.today_notify_logic import merge_notify_work_hours, notify_kind_base
+
+    if not SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN:
+        skip_late_check_in_auto = False
 
     ctx = store_api_context(cfg)
     sid = int(cfg["id"])
@@ -325,11 +332,15 @@ def enqueue_post_sync_notifications(
     Προεπιλογή συγχρονή εκτέλεση — το CLI του Task Scheduler τερματίζει αμέσως
     μετά το sync και θα σκότωνε daemon thread πριν σταλούν τα μηνύματα.
 
-    skip_late_check_in_auto: όταν το sync πραγματικής γύρισε αβέβαιο κενό
-    (Excel χωρίς αρχείο), μην στέλνεις αυτόματο late_check_in.
+    skip_late_check_in_auto: όταν True και ενεργό το
+    SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN, παραλείπει late_check_in σε
+    αβέβαιο κενό πραγματικής. Προς το παρόν το flag είναι OFF.
     """
     if not Config.KARTA_POST_SYNC_NOTIFY_ENABLED:
         return False
+    # Μέχρι νεωτέρας: αγνοούμε το skip από empty_uncertain.
+    if not SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN:
+        skip_late_check_in_auto = False
     ref = (work_date_iso or "").strip()[:10]
     if not ref or ref != _today_iso():
         return False

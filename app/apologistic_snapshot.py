@@ -18,10 +18,17 @@ from app.repo_holidays import get_effective_holidays_for_store
 from app.repo_store import get_action_settings, get_sunday_rest_transfer_enabled
 from app.repo_work_log import list_work_log_for_range, normalize_overnight_work_log_rows
 
-CALCULATION_VERSION = "2026-09-11.rollback-pre-2026-09-07"
+CALCULATION_VERSION = "2026-09-16.clean-from-jun1"
 
 
-def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -> dict[str, Any]:
+def generate_store_week(
+    store: dict[str, Any],
+    week_from: date,
+    week_to: date,
+    *,
+    force: bool = False,
+    discard_overrides: bool = False,
+) -> dict[str, Any]:
     logger = KartaLogger(
         "scheduled_apologistic_snapshot",
         store_id=int(store["id"]),
@@ -63,8 +70,15 @@ def generate_store_week(store: dict[str, Any], week_from: date, week_to: date) -
             uneven_distribution_enabled=bool(action_settings.get("uneven_distribution_enabled")),
             holiday_dates=store_holidays,
         )
-        saved = save_report(store=store, week_from=week_from, week_to=week_to,
-                            report=report, calculation_version=CALCULATION_VERSION)
+        saved = save_report(
+            store=store,
+            week_from=week_from,
+            week_to=week_to,
+            report=report,
+            calculation_version=CALCULATION_VERSION,
+            force=force,
+            discard_overrides=discard_overrides,
+        )
         elapsed = round(perf_counter() - started, 3)
         result = {
             "success": True, "store_id": int(store["id"]), "store_name": store.get("name"),

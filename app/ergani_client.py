@@ -76,3 +76,13 @@ class ErganiClient:
             },
             timeout=self.timeout,
         )
+
+    def document_schema(self, submission_code: str, bearer: str) -> requests.Response:
+        return requests.get(
+            self._url("Documents", submission_code),
+            headers={
+                "Authorization": f"Bearer {bearer}",
+                "Accept": "application/json",
+            },
+            timeout=self.timeout,
+        )

@@ -35,6 +35,18 @@ Office.createAutocomplete = function (opts) {
     return pool.slice(0, maxItems);
   }
 
+  const fieldHost =
+    input.closest(".specialty-ac-field") ||
+    input.closest(".ac-wrap") ||
+    null;
+
+  function setOpenState(open) {
+    list.classList.toggle("show", open);
+    fieldHost?.classList.toggle("ac-field-open", open);
+    input.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) input.removeAttribute("aria-activedescendant");
+  }
+
   function render(items) {
     filtered = items;
     hi = items.length ? 0 : -1;
@@ -62,12 +74,9 @@ Office.createAutocomplete = function (opts) {
       list.appendChild(li);
     });
     const open = items.length > 0;
-    list.classList.toggle("show", open);
-    input.setAttribute("aria-expanded", open ? "true" : "false");
+    setOpenState(open);
     if (open && hi >= 0) {
       input.setAttribute("aria-activedescendant", `${opts.listId}-opt-${hi}`);
-    } else {
-      input.removeAttribute("aria-activedescendant");
     }
   }
 
@@ -106,10 +115,8 @@ Office.createAutocomplete = function (opts) {
     input.value = labelOf(item);
     if (hidden) hidden.value = valueOf(item);
     applyStoreTitle(item);
-    list.classList.remove("show");
     list.innerHTML = "";
-    input.setAttribute("aria-expanded", "false");
-    input.removeAttribute("aria-activedescendant");
+    setOpenState(false);
     opts.onSelect?.(item);
   }
 
@@ -183,15 +190,13 @@ Office.createAutocomplete = function (opts) {
       return;
     }
     if (e.key === "Escape") {
-      list.classList.remove("show");
-      input.setAttribute("aria-expanded", "false");
+      setOpenState(false);
     }
   });
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest(`#${opts.inputId}`) && !e.target.closest(`#${opts.listId}`)) {
-      list.classList.remove("show");
-      input.setAttribute("aria-expanded", "false");
+      setOpenState(false);
     }
   });
 

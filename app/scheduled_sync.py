@@ -1235,13 +1235,14 @@ def sync_store_today(
             cfg,
             work_date_iso=today,
             parent_run_id=run_id,
-            skip_late_check_in_auto=bool(work_log.get("empty_uncertain")),
+            skip_late_check_in_auto=False,
         )
         if post_sync_notifications_enqueued:
             log.info("Έγινε enqueue ασύγχρονων ειδοποιήσεων μετά το sync")
             if work_log.get("empty_uncertain"):
                 log.info(
-                    "Παράλειψη αυτόματου late_check_in — αβέβαιο κενό πραγματικής από portal"
+                    "Αβέβαιο κενό πραγματικής από portal — late_check_in δεν παραλείπεται "
+                    "(SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN=OFF)"
                 )
 
     auto_actions = None
@@ -1419,6 +1420,21 @@ def run_scheduled_sync(
 
     results: list[dict[str, Any]] = []
     pending_auto_close: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    # Παγκόσμιος κατάλογος ΣΤΕΠ — μία φορά/ημέρα το βράδυ (όχι ανά κατάστημα).
+    try:
+        from app.specialty_catalog_sync import run_specialty_catalog_sync_scheduled
+
+        specialty_catalog_action = run_specialty_catalog_sync_scheduled(
+            parent_run_id=batch_run_id,
+        )
+    except Exception as ex:  # noqa: BLE001
+        specialty_catalog_action = {
+            "success": False,
+            "skipped": False,
+            "reason": str(ex),
+        }
+
     for cfg in stores:
         row = sync_store_today(
             cfg,
@@ -1488,4 +1504,5 @@ def run_scheduled_sync(
         "fail_count": fail_count,
         "stores": results,
         "message": summary,
+        "specialty_catalog": specialty_catalog_action,
     }

@@ -40,6 +40,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
     app.secret_key = Config.SECRET_KEY
+    app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # PDF ουσιωδών όρων
     app.url_map.strict_slashes = False
 
     from app.security import register_security

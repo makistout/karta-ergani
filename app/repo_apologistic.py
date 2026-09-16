@@ -114,7 +114,8 @@ def _merge(base: dict[str, Any], override: dict[str, Any] | None) -> dict[str, A
 
 
 def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
-                report: dict[str, Any], calculation_version: str) -> dict[str, Any]:
+                report: dict[str, Any], calculation_version: str,
+                force: bool = False, discard_overrides: bool = False) -> dict[str, Any]:
     store_id = int(store["id"])
     with cursor(commit=True) as cur:
         # Connections are pooled, therefore SQL Server local temp tables may
@@ -128,7 +129,7 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
         existing = cur.fetchone()
         if existing and str(existing[1]) in ("approved", "locked"):
             return {"run_id": int(existing[0]), "skipped": True, "reason": f"status={existing[1]}"}
-        if existing:
+        if existing and not force:
             cur.execute(
                 """
                 SELECT TOP 1 1
@@ -161,8 +162,21 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
             """, (store_id, store["employer_afm"], store["branch_aa"], week_from, week_to, calculation_version))
             run_id = int(cur.fetchone()[0])
 
-        cur.execute("SELECT employee_afm, work_date, override_json, review_status FROM dbo.karta_apologistic_day WHERE run_id=?", (run_id,))
-        saved = {(str(r[0]), r[1]): (r[2], str(r[3])) for r in cur.fetchall()}
+        if discard_overrides:
+            cur.execute("""
+                UPDATE dbo.karta_apologistic_day
+                SET override_json=NULL, override_reason=NULL, updated_by=NULL,
+                    override_updated_at=NULL, updated_at=SYSDATETIMEOFFSET()
+                WHERE run_id=?
+            """, (run_id,))
+            saved = {}
+        else:
+            cur.execute(
+                "SELECT employee_afm, work_date, override_json, review_status "
+                "FROM dbo.karta_apologistic_day WHERE run_id=?",
+                (run_id,),
+            )
+            saved = {(str(r[0]), r[1]): (r[2], str(r[3])) for r in cur.fetchall()}
         effective_days: list[dict[str, Any]] = []
         day_stage: list[tuple[Any, ...]] = []
         for day in report.get("days") or []:
@@ -174,7 +188,7 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
                 override = json.loads(override_raw) if override_raw else None
             except (TypeError, json.JSONDecodeError):
                 override = None
-            effective = _merge(day, override)
+            effective = day if discard_overrides else _merge(day, override)
             effective_days.append(effective)
             day_stage.append((afm, work_date, _json(day), _json(effective)))
 

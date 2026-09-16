@@ -23,6 +23,9 @@ _CATALOG_MAP = {
     "oaed": "Oaed",
     "kad": "Stakod",
     "stakod": "Stakod",
+    "step92": "Step92",
+    "specialty": "Step92",
+    "eidikothta": "Step92",
 }
 
 
@@ -95,7 +98,7 @@ def ergani_catalog(catalog_type: str):
     key = catalog_type.strip().lower()
     param = _CATALOG_MAP.get(key)
     if not param:
-        return jsonify({"error": "Τύπος: sepe, oaed, kad"}), 400
+        return jsonify({"error": "Τύπος: sepe, oaed, kad, step92"}), 400
     client = ErganiClient(base_url_from_request())
     params = [{"ParameterName": "Parameter", "ParameterValue": param}]
     resp = client.execute_service("EX_BASE_03", params, bearer)

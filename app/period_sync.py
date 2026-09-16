@@ -455,9 +455,7 @@ def iter_period_sync_events(
                 cfg,
                 work_date_iso=today_iso,
                 parent_run_id=run_id,
-                skip_late_check_in_auto=bool(
-                    results["work_log"].get("empty_uncertain")
-                ),
+                skip_late_check_in_auto=False,
             )
             if post_sync_notifications_enqueued:
                 log.info(

@@ -164,6 +164,13 @@ class Config:
     KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_TIME = (
         os.environ.get("KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_TIME") or "21:00"
     ).strip() or "21:00"
+    KARTA_SCHEDULED_SPECIALTY_CATALOG_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_SPECIALTY_CATALOG_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_SPECIALTY_CATALOG_TIME = (
+        os.environ.get("KARTA_SCHEDULED_SPECIALTY_CATALOG_TIME") or "03:00"
+    ).strip() or "03:00"
     KARTA_AUTO_CLOSE_QUEUE_MIN_DELAY_SECONDS = max(
         0,
         int(

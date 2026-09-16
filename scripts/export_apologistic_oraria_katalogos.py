@@ -2,11 +2,12 @@
 Εκτός εφαρμογής: Excel με μοναδικά διαστήματα από το απολογιστικό
 (τελευταία calculation_version).
 
-Στήλες:
+Στήλες (6 + 2):
   Αναγνωρισμένο από / έως  (= πρόταση ωραρίου `proposed`)
   Υπερεργασία από / έως
   Υπερωρία από / έως
-  Χτύπημα από / έως        (= πραγματικά χτυπήματα `punch_recorded`)
+  Χτύπημα από / έως        (= πραγματικά χτυπήματα `punch_recorded`,
+                             και με κενό όριο όταν λείπει είσοδος/έξοδος)
 """
 from __future__ import annotations
 
@@ -24,6 +25,10 @@ from app.db import cursor
 
 _CLOCK_PART = re.compile(
     r"(?<!\d)(\d{1,2}:\d{2})\s*[\u2013\u2014\-–]\s*(\d{1,2}:\d{2})\*?",
+)
+# Πραγματικά χτυπήματα: επιτρέπεται κενό όριο (π.χ. «–17:15» ή «09:00–»).
+_PUNCH_PART = re.compile(
+    r"(?<!\d)(?:(\d{1,2}:\d{2})\s*)?[\u2013\u2014\-–]\s*(?:(\d{1,2}:\d{2})\*?)?"
 )
 _HM = re.compile(r"^(\d{1,2}):(\d{2})$")
 
@@ -55,6 +60,29 @@ def _parse_schedule_parts(proposed: str) -> list[tuple[str, str]]:
         start = _norm_hm(match.group(1))
         end = _norm_hm(match.group(2))
         if start and end:
+            parts.append((start, end))
+    return parts
+
+
+def _parse_punch_parts(recorded: str) -> list[tuple[str | None, str | None]]:
+    """Parse punch_recorded incl. incomplete sides (UI clock icon)."""
+    text = str(recorded or "").strip()
+    if not text or text in ("—", "-", "–"):
+        return []
+    parts: list[tuple[str | None, str | None]] = []
+    for chunk in re.split(r"[\n·]+", text):
+        chunk = chunk.strip()
+        if not chunk or chunk in ("—", "-", "–"):
+            continue
+        match = _PUNCH_PART.search(chunk)
+        if not match:
+            only = _norm_hm(chunk)
+            if only:
+                parts.append((only, None))
+            continue
+        start = _norm_hm(match.group(1))
+        end = _norm_hm(match.group(2))
+        if start or end:
             parts.append((start, end))
     return parts
 
@@ -129,9 +157,9 @@ def _collect(
         for start, end in parts:
             schedules.add((start, end))
 
-        punch_parts = _parse_schedule_parts(str(day.get("punch_recorded") or ""))
+        punch_parts = _parse_punch_parts(str(day.get("punch_recorded") or ""))
         for start, end in punch_parts:
-            punches.add((start, end))
+            punches.add((start or "", end or ""))
 
         ow = _overwork_range(
             proposed_parts=parts,
@@ -176,7 +204,10 @@ def _collect(
             })
 
     def _key(item: tuple[str, str]) -> tuple[int, int]:
-        return _to_min(item[0]), _to_min(item[1])
+        # Κενό όριο στο τέλος ώστε τα ημιτελή (π.χ. «–17:15») να μένουν ορατά.
+        a = _to_min(item[0]) if item[0] else 10_000
+        b = _to_min(item[1]) if item[1] else 10_000
+        return a, b
 
     return (
         sorted(schedules, key=_key),
@@ -262,7 +293,8 @@ def build_workbook(
         "Υπερεργασία: αν υπάρχει υπερωρία → [υπερωρία_από − λεπτά υπερεργασίας, υπερωρία_από]· "
         "αλλιώς → [λήξη πρότασης, λήξη + λεπτά]. "
         "Υπερωρία = overtime_from/to του απολογιστικού. "
-        "Χτύπημα = πραγματικά χτυπήματα κάρτας (punch_recorded), πλήρη διαστήματα από–έως."
+        "Χτύπημα = πραγματικά χτυπήματα κάρτας (punch_recorded), πλήρη ή ημιτελή "
+        "(κενό όριο όταν λείπει είσοδος/έξοδος — όπως το ρολόι στο UI)."
     )
     meta.column_dimensions["A"].width = 28
     meta.column_dimensions["B"].width = 100

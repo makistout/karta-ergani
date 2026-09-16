@@ -8,6 +8,65 @@
 
 ---
 
+## 2026-09-16 — Απενεργοποίηση skip late_check_in σε empty_uncertain
+
+- Το `SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN` είναι **OFF**: ακόμα κι αν το
+  portal γυρίσει αβέβαιο κενό Excel, στέλνονται κανονικά οι αυτόματες
+  ειδοποιήσεις καθυστέρησης εισόδου (μέχρι νεωτέρας — π.χ. ERATO στις 12:15).
+- Αρχεία: `app/scheduled_sync_notifications.py`, `app/scheduled_sync.py`,
+  `app/period_sync.py`, tests.
+
+## 2026-09-16 — Κατάλογος ωραρίων + καθαρός επανυπολογισμός απολογιστικού
+
+- Excel `apologistic_oraria_katalogos_*.xlsx`: στήλες **Χτύπημα από / έως**
+  από `punch_recorded`, και με ημιτελή όρια (`–17:15`, `09:00–`).
+- Script `scripts/_recalc_apologistic_from_jun.py`: μηδενίζει
+  effective/generated/overrides από 1/6 και ξαναϋπολογίζει έως χθες με
+  `force` + `discard_overrides` (`calculation_version=2026-09-16.clean-from-jun1`).
+- `save_report` δέχεται `force` / `discard_overrides`.
+
+## 2026-09-15 — Τοπικός κατάλογος ειδικοτήτων ΣΤΕΠ (νυχτερινό sync)
+
+- Όλες οι ειδικότητες/κωδικοί ΣΤΕΠ’92 κατεβαίνουν τοπικά στον πίνακα
+  `karta_specialty_catalog` από Ergani `EX_BASE_03` (`Step92`).
+- Ημερήσια ενημέρωση μετά τις **03:00** μέσω scheduled sync.
+- Env: `KARTA_SCHEDULED_SPECIALTY_CATALOG_ENABLED`,
+  `KARTA_SCHEDULED_SPECIALTY_CATALOG_TIME`.
+- Autocomplete σε αλλαγή σύμβασης / πρόσληψη από τον τοπικό κατάλογο
+  (`GET /api/employees/specialty-catalog?q=`).
+- Script: `python scripts/sync_specialty_catalog.py`.
+
+## 2026-09-15 — Auto-sync μετά WebMA + ΣΤΕΠ autocomplete
+
+- Μετά από επιτυχή αλλαγή σύμβασης (WebMA) γίνεται **αυτόματος συγχρονισμός**
+  στοιχείων σύμβασης για τον εργαζόμενο, ώστε να ενημερώνεται αμέσως η λίστα αλλαγών.
+- Ειδικότητα / ΣΤΕΠ: autocomplete από κατάλογο Ergani `EX_BASE_03` (`Step92`).
+  Επιλογή συμπληρώνει κωδικό (`f_eidikothta`) και αναλυτικό λεκτικό
+  (`f_eidikothta_anal`) — όπως στο portal.
+- Endpoint: `GET /api/employees/specialty-catalog`.
+- Ίδια συμπεριφορά στη φόρμα πρόσληψης (WebE3N).
+
+## 2026-09-15 — Πρόσληψη εργαζομένου (WebE3N) από /ui/employees
+
+- Στο `/ui/employees` προστέθηκε κουμπί **+ Πρόσληψη** που ανοίγει φόρμα
+  υποβολής **Ψηφιακής Αναγγελίας Έναρξης Εργασίας** μέσω Ergani API
+  (`Documents/WebE3N`).
+- Endpoints: `GET /api/employees/hire/draft`,
+  `POST /api/employees/hire/submit`.
+- Υποστήριξη ουσιωδών όρων με PDF και προαιρετικής σύμβασης (`f_file_symbash`).
+- Αρχεία: `app/web_e3n_payload.py`, `routes_employees.py`, `employee-hire.*`,
+  `employees-list.html`.
+
+## 2026-09-15 — Αλλαγή σύμβασης εργαζομένου (WebMA) στο detail
+
+- Στο `/ui/employees/detail` προστέθηκε φόρμα υποβολής
+  **Ψηφιακής Δήλωσης Μεταβολής Στοιχείων Εργασιακής Σχέσης** μέσω Ergani API
+  (`Documents/WebMA`).
+- Endpoints: `GET /api/employees/contract/change/draft`,
+  `POST /api/employees/contract/change/submit`.
+- Προσυμπλήρωση από τρέχουσα σύμβαση· τύποι μεταβολής από Οδηγό ΕΡΓΑΝΗ ΙΙ.
+- Αρχεία: `app/web_ma_payload.py`, `routes_employees.py`, `employee-detail.*`.
+
 ## 2026-09-15 — Αυτόματη ειδοποίηση υπερβάσεων σύμβασης στις 21:00
 
 - Κάθε βράδυ στις **21:00** (scheduled sync) υπολογίζονται οι παραβάσεις

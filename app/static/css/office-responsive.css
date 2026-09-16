@@ -899,6 +899,66 @@ body.login-page {
   margin-bottom: 1rem;
 }
 
+.employee-contract-change-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  overflow: visible;
+}
+
+.employee-contract-change-span2 {
+  grid-column: 1 / -1;
+}
+
+.ecc-fixed-term-dates-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.65rem;
+}
+
+.ecc-fixed-term-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.ecc-fixed-term-date input {
+  width: 100%;
+}
+
+.specialty-ac-field {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.specialty-ac-field:has(.ac-list.show),
+.specialty-ac-field.ac-field-open {
+  z-index: 80;
+}
+
+.specialty-ac-wrap {
+  position: relative;
+  z-index: auto;
+  margin-bottom: 0.35rem;
+}
+
+.specialty-ac-wrap .ac-list {
+  z-index: 90;
+}
+
+#eccChangeTypes {
+  min-height: 10rem;
+}
+
+@media (max-width: 720px) {
+  .employee-contract-change-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .employee-detail-section-title {
   margin: 0 0 0.85rem;
   font-size: 1.05rem;
