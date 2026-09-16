@@ -55,7 +55,7 @@ def empty_hire_draft(*, branch_aa: str = "0") -> dict[str, Any]:
         "sex": "0",
         "amka": "",
         "amika": "",
-        "typos_taytothtas": "ΔAT",
+        "typos_taytothtas": "ΔΑΤ",
         "ar_taytothtas": "",
         "hire_date": today,
         "hire_time_from": "09:00",
@@ -113,9 +113,9 @@ def build_web_e3n_payload(
         raise WorkCardPayloadError("Επιλέξτε φύλο")
 
     hire_date = _ergani_date(data.get("hire_date") or data.get("f_proslipsidate"))
-    id_type = str(data.get("typos_taytothtas") or data.get("f_typos_taytothtas") or "ΔAT").strip()
-    if id_type.upper() in ("ΑΤ", "AT", "ΔΑΤ", "DAT"):
-        id_type = "ΔAT"
+    id_type = str(data.get("typos_taytothtas") or data.get("f_typos_taytothtas") or "ΔΑΤ").strip()
+    if id_type in ("ΔAT", "DAT", "ΔΑT", "ΔAΤ") or id_type.upper() in ("ΑΤ", "AT", "ΔΑΤ", "DAT"):
+        id_type = "ΔΑΤ"
     id_no = str(data.get("ar_taytothtas") or data.get("f_ar_taytothtas") or "").strip()
     if not id_no:
         raise WorkCardPayloadError("Λείπει αριθμός ταυτότητας")

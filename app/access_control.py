@@ -437,4 +437,5 @@ def register_access_context(app: Flask) -> None:
             "office_has_permission": has_permission,
             "office_nav_item_allowed": nav_item_allowed,
             "office_is_admin_role": is_admin_role,
+            "office_is_super_admin": is_super_admin,
         }

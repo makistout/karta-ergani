@@ -10,11 +10,13 @@ const WEEK_DAYS = [
 
 let selectedEmployee = null;
 let wtoWeekAvailable = false;
+let weeklyFromPicker = null;
+let weeklyToPicker = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   Office.setActiveNav("employees");
   renderDays();
-  setDefaultFromDate();
+  setupDatePickers();
   document.getElementById("btnCopyMonday").addEventListener("click", copyMondayToWeekdays);
   document.getElementById("btnSubmitWeekly").addEventListener("click", submitWeekly);
   await Promise.all([loadEmployee(), checkAvailability()]);
@@ -37,11 +39,23 @@ function isoLocal(date) {
   return `${y}-${m}-${d}`;
 }
 
-function setDefaultFromDate() {
+function nextMondayIso() {
   const date = new Date();
   const daysUntilMonday = (8 - date.getDay()) % 7;
   date.setDate(date.getDate() + daysUntilMonday);
-  document.getElementById("weeklyFromDate").value = isoLocal(date);
+  return isoLocal(date);
+}
+
+function setupDatePickers() {
+  weeklyFromPicker = Office.attachGreekDateField({
+    inputEl: document.getElementById("weeklyFromDate"),
+    allowEmpty: false,
+    initialIso: nextMondayIso(),
+  });
+  weeklyToPicker = Office.attachGreekDateField({
+    inputEl: document.getElementById("weeklyToDate"),
+    allowEmpty: true,
+  });
 }
 
 async function loadEmployee() {
@@ -233,11 +247,12 @@ function updateSubmitState() {
 
 async function submitWeekly() {
   if (!selectedEmployee || !wtoWeekAvailable) return;
-  const fromDate = document.getElementById("weeklyFromDate").value;
+  const fromDate = weeklyFromPicker?.getIso?.() || "";
   if (!fromDate) {
     Office.showMsg("weeklyMsg", "Συμπληρώστε ημερομηνία έναρξης.", false);
     return;
   }
+  const toDate = weeklyToPicker?.getIso?.() || null;
   const days = collectDays();
   const invalidTime = days.some((day) =>
     day.entries.some(
@@ -263,7 +278,7 @@ async function submitWeekly() {
       body: JSON.stringify({
         employee_afm: selectedEmployee.afm,
         from_date: fromDate,
-        to_date: document.getElementById("weeklyToDate").value || null,
+        to_date: toDate,
         comments: document.getElementById("weeklyComments").value,
         days,
       }),

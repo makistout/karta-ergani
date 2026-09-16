@@ -27,6 +27,33 @@ def auth_audit_mock():
         yield record
 
 
+def _authenticate_from_config_users(username: str, password: str):
+    """Tests: map Config.office_users() → DB-shaped user (production login is DB-only)."""
+    user = (username or "").strip()
+    pwd = password or ""
+    for candidate in Config.office_users():
+        if candidate.get("username") != user or candidate.get("password") != pwd:
+            continue
+        role = normalize_role(candidate.get("role"))
+        return {
+            "id": abs(hash(user)) % 100000 + 1,
+            "username": user,
+            "role": role,
+            "permissions": sorted(permissions_for_role(role)),
+            "is_super_admin": role == "super_admin",
+            "store_ids": [],
+            "must_change_password": False,
+            "terms_accepted": True,
+        }
+    return None
+
+
+@pytest.fixture(autouse=True)
+def config_users_as_db_auth():
+    with patch("app.repo_users.authenticate_user", side_effect=_authenticate_from_config_users):
+        yield
+
+
 def _make_app() -> Flask:
     Config.KARTA_OFFICE_USERS = (
         '[{"username":"admin","password":"pw","role":"admin"},'

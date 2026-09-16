@@ -215,16 +215,12 @@ class Config:
 
     @staticmethod
     def office_login_credentials() -> tuple[str, str]:
-        """Username/password για σύνδεση UI — σε debug προεπιλογή αν λείπουν από .env."""
-        user = Config.KARTA_OFFICE_LOGIN_USER
-        pwd = Config.KARTA_OFFICE_LOGIN_PASSWORD
-        if not user and not pwd and Config.FLASK_DEBUG:
-            return "admin", "ergani"
-        return user, pwd
+        """Προαιρετικά credentials μόνο για seed migration (όχι για login UI)."""
+        return Config.KARTA_OFFICE_LOGIN_USER, Config.KARTA_OFFICE_LOGIN_PASSWORD
 
     @staticmethod
     def office_users() -> list[dict[str, str]]:
-        """Προαιρετικοί χρήστες γραφείου από JSON env, με fallback στον παλιό admin."""
+        """Deprecated env users — μόνο για tests/migration helpers, όχι για login."""
         users: list[dict[str, str]] = []
         if Config.KARTA_OFFICE_USERS:
             try:
@@ -279,8 +275,6 @@ class Config:
                 missing.append("FLASK_SECRET_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
             if not Config.WORK_CARD_API_KEY:
                 missing.append("WORK_CARD_API_KEY (υποχρεωτικό εκτός FLASK_DEBUG)")
-            if not Config.office_users():
-                missing.append("KARTA_OFFICE_USERS ή KARTA_OFFICE_LOGIN_USER / KARTA_OFFICE_LOGIN_PASSWORD")
         if missing:
             raise RuntimeError(
                 "Λείπουν ρυθμίσεις περιβάλλοντος (.env):\n- "

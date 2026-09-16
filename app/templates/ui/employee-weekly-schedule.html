@@ -27,17 +27,17 @@
 
       <section class="card weekly-schedule-card">
         <div class="weekly-period-grid">
-          <label>
-            <span>Ισχύς από</span>
-            <input id="weeklyFromDate" type="date" required>
+          <label class="dp-field">
+            <span class="dp-field-label">Ισχύς από</span>
+            <input id="weeklyFromDate" type="text" class="field-input" inputmode="numeric" autocomplete="off" placeholder="ηη/μμ/εεεε" required>
           </label>
-          <label>
-            <span>Ισχύς έως <small>(προαιρετικό)</small></span>
-            <input id="weeklyToDate" type="date">
+          <label class="dp-field">
+            <span class="dp-field-label">Ισχύς έως <small>(προαιρετικό)</small></span>
+            <input id="weeklyToDate" type="text" class="field-input" inputmode="numeric" autocomplete="off" placeholder="ηη/μμ/εεεε">
           </label>
-          <label class="weekly-comments-field">
-            <span>Παρατηρήσεις <small>(προαιρετικό)</small></span>
-            <input id="weeklyComments" type="text" maxlength="200" placeholder="π.χ. Σταθερό εβδομαδιαίο πρόγραμμα">
+          <label class="weekly-comments-field dp-field">
+            <span class="dp-field-label">Παρατηρήσεις <small>(προαιρετικό)</small></span>
+            <input id="weeklyComments" type="text" class="field-input" maxlength="200" placeholder="π.χ. Σταθερό εβδομαδιαίο πρόγραμμα">
           </label>
         </div>
         <p class="weekly-period-hint">
@@ -70,5 +70,6 @@
     
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/employee-weekly-schedule.js?v=20260817dialog1"></script>
+  <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
+  <script src="/static/js/employee-weekly-schedule.js?v=20260916datepicker1"></script>
 {% endblock %}

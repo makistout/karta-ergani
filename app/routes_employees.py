@@ -9,6 +9,7 @@ from typing import Any
 import pyodbc
 from flask import Blueprint, jsonify, request
 
+from app.access_control import is_super_admin
 from app.http_helpers import resolve_active_store
 from app.portal_employment_contract_sync import iter_employment_contract_sync_events
 from app.repo_employment_contract import (
@@ -40,12 +41,213 @@ from app.repo_work_log import (
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/api/employees")
 
+# Πεδία που το EX_BASE_05 / τρέχουσα σύμβαση μπορούν να προσυμπληρώσουν στο WebMA.
+_WEB_MA_ENRICH_KEYS = (
+    "eponymo",
+    "onoma",
+    "onoma_patros",
+    "onoma_mitros",
+    "birthdate",
+    "sex",
+    "yphkoothta",
+    "typos_taytothtas",
+    "ar_taytothtas",
+    "ekdousa_arxh",
+    "date_ekdosis",
+    "date_ekdosis_lixi",
+    "amka",
+    "amika",
+    "code_anergias",
+    "ar_vivliou_anilikou",
+    "marital_status",
+    "arithmos_teknon",
+    "epipedo_morfosis",
+    "kyria_asfalish",
+    "epikourikiki_kod",
+    "prosthetes_asfalistikes_paroxes",
+    "xronos_katabolhs",
+    "eidos_dieuthethshs",
+    "specialty",
+    "step92",
+    "salary",
+    "hourly_wage",
+    "weekly_hours",
+    "fulltime_contract_weekly_hours",
+    "weekly_work_days",
+    "employment_relation",
+    "regime",
+    "characterization",
+    "prior_service",
+    "break_minutes",
+    "break_in_work",
+    "flex_arrival_minutes",
+    "working_card",
+    "working_time_digital_organization",
+    "topos_ergasias",
+    "topos_ergasias_comments",
+    "efarmostea_sillogiki_simbasi",
+    "efarmostea_sillogiki_simbasi_comments",
+    "ipoxreotiki_katartisi",
+    "mh_problepsimo_programma",
+    "trial_period",
+    "topothetisioaed",
+    "responsible_position",
+)
+
 
 def _optional_iso_date(value: object) -> date | None:
     text = str(value or "").strip()
     if not text:
         return None
     return date.fromisoformat(text)
+
+
+def _merge_nonempty(base: dict[str, Any], overlay: dict[str, Any], *, keys: tuple[str, ...] | None = None) -> dict[str, Any]:
+    """Συμπληρώνει κενά του base από overlay (ή μόνο συγκεκριμένα keys)."""
+    out = dict(base)
+    items = overlay.items() if keys is None else ((k, overlay.get(k)) for k in keys)
+    for key, value in items:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text == "":
+            continue
+        current = str(out.get(key) or "").strip()
+        if not current:
+            out[key] = value
+    return out
+
+
+def _load_local_contract_for_web_ma(ctx: dict[str, Any], employee_afm: str) -> dict[str, Any]:
+    contract: dict[str, Any] | None = None
+    try:
+        history = list_history_for_employee(
+            str(ctx["employer_afm"]),
+            str(ctx.get("branch_aa") or "0"),
+            employee_afm,
+            limit=5,
+        )
+        contract = next(
+            (row for row in history if row.get("is_current") in (True, 1, "1")),
+            history[0] if history else None,
+        )
+    except pyodbc.Error:
+        contract = None
+    if contract:
+        return dict(contract)
+    employees = list_employees_for_employer(
+        str(ctx["employer_afm"]),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+        limit=5000,
+    )
+    emp = next(
+        (row for row in employees if norm_afm(row.get("afm") or "") == employee_afm),
+        None,
+    )
+    if not emp:
+        return {"employee_afm": employee_afm, "branch_aa": ctx.get("branch_aa") or "0"}
+    return {
+        "employee_afm": employee_afm,
+        "eponymo": emp.get("eponymo"),
+        "onoma": emp.get("onoma"),
+        "branch_aa": ctx.get("branch_aa") or "0",
+    }
+
+
+def _fetch_ex_base_05_personal(
+    ctx: dict[str, Any], employee_afm: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Επιστρέφει (personal_fields, error)."""
+    from app.ergani_client import ErganiClient
+    from app.ergani_env import client_for_store
+    from app.ergani_parse import extract_raw_list
+    from app.http_helpers import ensure_ergani_bearer, json_or_text
+    from app.web_ma_payload import personal_fields_from_ex_base_05
+    from app.wto_submit import clear_ergani_bearer_session, ergani_authorization_denied
+
+    try:
+        client: ErganiClient = client_for_store(ctx)
+        bearer = ensure_ergani_bearer(ctx)
+        if not bearer:
+            return None, "Αποτυχία σύνδεσης Ergani API"
+        resp = client.execute_service("EX_BASE_05", [], bearer)
+        parsed = json_or_text(resp)
+        if ergani_authorization_denied(resp, parsed):
+            clear_ergani_bearer_session()
+            bearer = ensure_ergani_bearer(ctx)
+            if bearer:
+                resp = client.execute_service("EX_BASE_05", [], bearer)
+                parsed = json_or_text(resp)
+        if not resp.ok:
+            return None, (
+                (parsed.get("message") if isinstance(parsed, dict) else None)
+                or f"EX_BASE_05 HTTP {resp.status_code}"
+            )
+        target = employee_afm
+        for item in extract_raw_list(parsed):
+            item_afm = norm_afm(str(item.get("afm") or item.get("Afm") or ""))
+            if item_afm != target:
+                continue
+            return personal_fields_from_ex_base_05(item), None
+        return None, "Ο εργαζόμενος δεν βρέθηκε στην τρέχουσα κατάσταση Ergani (EX_BASE_05)"
+    except Exception as ex:  # noqa: BLE001
+        return None, str(ex) or ex.__class__.__name__
+
+
+def _enrich_web_ma_form_data(
+    data: dict[str, Any],
+    *,
+    ctx: dict[str, Any],
+    employee_afm: str,
+) -> tuple[dict[str, Any], bool, str | None]:
+    """
+    Βάση = τοπική σύμβαση + EX_BASE_05 (πρόσληψη/τρέχουσα κατάσταση),
+    πάνω της οι μη κενές τιμές της φόρμας.
+    """
+    merged = _load_local_contract_for_web_ma(ctx, employee_afm)
+    personal, err = _fetch_ex_base_05_personal(ctx, employee_afm)
+    enriched = False
+    if personal:
+        merged = _merge_nonempty(merged, personal, keys=_WEB_MA_ENRICH_KEYS)
+        # EX_BASE_05 υπερισχύει στα προσωπικά όταν η τοπική σύμβαση τα έχει κενά.
+        for key in _WEB_MA_ENRICH_KEYS:
+            value = personal.get(key)
+            if value is None or str(value).strip() == "":
+                continue
+            if key in (
+                "eponymo",
+                "onoma",
+                "onoma_patros",
+                "onoma_mitros",
+                "birthdate",
+                "sex",
+                "yphkoothta",
+                "typos_taytothtas",
+                "ar_taytothtas",
+                "amka",
+                "amika",
+                "marital_status",
+                "arithmos_teknon",
+                "epipedo_morfosis",
+                "kyria_asfalish",
+                "epikourikiki_kod",
+                "xronos_katabolhs",
+            ) or not str(merged.get(key) or "").strip():
+                merged[key] = value
+        enriched = True
+    # Overlay από φόρμα: ό,τι συμπλήρωσε ο χρήστης κερδίζει.
+    for key, value in data.items():
+        if value is None:
+            continue
+        if isinstance(value, (list, dict)):
+            merged[key] = value
+            continue
+        text = str(value).strip()
+        if text != "":
+            merged[key] = value
+    merged["employee_afm"] = employee_afm
+    merged.setdefault("branch_aa", ctx.get("branch_aa") or "0")
+    return merged, enriched, err
 
 
 def _contract_summary(contract: dict | None) -> str | None:
@@ -459,6 +661,8 @@ def employment_contract_sync_status(job_id: str):
 @employees_bp.get("/contract/change/draft")
 def employment_contract_change_draft():
     """Προσυμπληρωμένη φόρμα WebMA από τρέχουσα σύμβαση + EX_BASE_05."""
+    if not is_super_admin():
+        return jsonify({"error": "Η μεταβολή σύμβασης είναι διαθέσιμη μόνο σε super admin"}), 403
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
@@ -466,10 +670,6 @@ def employment_contract_change_draft():
     if not employee_afm:
         return jsonify({"error": "Λείπει employee_afm"}), 400
 
-    from app.ergani_client import ErganiClient
-    from app.ergani_env import client_for_store
-    from app.ergani_parse import extract_raw_list
-    from app.http_helpers import ensure_ergani_bearer, json_or_text
     from app.web_ma_payload import (
         CHANGE_TYPES,
         DIEUTHETISI_TYPES,
@@ -477,135 +677,13 @@ def employment_contract_change_draft():
         MAIN_INSURANCE_FUNDS,
         SUPPLEMENTARY_INSURANCE_FUNDS,
         draft_from_contract,
-        personal_fields_from_ex_base_05,
     )
 
-    contract = None
-    try:
-        history = list_history_for_employee(
-            str(ctx["employer_afm"]),
-            str(ctx.get("branch_aa") or "0"),
-            employee_afm,
-            limit=5,
-        )
-        contract = next(
-            (
-                row
-                for row in history
-                if row.get("is_current") in (True, 1, "1")
-            ),
-            history[0] if history else None,
-        )
-    except pyodbc.Error as ex:
-        return _contract_db_error(ex)
-
-    if not contract:
-        employees = list_employees_for_employer(
-            str(ctx["employer_afm"]),
-            branch_aa=str(ctx.get("branch_aa") or "0"),
-            limit=5000,
-        )
-        emp = next(
-            (row for row in employees if norm_afm(row.get("afm") or "") == employee_afm),
-            None,
-        )
-        if not emp:
-            return jsonify({"error": "Δεν βρέθηκε εργαζόμενος στο κατάστημα"}), 404
-        contract = {
-            "employee_afm": employee_afm,
-            "eponymo": emp.get("eponymo"),
-            "onoma": emp.get("onoma"),
-            "branch_aa": ctx.get("branch_aa") or "0",
-        }
-
-    merged = dict(contract)
-    ergani_enriched = False
-    ergani_enrich_error = None
-    try:
-        from app.wto_submit import clear_ergani_bearer_session, ergani_authorization_denied
-
-        client: ErganiClient = client_for_store(ctx)
-        bearer = ensure_ergani_bearer(ctx)
-        if not bearer:
-            ergani_enrich_error = "Αποτυχία σύνδεσης Ergani API"
-        else:
-            resp = client.execute_service("EX_BASE_05", [], bearer)
-            parsed = json_or_text(resp)
-            if ergani_authorization_denied(resp, parsed):
-                clear_ergani_bearer_session()
-                bearer = ensure_ergani_bearer(ctx)
-                if bearer:
-                    resp = client.execute_service("EX_BASE_05", [], bearer)
-                    parsed = json_or_text(resp)
-            if not resp.ok:
-                ergani_enrich_error = (
-                    (parsed.get("message") if isinstance(parsed, dict) else None)
-                    or f"EX_BASE_05 HTTP {resp.status_code}"
-                )
-            else:
-                target_afm = employee_afm
-                for item in extract_raw_list(parsed):
-                    item_afm = norm_afm(str(item.get("afm") or item.get("Afm") or ""))
-                    if item_afm != target_afm:
-                        continue
-                    personal = personal_fields_from_ex_base_05(item)
-                    for key, value in personal.items():
-                        if value is None or str(value).strip() == "":
-                            continue
-                        # Συμπλήρωση κενών + αντικατάσταση προσωπικών από Ergani.
-                        if key in (
-                            "eponymo",
-                            "onoma",
-                            "onoma_patros",
-                            "onoma_mitros",
-                            "birthdate",
-                            "sex",
-                            "yphkoothta",
-                            "typos_taytothtas",
-                            "ar_taytothtas",
-                            "ekdousa_arxh",
-                            "date_ekdosis",
-                            "date_ekdosis_lixi",
-                            "amka",
-                            "amika",
-                            "code_anergias",
-                            "ar_vivliou_anilikou",
-                            "marital_status",
-                            "arithmos_teknon",
-                            "epipedo_morfosis",
-                            "kyria_asfalish",
-                            "epikourikiki_kod",
-                            "prosthetes_asfalistikes_paroxes",
-                            "xronos_katabolhs",
-                            "eidos_dieuthethshs",
-                            "specialty",
-                            "step92",
-                            "salary",
-                            "hourly_wage",
-                            "weekly_hours",
-                            "fulltime_contract_weekly_hours",
-                            "weekly_work_days",
-                            "employment_relation",
-                            "regime",
-                            "characterization",
-                            "prior_service",
-                            "break_minutes",
-                            "break_in_work",
-                            "flex_arrival_minutes",
-                            "working_card",
-                            "working_time_digital_organization",
-                        ) or not str(merged.get(key) or "").strip():
-                            merged[key] = value
-                    ergani_enriched = True
-                    break
-                if not ergani_enriched:
-                    ergani_enrich_error = (
-                        "Ο εργαζόμενος δεν βρέθηκε στην τρέχουσα κατάσταση Ergani (EX_BASE_05)"
-                    )
-    except Exception as ex:  # noqa: BLE001 — το draft συνεχίζει με τοπικά στοιχεία
-        ergani_enriched = False
-        ergani_enrich_error = str(ex) or ex.__class__.__name__
-
+    merged, ergani_enriched, ergani_enrich_error = _enrich_web_ma_form_data(
+        {},
+        ctx=ctx,
+        employee_afm=employee_afm,
+    )
     draft = draft_from_contract(
         merged,
         branch_aa=str(ctx.get("branch_aa") or "0"),
@@ -634,6 +712,8 @@ def employment_contract_change_draft():
 @employees_bp.post("/contract/change/submit")
 def employment_contract_change_submit():
     """Υποβολή Ψηφιακής Δήλωσης Μεταβολής Στοιχείων Εργασιακής Σχέσης (WebMA)."""
+    if not is_super_admin():
+        return jsonify({"error": "Η μεταβολή σύμβασης είναι διαθέσιμη μόνο σε super admin"}), 403
     import base64
     import json as json_lib
 
@@ -688,6 +768,13 @@ def employment_contract_change_submit():
     employee_afm = norm_afm(str(data.get("employee_afm") or ""))
     if not employee_afm:
         return jsonify({"error": "Λείπει employee_afm"}), 400
+
+    # Προσυμπλήρωση κενών από σύμβαση πρόσληψης / EX_BASE_05 πριν το build.
+    data, _enriched, _enrich_err = _enrich_web_ma_form_data(
+        data,
+        ctx=ctx,
+        employee_afm=employee_afm,
+    )
 
     # Κωδικοί παραρτήματος από το κατάστημα (XSD απαιτεί σειρά πριν το f_eponymo).
     data.setdefault("sepe_code", ctx.get("sepe_code"))

@@ -311,12 +311,21 @@ table.data.report-table td.work-log-action-cell {
 
 .schedule-week-pick-panel {
   width: min(100%, 420px);
+  max-height: none;
+  overflow: visible;
 }
 
 .schedule-week-pick-panel .dp-date-field {
   display: block;
   width: 100%;
   margin-bottom: 0.35rem;
+  /* Το ημερολόγιο είναι absolute κάτω από το πεδίο· μην το κόβει το panel. */
+  z-index: 1;
+}
+
+.schedule-week-pick-panel .dp-date-field:focus-within,
+.schedule-week-pick-panel .dp-date-field:has(.dp-cal-popup:not(.hidden)) {
+  z-index: 2;
 }
 
 .schedule-week-pick-panel .dp-date-control {

@@ -42,7 +42,7 @@ BASICS_ACCEPTANCE = [
 
 # EX_BASE_03 / TyposTaytotitas — κωδικοί Ergani (όχι πλήρη λεκτικά).
 IDENTITY_DOCUMENT_TYPES: list[dict[str, str]] = [
-    {"code": "ΔAT", "label": "ΔΕΛΤΙΟ ΑΣΤΥΝΟΜΙΚΗΣ ΤΑΥΤΟΤΗΤΑΣ"},
+    {"code": "ΔΑΤ", "label": "ΔΕΛΤΙΟ ΑΣΤΥΝΟΜΙΚΗΣ ΤΑΥΤΟΤΗΤΑΣ"},
     {"code": "ΔΙΑ", "label": "ΔΙΑΒΑΤΗΡΙΟ"},
     {"code": "ΑΔΑ", "label": "ΑΔΕΙΑ ΔΙΑΜΟΝΗΣ (ΒΙΝΙΕΤΑ)"},
     {"code": "ΑΔΠΑΕ", "label": "ΑΔΕΙΑ ΔΙΑΜΟΝΗΣ ΜΕ ΔΙΚΑΙΩΜΑ ΕΡΓΑΣΙΑΣ"},
@@ -56,7 +56,7 @@ IDENTITY_DOCUMENT_TYPES: list[dict[str, str]] = [
     {"code": "ΤΧΕΕ", "label": "ΤΑΥΤΟΤΗΤΑ ΧΩΡΩΝ ΕΥΡΩΠΑΪΚΗΣ ΕΝΩΣΗΣ"},
 ]
 _IDENTITY_CODES = {row["code"] for row in IDENTITY_DOCUMENT_TYPES}
-DEFAULT_IDENTITY_TYPE = "ΔAT"
+DEFAULT_IDENTITY_TYPE = "ΔΑΤ"
 
 # EX_BASE_03 / ForeisKyriasAsfalisis — κωδικοί κύριας ασφάλισης (όχι "0").
 MAIN_INSURANCE_FUNDS: list[dict[str, str]] = [
@@ -384,6 +384,43 @@ def map_yes_no(value: Any) -> str | None:
     return None
 
 
+def normalize_topos_ergasias(value: Any, *, default: str = "0") -> str:
+    """XSD enum τόπου εργασίας — μόνο ψηφίο (π.χ. 0), όχι λεκτικό EX_BASE_05."""
+    text = str(value or "").strip()
+    if not text:
+        return default
+    if text in ("0", "1", "2", "3"):
+        return text
+    # π.χ. «ΠΑΡΑΡΤΗΜΑ ΕΡΓΟΔΟΤΗ (0)»
+    m = re.search(r"\((\d)\)\s*$", text)
+    if m:
+        return m.group(1)
+    digit = _enum_digit_code(text, allowed={"0", "1", "2", "3"})
+    if digit is not None:
+        return digit
+    upper = text.upper()
+    if "ΠΑΡΑΡΤΗΜ" in upper or "ΕΡΓΟΔΟΤ" in upper:
+        return "0"
+    return default
+
+
+def normalize_yes_no_flag(value: Any, *, default: str = "0") -> str:
+    """Ναι/Όχι ή «0-Όχι» / «1-Ναι» από EX_BASE_05 → 0/1."""
+    mapped = map_yes_no(value)
+    if mapped is not None:
+        return mapped
+    text = str(value or "").strip()
+    if not text:
+        return default
+    m = re.match(r"^([01])\b", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"\(([01])\)\s*$", text)
+    if m:
+        return m.group(1)
+    return _enum_digit_code(text, allowed={"0", "1"}, default=default) or default
+
+
 def map_characterization(value: Any) -> str | None:
     text = str(value or "").strip().upper()
     if "ΕΡΓΑΤ" in text:
@@ -506,6 +543,9 @@ def normalize_identity_type(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return DEFAULT_IDENTITY_TYPE
+    # Παλιό λάθος «ΔAT» (Latin A/T) → σωστό ελληνικό ΔΑΤ.
+    if raw in ("ΔAT", "DAT", "ΔΑT", "ΔAΤ"):
+        return DEFAULT_IDENTITY_TYPE
     if raw in _IDENTITY_CODES:
         return raw
     # Παλιό default / ελεύθερο κείμενο → αστυνομική ταυτότητα.
@@ -533,7 +573,7 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         ("ar_taytothtas", ("ArTaytotitas", "ar_taytothtas")),
         ("ekdousa_arxh", ("EkdousaArxi", "ekdousa_arxh")),
         ("date_ekdosis", ("DateEkdosis", "date_ekdosis")),
-        ("date_ekdosis_lixi", ("DateEkdosisLixi", "date_ekdosis_lixi")),
+        ("date_ekdosis_lixi", ("DateEkdosisLixi", "DateLixis", "date_ekdosis_lixi")),
         ("amka", ("Amka", "amka")),
         ("amika", ("AmIka", "amika")),
         ("code_anergias", ("CodeAnergias", "code_anergias")),
@@ -568,6 +608,26 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         ),
         ("xronos_katabolhs", ("XronosKatabolisApodoxwn", "xronos_katabolhs")),
         ("eidos_dieuthethshs", ("Dieythetisi", "eidos_dieuthethshs")),
+        ("topos_ergasias", ("ToposErgasias", "topos_ergasias")),
+        (
+            "topos_ergasias_comments",
+            ("ToposErgasiasComments", "topos_ergasias_comments"),
+        ),
+        (
+            "efarmostea_sillogiki_simbasi",
+            ("EfarmosteaSyllogikiSymbasi", "efarmostea_sillogiki_simbasi"),
+        ),
+        (
+            "efarmostea_sillogiki_simbasi_comments",
+            ("EfarmosteaSyllogikiSymbasiComments", "efarmostea_sillogiki_simbasi_comments"),
+        ),
+        ("ipoxreotiki_katartisi", ("IpoxreotikiKatartisi", "ipoxreotiki_katartisi")),
+        (
+            "mh_problepsimo_programma",
+            ("MhProblepsimoProgrammaErgasias", "mh_problepsimo_programma"),
+        ),
+        ("trial_period", ("TrialPeriod", "trial_period")),
+        ("responsible_position", ("ResponsiblePosition", "responsible_position")),
     ]
     for target, keys in mapping:
         for key in keys:
@@ -582,6 +642,10 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         out["epikourikiki_kod"] = normalize_epikourikiki_kod(out["epikourikiki_kod"])
     if "birthdate" in out:
         out["birthdate"] = _ergani_date(out["birthdate"])
+    if "date_ekdosis" in out:
+        out["date_ekdosis"] = _ergani_date(out["date_ekdosis"])
+    if "date_ekdosis_lixi" in out:
+        out["date_ekdosis_lixi"] = _ergani_date(out["date_ekdosis_lixi"])
     if "yphkoothta" in out:
         yph = _digits(out["yphkoothta"], max_len=3)
         if yph:
@@ -628,6 +692,22 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
             out["break_in_work"] = _enum_digit_code(
                 out["break_in_work"], allowed={"0", "1"}, default="0"
             )
+    if "topos_ergasias" in out:
+        out["topos_ergasias"] = normalize_topos_ergasias(out["topos_ergasias"])
+    if "efarmostea_sillogiki_simbasi" in out:
+        out["efarmostea_sillogiki_simbasi"] = normalize_yes_no_flag(
+            out["efarmostea_sillogiki_simbasi"], default="0"
+        )
+    if "ipoxreotiki_katartisi" in out:
+        out["ipoxreotiki_katartisi"] = normalize_yes_no_flag(
+            out["ipoxreotiki_katartisi"], default="0"
+        )
+    if "mh_problepsimo_programma" in out:
+        out["mh_problepsimo_programma"] = normalize_yes_no_flag(
+            out["mh_problepsimo_programma"], default="0"
+        )
+    if "trial_period" in out:
+        out["trial_period"] = normalize_yes_no_flag(out["trial_period"], default="0")
     return out
 
 
@@ -639,7 +719,7 @@ def draft_from_contract(
 ) -> dict[str, Any]:
     row = contract or {}
     afm = norm_afm(str(row.get("employee_afm") or employee_afm))
-    return {
+    out: dict[str, Any] = {
         "employee_afm": afm,
         "eponymo": str(row.get("eponymo") or "").strip(),
         "onoma": str(row.get("onoma") or "").strip(),
@@ -659,8 +739,16 @@ def draft_from_contract(
         "typos_taytothtas": normalize_identity_type(row.get("typos_taytothtas")),
         "ar_taytothtas": str(row.get("ar_taytothtas") or "").strip(),
         "ekdousa_arxh": str(row.get("ekdousa_arxh") or "").strip(),
-        "date_ekdosis": str(row.get("date_ekdosis") or "").strip(),
-        "date_ekdosis_lixi": str(row.get("date_ekdosis_lixi") or "").strip(),
+        "date_ekdosis": (
+            _ergani_date(row.get("date_ekdosis"))
+            if str(row.get("date_ekdosis") or "").strip()
+            else ""
+        ),
+        "date_ekdosis_lixi": (
+            _ergani_date(row.get("date_ekdosis_lixi"))
+            if str(row.get("date_ekdosis_lixi") or "").strip()
+            else ""
+        ),
         "marital_status": _enum_digit_code(
             row.get("marital_status"), allowed={"0", "1", "2", "3"}, default="0"
         )
@@ -717,6 +805,22 @@ def draft_from_contract(
             row.get("eidos_dieuthethshs"), allowed={"0", "1", "2"}, default=DEFAULT_DIEUTHETISI
         )
         or DEFAULT_DIEUTHETISI,
+        "topos_ergasias": normalize_topos_ergasias(row.get("topos_ergasias")),
+        "topos_ergasias_comments": str(row.get("topos_ergasias_comments") or "").strip(),
+        "efarmostea_sillogiki_simbasi": normalize_yes_no_flag(
+            row.get("efarmostea_sillogiki_simbasi"), default="0"
+        ),
+        "efarmostea_sillogiki_simbasi_comments": str(
+            row.get("efarmostea_sillogiki_simbasi_comments") or ""
+        ).strip(),
+        "ipoxreotiki_katartisi": normalize_yes_no_flag(
+            row.get("ipoxreotiki_katartisi"), default="0"
+        ),
+        "mh_problepsimo_programma": normalize_yes_no_flag(
+            row.get("mh_problepsimo_programma"), default="0"
+        ),
+        "trial_period": normalize_yes_no_flag(row.get("trial_period"), default="0"),
+        "topothetisioaed": normalize_yes_no_flag(row.get("topothetisioaed"), default="0"),
         "comments": "",
         "change_types_catalog": CHANGE_TYPES,
         "basics_acceptance_catalog": BASICS_ACCEPTANCE,
@@ -1078,17 +1182,29 @@ def build_web_ma_payload(
         "f_apodoxes": salary,
         "f_hour_apodoxes": hour_pay,
         "f_xronos_katabolhs": xronos_katabolhs[:200],
-        "f_topos_ergasias": str(data.get("topos_ergasias") or data.get("f_topos_ergasias") or "0"),
+        "f_topos_ergasias": normalize_topos_ergasias(
+            data.get("topos_ergasias") or data.get("f_topos_ergasias")
+        ),
+        "f_topos_ergasias_comments": str(
+            data.get("topos_ergasias_comments")
+            or data.get("f_topos_ergasias_comments")
+            or ""
+        ).strip()[:200],
         "f_sxeshapasxolisis": relation,
         "f_orismenou_apo": _ergani_date(fixed_from_raw) if relation == "1" and fixed_from_raw else " ",
         "f_orismenou_ews": _ergani_date(fixed_to_raw) if relation == "1" and fixed_to_raw else " ",
         "f_kathestosapasxolisis": regime,
         "f_xaraktirismos": characterization,
-        "f_efarmostea_sillogiki_simbasi": str(
+        "f_efarmostea_sillogiki_simbasi": normalize_yes_no_flag(
             data.get("efarmostea_sillogiki_simbasi")
-            or data.get("f_efarmostea_sillogiki_simbasi")
-            or "0"
+            or data.get("f_efarmostea_sillogiki_simbasi"),
+            default="0",
         ),
+        "f_efarmostea_sillogiki_simbasi_comments": str(
+            data.get("efarmostea_sillogiki_simbasi_comments")
+            or data.get("f_efarmostea_sillogiki_simbasi_comments")
+            or ""
+        ).strip()[:200],
         "f_kyria_asfalish": normalize_kyria_asfalish(
             data.get("kyria_asfalish") or data.get("f_kyria_asfalish")
         ),
@@ -1097,11 +1213,18 @@ def build_web_ma_payload(
             or data.get("f_prosthetes_asfalistikes_paroxes")
             or ""
         ).strip()[:200],
-        "f_ipoxreotiki_katartisi": str(data.get("ipoxreotiki_katartisi") or "0"),
+        "f_ipoxreotiki_katartisi": normalize_yes_no_flag(
+            data.get("ipoxreotiki_katartisi") or data.get("f_ipoxreotiki_katartisi"),
+            default="0",
+        ),
         "f_working_time_digital_organization": str(
             data.get("working_time_digital_organization") or "1"
         ),
-        "f_mh_problepsimo_programma": str(data.get("mh_problepsimo_programma") or "0"),
+        "f_mh_problepsimo_programma": normalize_yes_no_flag(
+            data.get("mh_problepsimo_programma")
+            or data.get("f_mh_problepsimo_programma"),
+            default="0",
+        ),
         "f_week_hours": week_hours,
         "f_full_employment_hours": full_hours,
         "f_week_days": week_days,
@@ -1118,8 +1241,14 @@ def build_web_ma_payload(
         or "0",
         "f_dialeimma_entos_wrariou": map_yes_no(data.get("break_in_work"))
         or str(data.get("f_dialeimma_entos_wrariou") or "0"),
-        "f_topothetisioaed": str(data.get("topothetisioaed") or "0"),
-        "f_trial_period": str(data.get("trial_period") or "0"),
+        "f_topothetisioaed": normalize_yes_no_flag(
+            data.get("topothetisioaed") or data.get("f_topothetisioaed"),
+            default="0",
+        ),
+        "f_trial_period": normalize_yes_no_flag(
+            data.get("trial_period") or data.get("f_trial_period"),
+            default="0",
+        ),
         "f_borrow_type": borrow_type,
         "f_borrow_company_afm": (
             norm_afm(str(data.get("borrow_company_afm") or data.get("f_borrow_company_afm") or ""))
@@ -1154,8 +1283,8 @@ def build_web_ma_payload(
     comments = str(data.get("comments") or "").strip()
     if comments:
         values["f_comments"] = comments[:100]
-    if file_b64:
-        values["f_file"] = file_b64
+    # Πάντα ρητά: χωρίς PDF δεν αφήνουμε το default AA== (θεωρείται αρχείο).
+    values["f_file"] = file_b64 if file_b64 else ""
 
     if "006" in types:
         values["f_sxeshapasxolisis"] = "0"

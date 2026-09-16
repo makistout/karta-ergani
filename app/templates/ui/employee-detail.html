@@ -49,6 +49,7 @@
         </form>
       </section>
 
+      {% if office_is_super_admin() %}
       <section class="card employee-detail-card" id="employeeContractChangeSection">
         <h2 class="employee-detail-section-title">Αλλαγή σύμβασης (Ergani WebMA)</h2>
         <p class="page-desc">
@@ -208,6 +209,7 @@
           </div>
         </form>
       </section>
+      {% endif %}
 
       <section id="employeeContractHistorySection" class="card employee-detail-card hidden">
         <h2 class="employee-detail-section-title">Προηγούμενες εκδόσεις</h2>

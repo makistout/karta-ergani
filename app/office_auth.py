@@ -1,4 +1,4 @@
-"""Σύνδεση γραφείου (session) — username/password από περιβάλλον."""
+"""Σύνδεση γραφείου (session) — username/password από βάση (karta_user)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from app.access_control import (
     has_permission,
     normalize_role,
     permission_for_path,
-    permissions_for_role,
 )
 from app.landing_seo import seo_public_paths
 from config import Config
@@ -70,11 +69,8 @@ _ONBOARDING_PATHS = frozenset({
 
 
 def office_login_enabled() -> bool:
-    return bool(Config.office_users())
-
-
-def office_login_credentials() -> tuple[str, str]:
-    return Config.office_login_credentials()
+    """Η σύνδεση UI είναι πάντα ενεργή· τα credentials έρχονται μόνο από τη βάση."""
+    return True
 
 
 def is_office_authenticated() -> bool:
@@ -112,55 +108,27 @@ def login_office_user(username: str, password: str) -> bool:
         db_user = authenticate_user(username, password)
     except Exception:
         db_user = None
-    if db_user:
-        session[SESSION_LOGGED_IN] = True
-        session[SESSION_USER] = db_user["username"]
-        session[SESSION_USER_ID] = int(db_user["id"])
-        session[SESSION_ROLE] = normalize_role(db_user.get("role"))
-        session[SESSION_PERMISSIONS] = list(db_user.get("permissions") or [])
-        session[SESSION_SUPER_ADMIN] = bool(db_user.get("is_super_admin"))
-        _set_onboarding_session(db_user)
-        session.permanent = True
-        try:
-            from app.scheduled_sync import enqueue_sync_allowed_stores_after_login
-
-            enqueue_sync_allowed_stores_after_login(
-                user_id=int(db_user["id"]),
-                store_ids=None
-                if bool(db_user.get("is_super_admin"))
-                else list(db_user.get("store_ids") or []),
-            )
-        except Exception:
-            pass
-        return True
-
-    users = Config.office_users()
-    if not users:
-        return False
-    user = (username or "").strip()
-    pwd = password or ""
-    matched = None
-    for candidate in users:
-        expected_user = candidate.get("username") or ""
-        expected_pwd = candidate.get("password") or ""
-        if (
-            secrets.compare_digest(user, expected_user)
-            and secrets.compare_digest(pwd, expected_pwd)
-        ):
-            matched = candidate
-            break
-    if matched is None:
+    if not db_user:
         return False
     session[SESSION_LOGGED_IN] = True
-    session[SESSION_USER] = user
-    role = normalize_role(matched.get("role"))
-    session[SESSION_ROLE] = role
-    session[SESSION_USER_ID] = None
-    session[SESSION_PERMISSIONS] = sorted(permissions_for_role(role))
-    session[SESSION_SUPER_ADMIN] = role == "super_admin"
-    session[SESSION_MUST_CHANGE_PASSWORD] = False
-    session[SESSION_TERMS_ACCEPTED] = True
+    session[SESSION_USER] = db_user["username"]
+    session[SESSION_USER_ID] = int(db_user["id"])
+    session[SESSION_ROLE] = normalize_role(db_user.get("role"))
+    session[SESSION_PERMISSIONS] = list(db_user.get("permissions") or [])
+    session[SESSION_SUPER_ADMIN] = bool(db_user.get("is_super_admin"))
+    _set_onboarding_session(db_user)
     session.permanent = True
+    try:
+        from app.scheduled_sync import enqueue_sync_allowed_stores_after_login
+
+        enqueue_sync_allowed_stores_after_login(
+            user_id=int(db_user["id"]),
+            store_ids=None
+            if bool(db_user.get("is_super_admin"))
+            else list(db_user.get("store_ids") or []),
+        )
+    except Exception:
+        pass
     return True
 
 

@@ -1198,7 +1198,7 @@ Object.assign(window.Office, {
     return html;
   },
 
-  async loadWorkLogHistory({ wrap, sub, afm, name = "" }) {
+  async loadWorkLogHistory({ wrap, sub, afm, name = "", page = 1 }) {
     const employeeAfm = String(afm || "").trim();
     if (!wrap || !employeeAfm) return;
     const displayName = String(name || "").trim();
@@ -1220,17 +1220,31 @@ Object.assign(window.Office, {
       if (sub && data.employee_name && !displayName) {
         sub.textContent = `${data.employee_name} · ΑΦΜ ${employeeAfm}`;
       }
-      const count = data.count || 0;
-      const meta =
-        count > 0
-          ? `<p class="table-meta" style="margin:0 0 0.5rem;">${this.icon("database")} <strong>${count}</strong> εγγραφές στη βάση (νεότερες πρώτα)</p>`
-          : "";
-      wrap.innerHTML =
-        meta +
-        this.renderWorkLogHistoryTable(data.work_log || [], {
-          employee_afm: employeeAfm,
-          employee_name: employeeName,
-        });
+      const allRows = data.work_log || [];
+      const pageSize = 30;
+      const renderPage = (requestedPage) => {
+        const pg = this.paginateSlice(allRows, requestedPage, pageSize);
+        const count = pg.total;
+        const meta =
+          count > 0
+            ? `<p class="table-meta" style="margin:0 0 0.5rem;">${this.icon("database")} <strong>${count}</strong> εγγραφές στη βάση (νεότερες πρώτα)</p>`
+            : "";
+        wrap.innerHTML =
+          meta +
+          this.renderWorkLogHistoryTable(pg.items, {
+            employee_afm: employeeAfm,
+            employee_name: employeeName,
+          });
+        if (pg.totalPages > 1) {
+          wrap.appendChild(
+            this.buildTablePager(pg.page, pg.totalPages, pg.total, (p) => {
+              renderPage(p);
+              wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, pageSize)
+          );
+        }
+      };
+      renderPage(page);
     } catch (e) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
     }

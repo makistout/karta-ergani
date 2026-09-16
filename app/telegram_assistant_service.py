@@ -157,13 +157,13 @@ def _normalize_parsed_command(parsed: Any) -> dict[str, Any]:
 def _call_gemini(prompt: dict[str, Any], *, deadline: float) -> tuple[dict[str, Any], dict[str, Any]]:
     """Gemini με failover μοντέλων + σύντομα retries σε 503/429."""
     request_body = {
-        "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
-        "generationConfig": {
-            "temperature": 0,
-            "responseMimeType": "application/json",
-            "responseJsonSchema": _SCHEMA,
-        },
-    }
+            "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
+            "generationConfig": {
+                "temperature": 0,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": _SCHEMA,
+            },
+        }
     models = [Config.GEMINI_MODEL]
     fallback_model = str(Config.GEMINI_FALLBACK_MODEL or "").strip()
     if fallback_model and fallback_model not in models:
@@ -201,7 +201,7 @@ def _call_gemini(prompt: dict[str, Any], *, deadline: float) -> tuple[dict[str, 
                 break
             last_http_error = f"HTTP {response.status_code}: {response.text[:300]}"
             if response.status_code not in _GEMINI_RETRY_STATUSES:
-                break
+            break
             time.sleep(min(0.8, max(0.25, remaining / 8)))
         if response is not None and response.ok:
             break
@@ -1397,7 +1397,7 @@ def _validate_single_command(
     if intent == "schedule_change":
         intervals = _apply_schedule_intervals(parsed, user_text)
         if not intervals:
-            errors.append("Το νέο ωράριο χρειάζεται έγκυρη έναρξη και λήξη")
+                errors.append("Το νέο ωράριο χρειάζεται έγκυρη έναρξη και λήξη")
         elif len(intervals) >= 2:
             # Σπαστό: κράτα όλα τα μέρη στο payload για WTODaily intervals.
             parsed["intervals"] = intervals
@@ -1711,8 +1711,8 @@ def validate_and_describe(
 ) -> tuple[str, dict[str, Any], str]:
     commands = parsed.get("commands")
     if isinstance(commands, list):
-        normalized = [command for command in commands if isinstance(command, dict)]
-        if not normalized:
+    normalized = [command for command in commands if isinstance(command, dict)]
+    if not normalized:
             # Κενό commands[] αλλά υπάρχει top-level intent → μία εντολή.
             parsed.pop("commands", None)
             return _validate_single_command(

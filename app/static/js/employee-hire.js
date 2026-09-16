@@ -134,7 +134,7 @@ async function setupHireForm() {
       hirePicker?.setIso(greekDateToIso(draft.hire_date), true);
     }
     document.getElementById("hireSex").value = draft.sex || "0";
-    document.getElementById("hireIdType").value = draft.typos_taytothtas || "ΔAT";
+    document.getElementById("hireIdType").value = draft.typos_taytothtas || "ΔΑΤ";
     document.getElementById("hireTimeFrom").value = draft.hire_time_from || "09:00";
     document.getElementById("hireTimeTo").value = draft.hire_time_to || "17:00";
     document.getElementById("hireWeeklyHours").value = draft.weekly_hours || "40,0";

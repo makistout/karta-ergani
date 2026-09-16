@@ -336,11 +336,11 @@ async function setupContractChange(afm) {
     const idTypes =
       data.identity_document_types ||
       draft.identity_document_types || [
-        { code: "ΔAT", label: "ΔΕΛΤΙΟ ΑΣΤΥΝΟΜΙΚΗΣ ΤΑΥΤΟΤΗΤΑΣ" },
+        { code: "ΔΑΤ", label: "ΔΕΛΤΙΟ ΑΣΤΥΝΟΜΙΚΗΣ ΤΑΥΤΟΤΗΤΑΣ" },
         { code: "ΔΙΑ", label: "ΔΙΑΒΑΤΗΡΙΟ" },
       ];
     fillSelectOptions(document.getElementById("eccIdType"), idTypes);
-    document.getElementById("eccIdType").value = draft.typos_taytothtas || "ΔAT";
+    document.getElementById("eccIdType").value = draft.typos_taytothtas || "ΔΑΤ";
     document.getElementById("eccIdNo").value = draft.ar_taytothtas || "";
     document.getElementById("eccAmka").value = draft.amka || "";
     document.getElementById("eccAmika").value = draft.amika || "";
@@ -560,6 +560,7 @@ async function setupContractChange(afm) {
     Office.showLoading("eccMsg", "Υποβολή μεταβολής σύμβασης στο Ergani…");
     try {
       const payload = {
+        ...(_eccDraft || {}),
         employee_afm: afm,
         eponymo,
         onoma,
@@ -579,7 +580,10 @@ async function setupContractChange(afm) {
           document.getElementById("eccEpikourikiki")?.value,
           "001"
         ),
-        characterization: (_eccDraft && _eccDraft.characterization) || "",
+        characterization:
+          document.getElementById("eccCharacterization")?.value ||
+          (_eccDraft && _eccDraft.characterization) ||
+          "",
         xronos_katabolhs:
           document.getElementById("eccXronosKatabolhs")?.value.trim() ||
           (_eccDraft && _eccDraft.xronos_katabolhs) ||
@@ -596,12 +600,21 @@ async function setupContractChange(afm) {
         marital_status: (_eccDraft && _eccDraft.marital_status) || "0",
         arithmos_teknon: (_eccDraft && _eccDraft.arithmos_teknon) || "0",
         epipedo_morfosis: (_eccDraft && _eccDraft.epipedo_morfosis) || "0",
+        topos_ergasias: (_eccDraft && _eccDraft.topos_ergasias) || "0",
+        efarmostea_sillogiki_simbasi:
+          (_eccDraft && _eccDraft.efarmostea_sillogiki_simbasi) || "0",
+        ipoxreotiki_katartisi: (_eccDraft && _eccDraft.ipoxreotiki_katartisi) || "0",
+        mh_problepsimo_programma:
+          (_eccDraft && _eccDraft.mh_problepsimo_programma) || "0",
+        trial_period: (_eccDraft && _eccDraft.trial_period) || "0",
+        topothetisioaed: (_eccDraft && _eccDraft.topothetisioaed) || "0",
         branch_aa: (_eccDraft && _eccDraft.branch_aa) || "",
         change_date: changeDate,
         change_types: selectedTypes,
         basics_acceptance: acceptanceEl.value,
         specialty: document.getElementById("eccSpecialty").value,
         specialty_code: specialtyCode,
+        step92: (_eccDraft && _eccDraft.step92) || "",
         salary,
         hourly_wage: document.getElementById("eccHourly").value,
         weekly_hours: weeklyHours,
@@ -613,6 +626,13 @@ async function setupContractChange(afm) {
         fixed_term_to: relation === "1" ? fixedTo : "",
         comments: document.getElementById("eccComments").value,
       };
+      // Μην στέλνουμε καταλόγους UI στο Ergani.
+      delete payload.change_types_catalog;
+      delete payload.basics_acceptance_catalog;
+      delete payload.identity_document_types;
+      delete payload.main_insurance_funds;
+      delete payload.supplementary_insurance_funds;
+      delete payload.dieuthetisi_types;
       const body = new FormData();
       body.append("payload", JSON.stringify(payload));
       if (uploadFile) body.append("file", uploadFile, uploadFile.name);

@@ -2,6 +2,18 @@
 
 Τρέχουσα εικόνα της εφαρμογής `karta-ergani`.
 
+## Πρόσφατα (2026-09-16)
+
+- **Login UI:** μόνο χρήστες `karta_user` στη βάση· χωρίς fallback
+  `KARTA_OFFICE_LOGIN_*` / debug admin.
+- **WebMA (μεταβολή σύμβασης):** UI + API μόνο για `super_admin`· προσυμπλήρωση
+  από EX_BASE_05 στο draft/submit.
+- **WTOWeek:** μετά επιτυχή υποβολή ενημερώνεται τοπικά το `karta_schedule`
+  (χωρίς αναμονή portal sync)· ισχύς από την επιλεγμένη «Ισχύς από».
+- **Ιστορικό πραγματικής** (`/ui/work-log/history`): 30 εγγραφές/σελίδα.
+- **Εβδομαδιαίο ωράριο / schedule Excel week modal:** κοινό Greek date picker·
+  το ημερολόγιο δεν κόβεται στο modal.
+
 ## CardScanner PWA
 
 Στο `/scanner/` λειτουργεί εγκαταστάσιμη PWA για Android/iOS χωρίς app stores.
@@ -79,6 +91,9 @@ scanner **ρωτά για επιβεβαίωση** και, αν εγκριθεί
   `/ui/apologistic`, επιλογή μήνα, 28–31 ημέρες, υποβολές Ergani). Η ξεχωριστή
   στήλη ημέρας έχει αφαιρεθεί και η ημερομηνία εμφανίζεται σύντομα ως `ηη/μμ`.
 - `/ui/employees/detail`: πίνακας Πεδίο/Τιμή τρέχουσας σύμβασης + προηγούμενες εκδόσεις.
+  **Μεταβολή σύμβασης (WebMA):** μόνο `super_admin` (UI + API).
+- `/ui/employees/weekly-schedule`: σταθερό εβδομαδιαίο (WTOWeek) με Greek date picker·
+  μετά επιτυχή υποβολή γράφει τοπικά `karta_schedule`.
 - `/ui/employees/contracts`: λίστα τρεχουσών συμβάσεων καταστήματος + sync από Μητρώα
   (`Mitroa/ErgazomenosSearch.aspx` → `Ergazomenos.aspx`)· μόνο admin για sync.
   Ο συγχρονισμός εντοπίζει επίσης εργαζομένους με ωράριο/χτυπήματα αλλά χωρίς

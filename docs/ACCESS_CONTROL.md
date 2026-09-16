@@ -15,7 +15,8 @@
 ## Υλοποίηση
 
 - `app/access_control.py`: ορίζει roles, permissions, UI/API route rules, session helpers και store-access helpers.
-- `app/office_auth.py`: κάνει login από DB όταν υπάρχουν οι πίνακες χρηστών και κρατά στο session role/permissions/user id.
+- `app/office_auth.py`: κάνει login **μόνο από DB** (`karta_user`). Δεν υπάρχει
+  πλέον fallback σε `KARTA_OFFICE_LOGIN_*` / env users.
 - `app/repo_users.py`: διαχειρίζεται users, roles, permissions, password hashes και store access.
 - `app/routes_users.py`: API για λίστα/δημιουργία/ενημέρωση χρήστη, reset password, permissions και stores.
 - `app/http_helpers.py` και store routes: εφαρμόζουν store scoping ώστε ο μη-super-admin να βλέπει/επιλέγει μόνο επιτρεπόμενα καταστήματα.
@@ -65,6 +66,8 @@
   - `employees.view` καλύπτει `/ui/employees`, `/ui/employees/detail`, `/ui/employees/contracts`
     και `GET /api/employees/*` (λίστα/ιστορικό σύμβασης) — διαθέσιμο και σε `viewer`.
   - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
+  - **Μεταβολή σύμβασης WebMA** (`/api/employees/contract/change/*` + UI στο detail):
+    **μόνο `super_admin`** (επιπλέον του permission).
 - Ψηφιακό ωράριο: `schedule.view`, `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`, `schedule.submit_leave`, `schedule.export`
 - Πραγματική απασχόληση: `work_log.view`, `work_log.sync`, `work_log.export`
   - Απολογιστική ωρομέτρηση Excel (συγκεντρωτικό + πλήρης ανάλυση): `work_log.view`

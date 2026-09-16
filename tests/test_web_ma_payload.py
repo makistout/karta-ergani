@@ -66,7 +66,7 @@ _IDENTITY = {
 
     "yphkoothta": "025",
 
-    "typos_taytothtas": "ΔAT",
+    "typos_taytothtas": "ΔΑΤ",
 
     "ar_taytothtas": "ΑΒ123456",
 
@@ -425,3 +425,27 @@ def test_build_web_ma_xsd_required_field_order():
 def test_map_helpers():
     assert map_regime("0") == "0"
     assert map_week_days("5") == "5"
+
+
+def test_normalize_topos_ergasias_from_ex_base_label():
+    from app.web_ma_payload import normalize_topos_ergasias, personal_fields_from_ex_base_05
+
+    assert normalize_topos_ergasias("ΠΑΡΑΡΤΗΜΑ ΕΡΓΟΔΟΤΗ (0)") == "0"
+    assert normalize_topos_ergasias("0") == "0"
+    mapped = personal_fields_from_ex_base_05({"ToposErgasias": "ΠΑΡΑΡΤΗΜΑ ΕΡΓΟΔΟΤΗ (0)"})
+    assert mapped["topos_ergasias"] == "0"
+    payload = build_web_ma_payload(
+        {
+            **_IDENTITY,
+            **_BRANCH_CODES,
+            "change_types": ["001"],
+            "specialty_code": "5223",
+            "specialty": "test",
+            "salary": "1000",
+            "hourly_wage": "5,77",
+            "weekly_hours": "40",
+            "topos_ergasias": "ΠΑΡΑΡΤΗΜΑ ΕΡΓΟΔΟΤΗ (0)",
+        },
+        branch_aa="0",
+    )
+    assert payload["AnaggeliesMA"]["AnaggeliaMA"][0]["f_topos_ergasias"] == "0"
