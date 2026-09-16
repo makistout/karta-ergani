@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-09-16 — Fix: AI Agent δεν εκτελούσε εντολές
+
+- Το `telegram_assistant_service.py` είχε IndentationError από τυχαία
+  αλλοίωση indentation στο προηγούμενο commit· δεν φόρτωνε το module και
+  κάθε εντολή Telegram/UI απαντούσε «Δεν μπόρεσα να αναλύσω».
+- Επαναφορά του αρχείου στην προηγούμενη σωστή έκδοση.
+
 ## 2026-09-16 — UI polish + αποκατάσταση boot (apologistic syntax)
 
 - `/ui/employees/weekly-schedule`: κοινό Greek date picker για Ισχύς από/έως.
