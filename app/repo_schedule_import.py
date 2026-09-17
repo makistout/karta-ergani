@@ -165,6 +165,7 @@ def preview_import_batch(batch_id: int, *, store_id: int) -> dict[str, Any] | No
         [
             {
                 "change_kind": row.get("change_kind"),
+                "import_action": row.get("import_action"),
                 "validation_errors": row.get("validation_errors") or [],
             }
             for row in rows

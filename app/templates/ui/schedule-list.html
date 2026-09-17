@@ -81,8 +81,10 @@
           <h2 class="schedule-import-title"><i class="bi bi-file-earmark-diff" aria-hidden="true"></i> Προεπισκόπηση εισαγωγής Excel</h2>
           <p id="scheduleImportMeta" class="schedule-import-meta"></p>
         </div>
+        <div id="scheduleImportError" class="schedule-import-error hidden" role="alert" aria-live="assertive"></div>
         <div id="scheduleImportSummary" class="schedule-import-summary"></div>
         <div id="scheduleImportWrap" class="schedule-import-wrap"></div>
+        <div id="scheduleImportContractWarnings" class="schedule-import-contract-warnings hidden" aria-live="polite"></div>
         <div class="schedule-import-actions">
           <button type="button" class="btn" id="btnScheduleImportConfirm" disabled>
             <i class="bi bi-check2-circle" aria-hidden="true"></i><span>Επιβεβαίωση & αποστολή Ergani</span>
@@ -127,5 +129,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260908weekcustom3"></script>
-  <script src="/static/js/schedule-list.js?v=20260908weekcustom3"></script>
+  <script src="/static/js/schedule-list.js?v=20260916importerrorbox1"></script>
 {% endblock %}

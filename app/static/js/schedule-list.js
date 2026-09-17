@@ -4,6 +4,7 @@ let currentRange = { start: "", end: "" };
 let tableState = { rows: [], page: 1, count: 0, store: null, range: null, workDates: [] };
 let initialAutoSyncDone = false;
 let scheduleImportBatchId = null;
+let scheduleImportSubmitting = false;
 let scheduleDayFormState = { dateIso: "", rows: [], preview: null };
 let scheduleDayFormDatePicker = null;
 
@@ -590,6 +591,8 @@ function renderScheduleImportPreview(preview, fileErrors) {
   const metaEl = document.getElementById("scheduleImportMeta");
   const summaryEl = document.getElementById("scheduleImportSummary");
   const wrap = document.getElementById("scheduleImportWrap");
+  const errorBox = document.getElementById("scheduleImportError");
+  const warningWrap = document.getElementById("scheduleImportContractWarnings");
   const btnConfirm = document.getElementById("btnScheduleImportConfirm");
   if (!panel || !wrap || !summaryEl || !metaEl) return;
 
@@ -599,6 +602,10 @@ function renderScheduleImportPreview(preview, fileErrors) {
   const rows = preview?.rows || [];
   const summary = preview?.summary || {};
   scheduleImportBatchId = batch.id || null;
+  if (errorBox) {
+    errorBox.classList.add("hidden");
+    errorBox.innerHTML = "";
+  }
 
   const fileName = Office.escapeHtml(batch.original_filename || "Excel");
   const week = Office.escapeHtml(batch.week_label || "");
@@ -652,7 +659,6 @@ function renderScheduleImportPreview(preview, fileErrors) {
       "Κατάσταση",
       "Τρέχον",
       "Νέο",
-      "Σημειώσεις",
     ];
     const hr = document.createElement("tr");
     headers.forEach((h) => {
@@ -666,7 +672,6 @@ function renderScheduleImportPreview(preview, fileErrors) {
       const badge = document.createElement("span");
       badge.className = `status-badge ${changeKindClass(row.change_kind)}`;
       badge.textContent = changeKindLabel(row.change_kind);
-      const note = formatImportRowNote(row);
       const cells = [
         row.work_date || "",
         row.eponymo || "",
@@ -675,21 +680,11 @@ function renderScheduleImportPreview(preview, fileErrors) {
         badge.outerHTML,
         row.current_label || "—",
         row.proposed_label || "—",
-        note.text,
       ];
       cells.forEach((html, i) => {
         const td = document.createElement("td");
         if (i === 4) td.innerHTML = html;
-        else if (i >= 7) {
-          if (!note.text) td.innerHTML = "";
-          else {
-            const noteCls =
-              note.tone === "success"
-                ? "schedule-import-note schedule-import-note--ok"
-                : "schedule-import-note schedule-import-note--err";
-            td.innerHTML = `<span class="${noteCls}">${Office.escapeHtml(note.text)}</span>`;
-          }
-        } else td.textContent = html;
+        else td.textContent = html;
         tr.appendChild(td);
       });
       t.appendChild(tr);
@@ -699,6 +694,23 @@ function renderScheduleImportPreview(preview, fileErrors) {
   }
 
   if (btnConfirm) btnConfirm.disabled = !(summary.apply > 0);
+  if (warningWrap) {
+    const warnings = Array.isArray(preview?.contract_warnings) ? preview.contract_warnings : [];
+    warningWrap.classList.toggle("hidden", warnings.length === 0);
+    warningWrap.innerHTML = warnings.length
+      ? `<div class="schedule-import-contract-warnings-note">Οι παρακάτω προειδοποιήσεις δεν εμποδίζουν την υποβολή.</div>` +
+        warnings.map((item) => {
+          const name = [item.eponymo, item.onoma].filter(Boolean).join(" ") || item.employee_afm || "Εργαζόμενος";
+          const alerts = Array.isArray(item.alerts) ? item.alerts : [];
+          return `<div class="report-correction-box report-contract-alert schedule-import-contract-warning">` +
+            `<div class="report-correction-title">${Office.icon("exclamation-triangle")} Παράβαση · ${Office.escapeHtml(name)}` +
+            `${item.employee_afm ? ` <span>(${Office.escapeHtml(item.employee_afm)})</span>` : ""}</div>` +
+            `<div class="report-correction-body"><ul class="report-notes">` +
+            alerts.map((alert) => `<li>${Office.escapeHtml(alert.label || "Παράβαση σύμβασης")}</li>`).join("") +
+            `</ul></div></div>`;
+        }).join("")
+      : "";
+  }
   panel.classList.remove("hidden");
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -730,8 +742,14 @@ async function uploadScheduleImport(file) {
 }
 
 async function confirmScheduleImport(batchId) {
+  if (scheduleImportSubmitting) return;
   const btnConfirm = document.getElementById("btnScheduleImportConfirm");
-  if (btnConfirm) btnConfirm.disabled = true;
+  const btnLabel = btnConfirm?.querySelector("span");
+  const originalLabel = btnLabel?.textContent || "Επιβεβαίωση & αποστολή Ergani";
+  scheduleImportSubmitting = true;
+  Office.setButtonLoading(btnConfirm, true);
+  if (btnConfirm) btnConfirm.setAttribute("aria-busy", "true");
+  if (btnLabel) btnLabel.textContent = "Αποστολή σε εξέλιξη…";
   scrollToScheduleImportMsg();
   Office.showLoading("schedMsg", "Εφαρμογή προς Ergani και συγχρονισμός ωραρίου…");
   try {
@@ -743,12 +761,19 @@ async function confirmScheduleImport(batchId) {
     const data = await Office.parseJson(res);
     const resultMsg = scheduleImportResultMessage(data);
     if (!res.ok || !data.success) {
-      Office.showMsg("schedMsg", data.error || resultMsg || "Αποτυχία εφαρμογής", false);
-      scrollToScheduleImportMsg();
-      const previewRes = await fetch(`/api/schedule/import/preview/${batchId}`);
-      const previewData = await Office.parseJson(previewRes);
-      if (previewRes.ok) renderScheduleImportPreview(previewData, []);
-      await afterScheduleImportConfirm(data);
+      const errorText = data.error || resultMsg || "Αποτυχία εφαρμογής";
+      Office.showMsg("schedMsg", "", false);
+      const errorBox = document.getElementById("scheduleImportError");
+      if (errorBox) {
+        errorBox.innerHTML =
+          `${Office.icon("exclamation-triangle-fill")}` +
+          `<div><strong>Η εισαγωγή διακόπηκε</strong><div>${Office.formatMultilineHtml(errorText)}</div></div>`;
+        errorBox.classList.remove("hidden");
+        errorBox.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      // Το WTOWeek απορρίπτεται συνολικά στο πρώτο σφάλμα. Κρατάμε ένα μόνο
+      // μήνυμα και απαιτούμε νέο, διορθωμένο αρχείο αντί για retry του ίδιου batch.
+      scheduleImportBatchId = null;
       return;
     }
     Office.showMsg("schedMsg", resultMsg || `Εφαρμόστηκαν ${data.applied || 0} αλλαγές στο Ergani`, true);
@@ -756,8 +781,25 @@ async function confirmScheduleImport(batchId) {
     hideScheduleImportPanel();
     await afterScheduleImportConfirm(data);
   } catch (e) {
-    Office.showMsg("schedMsg", String(e), false);
-    if (btnConfirm) btnConfirm.disabled = false;
+    const errorBox = document.getElementById("scheduleImportError");
+    const errorText = Office.normalizeMultilineText(String(e));
+    if (errorBox) {
+      errorBox.innerHTML =
+        `${Office.icon("exclamation-triangle-fill")}` +
+        `<div><strong>Η εισαγωγή διακόπηκε</strong><div>${Office.formatMultilineHtml(errorText)}</div></div>`;
+      errorBox.classList.remove("hidden");
+      errorBox.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      Office.showMsg("schedMsg", errorText, false);
+    }
+  } finally {
+    scheduleImportSubmitting = false;
+    Office.setButtonLoading(btnConfirm, false);
+    if (btnConfirm) {
+      btnConfirm.removeAttribute("aria-busy");
+      btnConfirm.disabled = !scheduleImportBatchId;
+    }
+    if (btnLabel) btnLabel.textContent = originalLabel;
   }
 }
 

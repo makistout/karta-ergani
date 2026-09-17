@@ -152,7 +152,7 @@ def audit_list():
     raw_store = request.args.get("store_id")
     store_id = int(raw_store) if raw_store and raw_store.isdigit() else None
     kind = str(request.args.get("kind") or "").strip() or None
-    if kind not in (None, "today_notifications", "work_card_punches", "scanner_punches", "auth", "schedule_changes"):
+    if kind not in (None, "today_notifications", "work_card_punches", "scanner_punches", "auth", "schedule_changes", "schedule_imports"):
         kind = None
     try:
         limit = int(request.args.get("limit", "20"))

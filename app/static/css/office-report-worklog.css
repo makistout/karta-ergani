@@ -309,10 +309,86 @@ table.data.report-table td.work-log-action-cell {
   background: var(--bg-soft, #f1f5f9);
 }
 
-.schedule-week-pick-panel {
+.office-modal-panel.schedule-week-pick-panel {
   width: min(100%, 420px);
   max-height: none;
   overflow: visible;
+}
+
+.schedule-import-contract-warnings {
+  margin: 0 0 0.75rem;
+}
+
+.schedule-import-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0 0 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.schedule-import-error.hidden {
+  display: none;
+}
+
+.schedule-import-error > .bi {
+  flex: 0 0 auto;
+  margin-top: 0.12rem;
+}
+
+.schedule-import-error strong {
+  display: block;
+  margin-bottom: 0.18rem;
+}
+
+.schedule-import-contract-warnings.hidden {
+  display: none;
+}
+
+.schedule-import-contract-warnings-note {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.schedule-import-contract-warning + .schedule-import-contract-warning {
+  margin-top: 0.35rem;
+}
+
+.schedule-import-contract-warning {
+  margin-bottom: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+}
+
+.schedule-import-contract-warning .report-correction-title {
+  gap: 0.3rem;
+  margin-bottom: 0.12rem;
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+.schedule-import-contract-warning .report-correction-title span {
+  font-size: 0.68rem;
+  font-weight: 400;
+  opacity: 0.82;
+}
+
+.schedule-import-contract-warning .report-correction-body {
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.schedule-import-contract-warning .report-notes {
+  margin: 0.15rem 0 0 1rem;
+  padding: 0;
 }
 
 .schedule-week-pick-panel .dp-date-field {

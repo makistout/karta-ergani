@@ -290,3 +290,144 @@ def enrich_card_report_rows_with_contract_alerts(
             if code in summary:
                 summary[code] += 1
     return summary
+
+
+def _schedule_import_contract_warnings(
+    import_rows: list[dict[str, Any]],
+    *,
+    contracts: dict[str, dict[str, Any]],
+    schedule_rows: list[dict[str, Any]],
+    leave_map: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return non-blocking contract warnings for a schedule Excel preview."""
+    week_slots = _slots_by_afm_date(schedule_rows)
+    affected: dict[str, set[date]] = defaultdict(set)
+    names: dict[str, tuple[str, str]] = {}
+
+    for row in import_rows:
+        afm = norm_afm(str(row.get("employee_afm") or ""))
+        focus = _parse_iso(str(row.get("work_date") or ""))
+        action = str(row.get("import_action") or "").strip().lower()
+        kind = str(row.get("change_kind") or "").strip().lower()
+        if (
+            not afm
+            or focus is None
+            or action not in ("work", "rest", "absent", "skip")
+            or kind == "error"
+            or bool(row.get("validation_errors"))
+        ):
+            continue
+
+        ergani_date = _ergani_date(focus)
+        if action != "skip":
+            proposed = row.get("proposed_snapshot") or []
+            replacement: list[dict[str, Any]] = []
+            for slot in proposed if isinstance(proposed, list) else []:
+                replacement.append({
+                    "employee_afm": afm,
+                    "work_date": ergani_date,
+                    "hour_from": slot.get("hour_from"),
+                    "hour_to": slot.get("hour_to"),
+                    "shift_type": slot.get("shift_type") or slot.get("schedule_type"),
+                    "schedule_type": slot.get("schedule_type") or slot.get("shift_type"),
+                })
+            week_slots[(afm, ergani_date)] = replacement
+        affected[afm].add(focus)
+        names[afm] = (
+            str(row.get("eponymo") or "").strip(),
+            str(row.get("onoma") or "").strip(),
+        )
+
+    warnings: list[dict[str, Any]] = []
+    for afm, dates in affected.items():
+        leave = leave_map.get(afm)
+        leave_taken = int(leave["days_taken"]) if leave and leave.get("days_taken") is not None else None
+        alerts_by_code: dict[str, dict[str, Any]] = {}
+        for focus in sorted(dates):
+            for alert in _alerts_for_employee_day(
+                afm=afm,
+                focus=focus,
+                focus_ergani=_ergani_date(focus),
+                contract=contracts.get(afm),
+                week_slots=week_slots,
+                leave_taken=leave_taken,
+                row={},
+            ):
+                code = str(alert.get("code") or "")
+                if code and code not in alerts_by_code:
+                    alerts_by_code[code] = alert
+        if alerts_by_code:
+            eponymo, onoma = names.get(afm, ("", ""))
+            warnings.append({
+                "employee_afm": afm,
+                "eponymo": eponymo,
+                "onoma": onoma,
+                "alerts": list(alerts_by_code.values()),
+            })
+
+    return sorted(
+        warnings,
+        key=lambda item: (
+            str(item.get("eponymo") or "").casefold(),
+            str(item.get("onoma") or "").casefold(),
+            str(item.get("employee_afm") or ""),
+        ),
+    )
+
+
+def build_schedule_import_contract_warnings(
+    import_rows: list[dict[str, Any]],
+    *,
+    store_id: int,
+    employer_afm: str,
+    branch_aa: str,
+) -> list[dict[str, Any]]:
+    """Evaluate the uploaded schedule without changing or blocking its submission."""
+    eligible = [
+        row
+        for row in import_rows
+        if norm_afm(str(row.get("employee_afm") or ""))
+        and _parse_iso(str(row.get("work_date") or "")) is not None
+    ]
+    if not eligible:
+        return []
+
+    try:
+        contracts = {
+            norm_afm(str(c.get("employee_afm") or "")): c
+            for c in list_current_for_store(employer_afm, branch_aa)
+            if norm_afm(str(c.get("employee_afm") or ""))
+        }
+    except Exception:
+        contracts = {}
+
+    weeks_needed: set[date] = set()
+    afms: list[str] = []
+    for row in eligible:
+        focus = _parse_iso(str(row.get("work_date") or ""))
+        if focus:
+            weeks_needed.update(_week_dates(focus))
+        afm = norm_afm(str(row.get("employee_afm") or ""))
+        if afm:
+            afms.append(afm)
+
+    try:
+        dates = [_ergani_date(day) for day in sorted(weeks_needed)]
+        schedule_rows = list_schedule_for_range(employer_afm, branch_aa, dates) if dates else []
+    except Exception:
+        schedule_rows = []
+    try:
+        leave_map = load_current_year_normal_leave(
+            store_id=int(store_id),
+            employee_afms=afms,
+            today=datetime.now(tz_athens()).date(),
+        )
+    except Exception:
+        leave_map = {}
+
+    return _schedule_import_contract_warnings(
+        eligible,
+        contracts=contracts,
+        schedule_rows=schedule_rows,
+        leave_map=leave_map,
+    )

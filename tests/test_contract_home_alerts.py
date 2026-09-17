@@ -9,6 +9,7 @@ from app.contract_home_alerts import (
     CODE_LEAVE_OVER,
     CODE_SIXTH_DAY,
     _alerts_for_employee_day,
+    _schedule_import_contract_warnings,
 )
 
 
@@ -161,3 +162,112 @@ def test_no_alert_when_within_contract():
         row={},
     )
     assert alerts == []
+
+
+def _import_row(day: str, hour_from: str = "09:00", hour_to: str = "17:00") -> dict:
+    return {
+        "work_date": day,
+        "employee_afm": "123456789",
+        "eponymo": "ΔΟΚΙΜΗ",
+        "onoma": "ΕΡΓΑΖΟΜΕΝΟΣ",
+        "import_action": "work",
+        "change_kind": "update",
+        "validation_errors": [],
+        "proposed_snapshot": [{
+            "hour_from": hour_from,
+            "hour_to": hour_to,
+            "shift_type": "ΕΡΓ",
+            "schedule_type": "ΕΡΓ",
+        }],
+    }
+
+
+def test_schedule_import_groups_contract_warnings_per_employee():
+    rows = [
+        _import_row(f"{day:02d}/09/2026")
+        for day in range(14, 20)  # Monday through Saturday: 6 * 8h
+    ]
+    warnings = _schedule_import_contract_warnings(
+        rows,
+        contracts={"123456789": {
+            "weekly_work_days": "5",
+            "total_weekly_hours": "40",
+            "characterization": "Πλήρης απασχόληση",
+        }},
+        schedule_rows=[],
+        leave_map={},
+    )
+
+    assert len(warnings) == 1
+    assert warnings[0]["employee_afm"] == "123456789"
+    assert {alert["code"] for alert in warnings[0]["alerts"]} == {
+        CODE_SIXTH_DAY,
+        CODE_HOURS_OVER,
+    }
+
+
+def test_schedule_import_rest_replaces_existing_work_before_check():
+    existing = [
+        _slot(f"{day:02d}/09/2026", "09:00", "17:00")
+        for day in range(14, 20)
+    ]
+    rest_row = {
+        "work_date": "19/09/2026",
+        "employee_afm": "123456789",
+        "eponymo": "ΔΟΚΙΜΗ",
+        "onoma": "ΕΡΓΑΖΟΜΕΝΟΣ",
+        "import_action": "rest",
+        "change_kind": "update",
+        "validation_errors": [],
+        "proposed_snapshot": [{
+            "hour_from": None,
+            "hour_to": None,
+            "shift_type": "ΑΝ",
+            "schedule_type": "ΑΝ",
+        }],
+    }
+    warnings = _schedule_import_contract_warnings(
+        [rest_row],
+        contracts={"123456789": {
+            "weekly_work_days": "5",
+            "total_weekly_hours": "40",
+            "characterization": "Πλήρης απασχόληση",
+        }},
+        schedule_rows=existing,
+        leave_map={},
+    )
+
+    assert warnings == []
+
+
+def test_schedule_import_checks_existing_leave_on_unchanged_day():
+    leave_day = {
+        "work_date": "16/09/2026",
+        "employee_afm": "123456789",
+        "hour_from": None,
+        "hour_to": None,
+        "shift_type": "ΑΔΕΙΑ",
+    }
+    unchanged_row = {
+        "work_date": "16/09/2026",
+        "employee_afm": "123456789",
+        "eponymo": "ΔΟΚΙΜΗ",
+        "onoma": "ΕΡΓΑΖΟΜΕΝΟΣ",
+        "import_action": "skip",
+        "change_kind": "skip",
+        "validation_errors": [],
+        "proposed_snapshot": [],
+    }
+    warnings = _schedule_import_contract_warnings(
+        [unchanged_row],
+        contracts={"123456789": {
+            "weekly_work_days": "5",
+            "total_weekly_hours": "40",
+            "characterization": "Πλήρης απασχόληση",
+        }},
+        schedule_rows=[leave_day],
+        leave_map={"123456789": {"days_taken": 22}},
+    )
+
+    assert len(warnings) == 1
+    assert [alert["code"] for alert in warnings[0]["alerts"]] == [CODE_LEAVE_OVER]

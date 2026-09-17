@@ -6,6 +6,7 @@ import pyodbc
 from flask import Blueprint, jsonify, request, send_file
 
 from app.access_control import current_user_id
+from app.contract_home_alerts import build_schedule_import_contract_warnings
 from app.http_helpers import resolve_active_store
 from app.repo_schedule_import import (
     create_import_batch,
@@ -20,6 +21,18 @@ from app.schedule_excel_template import build_weekly_schedule_template_bytes
 from app.schedule_import_service import confirm_import_batch
 
 schedule_import_bp = Blueprint("schedule_import", __name__, url_prefix="/api/schedule/import")
+
+
+def _enrich_preview_contract_warnings(preview: dict | None, ctx: dict) -> dict | None:
+    if not preview:
+        return preview
+    preview["contract_warnings"] = build_schedule_import_contract_warnings(
+        preview.get("rows") or [],
+        store_id=int(ctx["id"]),
+        employer_afm=str(ctx["employer_afm"]),
+        branch_aa=str(ctx.get("branch_aa") or "0"),
+    )
+    return preview
 
 
 def _import_db_error(exc: Exception):
@@ -120,6 +133,7 @@ def upload_schedule_import():
         )
         insert_import_rows(batch_id, rows)
         preview = preview_import_batch(batch_id, store_id=int(ctx["id"]))
+        preview = _enrich_preview_contract_warnings(preview, ctx)
     except pyodbc.Error as ex:
         return _import_db_error(ex)
 
@@ -140,6 +154,7 @@ def schedule_import_preview(batch_id: int):
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
     try:
         preview = preview_import_batch(batch_id, store_id=int(ctx["id"]))
+        preview = _enrich_preview_contract_warnings(preview, ctx)
     except pyodbc.Error as ex:
         return _import_db_error(ex)
     if not preview:

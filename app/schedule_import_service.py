@@ -630,10 +630,21 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
 
     ok = bool(result.get("success"))
     protocol = str(result.get("protocol") or "") or None
+    raw_error = (
+        str(result.get("error") or "Αποτυχία υποβολής στο Ergani")
+        .replace("\\n", "\n")
+        .replace("\r\n", "\n")
+        .strip()
+    )
+    interrupted_error = (
+        f"{raw_error}\n\n"
+        "Η διαδικασία σταμάτησε στο πρώτο σφάλμα. "
+        "Διορθώστε το αρχείο Excel και προσπαθήστε ξανά."
+    )
     message = (
         "Εφαρμόστηκε στο Ergani (WTOWeek · 1 πρωτόκολλο)"
         if ok
-        else str(result.get("error") or "Αποτυχία")[:500]
+        else interrupted_error[:500]
     )
 
     applied = 0
@@ -676,7 +687,10 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
     summary["shared_protocol"] = protocol
     final_status = "applied" if failed == 0 else "failed"
     schedule_sync = None
-    if applied > 0 or failed > 0:
+    # Αν το Ergani απέρριψε το batch, δεν υπάρχει κάτι νέο για συγχρονισμό.
+    # Ο συγχρονισμός σε αυτή την περίπτωση καθυστερούσε άσκοπα την εμφάνιση
+    # του πραγματικού σφάλματος στον χρήστη.
+    if applied > 0:
         schedule_sync = _sync_schedule_after_import(ctx, batch_id)
         if schedule_sync:
             summary["schedule_sync"] = schedule_sync
@@ -684,6 +698,7 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
     record_audit_event(
         action="schedule_import.batch_applied",
         success=failed == 0,
+        http_status=int(result.get("http_status") or (200 if ok else 502)),
         store_id=int(ctx["id"]),
         employer_afm=str(ctx.get("employer_afm") or ""),
         branch_aa=str(ctx.get("branch_aa") or "0"),
@@ -698,6 +713,8 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
             "employees_submitted": len(by_employee_apply),
             "submission": "WTOWeek",
             "shared_protocol": protocol,
+            "error": None if ok else interrupted_error,
+            "http_status": result.get("http_status"),
             "protocols": 1 if ok and protocol else 0,
             "final_status": final_status,
             "summary": summary,
@@ -706,12 +723,15 @@ def confirm_import_batch(ctx: dict[str, Any], batch_id: int) -> dict[str, Any]:
     )
     return {
         "success": failed == 0,
+        "error": None if failed == 0 else interrupted_error,
         "applied": applied,
         "failed": failed,
         "employees_submitted": len(by_employee_apply),
         "submission": "WTOWeek",
         "protocol": protocol,
-        "results": results,
+        # Το WTOWeek είναι μία μαζική υποβολή. Σε αποτυχία το Ergani σταματά
+        # στο πρώτο σφάλμα, άρα δεν επιστρέφουμε το ίδιο σφάλμα ανά γραμμή.
+        "results": results if failed == 0 else [],
         "summary": summary,
         "schedule_sync": schedule_sync,
     }

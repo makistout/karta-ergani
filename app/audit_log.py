@@ -248,13 +248,11 @@ def _audit_kind_filters(
     elif kind == "schedule_changes":
         filters.append(
             """
-            (
-                action = N'wto_daily.schedule_change'
-                OR action = N'schedule_import.batch_applied'
-                OR action LIKE N'schedule_import.%'
-            )
+            action = N'wto_daily.schedule_change'
             """
         )
+    elif kind == "schedule_imports":
+        filters.append("action = N'schedule_import.batch_applied'")
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
     return where, params
 

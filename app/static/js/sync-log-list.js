@@ -10,6 +10,8 @@ const syncLogState = {
   scannerCursors: [null],
   schedulePage: 1,
   scheduleCursors: [null],
+  importsPage: 1,
+  importsCursors: [null],
   apologisticPage: 1,
   apologisticCursors: [null],
   authPage: 1,
@@ -24,6 +26,9 @@ const syncLogState = {
   scheduleLoaded: false,
   scheduleStoreId: "",
   scheduleStoreAc: null,
+  importsLoaded: false,
+  importsStoreId: "",
+  importsStoreAc: null,
   apologisticLoaded: false,
   apologisticStoreId: "",
   apologisticStoreAc: null,
@@ -149,6 +154,17 @@ document.addEventListener("DOMContentLoaded", () => {
     resetCursorPager("schedule");
     loadScheduleChanges();
   });
+  document.getElementById("btnRefreshScheduleImports")?.addEventListener("click", () => {
+    resetCursorPager("imports");
+    loadScheduleImports();
+  });
+  document.getElementById("btnClearScheduleImportsStore")?.addEventListener("click", () => {
+    syncLogState.importsStoreId = "";
+    resetCursorPager("imports");
+    syncLogState.importsStoreAc?.clearValue();
+    document.getElementById("scheduleImportsStoreInput")?.setAttribute("placeholder", "Όλα τα καταστήματα");
+    loadScheduleImports();
+  });
   document.getElementById("btnRefreshApologisticChanges")?.addEventListener("click", () => {
     resetCursorPager("apologistic");
     loadApologisticChanges();
@@ -211,6 +227,10 @@ document.addEventListener("DOMContentLoaded", () => {
     initScheduleChangesStorePicker().finally(() => setLogTab("schedule"));
     return;
   }
+  if (location.hash === "#imports") {
+    initScheduleImportsStorePicker().finally(() => setLogTab("imports"));
+    return;
+  }
   if (location.hash === "#apologistic") {
     initApologisticChangesStorePicker().finally(() => setLogTab("apologistic"));
     return;
@@ -223,6 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initWorkCardPunchesStorePicker();
   initScannerPunchesStorePicker();
   initScheduleChangesStorePicker();
+  initScheduleImportsStorePicker();
   initApologisticChangesStorePicker();
 });
 
@@ -329,6 +350,7 @@ function setLogTab(tab) {
     tab === "punches" ||
     tab === "scanner" ||
     tab === "schedule" ||
+    tab === "imports" ||
     tab === "apologistic" ||
     tab === "auth"
       ? tab
@@ -345,6 +367,7 @@ function setLogTab(tab) {
   document.getElementById("workCardPunchesPanel")?.classList.toggle("hidden", next !== "punches");
   document.getElementById("scannerPunchesPanel")?.classList.toggle("hidden", next !== "scanner");
   document.getElementById("scheduleChangesPanel")?.classList.toggle("hidden", next !== "schedule");
+  document.getElementById("scheduleImportsPanel")?.classList.toggle("hidden", next !== "imports");
   document.getElementById("apologisticChangesPanel")?.classList.toggle("hidden", next !== "apologistic");
   document.getElementById("authLogsPanel")?.classList.toggle("hidden", next !== "auth");
   if (next === "actions") {
@@ -362,6 +385,9 @@ function setLogTab(tab) {
   } else if (next === "schedule") {
     history.replaceState(null, "", `${location.pathname}#schedule`);
     loadScheduleChanges();
+  } else if (next === "imports") {
+    history.replaceState(null, "", `${location.pathname}#imports`);
+    loadScheduleImports();
   } else if (next === "apologistic") {
     history.replaceState(null, "", `${location.pathname}#apologistic`);
     loadApologisticChanges();
@@ -1146,6 +1172,116 @@ function renderScheduleChanges(rows, hasMore) {
   wrap.innerHTML = "";
   wrap.appendChild(t);
   appendCursorPager(wrap, "schedule", rows.length, hasMore, loadScheduleChanges);
+}
+
+async function initScheduleImportsStorePicker() {
+  const input = document.getElementById("scheduleImportsStoreInput");
+  if (!input || syncLogState.importsStoreAc) return;
+  syncLogState.importsStoreAc = Office.createAutocomplete({
+    inputId: "scheduleImportsStoreInput",
+    listId: "scheduleImportsStoreList",
+    hiddenId: "scheduleImportsStoreId",
+    maxItems: 50,
+    labelFn: storeAcLabel,
+    onSelect: (item) => {
+      syncLogState.importsStoreId = String(item.value || "");
+      resetCursorPager("imports");
+      loadScheduleImports();
+    },
+  });
+  try {
+    const res = await fetch("/api/store/list");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const stores = await res.json();
+    Office.rememberStoreNames(stores || []);
+    syncLogState.importsStoreAc?.setItems(
+      (stores || []).map((s) => ({ value: String(s.id), description: s.name || "Κατάστημα" }))
+    );
+  } catch (e) {
+    input.placeholder = "Σφάλμα φόρτωσης καταστημάτων";
+  }
+  const openAllStores = () => syncLogState.importsStoreAc?.openAll(false);
+  input.addEventListener("focus", openAllStores);
+  input.addEventListener("click", openAllStores);
+}
+
+async function loadScheduleImports() {
+  const wrap = document.getElementById("scheduleImportsWrap");
+  if (!wrap) return;
+  wrap.innerHTML =
+    `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+  try {
+    const qs = new URLSearchParams({ kind: "schedule_imports", limit: String(pageSize()) });
+    if (syncLogState.importsStoreId) qs.set("store_id", syncLogState.importsStoreId);
+    const beforeId = currentBeforeId("imports");
+    if (beforeId != null) qs.set("before_id", String(beforeId));
+    const res = await fetch(`/api/audit/list?${qs}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
+      return;
+    }
+    rememberNextCursor("imports", data.next_before_id, data.has_more);
+    renderScheduleImports(data.audit || [], Boolean(data.has_more));
+    syncLogState.importsLoaded = true;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
+  }
+}
+
+function renderScheduleImports(rows, hasMore) {
+  const wrap = document.getElementById("scheduleImportsWrap");
+  if (!wrap) return;
+  if (!rows.length) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("journal-x")}<span style="margin-left:0.35rem;">Δεν υπάρχουν ακόμα εισαγωγές Excel.</span></p>`;
+    return;
+  }
+  const t = document.createElement("table");
+  t.className = "data work-card-punches-table";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  ["Ώρα", "Αρχείο", "Εβδομάδα", "Αλλαγές", "Πρωτόκολλο", "Κατάστημα", "Κατάσταση", "Λεπτομέρειες"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  t.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const d = row.details || {};
+    const tr = document.createElement("tr");
+    const tdTs = document.createElement("td");
+    fillTsStacked(tdTs, row.created_at);
+    tr.appendChild(tdTs);
+    [
+      d.original_filename || "—",
+      d.week_label || "—",
+      d.applied != null || d.failed != null ? `${d.applied ?? 0}/${(d.applied ?? 0) + (d.failed ?? 0)}` : "—",
+      d.shared_protocol || "—",
+    ].forEach((value) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    const tdStore = document.createElement("td");
+    Office.setStoreIdText(tdStore, row.store_id, { storeName: row.store_name });
+    tr.appendChild(tdStore);
+    const tdStatus = document.createElement("td");
+    tdStatus.innerHTML = auditSuccessBadge(row);
+    tr.appendChild(tdStatus);
+    const tdDetails = document.createElement("td");
+    tdDetails.className = "work-card-punch-details";
+    tdDetails.textContent = d.error || (row.success ? "Η μαζική εισαγωγή ολοκληρώθηκε." : "Η μαζική εισαγωγή διακόπηκε.");
+    tdDetails.title = tdDetails.textContent;
+    tr.appendChild(tdDetails);
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody);
+  wrap.innerHTML = "";
+  wrap.appendChild(t);
+  appendCursorPager(wrap, "imports", rows.length, hasMore, loadScheduleImports);
 }
 
 function apologisticEventTypeLabel(eventType) {
