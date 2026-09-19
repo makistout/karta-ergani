@@ -282,6 +282,35 @@ def card_event_exists(employee_afm: str, reference_date: str, f_type: str) -> bo
         return bool(row and row[0] > 0)
 
 
+def count_successful_card_events(
+    employee_afm: str, reference_date: str, f_type: str
+) -> int:
+    """Πλήθος επιτυχημένων δηλώσεων κάρτας (είσοδος/έξοδος) για την ημέρα αναφοράς."""
+    emp = norm_afm(employee_afm)
+    ref = str(reference_date or "").strip()[:10]
+    ft = str(f_type or "").strip()
+    if not emp or not ref or ft not in ("0", "1"):
+        return 0
+    sql = """
+        SELECT COUNT(*)
+        FROM dbo.karta_card_event e
+        INNER JOIN dbo.karta_declaration d ON d.id = e.declaration_id
+        WHERE e.f_afm = ? AND e.f_reference_date = ? AND e.f_type = ?
+          AND d.success = 1
+    """
+    with cursor(commit=False) as cur:
+        cur.execute(sql, (emp, ref, ft))
+        row = cur.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def card_has_open_cycle(employee_afm: str, reference_date: str) -> bool:
+    """True αν υπάρχουν περισσότερες είσοδοι από εξόδους (ανοιχτό ζεύγος)."""
+    return count_successful_card_events(
+        employee_afm, reference_date, "0"
+    ) > count_successful_card_events(employee_afm, reference_date, "1")
+
+
 def latest_card_event_time_hm(
     employee_afm: str,
     reference_date: str,

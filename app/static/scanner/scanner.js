@@ -358,7 +358,7 @@ async function sendPending() {
         if(!error.status) {item.state='sending';item.note='Αναμονή ελέγχου αποτελέσματος με το ίδιο αναγνωριστικό';}
         else if(error.status===409 && error.data?.correction_available) {
           item.state='needs_correction';
-          item.note=error.data.error || 'Υπάρχει ήδη ίδιο χτύπημα· απαιτείται επιβεβαίωση διόρθωσης';
+          item.note=error.data.error || 'Υπάρχει ήδη ίδιο χτύπημα· απαιτείται επιβεβαίωση νέου χτυπήματος';
           item.correction=error.data;
           await storage('put',item);
           message(item.note,true);
@@ -367,7 +367,7 @@ async function sendPending() {
             item.correction_mode=true;
             item.request_id=crypto.randomUUID();
             item.state='pending';
-            item.note='Εγκρίθηκε διόρθωση · σε αναμονή αποστολής';
+            item.note='Εγκρίθηκε νέο χτύπημα · σε αναμονή αποστολής';
             delete item.correction;
             await storage('put',item);
             // Re-queue same item in this pass without nested sendPending.
@@ -375,7 +375,7 @@ async function sendPending() {
               item.state='sending'; await storage('put',item);
               const data=await api('submit',item);
               item.state=data.success?'success':data.uncertain?'uncertain':'failed';
-              item.note=data.success?`Διόρθωση υποβλήθηκε${data.protocol?' · '+data.protocol:''}`:(data.error||'Δεν επιβεβαιώθηκε η διόρθωση');
+              item.note=data.success?`Νέο χτύπημα υποβλήθηκε${data.protocol?' · '+data.protocol:''}`:(data.error||'Δεν επιβεβαιώθηκε το νέο χτύπημα');
               if(data.success) { beep(); message(`${item.name}: ${item.note}`); }
               else message(item.note,true);
             } catch(retryError) {
@@ -383,7 +383,7 @@ async function sendPending() {
               else { item.state=retryError.data?.late?'late':retryError.data?.uncertain?'uncertain':'failed'; item.note=retryError.message; message(item.note,true); }
             }
           } else {
-            item.note=(item.correction?.error || item.note) + ' · διόρθωση ακυρώθηκε';
+            item.note=(item.correction?.error || item.note) + ' · νέο χτύπημα ακυρώθηκε';
           }
         }
         else { item.state=error.data?.late?'late':error.data?.uncertain?'uncertain':'failed'; item.note=error.message; message(item.note,true); }
@@ -402,7 +402,7 @@ function askCorrection(item) {
     $('correction-detail').textContent=
       `${base}\n\nΥπάρχον: ${existing.time || '—'}${existing.protocol ? ' · '+existing.protocol : ''}` +
       `\nΝέο: ${attempted.time || new Date(item.event_at).toLocaleTimeString('el-GR')}` +
-      `\n\nΑν εγκρίνετε, θα σταλεί ξανά ως διόρθωση.`;
+      `\n\nΑν εγκρίνετε, θα καταχωρηθεί νέο χτύπημα.`;
     if(!$('correction-dialog').open) $('correction-dialog').showModal();
   });
 }
@@ -410,10 +410,10 @@ async function approveCorrection(item) {
   item.correction_mode=true;
   item.request_id=crypto.randomUUID();
   item.state='pending';
-  item.note='Εγκρίθηκε διόρθωση · σε αναμονή αποστολής';
+  item.note='Εγκρίθηκε νέο χτύπημα · σε αναμονή αποστολής';
   delete item.correction;
   await storage('put',item);
-  message(`${item.name}: στάλθηκε ξανά ως διόρθωση…`);
+  message(`${item.name}: στάλθηκε νέο χτύπημα…`);
   await sendPending();
 }
 $('cancel-correction').onclick=()=>{
@@ -436,7 +436,7 @@ async function renderPending() {
     const el=document.createElement('article');el.className='event';const info=document.createElement('div');
     info.append(textNode('strong',item.name),textNode('p',`${item.event==='in'?'Προσέλευση':'Αποχώρηση'} · ${new Date(item.event_at).toLocaleString('el-GR')}`),textNode('p',item.note));
     if(item.state==='needs_correction') {
-      const button=textNode('button','Επιβεβαίωση διόρθωσης','primary');
+      const button=textNode('button','Επιβεβαίωση νέου χτυπήματος','primary');
       button.onclick=safeTask(async()=>approveCorrection(item));
       info.append(button);
     }

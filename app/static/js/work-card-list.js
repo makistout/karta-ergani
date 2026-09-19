@@ -646,14 +646,14 @@ async function submitCard(eventName, options = {}) {
       progress.stop();
       const go = await Office.confirm(
         `${data.error || "Υπάρχει ήδη καταχώρηση."}\n\n` +
-        "Αν συνεχίσετε, θα σταλεί διορθωτικό χτύπημα.",
-        { title: "Διορθωτικό χτύπημα", confirmText: "Συνέχεια" }
+        "Αν συνεχίσετε, θα καταχωρηθεί νέο χτύπημα.",
+        { title: "Νέο χτύπημα", confirmText: "Συνέχεια" }
       );
       if (go) {
         setSubmitButtonsDisabled(false);
         await submitCard(eventName, { ...options, correctionMode: true });
       } else {
-        showWorkCardMsg(data.error || "Η διόρθωση ακυρώθηκε.", false);
+        showWorkCardMsg(data.error || "Το νέο χτύπημα ακυρώθηκε.", false);
       }
       return;
     }

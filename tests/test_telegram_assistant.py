@@ -473,10 +473,34 @@ def test_employee_catalog_only_includes_active_store_employees():
     with patch(
         "app.telegram_assistant_service.list_active_employees_for_store",
         return_value=rows,
-    ) as listed:
+    ) as listed, patch(
+        "app.telegram_assistant_service.list_recent_schedule_roster",
+        return_value=[],
+    ):
         catalog = _employee_catalog(contexts)
     listed.assert_called_once_with("123456789", "0", limit=1000)
     assert catalog == [{"store_id": 4, "afm": "111222333", "name": "ΕΝΕΡΓΟΣ ΕΝΑ"}]
+
+
+def test_employee_catalog_includes_recent_schedule_without_employment():
+    from app.telegram_assistant_service import _employee_catalog
+
+    contexts = [{"store_id": 18, "employer_afm": "082136041", "branch_aa": "0"}]
+    with patch(
+        "app.telegram_assistant_service.list_active_employees_for_store",
+        return_value=[],
+    ), patch(
+        "app.telegram_assistant_service.list_recent_schedule_roster",
+        return_value=[
+            {"afm": "186512174", "eponymo": "ΚΑΛΙΑΝΙΩΤΗΣ", "onoma": "ΦΟΙΒΟΣ"},
+            {"afm": "186513400", "eponymo": "ΚΑΛΙΑΝΙΩΤΗΣ", "onoma": "ΦΑΙΔΩΝ"},
+        ],
+    ):
+        catalog = _employee_catalog(contexts)
+    assert catalog == [
+        {"store_id": 18, "afm": "186512174", "name": "ΚΑΛΙΑΝΙΩΤΗΣ ΦΟΙΒΟΣ"},
+        {"store_id": 18, "afm": "186513400", "name": "ΚΑΛΙΑΝΙΩΤΗΣ ΦΑΙΔΩΝ"},
+    ]
 
 
 def test_unknown_chat_is_silently_ignored():

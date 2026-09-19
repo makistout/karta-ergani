@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from app.repo_entities import list_active_employees_for_store
+from app.repo_schedule import list_recent_schedule_roster
 from config import Config
 
 from app.assistant_home_context import build_today_home_context
@@ -107,9 +108,11 @@ def _employee_catalog(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple[int, str]] = set()
     for ctx in contexts:
         store_id = int(ctx["store_id"])
+        employer_afm = str(ctx.get("employer_afm") or "")
+        branch_aa = str(ctx.get("branch_aa") or "0")
         employees = list_active_employees_for_store(
-            str(ctx.get("employer_afm") or ""),
-            str(ctx.get("branch_aa") or "0"),
+            employer_afm,
+            branch_aa,
             limit=1000,
         )
         for emp in employees:
@@ -124,6 +127,22 @@ def _employee_catalog(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "store_id": store_id,
                 "afm": afm,
                 "name": f"{emp.get('eponymo') or ''} {emp.get('onoma') or ''}".strip(),
+            })
+        # Ψηφ. ωράριο χωρίς ακόμη karta_employment: αλλιώς late_check_in reply
+        # («Χτύπα κάρτα») αποτυγχάνει με ψευδές «μη μοναδικούς εργαζόμενους».
+        for emp in list_recent_schedule_roster(employer_afm, branch_aa, days=14, limit=1000):
+            afm = str(emp.get("afm") or "").strip()
+            key = (store_id, afm)
+            if not afm or key in seen:
+                continue
+            name = f"{emp.get('eponymo') or ''} {emp.get('onoma') or ''}".strip()
+            if not name:
+                continue
+            seen.add(key)
+            result.append({
+                "store_id": store_id,
+                "afm": afm,
+                "name": name,
             })
     return result[:1500]
 

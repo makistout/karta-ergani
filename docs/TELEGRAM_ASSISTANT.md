@@ -297,8 +297,11 @@ python scripts/run_migration_unify_assistant_channels.py
 
 - Άγνωστα Telegram chat IDs αγνοούνται χωρίς parsing.
 - Gemini επιλέγει μόνο από server-side καταλόγους και η έξοδος επανελέγχεται.
-- Ο κατάλογος `allowed_employees` περιλαμβάνει **μόνο ενεργούς** εργαζομένους του
-  επιλεγμένου καταστήματος (`list_active_employees_for_store`, `karta_employment.active = 1`).
+- Ο κατάλογος `allowed_employees` περιλαμβάνει ενεργούς εργαζομένους του
+  επιλεγμένου καταστήματος (`list_active_employees_for_store`) **και** όσους
+  εμφανίζονται σε πρόσφατο ψηφ. ωράριο (`list_recent_schedule_roster`), ώστε
+  late_check_in / «Χτύπα κάρτα» να μην αποτυγχάνουν όταν λείπει ακόμη
+  `karta_employment`.
 - Η εκτέλεση απαιτεί ενεργό AI Agent και επιβεβαίωση στο σωστό user/chat/store.
 - Οι ατομικές μεταβάσεις αποτρέπουν διπλή εκτέλεση από διπλό πάτημα/retry.
 - Καταγράφονται model, διάρκεια, usage, κανάλι, events, πρωτόκολλα και σφάλματα.

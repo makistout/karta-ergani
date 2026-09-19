@@ -128,14 +128,14 @@ async function submitRetro(eventName, options = {}) {
     if (res.status === 409 && data.correction_available && !correctionMode) {
       progress.stop();
       const go = await Office.confirm(
-        `${Office.normalizeMultilineText(data.error || "������� ��� ����������.")}\n\n` +
-        "�� ����������, �� ������ ���������� �������.",
-        { title: "Διορθωτικό χτύπημα", confirmText: "Συνέχεια" }
+        `${Office.normalizeMultilineText(data.error || "Υπάρχει ήδη καταχώρηση.")}\n\n` +
+        "Αν συνεχίσετε, θα καταχωρηθεί νέο χτύπημα.",
+        { title: "Νέο χτύπημα", confirmText: "Συνέχεια" }
       );
       if (go) {
         await submitRetro(eventName, { correctionMode: true });
       } else {
-        showRetroMsg(data.error || "� �������� ���������.", false);
+        showRetroMsg(data.error || "Το νέο χτύπημα ακυρώθηκε.", false);
         setFormEnabled(true);
       }
       return;

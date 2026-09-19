@@ -139,6 +139,7 @@ def test_normalize_overnight_keeps_same_day_early_shift(monkeypatch):
 
 
 def test_new_card_punch_blocked_reason_rejects_closed_card_checkout(monkeypatch):
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: False)
     monkeypatch.setattr(
         guards,
         "card_event_exists",
@@ -164,6 +165,7 @@ def test_new_card_punch_blocked_reason_rejects_closed_card_checkout(monkeypatch)
 
 def test_new_card_punch_blocked_reason_rejects_work_log_already_closed(monkeypatch):
     """Πραγματική με Από+Έως · χωρίς WRKCardSE out → απορρίπτεται το κλείσιμο."""
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: False)
     monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
     monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: "20:00")
     monkeypatch.setattr(
@@ -185,12 +187,8 @@ def test_new_card_punch_blocked_reason_rejects_work_log_already_closed(monkeypat
 
 
 def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
-    monkeypatch.setattr(
-        guards,
-        "card_event_exists",
-        lambda emp, day, f_type: f_type == "0",
-    )
-    monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: False)
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: True)
+    monkeypatch.setattr(guards, "card_has_open_cycle", lambda *a, **k: True)
     monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "12:40")
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_in_now",
@@ -204,8 +202,8 @@ def test_new_card_punch_blocked_reason_rejects_duplicate_check_in(monkeypatch):
 
 def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monkeypatch):
     """Πραγματική ανοιχτή (χωρίς WRKCardSE) μετράει ως ήδη ανοιχτή κάρτα."""
-    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
-    monkeypatch.setattr(guards, "work_log_has_open_entry", lambda *a, **k: True)
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: True)
+    monkeypatch.setattr(guards, "card_has_open_cycle", lambda *a, **k: False)
     monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: "09:15")
     reason = guards.new_card_punch_blocked_reason(
         intent="card_check_in_retro",
@@ -221,10 +219,45 @@ def test_new_card_punch_blocked_reason_rejects_check_in_when_work_log_open(monke
     )
 
 
+def test_new_card_punch_allows_reentry_after_closed_morning(monkeypatch):
+    """Πρωί in+out · επιστροφή βράδυ → νέο άνοιγμα επιτρέπεται."""
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: False)
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_in_now",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-19",
+    )
+    assert reason is None
+
+
+def test_new_card_punch_allows_second_checkout_when_reopened(monkeypatch):
+    """Μετά δεύτερο άνοιγμα, κλείσιμο επιτρέπεται ακόμα κι αν υπάρχει πρωινή έξοδος."""
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: True)
+    monkeypatch.setattr(
+        guards,
+        "card_event_exists",
+        lambda emp, day, f_type: f_type == "1",
+    )
+    monkeypatch.setattr(guards, "checkout_before_entry_blocked_reason", lambda **k: None)
+    monkeypatch.setattr(
+        guards,
+        "normalize_overnight_checkout_reference",
+        lambda **k: (k["reference_date_iso"], k.get("event_at")),
+    )
+    reason = guards.new_card_punch_blocked_reason(
+        intent="card_check_out_now",
+        employer_afm="123",
+        branch_aa="0",
+        employee_afm="111222333",
+        reference_date_iso="2026-09-19",
+    )
+    assert reason is None
+
+
 def test_new_card_punch_blocked_reason_allows_open_checkout(monkeypatch):
-    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
-    monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
-    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: True)
     monkeypatch.setattr(guards, "checkout_before_entry_blocked_reason", lambda **k: None)
     monkeypatch.setattr(
         guards,
@@ -285,9 +318,7 @@ def test_checkout_before_entry_allows_overnight_next_calendar_day(monkeypatch):
 
 
 def test_new_card_punch_blocked_reason_rejects_checkout_before_entry(monkeypatch):
-    monkeypatch.setattr(guards, "card_event_exists", lambda *a, **k: False)
-    monkeypatch.setattr(guards, "has_entry_for_checkout", lambda *a, **k: True)
-    monkeypatch.setattr(guards, "work_log_closed_hour_to", lambda *a, **k: None)
+    monkeypatch.setattr(guards, "_open_entry_on_day", lambda **k: True)
     monkeypatch.setattr(guards, "latest_card_event_time_hm", lambda *a, **k: "22:07")
     monkeypatch.setattr(guards, "work_log_open_hour_from", lambda *a, **k: None)
     monkeypatch.setattr(

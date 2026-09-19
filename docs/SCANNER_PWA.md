@@ -33,10 +33,11 @@ scanner session and no office/admin login. No App Store / Google Play package.
   παραμένει η πηγή ενημερώσεων work_log.
 - Εκκρεμείς: separate tab and count of local unconfirmed submissions, with retry,
   late reason selection and explicit unknown-result handling.
-- Duplicate same-day / same-type punch: the server returns `409` with
-  `correction_available`. The PWA shows a confirmation dialog; on approve it
-  resubmits with a new `request_id` and `correction_mode=true`. Pending items
-  can also use «Επιβεβαίωση διόρθωσης».
+- Same-day re-entry after a closed in/out pair is allowed as a **new punch**.
+  A `409` with `correction_available` is only for conflict with the current open
+  or already-closed cycle. The PWA dialog asks for **νέο χτύπημα** (not
+  «διόρθωση»); on approve it resubmits with a new `request_id` and
+  `correction_mode=true`. Pending items can also use «Επιβεβαίωση νέου χτυπήματος».
 - Local IndexedDB outbox records intent before sending. Replays reuse request id.
   Server SQLite commits intent before the upstream call and stores the response.
   Unknown upstream outcomes are not automatically submitted again.

@@ -255,7 +255,7 @@ def _correction_offer_payload(
         msg += f". Νέο χτύπημα: {attempted_time}."
     else:
         msg += "."
-    msg += " Θέλετε να προχωρήσουμε σε διόρθωση;"
+    msg += " Θέλετε να καταχωρήσουμε νέο χτύπημα;"
     return {
         "success": False,
         "correction_available": True,
@@ -381,24 +381,39 @@ def _submit_work_card(
     if earlier:
         return jsonify({"error": earlier, "code": "same_type_earlier"}), 400
 
-    if card_event_exists(emp_afm, ref_date, resolved_type) and not correction_mode:
-        existing_event = _latest_existing_card_event(
+    # Σπαστή βάρδια: δεύτερο in/out ίδιας μέρας επιτρέπεται μετά κλειστό ζεύγος.
+    # 409 (διόρθωση) μόνο όταν συγκρούεται με το τρέχον ανοιχτό/κλειστό κύκλο.
+    from app.work_card_guards import _open_entry_on_day
+
+    if not correction_mode:
+        open_cycle = _open_entry_on_day(
             employer_afm=erg_s,
             branch_aa=aa_s,
             employee_afm=emp_afm,
-            reference_date=ref_date,
-            f_type=resolved_type,
+            day_iso=ref_date,
         )
-        return jsonify(
-            _correction_offer_payload(
+        conflict = (
+            (resolved_type == "0" and open_cycle)
+            or (resolved_type == "1" and not open_cycle and card_event_exists(emp_afm, ref_date, "1"))
+        )
+        if conflict:
+            existing_event = _latest_existing_card_event(
+                employer_afm=erg_s,
+                branch_aa=aa_s,
                 employee_afm=emp_afm,
-                employee_name=employee_display,
                 reference_date=ref_date,
                 f_type=resolved_type,
-                attempted_event_at=event_at_str,
-                existing_event=existing_event,
             )
-        ), 409
+            return jsonify(
+                _correction_offer_payload(
+                    employee_afm=emp_afm,
+                    employee_name=employee_display,
+                    reference_date=ref_date,
+                    f_type=resolved_type,
+                    attempted_event_at=event_at_str,
+                    existing_event=existing_event,
+                )
+            ), 409
 
     requested_aitiologia = str(body.get("aitiologia") or "").strip() or None
     submitted_at = datetime.now(tz_athens())

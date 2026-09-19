@@ -201,6 +201,49 @@ def list_schedule_employee_afms(
         return out
 
 
+def list_recent_schedule_roster(
+    employer_afm: str,
+    branch_aa: str,
+    *,
+    days: int = 14,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    """Εργαζόμενοι με πρόσφατο ψηφ. ωράριο (ονόματα από karta_employee).
+
+    Χρήσιμο όταν υπάρχει ωράριο χωρίς ακόμη σύνδεση `karta_employment`
+    (π.χ. Telegram punch / late_check_in πριν το enrichment).
+    """
+    afm = norm_afm(employer_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    lookback = max(1, min(int(days), 90))
+    lim = max(1, min(int(limit), 5000))
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP ({lim})
+                s.employee_afm AS afm,
+                emp.eponymo,
+                emp.onoma
+            FROM (
+                SELECT DISTINCT LTRIM(RTRIM(employee_afm)) AS employee_afm
+                FROM dbo.karta_schedule
+                WHERE employer_afm = ?
+                  AND branch_aa = ?
+                  AND employee_afm IS NOT NULL
+                  AND LTRIM(RTRIM(employee_afm)) <> N''
+                  AND TRY_CONVERT(date, work_date, 103) >= DATEADD(
+                      day, -?,
+                      CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'GTB Standard Time' AS date)
+                  )
+            ) s
+            LEFT JOIN dbo.karta_employee emp ON emp.afm = s.employee_afm
+            ORDER BY emp.eponymo, emp.onoma, s.employee_afm
+            """,
+            (afm, aa, lookback),
+        )
+        return rows_to_dicts(cur)
+
+
 def list_schedule_for_store(
     employer_afm: str,
     branch_aa: str,

@@ -78,13 +78,27 @@ def _clear_auth_cache() -> None:
 
 def _employees(store: dict[str, Any], afms: list[str]) -> list[dict[str, Any]]:
     from app.repo_entities import list_active_employees_for_store
+    from app.repo_schedule import list_recent_schedule_roster
 
-    wanted = set(afms)
-    rows = list_active_employees_for_store(
-        str(store.get("employer_afm") or ""), str(store.get("branch_aa") or "0"), limit=5000,
-    )
+    employer_afm = str(store.get("employer_afm") or "")
+    branch_aa = str(store.get("branch_aa") or "0")
+    rows = list_active_employees_for_store(employer_afm, branch_aa, limit=5000)
     by_afm = {str(row.get("afm") or "").strip(): row for row in rows}
     missing = [afm for afm in afms if afm not in by_afm]
+    if missing:
+        # Fallback: πρόσφατο ωράριο χωρίς ακόμη employment link.
+        wanted = set(missing)
+        for row in list_recent_schedule_roster(employer_afm, branch_aa, days=14, limit=5000):
+            afm = str(row.get("afm") or "").strip()
+            if afm not in wanted or afm in by_afm:
+                continue
+            by_afm[afm] = {
+                "afm": afm,
+                "eponymo": row.get("eponymo"),
+                "onoma": row.get("onoma"),
+                "active": 1,
+            }
+        missing = [afm for afm in afms if afm not in by_afm]
     if missing:
         raise RuntimeError("Δεν βρέθηκαν όλοι οι εργαζόμενοι στη βάση")
     return [by_afm[afm] for afm in afms]
