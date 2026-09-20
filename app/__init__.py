@@ -29,6 +29,7 @@ from app.routes_contact import contact_bp
 from app.access_control import register_access_context
 from app.routes_users import users_bp
 from app.routes_apologistic import apologistic_bp
+from app.routes_rule_diagrams import rule_diagrams_bp
 from app.routes_wto_apologistic import wto_apologistic_bp
 from app.routes_card_listener import card_listener_bp, listener_download_bp
 from app.routes_assistant import assistant_bp
@@ -74,6 +75,7 @@ def create_app() -> Flask:
     app.register_blueprint(protocols_bp)
     app.register_blueprint(monthly_status_bp)
     app.register_blueprint(apologistic_bp)
+    app.register_blueprint(rule_diagrams_bp)
     app.register_blueprint(wto_apologistic_bp)
     app.register_blueprint(telegram_bp)
     app.register_blueprint(assistant_bp)

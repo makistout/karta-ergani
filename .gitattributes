@@ -1,0 +1,8 @@
+# Private diagram artifacts must have stable hashes on both macOS/Linux and IIS.
+app/private/rule_diagrams/** text eol=lf
+app/private/rule_diagrams/**/*.docx binary
+app/private/rule_diagrams/**/*.zip binary
+deliverables/rule_diagrams/** text eol=lf
+docs/RULE_FLOWCHARTS.md text eol=lf
+# Preserve intentional Markdown hard line breaks in the archived source catalogue.
+app/private/rule_diagrams/**/catalog.md whitespace=-blank-at-eol

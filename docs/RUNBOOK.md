@@ -125,3 +125,7 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
 - Expired Telegram/Email token ή PIN lock.
 - SMTP/Telegram configuration στο `.env`.
 - Φόρμα landing `/api/contact`: αν επιστρέφει επιτυχία αλλά δεν φτάνει email, έλεγξε Mailgun logs και mailbox `info@erganios.gr` (βλ. `DEPLOYMENT.md`).
+
+## Ενημέρωση διαγραμμάτων κανόνων
+
+Κάθε αλλαγή κανόνων συνοδεύεται από νέα ελεγμένη έκδοση διαγραμμάτων. Ακολουθήστε τη [διαδικασία](RULE_DIAGRAMS_PROCESS.md). Έλεγχος συγχρονισμού: `python -X utf8 scripts/build_rule_diagrams.py --check`.

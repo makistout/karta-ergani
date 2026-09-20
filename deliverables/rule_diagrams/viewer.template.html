@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Κανόνες απολογιστικού & ωρομέτρησης · erganiOS</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#183044;background:#f4f6f8;line-height:1.55;color-scheme:light}*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 24px 72px}h1{font-size:30px;line-height:1.2;margin:12px 0}h2{font-size:22px;margin:6px 0}p{margin:10px 0}.eyebrow{letter-spacing:.13em;color:#466a82;font-size:12px;font-weight:650}small{color:#516b7d}code{font-size:13px;overflow-wrap:anywhere}a{color:#155f8f}details{border:1px solid #cedbe4;background:#fff;padding:15px 20px;border-radius:10px;margin:20px 0}summary{cursor:pointer;font-weight:600}li{margin:10px 0}.toolbar{display:grid;grid-template-columns:1fr 1fr auto;gap:16px;align-items:end;padding:20px 0}label{display:grid;gap:6px;font-size:13px}input,select,button{font:inherit;font-size:16px;padding:10px 12px;border:1px solid #b8cad7;border-radius:6px;background:#fff;color:#183044;min-width:0}button{cursor:pointer}button:hover{background:#edf4f8}.count{font-size:14px;color:#456274;margin:0 0 18px}article{background:white;border:1px solid #d7e1e8;border-radius:12px;margin:0 0 24px;padding:24px;break-inside:avoid}article header{padding-bottom:12px;border-bottom:1px solid #e6edf1}article svg{display:block;width:100%;max-width:860px;height:auto;margin:18px auto}.note{font-size:14px;background:#f5f8fb;padding:12px 16px;border-left:3px solid #5b87a5}.note:empty{display:none}.source{font-size:13px;color:#526b7b}#empty{padding:24px}.intro{max-width:900px;font-size:14px}nav{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}nav a{font-size:14px}.sequence{padding-left:24px}.sequence li{padding:4px 0} [hidden]{display:none!important}
+@media(max-width:650px){main{padding:22px 12px}.toolbar{grid-template-columns:1fr}article{padding:16px 10px}h1{font-size:25px}h2{font-size:20px}article svg{display:none}.mobile-flow{display:block!important}.step{border:1px solid #a6bac9;border-radius:8px;padding:14px;margin:12px 0;background:#f4f7fa;overflow-wrap:anywhere}.decision{background:#fff6db;border-color:#b48c25}.branch{margin-left:16px;border-left:2px solid #9fb4c4;padding-left:14px}.branch strong{font-size:13px}.result{padding:12px;background:#eaf7f0;margin:6px 0 16px}.branch.no .result{background:#edf2f8}}
+.mobile-flow{display:none}@media print{body{background:white}main{max-width:none;padding:0}.toolbar,nav,.count,details{display:none}article{box-shadow:none;border:1px solid #ccc;page-break-before:always}article svg{display:block;width:100%}.mobile-flow{display:none!important}h1{font-size:25px}a{text-decoration:none;color:inherit} .intro{font-size:11px}}
+</style>
+</head><body><main>
+<div class="eyebrow">ERGANI OS / ΛΟΓΙΚΗ ΥΠΟΛΟΓΙΣΜΩΝ</div>
+<h1>Απολογιστικό & ωρομέτρηση</h1>
+<p>Ξεχωριστό διάγραμμα για κάθε κανόνα · έκδοση <code>1787f90</code> · 20 Σεπτεμβρίου 2026</p>
+<div class="intro"><!--INTRO--></div>
+<nav><a href="../../docs/RULE_FLOWCHARTS.md">Πλήρες αρχείο Mermaid</a><a href="rules.json">Δομημένος κατάλογος</a><a href="#flow">Σειρά εκτέλεσης</a></nav>
+<details><summary>Αποκλίσεις παλιών περιγραφών από την τρέχουσα υλοποίηση</summary><ul><!--DISCREPANCIES--></ul></details>
+<details id="flow"><summary>Σειρά εκτέλεσης</summary><ol class="sequence"><li>Σύμβαση, δηλωμένο και κάρτα → νυχτερινές μεταφορές → αντιστοίχιση.</li><li>Διάλειμμα, ημερήσια βάση και χωριστός υπολογισμός πρόσθετου χρόνου.</li><li>Πιθανό σπαστό, αλλιώς δηλωμένο σπαστό, αλλιώς κανονικοί κανόνες με πρώτο ταίριασμα.</li><li>POST_CARRY → κόψιμο τεκμαρτής λήξης → SPLIT_COMPLIANT → OVERTIME_ONLY → ORPHAN.</li><li>Ρεπό / Μη εργασία → MAX_DAILY_SPAN.</li><li>Εβδομαδιαίο πλεόνασμα δηλωμένων → διαθεσιμότητα ανταλλαγών → ανισομερής.</li><li>Snapshot / εγκρίσεις → εξαίρεση αδειών → έλεγχος Ε.</li><li>Ωρομέτρηση: βάση → διάλειμμα → κόφτης → ζώνες → υπερωρίες → προστασία πραγματικών προσαυξήσεων.</li><li>6η / 7η → εστίαση πάνω από 48 → μερική → εκ περιτροπής.</li><li>Αποκλειστική κατανομή → έλεγχοι ακεραιότητας → σύνολα / UI / Excel.</li></ol></details>
+<div class="toolbar"><label>Αναζήτηση κανόνα<input id="search" type="search" placeholder="π.χ. σπαστό, 12%, FLEX"></label><label>Ενότητα<select id="group"><option value="">Όλες οι ενότητες</option></select></label><button id="print" type="button">Εκτύπωση / PDF</button></div>
+<div class="count" id="count" aria-live="polite"></div>
+<div id="empty" hidden>Δεν βρέθηκαν κανόνες με αυτά τα φίλτρα.</div>
+<div id="rules"><!--RULES--></div>
+<p>Επαλήθευση υπολογισμών: 141 σχετικά tests πέρασαν. Τα διαγράμματα δεν αλλάζουν την εφαρμογή και δεν εκτελούν υποβολές.</p>
+<!--RULE_DATA-->
+<script>
+(function(){
+ const data=JSON.parse(document.getElementById('rule-data').textContent);
+ const search=document.getElementById('search'), group=document.getElementById('group');
+ for(const name of new Set(data.map(r=>r.group))){const option=document.createElement('option');option.value=name;option.textContent=name;group.append(option);}
+ const normalize=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ for(const r of data){
+  const article=document.getElementById(r.id),flow=document.createElement('div');flow.className='mobile-flow';
+  const box=(cls,value)=>{const el=document.createElement('div');el.className=cls;el.textContent=value;return el;};
+  flow.append(box('step',r.entry),box('step decision','Έλεγχος: '+r.condition));
+  for(const [label,result,cls] of [['ΝΑΙ ↓',r.yes,''],['ΟΧΙ ↓',r.no,'no']]){const branch=box('branch '+cls,'');const strong=document.createElement('strong');strong.textContent=label;branch.append(strong,box('result',result));flow.append(branch);}
+  article.querySelector('svg').after(flow);
+ }
+ function filter(){let count=0;const q=normalize(search.value);for(const r of data){const show=(!group.value||r.group===group.value)&&normalize(Object.values(r).join(' ')).includes(q);document.getElementById(r.id).hidden=!show;if(show)count++;}document.getElementById('count').textContent=count+' από '+data.length+' διαγράμματα';document.getElementById('empty').hidden=count!==0;}
+ search.addEventListener('input',filter);group.addEventListener('change',filter);document.getElementById('print').addEventListener('click',()=>window.print());filter();
+})();
+</script></main></body></html>

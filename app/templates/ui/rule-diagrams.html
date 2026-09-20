@@ -1,0 +1,33 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Κανόνες & διαγράμματα' %}
+{% set shell = 'office' %}
+{% set active_nav = 'rule-diagrams' %}
+{% block content %}
+<h1 class="page-title">Κανόνες & διαγράμματα</h1>
+<div class="card" style="padding:16px;margin-bottom:16px">
+  <strong>Έκδοση: {{ selected.id }}</strong>
+  <p>Απολογιστικό: <code>{{ selected.apologistic_version }}</code><br>
+     Ωρομέτρηση: <code>{{ selected.timekeeping_version }}</code></p>
+  <p>{{ selected.count }} διαγράμματα · Έλεγχος: {{ selected.reviewed_at }}<br>
+     {% if selected.id != current_version %}<strong>Ιστορική έκδοση — δεν είναι η τρέχουσα.</strong>{% endif %}</p>
+  {% if not up_to_date %}<p role="alert"><strong>Οι εγκατεστημένοι κανόνες έχουν αλλάξει. Η τελευταία έκδοση διαγραμμάτων χρειάζεται επανέλεγχο.</strong></p>{% endif %}
+  <form method="get">
+    <input type="hidden" name="section" value="{{ section }}">
+    <label for="diagramVersion">Ιστορικό εκδόσεων</label>
+    <select name="version" id="diagramVersion" class="field-input">
+      {% for version in versions %}<option value="{{ version.id }}" {{ 'selected' if version.id == selected.id else '' }}>{{ version.reviewed_at[:10] }} · {{ version.id }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit">Προβολή</button>
+    <a class="btn" href="{{ url_for('rule_diagrams.artifact', version=selected.id, filename=section) }}" target="_blank" rel="noopener">Άνοιγμα / εκτύπωση</a>
+  </form>
+</div>
+<nav aria-label="Υλικό κανόνων" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+  {% for filename, label in [('index.html', 'Λογικά διαγράμματα'), ('overview.html', 'Σειρά εκτέλεσης'), ('catalog.html', 'Κατάλογος κανόνων'), ('logic.html', 'Αναλυτική λογική'), ('notes.html', 'Αποκλίσεις')] %}
+  <a class="btn {{ 'btn-primary' if section == filename else 'btn-secondary' }}" href="{{ url_for('rule_diagrams.index', version=selected.id, section=filename) }}" {% if section == filename %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<p><a href="{{ url_for('rule_diagrams.artifact', version=selected.id, filename='complete.zip') }}">Λήψη όλου του υλικού (ZIP)</a> ·
+<a href="{{ url_for('rule_diagrams.artifact', version=selected.id, filename='flowcharts.md') }}">Διαγράμματα Mermaid</a> ·
+<a href="{{ url_for('rule_diagrams.artifact', version=selected.id, filename='legal-review.docx') }}">Παλαιό έγγραφο εργατολογικού ελέγχου (14/08/2026, v2)</a></p>
+<iframe title="Λογικά διαγράμματα κανόνων" src="{{ url_for('rule_diagrams.artifact', version=selected.id, filename=section) }}" style="width:100%;height:80vh;min-height:600px;border:1px solid #d7e1e8;border-radius:10px;background:white"></iframe>
+{% endblock %}

@@ -1,0 +1,46 @@
+{
+  "versions": [
+    {
+      "id": "rules-8ad1bc0c3c981837",
+      "fingerprint": "8ad1bc0c3c9818370eb7536cb13118bde31025959974c3a74a62bdc8cebaeb37",
+      "files": {
+        "app/apologistic_rules.py": "255b952250866f9cbac9e556a862fe72e79c1ab6de8128110e23811f50c7f0b8",
+        "app/apologistic.py": "369100ae9132e25880d709d4febc4f2ff29507daa1debc9cf7defb0472c3ea40",
+        "app/timekeeping.py": "f7f33649eeca668bed6086e4f9b559da7a912fc9696cd0278dab4ee2c8308a82",
+        "app/apologistic_snapshot.py": "443e0f1b3b8428566e2e573df0eb0c88e3f5fed6ee5526cc6735404e21e34a36",
+        "app/repo_apologistic.py": "f5b52feebf4cb6d0adb4ac8075cc995aed610141c0f21a4f7b900d81295f36ec",
+        "app/routes_apologistic.py": "7a6b2aa683f7a0466ab58a8855c4307e072f10ec9836e68345ed8f222d0a30fa",
+        "app/apologistic_submit.py": "fd2afa476ad70883af5a1e458f052d2a46508b45d29df99fa3248047ed348aa3",
+        "app/apologistic_batch_submit.py": "af44fb34d3fde61321d67090f906aeb5bfedb37d89317401a349fbd2562f82e6",
+        "app/timekeeping_export.py": "589e3410230d04df9028cd7769a763802e62cfe0324a6c16d417ec946c22092a",
+        "docs/APOLOGISTIKO_RULES_CATALOG.md": "dc9b7df32d9b22f6c7977b6affd1506033372e36d9e1163f12976f0a22106aab",
+        "docs/APOLOGISTIKO_LOGIC.md": "fbe9e51e856c09d77dccf95c8bcd144af261fe14186624d1e36b1c13b48005c4",
+        "scripts/render_rule_document.py": "6ffb332331a0e149d12b0b308e1e400ae3f9f12633dd2707b26dd18cf0272171",
+        "documentation/Μηχανισμός Απολογιστικού - Προς Έλεγχο Εργατολόγου.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "deliverables/rule_diagrams/build_diagrams.py": "1a324b060874d09edbeb751c6fff569205cd378d035bfc0e69c3fa82ee92e52c",
+        "deliverables/rule_diagrams/viewer.template.html": "a38e1202a85df1fec52899d347bb5dfd81d607e30dcb1b9d38ea1dba67197521",
+        "scripts/build_rule_diagrams.py": "48b203e3fe9bbe6c9c5491d2a40b0a63d09847f92c54e0a493b1f7fb8ea531fa",
+        "app/rule_diagram_versions.py": "a55ba8dae543a5c2cbc7a1a7734288fd6f5ac9d491eaf2b604ed4e7f946b7125"
+      },
+      "artifacts": {
+        "index.html": "312f340015d6a88d0c58296af65a250e345bc771f195235c2fb1856841efbb2f",
+        "rules.json": "8194502cdeb13ea3ee532249d2521314393758933efd3db21349a01d793f1b43",
+        "flowcharts.md": "2e51d26ffc332b49bc0660bb1364419c28b4cb87a447b8822e3c67e0e8b23617",
+        "catalog.md": "dc9b7df32d9b22f6c7977b6affd1506033372e36d9e1163f12976f0a22106aab",
+        "catalog.html": "0b071a8518170971621f1a1ec55eb320968fbece68aff2f71616d54dceb01413",
+        "logic.md": "fbe9e51e856c09d77dccf95c8bcd144af261fe14186624d1e36b1c13b48005c4",
+        "logic.html": "1217982d3efc9d8112d58a2936c35e6ddad6c2ce43ff0c8236e9e227274ed89a",
+        "notes.html": "b0c191050e52f3ba728a644a5dab7b5b1d94ed5aabd41421c8567cff9018489c",
+        "overview.html": "a2b958257f96950a3c5225933b4c5e3f191890946ab368eea4d0f1dba5cf01e8",
+        "legal-review.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "complete.zip": "daf760a9d43ace52c9ef6624c4de829e2aa3dcbd1dd2583f7e011a04ed15b4b8"
+      },
+      "reviewed_at": "2026-09-20T13:30:43+00:00",
+      "source_commit": "1787f90d9277f9b9b7d4ed3365a8d7258ce9d30d",
+      "apologistic_version": "2026-09-16.clean-from-jun1",
+      "timekeeping_version": "timekeeping-v12-catering-sixth-above-48",
+      "count": 86
+    }
+  ],
+  "current": "rules-8ad1bc0c3c981837"
+}

@@ -67,3 +67,7 @@ python scripts/run_migration_employment_work_time_qr.py
 4. DNS: SPF πρέπει να περιλαμβάνει `include:mailgun.org`.
 
 Μετά από αλλαγές CSS landing, ενημέρωσε cache-bust στο `office.css`.
+
+## Κανόνες & διαγράμματα
+
+Η σελίδα `/ui/apologistic/rules` εξυπηρετείται από Flask μόνο για συνδεδεμένο super_admin. Περιλαμβάνεται στο κανονικό git deployment· δεν απαιτεί migration ή νέο password. Πριν από deploy εκτελέστε `python -X utf8 scripts/build_rule_diagrams.py --check` και απαιτήστε επιτυχημένο workflow **Rule diagrams**. Μην εκθέτετε το `app/private/rule_diagrams` ως static directory. Πλήρης διαδικασία: [RULE_DIAGRAMS_PROCESS.md](RULE_DIAGRAMS_PROCESS.md).

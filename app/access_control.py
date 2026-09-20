@@ -171,6 +171,7 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/work-log", "nav": "worklog", "label": "Πραγματική απασχόληση", "permission": "work_log.view"},
     {"href": "/ui/protocols", "nav": "protocols", "label": "Πρωτόκολλα", "icon": "file-earmark-text", "permission": "work_log.view"},
     {"href": "/ui/apologistic", "nav": "apologistic", "label": "Απολογιστικό", "icon": "clipboard-data", "permission": "work_log.view"},
+    {"href": "/ui/apologistic/rules", "nav": "rule-diagrams", "label": "Κανόνες & διαγράμματα", "icon": "diagram-3", "permission": "work_log.view", "role": "super_admin"},
     {"href": "/ui/missing-cards", "nav": "missingcards", "label": "Ελλειπή Χτυπήματα", "permission": "missing_cards.view"},
     {"href": "/ui/work-card", "nav": "workcard", "label": "Ψηφιακή κάρτα", "permission": "work_card.view"},
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
@@ -347,6 +348,8 @@ def is_admin_role(role: str | None = None) -> bool:
 
 
 def nav_item_allowed(item: dict[str, str]) -> bool:
+    if item.get("role") == "super_admin" and normalize_role(session.get(SESSION_ROLE) or "viewer") != "super_admin":
+        return False
     nav = str(item.get("nav") or "")
     if nav in ADMIN_ONLY_NAVS and not is_admin_role():
         role = normalize_role(current_role())

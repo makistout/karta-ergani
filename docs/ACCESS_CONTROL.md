@@ -153,3 +153,7 @@
 5. Έλεγχοι πρώτα στα επικίνδυνα actions. Σε εξέλιξη καθώς συνδέονται επιπλέον routes.
 6. `/ui/users` για δημιουργία χρηστών, ρόλους, permissions, store access και reset password. Ολοκληρώθηκε για την πρώτη έκδοση.
 7. Audit για login/logout, permission denied και αλλαγές χρηστών. Επόμενη φάση.
+
+## Προστατευμένη τεκμηρίωση κανόνων
+
+`/ui/apologistic/rules` και όλα τα `/view/<version>/<filename>` απαιτούν password session και ρητό ρόλο `super_admin`. Το office API token ή granular permissions δεν αρκούν. Η επιλογή **Κανόνες & διαγράμματα** βρίσκεται αμέσως κάτω από το Απολογιστικό και δεν εμφανίζεται σε άλλους ρόλους.
