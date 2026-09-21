@@ -468,7 +468,7 @@ async function loadCardReport() {
       return;
     }
 
-    renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date);
+    renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date, data.links || {});
     renderTable(
       wrap,
       sortReportRows(data.rows || []),
@@ -480,7 +480,7 @@ async function loadCardReport() {
   }
 }
 
-function renderSummary(el, summary, meta, store, workDate) {
+function renderSummary(el, summary, meta, store, workDate, links = {}) {
   if (!el) return;
   const chips = [
     { key: "needs_checkin", label: "Είσοδος", cls: "status-warn" },
@@ -503,9 +503,10 @@ function renderSummary(el, summary, meta, store, workDate) {
   const storeLine = store
     ? `<span class="report-meta-line">${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ${Office.escapeHtml(workDate || "")}</span>`
     : "";
+  const target = (label, href, allowed) => (allowed ? `<a href="${href}">${label}</a>` : label);
   const dataLine = meta.has_schedule || meta.has_work_log
     ? `<span class="report-meta-line">${Office.icon("database")} Ωράριο: ${meta.schedule_count || 0} · Πραγματική: ${meta.work_log_count || 0} · Δηλώσεις κάρτας: ${meta.card_event_count || 0}</span>`
-    : `<span class="report-meta-line" style="color:var(--err);">${Office.icon("exclamation-triangle")} Δεν υπάρχουν συγχρονισμένα δεδομένα — συγχρονίστε <a href="/ui/schedule">ωράριο</a> και <a href="/ui/work-log">πραγματική απασχόληση</a>.</span>`;
+    : `<span class="report-meta-line" style="color:var(--err);">${Office.icon("exclamation-triangle")} Δεν υπάρχουν συγχρονισμένα δεδομένα — συγχρονίστε ${target("ωράριο", "/ui/schedule", links.schedule)} και ${target("πραγματική απασχόληση", "/ui/work-log", links.work_log)}.</span>`;
   el.innerHTML = `${storeLine}${dataLine}<div class="report-chips">${parts.join("")}</div>`;
 }
 

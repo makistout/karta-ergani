@@ -18,6 +18,19 @@ ADMIN_ONLY_NAVS = {"sync", "settings", "synclog", "missingcards"}
 # Accountant βλέπει Ελλειπή + Ρυθμίσεις (μόνο αργίες) χωρίς πλήρη admin.
 ACCOUNTANT_ALLOWED_ADMIN_NAVS = {"settings", "missingcards"}
 
+# Συμμόρφωση (ωράριο, πραγματική, πρωτόκολλα, απολογιστικό, προειδοποιήσεις
+# σύμβασης στην αρχική): μόνο λογιστής και super admin. Ούτε office manager
+# ούτε backoffice admin.
+COMPLIANCE_ROLES = {"super_admin", "accountant"}
+COMPLIANCE_NAVS = {"schedule", "worklog", "protocols", "apologistic", "rule-diagrams"}
+COMPLIANCE_PERMISSIONS: set[str] = {
+    "schedule.page.view",
+    "work_log.page.view",
+    "protocols.view",
+    "apologistic.view",
+    "alerts.contract.view",
+}
+
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
     "employees.export",
@@ -78,7 +91,7 @@ OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
 STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS)
 
 # Λογιστής: λειτουργικές οθόνες χωρίς Sync/Logs/Users· επιλογή καταστήματος· Ρυθμίσεις = αργίες + απολογιστικό.
-ACCOUNTANT_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS) | {
+ACCOUNTANT_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS) | COMPLIANCE_PERMISSIONS | {
     "settings.holidays.view",
     "settings.holidays.edit",
 }
@@ -150,15 +163,16 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/employees/contracts": "employees.view",
     "/ui/employees/detail": "employees.view",
     "/ui/employees/weekly-schedule": "schedule.view",
-    "/ui/schedule": "schedule.view",
-    "/ui/work-log": "work_log.view",
+    "/ui/schedule": "schedule.page.view",
+    "/ui/work-log": "work_log.page.view",
+    # Ιστορικό ενός εργαζομένου: ανοίγει από Ψηφιακή κάρτα / Εργαζόμενοι.
     "/ui/work-log/history": "work_log.view",
-    "/ui/protocols": "work_log.view",
+    "/ui/protocols": "protocols.view",
     "/ui/missing-cards": "missing_cards.view",
     "/ui/missing-cards/close-all": "missing_cards.close_all",
     "/ui/monthly-status": "monthly_status.view",
-    "/ui/apologistic": "work_log.view",
-    "/ui/apologistic/timekeeping": "work_log.view",
+    "/ui/apologistic": "apologistic.view",
+    "/ui/apologistic/timekeeping": "apologistic.view",
     "/ui/work-card": "work_card.view",
     "/ui/sync": "sync.view",
     "/ui/sync-log": "logs.view",
@@ -167,11 +181,11 @@ UI_PERMISSIONS: dict[str, str] = {
 
 NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/", "nav": "home", "label": "Αρχική", "permission": "dashboard.view"},
-    {"href": "/ui/schedule", "nav": "schedule", "label": "Ψηφιακό ωράριο", "permission": "schedule.view"},
-    {"href": "/ui/work-log", "nav": "worklog", "label": "Πραγματική απασχόληση", "permission": "work_log.view"},
-    {"href": "/ui/protocols", "nav": "protocols", "label": "Πρωτόκολλα", "icon": "file-earmark-text", "permission": "work_log.view"},
-    {"href": "/ui/apologistic", "nav": "apologistic", "label": "Απολογιστικό", "icon": "clipboard-data", "permission": "work_log.view"},
-    {"href": "/ui/apologistic/rules", "nav": "rule-diagrams", "label": "Κανόνες & διαγράμματα", "icon": "diagram-3", "permission": "work_log.view", "role": "super_admin"},
+    {"href": "/ui/schedule", "nav": "schedule", "label": "Ψηφιακό ωράριο", "permission": "schedule.page.view"},
+    {"href": "/ui/work-log", "nav": "worklog", "label": "Πραγματική απασχόληση", "permission": "work_log.page.view"},
+    {"href": "/ui/protocols", "nav": "protocols", "label": "Πρωτόκολλα", "icon": "file-earmark-text", "permission": "protocols.view"},
+    {"href": "/ui/apologistic", "nav": "apologistic", "label": "Απολογιστικό", "icon": "clipboard-data", "permission": "apologistic.view"},
+    {"href": "/ui/apologistic/rules", "nav": "rule-diagrams", "label": "Κανόνες & διαγράμματα", "icon": "diagram-3", "permission": "apologistic.view", "role": "super_admin"},
     {"href": "/ui/missing-cards", "nav": "missingcards", "label": "Ελλειπή Χτυπήματα", "permission": "missing_cards.view"},
     {"href": "/ui/work-card", "nav": "workcard", "label": "Ψηφιακή κάρτα", "permission": "work_card.view"},
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
@@ -225,30 +239,26 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("POST", "/api/schedule/import/*", "schedule.submit_daily"),
     RouteRule("GET", "/api/schedule/day-form", "schedule.submit_daily"),
     RouteRule("POST", "/api/schedule/day-form/*", "schedule.submit_daily"),
-    RouteRule("GET", "/api/schedule/*", "schedule.view"),
+    RouteRule("GET", "/api/schedule/sync/status/*", "schedule.sync"),
+    RouteRule("GET", "/api/schedule/*", "schedule.page.view"),
     RouteRule("POST", "/api/schedule/sync", "schedule.sync"),
     RouteRule("GET", "/api/work-log/list", "work_log.view"),
     RouteRule("GET", "/api/work-log/history", "work_log.view"),
-    RouteRule("GET", "/api/protocols/list", "work_log.view"),
+    RouteRule("GET", "/api/protocols/list", "protocols.view"),
+    # Σύνδεσμοι PDF πρωτοκόλλου εμφανίζονται και σε κοινές οθόνες (κάρτα, ιστορικό).
     RouteRule("GET", "/api/protocols/by-code/pdf", "work_log.view"),
     RouteRule("GET", "/api/protocols/*/pdf", "work_log.view"),
     RouteRule("POST", "/api/protocols/sync", "work_log.sync"),
-    RouteRule("GET", "/api/protocols/sync/status/*", "work_log.view"),
+    RouteRule("GET", "/api/protocols/sync/status/*", "work_log.sync"),
     RouteRule("GET", "/api/work-log/missing-cards", "missing_cards.view"),
     RouteRule("GET", "/api/work-log/missing-cards/close-all-plan", "missing_cards.close_all"),
     RouteRule("POST", "/api/work-log/work-card-sync", "work_card.sync_refresh"),
     RouteRule("POST", "/api/work-log/sync", "work_log.sync"),
     RouteRule("GET", "/api/work-log/sync/status/*", "work_log.view"),
-    RouteRule("GET", "/api/apologistic/*", "work_log.view"),
-    RouteRule("POST", "/api/apologistic/timekeeping/preview", "work_log.view"),
-    # Read-only calculated Excel — same gate as preview so viewer/store_viewer can download.
-    RouteRule("POST", "/api/apologistic/timekeeping/export", "work_log.view"),
-    RouteRule("POST", "/api/apologistic/timekeeping/export-detailed", "work_log.view"),
-    RouteRule("PUT", "/api/apologistic/proposal", "work_log.view"),
-    RouteRule("PUT", "/api/apologistic/exchange", "work_log.view"),
-    RouteRule("POST", "/api/apologistic/submit-schedule", "schedule.submit_daily"),
-    RouteRule("POST", "/api/apologistic/submit-overtime", "schedule.submit_daily"),
-    RouteRule("POST", "/api/apologistic/submit-bulk", "schedule.submit_daily"),
+    # Απολογιστικό (προβολή, Excel, προτάσεις και υποβολές): μόνο λογιστής/super admin.
+    RouteRule("GET", "/api/apologistic/*", "apologistic.view"),
+    RouteRule("POST", "/api/apologistic/*", "apologistic.view"),
+    RouteRule("PUT", "/api/apologistic/*", "apologistic.view"),
     RouteRule("GET", "/api/monthly-status/*", "monthly_status.view"),
     RouteRule("POST", "/api/monthly-status/sync", "monthly_status.sync"),
     RouteRule("GET", "/api/work-card/*", "work_card.view"),
@@ -310,6 +320,10 @@ def current_role() -> str:
 def has_permission(permission: str | None, *, role: str | None = None) -> bool:
     if not permission:
         return True
+    # Ρόλος και μόνο ρόλος αποφασίζει για τη συμμόρφωση· stale session permissions
+    # δεν ανοίγουν ωράριο/πρωτόκολλα/απολογιστικό σε office manager.
+    if permission in COMPLIANCE_PERMISSIONS and not is_compliance_role(role):
+        return False
     if role is None:
         session_permissions = session.get(SESSION_PERMISSIONS)
         if isinstance(session_permissions, list):
@@ -347,10 +361,17 @@ def is_admin_role(role: str | None = None) -> bool:
     return normalize_role(role if role is not None else current_role()) in ADMIN_NAV_ROLES
 
 
+def is_compliance_role(role: str | None = None) -> bool:
+    """Ωράριο/πρωτόκολλα/απολογιστικό/προειδοποιήσεις: λογιστής + super admin."""
+    return normalize_role(role if role is not None else current_role()) in COMPLIANCE_ROLES
+
+
 def nav_item_allowed(item: dict[str, str]) -> bool:
     if item.get("role") == "super_admin" and normalize_role(session.get(SESSION_ROLE) or "viewer") != "super_admin":
         return False
     nav = str(item.get("nav") or "")
+    if nav in COMPLIANCE_NAVS and not is_compliance_role():
+        return False
     if nav in ADMIN_ONLY_NAVS and not is_admin_role():
         role = normalize_role(current_role())
         if not (role == "accountant" and nav in ACCOUNTANT_ALLOWED_ADMIN_NAVS):
@@ -444,5 +465,6 @@ def register_access_context(app: Flask) -> None:
             "office_has_permission": has_permission,
             "office_nav_item_allowed": nav_item_allowed,
             "office_is_admin_role": is_admin_role,
+            "office_is_compliance_role": is_compliance_role,
             "office_is_super_admin": is_super_admin,
         }

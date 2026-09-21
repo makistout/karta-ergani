@@ -3,9 +3,11 @@ import pytest
 from unittest.mock import patch
 
 from app.access_control import (
+    COMPLIANCE_PERMISSIONS,
     SESSION_PERMISSIONS,
     SESSION_ROLE,
     SESSION_SUPER_ADMIN,
+    has_permission,
     normalize_role,
     permission_for_path,
     permissions_for_role,
@@ -175,6 +177,89 @@ def test_office_manager_menu_hides_admin_only_items_even_with_permissions():
     assert "Ελλειπή Χτυπήματα" not in html
 
 
+def _compliance_menu_html(role, permissions=None):
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    register_access_context(app)
+    app.add_url_rule(
+        "/ui/",
+        "home",
+        lambda: render_template_string("""
+        {% for item in office_nav_items %}
+          {% if office_nav_item_allowed(item) %}{{ item.label }}|{% endif %}
+        {% endfor %}
+        """),
+    )
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = role
+        session[SESSION_ROLE] = role
+        session[SESSION_SUPER_ADMIN] = role == "super_admin"
+        session[SESSION_PERMISSIONS] = sorted(
+            permissions if permissions is not None else permissions_for_role(role)
+        )
+    return client.get("/ui/").get_data(as_text=True)
+
+
+COMPLIANCE_LABELS = ("Ψηφιακό ωράριο", "Πραγματική απασχόληση", "Πρωτόκολλα", "Απολογιστικό")
+
+
+@pytest.mark.parametrize("role", ["office_manager", "office", "admin", "backoffice_admin", "viewer"])
+def test_compliance_menu_is_hidden_outside_accountant(role):
+    html = _compliance_menu_html(role)
+
+    for label in COMPLIANCE_LABELS:
+        assert label not in html
+    assert "Ψηφιακή κάρτα" in html
+
+
+def test_compliance_menu_stays_hidden_with_stale_session_permissions():
+    html = _compliance_menu_html(
+        "office_manager",
+        permissions=sorted(permissions_for_role("office_manager") | COMPLIANCE_PERMISSIONS),
+    )
+
+    for label in COMPLIANCE_LABELS:
+        assert label not in html
+
+
+def test_compliance_pages_and_apis_reject_office_manager():
+    app = _make_app()
+    app.add_url_rule("/ui/schedule", "ui_schedule", lambda: "schedule")
+    app.add_url_rule("/ui/protocols", "ui_protocols", lambda: "protocols")
+    app.add_url_rule("/ui/apologistic", "ui_apologistic", lambda: "apologistic")
+    app.add_url_rule("/api/apologistic/week", "api_apologistic", lambda: {"ok": True})
+    app.add_url_rule("/api/schedule/list", "api_schedule_list", lambda: {"ok": True})
+    app.add_url_rule("/api/work-card/list", "api_work_card", lambda: {"ok": True})
+    client = app.test_client()
+
+    with client.session_transaction() as session:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = "makis"
+        session[SESSION_ROLE] = "office_manager"
+        session[SESSION_SUPER_ADMIN] = False
+        session[SESSION_PERMISSIONS] = sorted(permissions_for_role("office_manager"))
+
+    for path in ("/ui/schedule", "/ui/protocols", "/ui/apologistic"):
+        assert client.get(path).location == "/ui/"
+    assert client.get("/api/apologistic/week").status_code == 403
+    assert client.get("/api/schedule/list").status_code == 403
+    # Η ψηφιακή κάρτα παραμένει διαθέσιμη.
+    assert client.get("/api/work-card/list").status_code == 200
+
+
+def test_contract_alerts_permission_follows_role():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    register_access_context(app)
+    with app.test_request_context("/"):
+        for role in ("accountant", "super_admin"):
+            assert has_permission("alerts.contract.view", role=role)
+        for role in ("office_manager", "office", "admin", "backoffice_admin", "viewer"):
+            assert not has_permission("alerts.contract.view", role=role)
+
+
 def test_accountant_menu_shows_ops_hides_admin_and_stores():
     app = Flask(__name__)
     app.secret_key = "test-secret"
@@ -236,11 +321,12 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert permission_for_path("/api/store/1/holidays", "GET") == "settings.holidays.view"
     assert permission_for_path("/api/store/holidays", "POST") == "settings.holidays.edit"
     assert permission_for_path("/api/store/list", "GET") == "stores.select"
-    assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "schedule.submit_daily"
-    assert permission_for_path("/api/apologistic/submit-bulk", "POST") == "schedule.submit_daily"
-    assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "schedule.submit_daily"
+    assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "apologistic.view"
+    assert permission_for_path("/api/apologistic/submit-bulk", "POST") == "apologistic.view"
+    assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "apologistic.view"
     assert permission_for_path("/api/store/1/action-settings", "GET") == "work_log.view"
     assert permission_for_path("/api/store/1/apologistic-settings", "PUT") == "work_log.view"
+    assert COMPLIANCE_PERMISSIONS <= perms
 
 
 def test_role_aliases_do_not_fallback_to_super_admin():
@@ -266,12 +352,13 @@ def test_work_card_sync_uses_separate_permission():
     assert permission_for_path("/api/work-log/sync", "POST") == "work_log.sync"
 
 
-def test_timekeeping_excel_exports_use_view_permission():
-    """Viewer can download calculated timekeeping Excel (summary + detailed)."""
-    assert permission_for_path("/api/apologistic/timekeeping/export", "POST") == "work_log.view"
-    assert permission_for_path("/api/apologistic/timekeeping/export-detailed", "POST") == "work_log.view"
-    assert "work_log.view" in permissions_for_role("viewer")
-    assert "work_log.view" in permissions_for_role("store_viewer")
+def test_timekeeping_excel_exports_are_accountant_only():
+    """Απολογιστική ωρομέτρηση Excel: λογιστής/super admin, όχι office manager."""
+    assert permission_for_path("/api/apologistic/timekeeping/export", "POST") == "apologistic.view"
+    assert permission_for_path("/api/apologistic/timekeeping/export-detailed", "POST") == "apologistic.view"
+    assert "apologistic.view" in permissions_for_role("accountant")
+    for role in ("viewer", "store_viewer", "office", "office_manager", "admin", "backoffice_admin"):
+        assert "apologistic.view" not in permissions_for_role(role)
 
 
 def test_non_admin_work_card_sync_only_allows_today():

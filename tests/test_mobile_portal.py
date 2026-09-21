@@ -63,6 +63,39 @@ def test_roster_excludes_days_off_and_combines_split_shifts(monkeypatch):
     assert result[0]["shifts"] == ["09:00 – 13:00", "17:00 – 21:00"]
 
 
+def test_store_roster_adds_employees_without_schedule_today(monkeypatch):
+    monkeypatch.setattr(mobile, "list_schedule_for_store", lambda *a: [
+        {"employee_afm": "123456789", "eponymo": "Δοκιμή", "onoma": "Α",
+         "hour_from": "09:00", "hour_to": "13:00"}])
+    monkeypatch.setattr(mobile, "list_current_for_store", lambda *a, **kw: [
+        {"employee_afm": "987654321", "specialty": "Σάλα"}])
+    monkeypatch.setattr("app.repo_entities.list_active_employees_for_store", lambda *a, **kw: [
+        {"afm": "123456789", "eponymo": "Δοκιμή", "onoma": "Α"},
+        {"afm": "987654321", "eponymo": "Ρεπό", "onoma": "Β"}])
+    monkeypatch.setattr("app.repo_schedule.list_recent_schedule_roster", lambda *a, **kw: [
+        {"afm": "555555555", "eponymo": "Χωρίς", "onoma": "Σύμβαση"},
+        {"afm": "bad", "eponymo": "Άκυρο", "onoma": "ΑΦΜ"}])
+    result = mobile.store_roster({"employer_afm": "1", "branch_aa": "0"}, datetime(2026, 9, 17).date())
+    assert [(p["afm"], p.get("off_schedule", False)) for p in result] == [
+        ("123456789", False), ("987654321", True), ("555555555", True)]
+    assert result[1]["specialty"] == "Σάλα"
+    assert result[2]["shifts"] == []
+
+
+def test_off_schedule_people_never_look_completed(monkeypatch):
+    import app.repo_work_log as logs
+    monkeypatch.setattr(logs, "list_work_log_for_store", lambda *a: [
+        {"employee_afm": "123456789", "hour_from": "09:00", "hour_to": "13:00"}])
+    monkeypatch.setattr(logs, "normalize_overnight_work_log_rows", lambda rows, **kw: rows)
+    monkeypatch.setattr(logs, "append_card_punches_missing_from_work_log", lambda *a: None)
+    monkeypatch.setattr(logs, "enrich_work_log_rows_with_card_punch", lambda *a: None)
+    people = [{"afm": "123456789", "shifts": [], "off_schedule": True},
+              {"afm": "987654321", "shifts": [], "off_schedule": True}]
+    mobile.attach_punches(people, {"employer_afm": "1", "branch_aa": "0"}, datetime(2026, 9, 18).date())
+    assert [p["completed"] for p in people] == [False, False]
+    assert people[0]["punches"] == [{"in": "09:00", "out": "13:00"}]
+
+
 @pytest.mark.parametrize("minutes", [0, 5, 10])
 def test_submit_uses_server_time_and_existing_pipeline(client, monkeypatch, minutes):
     login(client)
@@ -73,7 +106,7 @@ def test_submit_uses_server_time_and_existing_pipeline(client, monkeypatch, minu
             return now
     monkeypatch.setattr(mobile, "datetime", Clock)
     monkeypatch.setattr(mobile, "resolve_active_store", lambda: {"id": 7})
-    monkeypatch.setattr(mobile, "today_roster", lambda *a: [{"afm": "123456789"}])
+    monkeypatch.setattr(mobile, "store_roster", lambda *a: [{"afm": "123456789"}])
     captured = {}
     def pipeline(body):
         captured.update(body)
@@ -98,7 +131,7 @@ def test_submit_uses_server_time_and_existing_pipeline(client, monkeypatch, minu
 def test_rejects_stale_or_invalid_commands(client, monkeypatch, override, status):
     login(client)
     monkeypatch.setattr(mobile, "resolve_active_store", lambda: {"id": 7})
-    monkeypatch.setattr(mobile, "today_roster", lambda *a: [{"afm": "123456789"}])
+    monkeypatch.setattr(mobile, "store_roster", lambda *a: [{"afm": "123456789"}])
     body = {"store_id": 7, "date": datetime.now(mobile.tz_athens()).date().isoformat(),
             "employee_afm": "123456789", "event": "check_in", "minutes": 0}
     assert client.post("/api/mobile/submit", json={**body, **override}).status_code == status

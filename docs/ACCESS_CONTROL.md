@@ -27,7 +27,7 @@
 ## Ρόλοι
 
 - `super_admin`: όλα, όλα τα καταστήματα.
-- `admin` / `backoffice_admin`: backoffice λειτουργίες, global συγχρονισμός, ειδοποιήσεις και καταγραφές.
+- `admin` / `backoffice_admin`: backoffice λειτουργίες, global συγχρονισμός, ειδοποιήσεις και καταγραφές. **Δεν** βλέπουν τις οθόνες συμμόρφωσης (παρακάτω).
 - `office_manager`: λειτουργία γραφείου, κάρτες και ελλιπή χτυπήματα στα καταστήματά του.
 - `office`: καθημερινές ενέργειες χειριστή.
 - `accountant` (λογιστής): λειτουργικές οθόνες (ωράριο, πραγματική, απολογιστικό, κάρτα,
@@ -37,6 +37,34 @@
   (WTODailyA / WTOOvA). Δεν διαχειρίζεται credentials/νέα καταστήματα.
 - `store_viewer` / `viewer`: μόνο προβολή.
 - `notifications_manager`: δεν έχει πρόσβαση σε ειδοποιήσεις/καταγραφές εκτός αν αναβαθμιστεί σε admin-level ρόλο.
+
+## Οθόνες συμμόρφωσης (λογιστής + super admin)
+
+Ψηφιακό ωράριο, Πραγματική απασχόληση, Πρωτόκολλα, Απολογιστικό και οι
+προειδοποιήσεις παραβάσεων σύμβασης στην Αρχική είναι ορατά **μόνο** σε
+`accountant` και `super_admin` (`COMPLIANCE_ROLES`). Ο `office_manager`, ο
+`office`, οι viewers και οι backoffice admins δεν τα βλέπουν.
+
+- Permissions: `schedule.page.view`, `work_log.page.view`, `protocols.view`,
+  `apologistic.view`, `alerts.contract.view` (`COMPLIANCE_PERMISSIONS`).
+- Ο έλεγχος είναι **ρόλου**: το `has_permission` απορρίπτει αυτά τα permissions
+  για μη compliance ρόλο, ακόμη κι αν υπάρχουν stale entries στο session/DB.
+  Στο μενού ισχύει και `COMPLIANCE_NAVS` (schedule, worklog, protocols,
+  apologistic, rule-diagrams).
+- Backend: `/ui/schedule`, `/ui/work-log`, `/ui/protocols`, `/ui/apologistic*`,
+  `GET /api/schedule/*`, `GET /api/protocols/list` και όλα τα
+  `/api/apologistic/*` (GET/POST/PUT, μαζί με τις υποβολές WTODailyA/WTOOvA και
+  τα Excel ωρομέτρησης). Οι μη επιτρεπόμενοι ρόλοι παίρνουν redirect στο `/ui/`
+  ή `403`.
+- Παραμένουν κοινά, γιατί τα χρειάζεται η Ψηφιακή κάρτα και οι Εργαζόμενοι:
+  `GET /api/work-log/list`, `GET /api/work-log/history`, `/ui/work-log/history`,
+  τα PDF πρωτοκόλλου (`/api/protocols/*/pdf`, `/api/protocols/by-code/pdf`) και
+  τα `action-settings` του καταστήματος (`work_log.view`).
+- Αρχική: το `GET /api/dashboard/card-report` προσθέτει `contract_alerts` και
+  τους μετρητές `contract_*` μόνο με `alerts.contract.view`. Επιστρέφει και
+  `links.schedule` / `links.work_log` ώστε το UI να μη δείχνει συνδέσμους σε
+  κλειδωμένες σελίδες. Το `data-compliance` στο `<body>` εξυπηρετεί τα ίδια
+  μηνύματα στη σελίδα κάρτας.
 
 ## UI Χρηστών
 
@@ -68,12 +96,18 @@
   - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
   - **Μεταβολή σύμβασης WebMA** (`/api/employees/contract/change/*` + UI στο detail):
     **μόνο `super_admin`** (επιπλέον του permission).
-- Ψηφιακό ωράριο: `schedule.view`, `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`, `schedule.submit_leave`, `schedule.export`
-- Πραγματική απασχόληση: `work_log.view`, `work_log.sync`, `work_log.export`
-  - Απολογιστική ωρομέτρηση Excel (συγκεντρωτικό + πλήρης ανάλυση): `work_log.view`
-    (ίδιο με το preview· διαθέσιμο και σε `viewer` / `store_viewer`)
-- Πρωτόκολλα (`/ui/protocols`, `/api/protocols/*`): ίδια `work_log.view` / `work_log.sync`
-  (λίστα για όσους βλέπουν πραγματική· sync μόνο admin)
+- Ψηφιακό ωράριο: `schedule.page.view` (σελίδα + `GET /api/schedule/*`),
+  `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`,
+  `schedule.submit_leave`, `schedule.export`. Το `schedule.view` μένει για
+  δευτερεύουσες οθόνες (εβδομαδιαίο ωράριο εργαζομένου).
+- Πραγματική απασχόληση: `work_log.page.view` (σελίδα λίστας), `work_log.view`
+  (δεδομένα/ιστορικό για κάρτα και εργαζομένους), `work_log.sync`, `work_log.export`
+  - Απολογιστική ωρομέτρηση Excel (συγκεντρωτικό + πλήρης ανάλυση): `apologistic.view`
+    (λογιστής / super admin, όπως και το preview)
+- Πρωτόκολλα (`/ui/protocols`, `GET /api/protocols/list`): `protocols.view`·
+  sync `work_log.sync` (admin)· τα PDF μένουν σε `work_log.view`
+- Απολογιστικό (`/ui/apologistic*`, `/api/apologistic/*`): `apologistic.view`
+- Προειδοποιήσεις παραβάσεων σύμβασης στην Αρχική: `alerts.contract.view`
 - Ελλιπή χτυπήματα: `missing_cards.view`, `missing_cards.close_one`, `missing_cards.close_all`, `missing_cards.sync_refresh`
 - Ψηφιακή κάρτα: `work_card.view`, `work_card.submit_live`, `work_card.submit_retro`, `work_card.view_history`, `work_card.sync_refresh`
 - Συγχρονισμός: `sync.view`, `sync.run_store`, `sync.run_period`, `sync.run_all`, `sync.view_progress`

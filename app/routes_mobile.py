@@ -6,9 +6,16 @@ from flask import Blueprint, jsonify, render_template, request
 from app.http_helpers import resolve_active_store
 from app.repo_schedule import list_schedule_for_store
 from app.repo_employment_contract import list_current_for_store
-from app.work_card_payload import norm_afm, tz_athens
+from app.work_card_payload import WorkCardPayloadError, norm_afm, tz_athens
 
 mobile_bp = Blueprint("mobile", __name__)
+
+
+def safe_afm(value):
+    try:
+        return norm_afm(value or "")
+    except WorkCardPayloadError:
+        return ""
 
 
 def attach_punches(people, ctx, day):
@@ -32,15 +39,22 @@ def attach_punches(people, ctx, day):
     for person in people:
         punches = by_afm.get(person["afm"], [])
         person["punches"] = punches
-        person["completed"] = (len(punches) >= len(person["shifts"])
+        # Χωρίς ωράριο δεν υπάρχει μέτρο πληρότητας, άρα παραμένουν επιλέξιμοι.
+        person["completed"] = (not person.get("off_schedule")
+                               and bool(punches)
+                               and len(punches) >= len(person["shifts"])
                                and all(p["in"] and p["out"] for p in punches))
     return people
 
 
-def today_roster(ctx, day):
+def specialties(ctx):
+    return {safe_afm(r.get("employee_afm")): r for r in
+            list_current_for_store(ctx["employer_afm"], ctx["branch_aa"], limit=10000)}
+
+
+def today_roster(ctx, day, contracts=None):
     schedules = list_schedule_for_store(ctx["employer_afm"], ctx["branch_aa"], day.strftime("%d/%m/%Y"))
-    contracts = {norm_afm(r.get("employee_afm") or ""): r for r in
-                 list_current_for_store(ctx["employer_afm"], ctx["branch_aa"], limit=10000)}
+    contracts = specialties(ctx) if contracts is None else contracts
     people = {}
     for row in schedules:
         # Rest/leave rows have no working hours. Split shifts share one tile.
@@ -61,6 +75,40 @@ def today_roster(ctx, day):
     return sorted(people.values(), key=lambda p: (p["specialty"], p["name"]))
 
 
+def off_schedule_roster(ctx, scheduled_afms, contracts=None):
+    """Υπόλοιπο προσωπικό του καταστήματος, ώστε η αναζήτηση να τους βρίσκει.
+
+    Καλύπτει και όσους έχουν πρόσφατο ωράριο χωρίς σύνδεση `karta_employment`.
+    """
+    from app.repo_entities import list_active_employees_for_store
+    from app.repo_schedule import list_recent_schedule_roster
+
+    employer, branch = ctx["employer_afm"], ctx["branch_aa"]
+    contracts = specialties(ctx) if contracts is None else contracts
+    rows = list(list_active_employees_for_store(employer, branch, limit=5000))
+    rows += list_recent_schedule_roster(employer, branch, days=30, limit=5000)
+    people = {}
+    for row in rows:
+        afm = safe_afm(row.get("afm"))
+        if not afm or afm in scheduled_afms or afm in people:
+            continue
+        name = " ".join(str(row.get(k) or "").strip() for k in ("eponymo", "onoma")).strip()
+        people[afm] = {
+            "afm": afm,
+            "name": name or afm,
+            "specialty": contracts.get(afm, {}).get("specialty") or "Χωρίς ειδικότητα",
+            "shifts": [],
+            "off_schedule": True,
+        }
+    return sorted(people.values(), key=lambda p: p["name"])
+
+
+def store_roster(ctx, day):
+    contracts = specialties(ctx)
+    scheduled = today_roster(ctx, day, contracts)
+    return scheduled + off_schedule_roster(ctx, {p["afm"] for p in scheduled}, contracts)
+
+
 @mobile_bp.after_request
 def no_cache(response):
     response.headers["Cache-Control"] = "no-store"
@@ -79,7 +127,7 @@ def roster():
         return jsonify(error="Επιλέξτε κατάστημα"), 400
     day = datetime.now(tz_athens()).date()
     return jsonify(store={"id": ctx["id"], "name": ctx["name"]}, date=day.isoformat(),
-                   employees=attach_punches(today_roster(ctx, day), ctx, day),
+                   employees=attach_punches(store_roster(ctx, day), ctx, day),
                    synced_at=str(ctx.get("schedule_last_sync_at") or ""))
 
 
@@ -98,8 +146,8 @@ def submit():
     if body.get("date") != now.date().isoformat():
         return jsonify(error="Η ημέρα άλλαξε. Ανανεώστε τη λίστα."), 409
     afm = norm_afm(str(body.get("employee_afm") or ""))
-    if afm not in {p["afm"] for p in today_roster(ctx, now.date())}:
-        return jsonify(error="Ο εργαζόμενος δεν υπάρχει στο σημερινό πρόγραμμα."), 400
+    if afm not in {p["afm"] for p in store_roster(ctx, now.date())}:
+        return jsonify(error="Ο εργαζόμενος δεν ανήκει στο κατάστημα."), 400
     event_at = now - timedelta(minutes=minutes)
     from app.routes_work_card import work_card_submit_office
     return work_card_submit_office(body={

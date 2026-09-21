@@ -7,6 +7,7 @@ from datetime import datetime
 import pyodbc
 from flask import Blueprint, jsonify, request
 
+from app.access_control import has_permission
 from app.card_report import build_card_status_report
 from app.date_util import iso_to_ergani_dates
 from app.http_helpers import resolve_active_store
@@ -125,22 +126,28 @@ def card_report():
             row.setdefault("today_notify_snoozed", False)
             row.setdefault("wto_notify_snoozed", False)
 
-    try:
-        from app.contract_home_alerts import enrich_card_report_rows_with_contract_alerts
+    # Προειδοποιήσεις παραβάσεων σύμβασης: μόνο λογιστής / super admin.
+    show_contract_alerts = has_permission("alerts.contract.view")
+    if show_contract_alerts:
+        try:
+            from app.contract_home_alerts import enrich_card_report_rows_with_contract_alerts
 
-        contract_summary = enrich_card_report_rows_with_contract_alerts(
-            rows,
-            store_id=int(ctx["id"]),
-            employer_afm=str(ctx["employer_afm"]),
-            branch_aa=str(ctx["branch_aa"]),
-        )
-        summary = dict(report.get("summary") or {})
-        for key, value in contract_summary.items():
-            summary[key] = int(summary.get(key) or 0) + int(value or 0)
-        report["summary"] = summary
-    except Exception:
+            contract_summary = enrich_card_report_rows_with_contract_alerts(
+                rows,
+                store_id=int(ctx["id"]),
+                employer_afm=str(ctx["employer_afm"]),
+                branch_aa=str(ctx["branch_aa"]),
+            )
+            summary = dict(report.get("summary") or {})
+            for key, value in contract_summary.items():
+                summary[key] = int(summary.get(key) or 0) + int(value or 0)
+            report["summary"] = summary
+        except Exception:
+            for row in rows:
+                row.setdefault("contract_alerts", [])
+    else:
         for row in rows:
-            row.setdefault("contract_alerts", [])
+            row["contract_alerts"] = []
 
     return jsonify({
         "store": {
@@ -148,6 +155,10 @@ def card_report():
             "name": ctx["name"],
             "employer_afm": ctx["employer_afm"],
             "branch_aa": ctx["branch_aa"],
+        },
+        "links": {
+            "schedule": has_permission("schedule.page.view"),
+            "work_log": has_permission("work_log.page.view"),
         },
         **{**report, "rows": rows},
     })

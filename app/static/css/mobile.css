@@ -2,3 +2,4 @@
 
 .person .punches{color:#28583e;font-weight:650;font-size:10px;line-height:1.35}.person.completed{background:#edf2eb;border-color:#bfcfba}
 .person.completed:disabled{opacity:.7;cursor:default}.person.completed::after{display:none}
+.person.off-schedule{border-style:dashed;background:#fbfbf8}.person.off-schedule small{color:#8a6a35}

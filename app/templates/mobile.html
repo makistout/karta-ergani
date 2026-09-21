@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#142d2a">
   <title>Εντολές προσωπικού · erganiOS</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css', v='20260921') }}">
-  <script defer src="{{ url_for('static', filename='js/mobile.js', v='20260921') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css', v='20260921b') }}">
+  <script defer src="{{ url_for('static', filename='js/mobile.js', v='20260921b') }}"></script>
 </head>
 <body>
   <header><div class="brand">ergani<span>OS</span> <small> MOBILE</small></div><button id="logout" class="quiet">Έξοδος</button></header>
@@ -17,12 +17,12 @@
     <label for="store">Κατάστημα</label>
     <select id="store"><option value="">Επιλέξτε κατάστημα</option></select>
     <div class="tools"><span id="total">Προσωπικό ανά πόστο / ειδικότητα</span><button id="refresh" class="quiet">Ανανέωση ↻</button></div>
-    <label class="sr-only" for="search">Αναζήτηση ονόματος ή ειδικότητας</label>
-    <input id="search" type="search" placeholder="Αναζήτηση ονόματος ή ειδικότητας…" autocomplete="off">
+  <label class="sr-only" for="search">Αναζήτηση ονόματος ή ειδικότητας σε όλο το προσωπικό</label>
+  <input id="search" type="search" placeholder="Αναζήτηση σε όλο το προσωπικό…" autocomplete="off">
     <p id="message" role="status" aria-live="polite"></p>
     <div id="roster"></div>
     <p id="sync" class="muted note"></p>
-    <p class="muted note">Εμφανίζεται το αποθηκευμένο σημερινό πρόγραμμα. Ελέγξτε τις επιλογές σας πριν από την υποβολή.</p>
+    <p class="muted note">Εμφανίζεται το αποθηκευμένο σημερινό πρόγραμμα. Με αναζήτηση βρίσκετε και εργαζόμενους εκτός σημερινού προγράμματος. Ελέγξτε τις επιλογές σας πριν από την υποβολή.</p>
     <ol id="results" aria-live="polite"></ol>
   </main>
   <footer>

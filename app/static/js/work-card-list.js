@@ -446,7 +446,10 @@ function renderWorkLogTable(wrap, rows, count, dateIso, dbSetup, filterInfo = nu
           `Δεν υπάρχει πραγματική στο portal Ergani για ${Office.escapeHtml(empName || "αυτόν τον εργαζόμενο")} την ${Office.escapeHtml(dateIso)}. ` +
           `Το χτύπημα κάρτας (WRKCardSE) εμφανίζεται στον πίνακα «Δηλώσεις ψηφιακής κάρτας» παρακάτω.</span></p>`
         : `<p style="color:var(--muted);">${Office.icon("clock")}<span style="margin-left:0.35rem;">Δεν υπάρχει πραγματική απασχόληση για ${Office.escapeHtml(dateIso)}. ` +
-          `Συγχρονίστε από <a href="/ui/work-log">Πραγματική απασχόληση</a>.</span></p>`) +
+          (document.body.dataset.compliance === "1"
+            ? `Συγχρονίστε από <a href="/ui/work-log">Πραγματική απασχόληση</a>.`
+            : `Δεν έχει συγχρονιστεί ακόμη η πραγματική απασχόληση.`) +
+          `</span></p>`) +
       (dbSetup ? `<p style="font-size:0.85rem;color:var(--muted);">${Office.escapeHtml(dbSetup)}</p>` : "");
     return;
   }

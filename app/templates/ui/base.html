@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/static/css/office.css?v=20260916importerrorbox1">
   {% block extra_head %}{% endblock %}
 </head>
-<body{% if body_class %} class="{{ body_class }}"{% endif %}>
+<body{% if body_class %} class="{{ body_class }}"{% endif %}{% if shell == "office" %} data-compliance="{{ '1' if office_is_compliance_role() else '0' }}"{% endif %}>
   {% if shell == "office" %}
   <div class="layout">
     {% include "ui/partials/_sidebar.html" %}

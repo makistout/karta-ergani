@@ -25,12 +25,15 @@
     $("roster").replaceChildren();
     const query = $("search").value.toLocaleLowerCase("el").trim();
     const groups = new Map();
-    const completed = [];
+    const completed = [], offSchedule = [];
     people.filter(p => `${p.name} ${p.specialty}`.toLocaleLowerCase("el").includes(query)).forEach(p => {
+      // Εκτός σημερινού προγράμματος: μόνο με αναζήτηση ή όσο παραμένουν επιλεγμένοι.
+      if (p.off_schedule) { if (query || selected.has(p.afm)) offSchedule.push(p); return; }
       if (p.completed) { completed.push(p); return; }
       if (!groups.has(p.specialty)) groups.set(p.specialty, []);
       groups.get(p.specialty).push(p);
     });
+    if (offSchedule.length) groups.set("Εκτός σημερινού προγράμματος", offSchedule);
     if (completed.length) groups.set("Ολοκληρωμένη ημέρα", completed.sort((a, b) => a.name.localeCompare(b.name, "el")));
     for (const [specialty, rows] of groups) {
       const section = document.createElement("section"), title = document.createElement("h2"), count = document.createElement("span"), grid = document.createElement("div");
@@ -39,7 +42,9 @@
         const button = document.createElement("button"), name = document.createElement("strong"), shifts = document.createElement("small");
         button.className = "person"; button.setAttribute("aria-pressed", String(selected.has(person.afm)));
         name.textContent = person.name;
-        shifts.append(person.shifts.map(s => s.replace(/\s*[–—]\s*/g, " - ")).join(" · ") + " / ");
+        shifts.append((person.shifts.length
+          ? person.shifts.map(s => s.replace(/\s*[–—]\s*/g, " - ")).join(" · ")
+          : "Χωρίς ωράριο σήμερα") + " / ");
         const card = document.createElement("span");
         card.className = "punches";
         card.append("Κάρτα: ");
@@ -60,12 +65,15 @@
         shifts.append(card);
         button.append(name, shifts);
         if (person.completed) button.classList.add("completed");
+        if (person.off_schedule) button.classList.add("off-schedule");
         button.onclick = () => { if (busy || person.completed) return; selected.has(person.afm) ? selected.delete(person.afm) : selected.add(person.afm); action = null; render(); };
         grid.append(button);
       }
       section.append(title, grid); $("roster").append(section);
     }
-    if (!groups.size) $("roster").textContent = people.length ? "Δεν βρέθηκαν αποτελέσματα." : "Δεν υπάρχουν εργαζόμενοι με ώρες στο σημερινό πρόγραμμα.";
+    if (!groups.size) $("roster").textContent = query
+      ? "Δεν βρέθηκαν αποτελέσματα."
+      : "Κανείς με ώρες στο σημερινό πρόγραμμα. Αναζητήστε όνομα για χτύπημα εκτός προγράμματος.";
     controls();
   }
   async function load() {
@@ -74,7 +82,8 @@
     people = data.employees; storeId = data.store.id; day = data.date;
     $("store").value = String(storeId);
     $("date").textContent = new Intl.DateTimeFormat("el-GR", {dateStyle:"full"}).format(new Date(day + "T12:00:00"));
-    $("total").textContent = `${people.length} άτομα · Ανά ειδικότητα`;
+    const scheduled = people.filter(p => !p.off_schedule).length;
+    $("total").textContent = `${scheduled} άτομα στο πρόγραμμα · ${people.length - scheduled} με αναζήτηση`;
     $("sync").textContent = data.synced_at ? `Τελευταίος συγχρονισμός προγράμματος: ${data.synced_at}` : "";
     message(""); render();
   }
