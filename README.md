@@ -14,6 +14,8 @@ python run.py
 
 ## Τεκμηρίωση
 
+- [Mobile portal εντολών](docs/MOBILE_PORTAL.md): `/mobile`, επιλογή προσωπικού και χτυπήματα από κινητό.
+
 - [Project state](docs/PROJECT_STATE.md): τρέχουσα εικόνα εφαρμογής και βασικές ροές.
 - [Access control](docs/ACCESS_CONTROL.md): ρόλοι/δικαιώματα (π.χ. λογιστής: Αργίες + Απολογιστικό στις Ρυθμίσεις).
 - [Architecture](docs/ARCHITECTURE.md): πώς χωρίζονται routes, services, repos, UI και sync.

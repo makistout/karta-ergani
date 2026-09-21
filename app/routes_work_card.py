@@ -969,12 +969,13 @@ def work_card_list():
 
 
 @work_card_bp.post("/submit")
-def work_card_submit_office():
+def work_card_submit_office(body=None):
     """Υποβολή κάρτας από UI γραφείου (ενεργό κατάστημα + session bearer)."""
     ctx = resolve_active_store()
     if not ctx:
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
-    body = request.get_json(silent=True)
+    if body is None:
+        body = request.get_json(silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "Αναμενόταν JSON"}), 400
 

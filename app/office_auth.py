@@ -244,7 +244,7 @@ def register_login_guard(app: Flask) -> None:
                 "error": "Απαιτείται σύνδεση",
                 "login": "/ui/login",
             }), 401
-        if path == "/" or path.startswith("/ui/"):
+        if path == "/" or path.startswith("/ui/") or path.rstrip("/") == "/mobile":
             next_path = request.full_path.rstrip("?") if request.query_string else path
             if next_path.startswith("/ui/login"):
                 return None

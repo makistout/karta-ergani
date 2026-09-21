@@ -410,6 +410,10 @@ def permission_for_path(path: str, method: str) -> str | None:
     if len(norm) > 1 and norm.endswith("/"):
         norm = norm.rstrip("/")
     verb = (method or "GET").upper()
+    if norm == "/mobile" or norm == "/api/mobile/roster":
+        return "work_card.view"
+    if norm == "/api/mobile/submit":
+        return "work_card.submit_live"
     if norm.startswith("/ui/") or norm == "/ui":
         return UI_PERMISSIONS.get(norm if norm != "/ui" else "/ui/")
     for rule in API_RULES:

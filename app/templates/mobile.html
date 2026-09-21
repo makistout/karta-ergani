@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#142d2a">
+  <title>Εντολές προσωπικού · erganiOS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css', v='20260921') }}">
+  <script defer src="{{ url_for('static', filename='js/mobile.js', v='20260921') }}"></script>
+</head>
+<body>
+  <header><div class="brand">ergani<span>OS</span> <small> MOBILE</small></div><button id="logout" class="quiet">Έξοδος</button></header>
+  <main>
+    <p class="eyebrow">PORTAL ΕΝΤΟΛΩΝ</p>
+    <h1>Η ομάδα σήμερα</h1>
+    <p id="date" class="muted"></p>
+    <label for="store">Κατάστημα</label>
+    <select id="store"><option value="">Επιλέξτε κατάστημα</option></select>
+    <div class="tools"><span id="total">Προσωπικό ανά πόστο / ειδικότητα</span><button id="refresh" class="quiet">Ανανέωση ↻</button></div>
+    <label class="sr-only" for="search">Αναζήτηση ονόματος ή ειδικότητας</label>
+    <input id="search" type="search" placeholder="Αναζήτηση ονόματος ή ειδικότητας…" autocomplete="off">
+    <p id="message" role="status" aria-live="polite"></p>
+    <div id="roster"></div>
+    <p id="sync" class="muted note"></p>
+    <p class="muted note">Εμφανίζεται το αποθηκευμένο σημερινό πρόγραμμα. Ελέγξτε τις επιλογές σας πριν από την υποβολή.</p>
+    <ol id="results" aria-live="polite"></ol>
+  </main>
+  <footer>
+    <div class="selection"><strong id="selected">0 επιλεγμένοι</strong><button id="clear" class="quiet">Καθαρισμός</button></div>
+    <div id="times" hidden><div class="selection"><strong id="actionLabel"></strong><button id="cancel" class="quiet">Ακύρωση</button></div><div class="time-grid"><button data-minutes="0">Τώρα</button><button data-minutes="5">Πριν 5′</button><button data-minutes="10">Πριν 10′</button></div></div>
+    <div class="actions"><button id="open" class="open" disabled>↗ Άνοιγμα</button><button id="close" class="close" disabled>↙ Κλείσιμο</button></div>
+  </footer>
+</body>
+</html>
