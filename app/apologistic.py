@@ -1159,6 +1159,17 @@ def build_weekly_report(
                     bands["classification_warning"] = "Διευθέτηση χρόνου εργασίας: απαιτείται έλεγχος περιόδου αναφοράς και ορίου 10 ωρών"
                 elif contract_flags["uneven_distribution"]:
                     bands["classification_warning"] = "Ανισομερής κατανομή: απαιτείται επιβεβαίωση της νόμιμης βάσης και του εβδομαδιαίου συνόλου"
+        if missing_start or missing_end:
+            # An imputed boundary can rebuild the proposed/recognized schedule,
+            # but it is not evidence of extra work beyond that schedule.
+            for field in (
+                "overwork_minutes", "overtime_minutes",
+                "undeclared_extra_minutes", "unlawful_overtime_minutes",
+            ):
+                bands[field] = 0
+            bands["classification_warning"] = (
+                "Ελλιπές χτύπημα: δεν ταξινομείται πρόσθετος χρόνος από τεκμαρτό όριο"
+            )
         if len(work_slots) > 1 and status == "change" and proposed == declared_label and bands["overtime_minutes"] == 0:
             status, reason, rule_id = "ok", "Το πραγματικό σπαστό συμφωνεί με το δηλωμένο", "SPLIT_COMPLIANT"
         if status == "ok" and bands["overtime_minutes"] > 0:

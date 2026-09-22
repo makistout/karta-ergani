@@ -3,16 +3,18 @@
 (τελευταία calculation_version).
 
 Στήλες (6 + 2):
-  Αναγνωρισμένο από / έως  (= πρόταση ωραρίου `proposed`)
+  Αναγνωρισμένο από / έως  (= canonical `basis_label`)
   Υπερεργασία από / έως
   Υπερωρία από / έως
-  Χτύπημα από / έως        (= πραγματικά χτυπήματα `punch_recorded`,
-                             και με κενό όριο όταν λείπει είσοδος/έξοδος)
+  Χτύπημα από / έως        (= χτύπημα έναρξης / λήξης εργασίας:
+                             πρώτη πλήρης είσοδος και τελευταία πλήρης έξοδος,
+                             όχι το αναγνωρισμένο ωράριο)
 """
 from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -20,8 +22,12 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from app.apologistic_snapshot import CALCULATION_VERSION
 from app.db import cursor
+from app.timekeeping import build_day_interval_projection
 
 _CLOCK_PART = re.compile(
     r"(?<!\d)(\d{1,2}:\d{2})\s*[\u2013\u2014\-–]\s*(\d{1,2}:\d{2})\*?",
@@ -87,22 +93,22 @@ def _parse_punch_parts(recorded: str) -> list[tuple[str | None, str | None]]:
     return parts
 
 
-def _overwork_range(
-    *,
-    proposed_parts: list[tuple[str, str]],
-    overwork_minutes: int,
-    overtime_from: str | None,
-) -> tuple[str, str] | None:
-    minutes = int(overwork_minutes or 0)
-    if minutes <= 0:
-        return None
-    ot_from = _norm_hm(overtime_from)
-    if ot_from:
-        return _from_min(_to_min(ot_from) - minutes), ot_from
-    if not proposed_parts:
-        return None
-    end = proposed_parts[-1][1]
-    return end, _from_min(_to_min(end) + minutes)
+def _opening_closing_punch(
+    parts: list[tuple[str | None, str | None]],
+) -> tuple[str | None, str | None]:
+    """Start/end punches used as work opening and closing.
+
+    Among many card rows, a complete pair (both sides) is the work punch.
+    An orphan incomplete row is not the opening/closing punch.  If the day
+    has only an incomplete row, the missing side stays empty.
+    This is not the recognized/basis interval.
+    """
+    complete = [(start, end) for start, end in parts if start and end]
+    if complete:
+        return complete[0][0], complete[-1][1]
+    if not parts:
+        return None, None
+    return parts[0][0], parts[-1][1]
 
 
 def _load_days(version: str) -> list[dict]:
@@ -152,19 +158,44 @@ def _collect(
     punches: set[tuple[str, str]] = set()
     detail: list[dict] = []
 
-    for day in days:
-        parts = _parse_schedule_parts(str(day.get("proposed") or ""))
+    for source_day in days:
+        day = dict(source_day)
+        if "basis_label" not in day or "overwork_interval" not in day:
+            if str(day.get("status") or "").lower() == "review":
+                # Review rows have no finalized canonical timekeeping basis.
+                # Keep recognized/overwork empty instead of falling back to proposed.
+                day.update({
+                    "basis_label": "",
+                    "recognized_interval": "",
+                    "overwork_interval": "",
+                    "overwork_from": None,
+                    "overwork_to": None,
+                })
+            else:
+                canonical = build_day_interval_projection(day)
+                day.update({
+                    "basis_label": canonical.get("basis_label"),
+                    "recognized_interval": canonical.get("recognized_interval"),
+                    "overwork_interval": canonical.get("overwork_interval"),
+                    "overwork_from": canonical.get("overwork_from"),
+                    "overwork_to": canonical.get("overwork_to"),
+                })
+        parts = _parse_schedule_parts(str(day.get("basis_label") or ""))
         for start, end in parts:
             schedules.add((start, end))
 
         punch_parts = _parse_punch_parts(str(day.get("punch_recorded") or ""))
-        for start, end in punch_parts:
-            punches.add((start or "", end or ""))
+        punch_from, punch_to = _opening_closing_punch(punch_parts)
+        if punch_from or punch_to:
+            punches.add((punch_from or "", punch_to or ""))
 
-        ow = _overwork_range(
-            proposed_parts=parts,
-            overwork_minutes=int(day.get("overwork_minutes") or 0),
-            overtime_from=day.get("overtime_from"),
+        overwork_parts = _parse_schedule_parts(str(day.get("overwork_interval") or ""))
+        ow_from = _norm_hm(day.get("overwork_from"))
+        ow_to = _norm_hm(day.get("overwork_to"))
+        ow = (
+            (ow_from, ow_to) if ow_from and ow_to
+            else (overwork_parts[0][0], overwork_parts[-1][1])
+            if overwork_parts else None
         )
         if ow:
             overworks.add(ow)
@@ -190,11 +221,12 @@ def _collect(
                 "name": f"{day.get('eponymo') or ''} {day.get('onoma') or ''}".strip(),
                 "work_date": day.get("work_date"),
                 "proposed": day.get("proposed"),
+                "basis_label": day.get("basis_label"),
                 "punch_recorded": day.get("punch_recorded"),
                 "sched_from": parts[0][0] if parts else None,
                 "sched_to": parts[-1][1] if parts else None,
-                "punch_from": punch_parts[0][0] if punch_parts else None,
-                "punch_to": punch_parts[-1][1] if punch_parts else None,
+                "punch_from": punch_from,
+                "punch_to": punch_to,
                 "ow_from": ow[0] if ow else None,
                 "ow_to": ow[1] if ow else None,
                 "ot_from": ot_from if ot_from and ot_to else None,
@@ -289,12 +321,14 @@ def build_workbook(
     meta["B8"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     meta["A10"] = "Σημείωση"
     meta["B10"] = (
-        "Αναγνωρισμένο = πρόταση ωραρίου (proposed). "
-        "Υπερεργασία: αν υπάρχει υπερωρία → [υπερωρία_από − λεπτά υπερεργασίας, υπερωρία_από]· "
-        "αλλιώς → [λήξη πρότασης, λήξη + λεπτά]. "
+        "Αναγνωρισμένο = canonical basis_label της ωρομέτρησης. "
+        "Υπερεργασία = canonical overwork_interval της ωρομέτρησης. "
+        "Η πρόταση (proposed) εμφανίζεται μόνο στη χωριστή στήλη Πρόταση. "
         "Υπερωρία = overtime_from/to του απολογιστικού. "
-        "Χτύπημα = πραγματικά χτυπήματα κάρτας (punch_recorded), πλήρη ή ημιτελή "
-        "(κενό όριο όταν λείπει είσοδος/έξοδος — όπως το ρολόι στο UI)."
+        "Χτύπημα από/έως = χτύπημα έναρξης και λήξης εργασίας: πρώτη πλήρης "
+        "είσοδος και τελευταία πλήρης έξοδος στα καταγεγραμμένα χτυπήματα. "
+        "Ορφανή ημιτελής γραμμή αγνοείται. Δεν είναι το αναγνωρισμένο ωράριο. "
+        "Κενό όριο μόνο όταν όλη η ημέρα έχει μόνο είσοδο ή μόνο έξοδο."
     )
     meta.column_dimensions["A"].width = 28
     meta.column_dimensions["B"].width = 100
@@ -342,7 +376,7 @@ def main() -> Path:
         schedules, overworks, overtimes, punches, detail,
         version=version, day_count=len(days),
     )
-    out_dir = Path(__file__).resolve().parents[1] / "data"
+    out_dir = ROOT / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
     out_path = out_dir / f"apologistic_oraria_katalogos_{stamp}.xlsx"

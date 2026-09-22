@@ -653,7 +653,11 @@ def test_missing_entry_with_extra_minutes_rebuilds_backwards_without_overtime():
     assert row["proposed"] == "13:05–21:05"
     assert row["status"] == "change"
     assert row["rule_id"] == "MISSING_ENTRY_EXTRA_BACKWARD"
+    assert row["overwork_minutes"] == 0
     assert row["overtime_minutes"] == 0
+    assert row["undeclared_extra_minutes"] == 0
+    assert row["unlawful_overtime_minutes"] == 0
+    assert "Ελλιπές χτύπημα" in row["classification_warning"]
     assert row["overtime_segments"] == []
 
 

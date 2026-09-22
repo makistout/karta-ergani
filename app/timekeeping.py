@@ -347,6 +347,77 @@ def _display_interval(start: datetime, end: datetime) -> str:
     return f"{start:%H:%M}–{end:%H:%M}{suffix}"
 
 
+def _timeline_bounds(timeline: list[datetime]) -> tuple[datetime, datetime] | None:
+    if not timeline:
+        return None
+    return timeline[0], timeline[-1] + timedelta(minutes=1)
+
+
+def _clock_field(moment: datetime, work_date: str) -> str:
+    base = _work_date(work_date)
+    day_offset = (moment.date() - base).days
+    suffix = f" (+{day_offset})" if day_offset > 0 else ""
+    return f"{moment:%H:%M}{suffix}"
+
+
+def _expose_canonical_intervals(
+    day: dict[str, Any], overwork_timeline: list[datetime],
+) -> None:
+    """Expose the canonical clock spans without rebuilding them from proposed."""
+    work_date = str(day.get("work_date") or "")
+    recognized_bounds = _timeline_bounds(day.get("_visible_basis_timeline") or [])
+    overwork_bounds = _timeline_bounds(overwork_timeline)
+    day["recognized_interval"] = str(day.get("basis_label") or "")
+    day["recognized_from"] = (
+        _clock_field(recognized_bounds[0], work_date) if recognized_bounds else None
+    )
+    day["recognized_to"] = (
+        _clock_field(recognized_bounds[1], work_date) if recognized_bounds else None
+    )
+    day["overwork_interval"] = (
+        _display_interval(*overwork_bounds) if overwork_bounds else ""
+    )
+    day["overwork_from"] = (
+        _clock_field(overwork_bounds[0], work_date) if overwork_bounds else None
+    )
+    day["overwork_to"] = (
+        _clock_field(overwork_bounds[1], work_date) if overwork_bounds else None
+    )
+    day["overwork_contiguous_with_recognized"] = (
+        recognized_bounds is not None
+        and overwork_bounds is not None
+        and recognized_bounds[1] == overwork_bounds[0]
+    ) if int(day.get("overwork_minutes") or 0) > 0 else None
+    if (
+        int(day.get("overwork_minutes") or 0) > 0
+        and day["overwork_contiguous_with_recognized"] is not True
+    ):
+        day["warnings"].append(
+            "Ασυνέχεια canonical διαστημάτων: η υπερεργασία δεν αρχίζει στη λήξη του αναγνωρισμένου ωραρίου"
+        )
+
+
+def build_day_interval_projection(
+    row: dict[str, Any], *, holidays: set[date] | None = None,
+    sunday_work_enabled: bool = False,
+) -> dict[str, Any]:
+    """Project one retrospective row to the canonical recognized/overwork spans."""
+    holiday_dates = set(holidays or set())
+    day = build_recognized_day(
+        row, holiday_dates, sunday_work_enabled=sunday_work_enabled
+    )
+    overtime = max(0, int(row.get("overtime_minutes") or 0))
+    overtime_timeline = _overtime_timeline(row, day["work_date"])
+    if len(overtime_timeline) > overtime:
+        overtime_timeline = overtime_timeline[:overtime]
+    overwork_timeline = _overwork_timeline(row, day, overtime_timeline)
+    _expose_canonical_intervals(day, overwork_timeline)
+    day.pop("_recognized_timeline", None)
+    day.pop("_visible_basis_timeline", None)
+    day.pop("_premium_holidays", None)
+    return day
+
+
 def _tail_interval_labels(
     timeline: list[datetime], minutes: int, *, tail_offset: int = 0,
 ) -> list[str]:
@@ -501,6 +572,7 @@ def build_recognized_day(
         "overwork_minutes": int(row.get("overwork_minutes") or 0),
         "unlawful_overtime_minutes": int(row.get("unlawful_overtime_minutes") or 0),
         "_recognized_timeline": recognized_timeline,
+        "_visible_basis_timeline": visible_basis_timeline,
     }
 
 
@@ -582,6 +654,7 @@ def build_timekeeping_report(
         overwork_timeline = _overwork_timeline(source, day, overtime_timeline)
         day["_overtime_timeline"] = overtime_timeline
         day["_overwork_timeline"] = overwork_timeline
+        _expose_canonical_intervals(day, overwork_timeline)
         day["overwork_breakdown"] = _categorize_timeline(overwork_timeline, holiday_dates)
         if day["overwork_minutes"] and len(overwork_timeline) < day["overwork_minutes"]:
             day["warnings"].append(
@@ -909,6 +982,7 @@ def build_timekeeping_report(
 
     for day in days:
         day.pop("_recognized_timeline", None)
+        day.pop("_visible_basis_timeline", None)
         day.pop("_premium_holidays", None)
         day.pop("_partial_overtime_120_breakdown", None)
         day.pop("_exception_base_breakdown", None)
@@ -916,7 +990,7 @@ def build_timekeeping_report(
         day.pop("_overwork_timeline", None)
 
     return {
-        "calculation_version": "timekeeping-v12-catering-sixth-above-48",
+        "calculation_version": "timekeeping-v13-canonical-intervals",
         "days": days,
         "employees": sorted(employee_totals.values(), key=lambda item: (item["eponymo"], item["onoma"], item["employee_afm"])),
         "counts": {"days": len(days), "employees": len(employee_totals)},

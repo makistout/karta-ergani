@@ -1,8 +1,8 @@
 # Λογικά διαγράμματα απολογιστικού και ωρομέτρησης
 
-Έκδοση διαγραμμάτων rules-8ad1bc0c3c981837 · Απολογιστικό 2026-09-16.clean-from-jun1 · Ωρομέτρηση timekeeping-v12-catering-sixth-above-48
+Έκδοση διαγραμμάτων rules-16d0fa7237e03d9e · Απολογιστικό 2026-09-22.canonical-single-boundary · Ωρομέτρηση timekeeping-v13-canonical-intervals
 
-- Τα διαγράμματα αποτυπώνουν την εφαρμογή στην έκδοση rules-8ad1bc0c3c981837 (έλεγχος 2026-09-20T13:30:43+00:00). Δεν αποτελούν ανεξάρτητη ερμηνεία της εργατικής νομοθεσίας.
+- Τα διαγράμματα αποτυπώνουν την εφαρμογή στην έκδοση rules-16d0fa7237e03d9e (έλεγχος 2026-09-22T12:46:27+00:00). Δεν αποτελούν ανεξάρτητη ερμηνεία της εργατικής νομοθεσίας.
 - Σ = σύμφωνο, Μ = μεταβολή, Ε = έλεγχος. Οι ημερήσιοι κανόνες εκτελούνται κατά προτεραιότητα. Το πρώτο ταίριασμα της επιλεγμένης διαδρομής δίνει απόφαση, την οποία μπορούν να αντικαταστήσουν οι μετα-κανόνες.
 - Πραγματικό/καθαρό/δηλωμένο δεν είναι συνώνυμα. Η πραγματική μικτή διάρκεια και το περίβλημα που τροφοδοτεί την υπερωρία μπορεί να διαφέρουν σε πολλαπλά χτυπήματα.
 - Τα W- και A- IDs είναι αναγνωριστικά αυτής της τεκμηρίωσης. Τα κεφαλαία ονόματα με underscores είναι rule_id ή οι ρητά σημειωμένοι υπο-κανόνες του έργου.
@@ -93,7 +93,7 @@ flowchart TD
 - [A-BREAK — Καθαρή διάρκεια απολογιστικού](#a-break)
 - [A-MULTI — Πολλαπλά χτυπήματα](#a-multi)
 - [A-OVERNIGHT — Αλλαγή ημερομηνίας](#a-overnight)
-- [A-INFERRED-OT — Ελλιπές χτύπημα και υπερωρία](#a-inferred-ot)
+- [A-INFERRED-OT — Ελλιπές χτύπημα και πρόσθετος χρόνος](#a-inferred-ot)
 - [A-EXTRA-FULL — Πρόσθετος χρόνος πλήρους](#a-extra-full)
 - [A-EXTRA-ROTATION — Πρόσθετος χρόνος εκ περιτροπής](#a-extra-rotation)
 - [A-EXTRA-PARTIAL — Πρόσθετος χρόνος μερικής](#a-extra-partial)
@@ -118,6 +118,8 @@ flowchart TD
 - [W-OT-DAILY — Υπερωρία πάνω από 4 ώρες](#w-ot-daily)
 - [W-OT-ANNUAL — Ετήσιο όριο 150 ωρών](#w-ot-annual)
 - [W-EXTRA-ZONES — Ζώνες υπερεργασίας και υπερωρίας](#w-extra-zones)
+- [W-CANONICAL-INTERVALS — Canonical διαστήματα εξόδου](#w-canonical-intervals)
+- [W-OVERWORK-CONTINUITY — Συνέχεια αναγνωρισμένου και υπερεργασίας](#w-overwork-continuity)
 - [W-ACTUAL-FLOOR — Διατήρηση πραγματικών προσαυξήσεων](#w-actual-floor)
 - [W-SIXTH — Χαρακτηρισμός 6ης ημέρας](#w-sixth)
 - [W-SEVENTH — 7 αναγνωρισμένες ημέρες](#w-seventh)
@@ -425,7 +427,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1165](../app/apologistic.py#L1165)
+Πηγή: [app/apologistic.py:1176](../app/apologistic.py#L1176)
 
 ```mermaid
 flowchart TD
@@ -439,7 +441,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1167](../app/apologistic.py#L1167)
+Πηγή: [app/apologistic.py:1178](../app/apologistic.py#L1178)
 
 ```mermaid
 flowchart TD
@@ -455,7 +457,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1214](../app/apologistic.py#L1214)
+Πηγή: [app/apologistic.py:1225](../app/apologistic.py#L1225)
 
 ```mermaid
 flowchart TD
@@ -499,7 +501,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1186](../app/apologistic.py#L1186)
+Πηγή: [app/apologistic.py:1197](../app/apologistic.py#L1197)
 
 ```mermaid
 flowchart TD
@@ -515,7 +517,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1191](../app/apologistic.py#L1191)
+Πηγή: [app/apologistic.py:1202](../app/apologistic.py#L1202)
 
 ```mermaid
 flowchart TD
@@ -531,7 +533,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1392](../app/apologistic.py#L1392)
+Πηγή: [app/apologistic.py:1403](../app/apologistic.py#L1403)
 
 ```mermaid
 flowchart TD
@@ -593,7 +595,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1163](../app/apologistic.py#L1163)
+Πηγή: [app/apologistic.py:1174](../app/apologistic.py#L1174)
 
 ```mermaid
 flowchart TD
@@ -707,7 +709,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1451](../app/apologistic.py#L1451)
+Πηγή: [app/apologistic.py:1462](../app/apologistic.py#L1462)
 
 ```mermaid
 flowchart TD
@@ -723,7 +725,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1452](../app/apologistic.py#L1452)
+Πηγή: [app/apologistic.py:1463](../app/apologistic.py#L1463)
 
 ```mermaid
 flowchart TD
@@ -797,20 +799,20 @@ flowchart TD
 Για τεκμαιρόμενο wrap το όριο είναι 13/12 ώρες κατά σύμβαση. Με ρητή ένδειξη μπορεί να γίνει δεκτό μεγαλύτερο διάστημα και να σημανθεί αργότερα για έλεγχο.
 
 <a id="a-inferred-ot"></a>
-## A-INFERRED-OT — Ελλιπές χτύπημα και υπερωρία
+## A-INFERRED-OT — Ελλιπές χτύπημα και πρόσθετος χρόνος
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:134](../app/apologistic.py#L134)
+Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
 
 ```mermaid
 flowchart TD
-  A["Είσοδος στη συγκεκριμένη διαδρομή"] --> B{"Υπάρχει μόνο ένα τεκμαρτό ζεύγος και κανένα πλήρες πραγματικό;"}
-  B -->|Ναι| C["Το σημερινό fallback υπερωρίας χρησιμοποιεί τα matched όρια. Έλεγχος της πρότασης και πιθανό κόψιμο τεκμαρτής λήξης."]
-  B -->|Όχι| D["Με πλήρη πραγματικά ζεύγη χρησιμοποιείται το αντίστοιχο περίβλημα υπερωρίας."]
+  A["Είσοδος στη συγκεκριμένη διαδρομή"] --> B{"Λείπει η πραγματική είσοδος ή η πραγματική έξοδος;"}
+  B -->|Ναι| C["Μηδενισμός υπερεργασίας, υπερωρίας, αδήλωτου πρόσθετου χρόνου και παράνομης υπερωρίας. Η πρόταση/αναγνωρισμένη βάση μπορεί να ανακατασκευαστεί από το τεκμαρτό όριο."]
+  B -->|Όχι| D["Με πλήρη πραγματικά όρια εφαρμόζεται ο κανονικός χαρακτηρισμός πρόσθετου χρόνου."]
 ```
 
-Η τεκμηρίωση δηλώνει γενικά «ελλιπές χτύπημα χωρίς υπερωρία». Ο κώδικας δεν έχει καθολικό μηδενισμό: υπάρχει fallback στα matched όρια. Δεν παρουσιάζεται ως εγγυημένος καθολικός κανόνας.
+Το τεκμαρτό όριο δεν αποτελεί απόδειξη εργασίας πέρα από την ανακατασκευασμένη αναγνωρισμένη βάση.
 
 <a id="a-extra-full"></a>
 ## A-EXTRA-FULL — Πρόσθετος χρόνος πλήρους
@@ -941,7 +943,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1061,7 +1063,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:394](../app/timekeeping.py#L394)
+Πηγή: [app/timekeeping.py:406](../app/timekeeping.py#L406)
 
 ```mermaid
 flowchart TD
@@ -1077,7 +1079,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:394](../app/timekeeping.py#L394)
+Πηγή: [app/timekeeping.py:406](../app/timekeeping.py#L406)
 
 ```mermaid
 flowchart TD
@@ -1125,7 +1127,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1141,7 +1143,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:507](../app/timekeeping.py#L507)
+Πηγή: [app/timekeeping.py:579](../app/timekeeping.py#L579)
 
 ```mermaid
 flowchart TD
@@ -1157,7 +1159,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:507](../app/timekeeping.py#L507)
+Πηγή: [app/timekeeping.py:579](../app/timekeeping.py#L579)
 
 ```mermaid
 flowchart TD
@@ -1173,7 +1175,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1183,6 +1185,38 @@ flowchart TD
 ```
 
 Υπερωρία από overtime_segments ή from/to. ΥΕ ακριβώς πριν από την υπερωρία· αλλιώς μετά τη βάση ή από fallback έναρξης/βάσης.
+
+<a id="w-canonical-intervals"></a>
+## W-CANONICAL-INTERVALS — Canonical διαστήματα εξόδου
+
+**Ωρομέτρηση · Ενεργός**
+
+Πηγή: [app/timekeeping.py:363](../app/timekeeping.py#L363)
+
+```mermaid
+flowchart TD
+  A["Ολοκληρωμένο απολογιστικό / αντίστοιχη διαδρομή"] --> B{"Ολοκληρώθηκε η χρονική τοποθέτηση αναγνωρισμένης βάσης και υπερεργασίας;"}
+  B -->|Ναι| C["Έκθεση recognized_interval/basis_label και overwork_interval/from/to από τα ίδια εσωτερικά timelines."]
+  B -->|Όχι| D["Κενά canonical πεδία για ανύπαρκτο διάστημα."]
+```
+
+Το proposed δεν χρησιμοποιείται για να ανακατασκευαστεί το αναγνωρισμένο ή η υπερεργασία από exporter.
+
+<a id="w-overwork-continuity"></a>
+## W-OVERWORK-CONTINUITY — Συνέχεια αναγνωρισμένου και υπερεργασίας
+
+**Ωρομέτρηση · Ενεργός**
+
+Πηγή: [app/timekeeping.py:363](../app/timekeeping.py#L363)
+
+```mermaid
+flowchart TD
+  A["Ολοκληρωμένο απολογιστικό / αντίστοιχη διαδρομή"] --> B{"overwork_minutes &gt; 0;"}
+  B -->|Ναι| C["Σύγκριση datetime: λήξη τελευταίου αναγνωρισμένου διαστήματος = έναρξη υπερεργασίας. Ασυνέχεια → warning."]
+  B -->|Όχι| D["Δεν απαιτείται έλεγχος συνέχειας."]
+```
+
+Η σύγκριση παραμένει ορθή σε νυχτερινά διαστήματα και αλλαγή ημερομηνίας.
 
 <a id="w-actual-floor"></a>
 ## W-ACTUAL-FLOOR — Διατήρηση πραγματικών προσαυξήσεων
@@ -1205,7 +1239,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1221,7 +1255,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1237,7 +1271,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1253,7 +1287,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1269,7 +1303,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1285,7 +1319,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1299,7 +1333,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1315,7 +1349,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:378](../app/timekeeping.py#L378)
+Πηγή: [app/timekeeping.py:449](../app/timekeeping.py#L449)
 
 ```mermaid
 flowchart TD
@@ -1331,7 +1365,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1345,7 +1379,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1361,7 +1395,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1375,7 +1409,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD
@@ -1391,7 +1425,7 @@ flowchart TD
 
 **Ωρομέτρηση · Ενεργός**
 
-Πηγή: [app/timekeeping.py:523](../app/timekeeping.py#L523)
+Πηγή: [app/timekeeping.py:595](../app/timekeeping.py#L595)
 
 ```mermaid
 flowchart TD

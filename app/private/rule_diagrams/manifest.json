@@ -40,7 +40,89 @@
       "apologistic_version": "2026-09-16.clean-from-jun1",
       "timekeeping_version": "timekeeping-v12-catering-sixth-above-48",
       "count": 86
+    },
+    {
+      "id": "rules-d25c110d83fd2f6f",
+      "fingerprint": "d25c110d83fd2f6fe15998d4925c18874c608f57d6f8710aa3965863fb13c607",
+      "files": {
+        "app/apologistic_rules.py": "255b952250866f9cbac9e556a862fe72e79c1ab6de8128110e23811f50c7f0b8",
+        "app/apologistic.py": "10f80a76c16c407cfb2c4253971c33dfc2014467f8796ba28b68c2b1b09d8ed3",
+        "app/timekeeping.py": "75f26947a9fce7f13968b6934a191296d5b6c1f6872b049517cae9d867660c7a",
+        "app/apologistic_snapshot.py": "64f037d97ee06b1c21bcf9d770973697006c31f0e9e8979d87dbe7e4432110d2",
+        "app/repo_apologistic.py": "f5b52feebf4cb6d0adb4ac8075cc995aed610141c0f21a4f7b900d81295f36ec",
+        "app/routes_apologistic.py": "7a6b2aa683f7a0466ab58a8855c4307e072f10ec9836e68345ed8f222d0a30fa",
+        "app/apologistic_submit.py": "fd2afa476ad70883af5a1e458f052d2a46508b45d29df99fa3248047ed348aa3",
+        "app/apologistic_batch_submit.py": "af44fb34d3fde61321d67090f906aeb5bfedb37d89317401a349fbd2562f82e6",
+        "app/timekeeping_export.py": "589e3410230d04df9028cd7769a763802e62cfe0324a6c16d417ec946c22092a",
+        "docs/APOLOGISTIKO_RULES_CATALOG.md": "a1862f5a8c2131b56dd979a51c6f3b79a6eaca24311a13aa17709419582208b1",
+        "docs/APOLOGISTIKO_LOGIC.md": "6a0e1d0808373051336458c65b7f7e141b94ca5905e94060603ccca5e335f2e8",
+        "scripts/render_rule_document.py": "6ffb332331a0e149d12b0b308e1e400ae3f9f12633dd2707b26dd18cf0272171",
+        "documentation/Μηχανισμός Απολογιστικού - Προς Έλεγχο Εργατολόγου.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "deliverables/rule_diagrams/build_diagrams.py": "9d717da5814410d1036c087f6a93b633a7d0ef64ce35c1010a24dfb38e68aa8f",
+        "deliverables/rule_diagrams/viewer.template.html": "a38e1202a85df1fec52899d347bb5dfd81d607e30dcb1b9d38ea1dba67197521",
+        "scripts/build_rule_diagrams.py": "48b203e3fe9bbe6c9c5491d2a40b0a63d09847f92c54e0a493b1f7fb8ea531fa",
+        "app/rule_diagram_versions.py": "a55ba8dae543a5c2cbc7a1a7734288fd6f5ac9d491eaf2b604ed4e7f946b7125"
+      },
+      "artifacts": {
+        "index.html": "50b8959740c5550d66e41813dbf6c3d5aab9b8c82a239fbdc5a7d45eb00c5d49",
+        "rules.json": "5fc38b86b3ea7475f86aa616ac4de72dd3f089bb59c7a6b80bb6c546ae3b8955",
+        "flowcharts.md": "631f0341b6911beb21f32d99b105a3c93002aef1f15fde9c49de032e2c1cd17a",
+        "catalog.md": "8d511b9249336061ecd98e8d768452cb098b183bf573cfeaa55c57dea9b879b7",
+        "catalog.html": "ac809d3f39882ee8394fc3d3d430ed7f8cc7e62757b645d3eab09d877cd4c864",
+        "logic.md": "89d07bc5386f242bd644b43c3a29cb5855ed4ea8891bab0acfcb006d96185281",
+        "logic.html": "a3c5af5c223dc6cfb5831fd49bd877d0d36cc74b02ad7260c2b8223c4eb87820",
+        "notes.html": "b4f398c174dd607b670b9703696664b0f480c3792a7c02bdb46e123a731c4510",
+        "overview.html": "04b71749aa7c7f578ea6d32f32a7ef66a61add9ee0472a0fcb1c80c2cfe5823c",
+        "legal-review.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "complete.zip": "a22ac1ce5587e76abb20a96ade15f91baa04f5a830403efbb0c4309336e49c24"
+      },
+      "reviewed_at": "2026-09-22T12:39:51+00:00",
+      "source_commit": "00e1c8e52307e68ae6d132a0830b9629b7a3b32f",
+      "apologistic_version": "2026-09-22.canonical-intervals-single-boundary",
+      "timekeeping_version": "timekeeping-v13-canonical-intervals",
+      "count": 88
+    },
+    {
+      "id": "rules-16d0fa7237e03d9e",
+      "fingerprint": "16d0fa7237e03d9ed5e20f49031e536c919eae43089b5ffa818a4ae0f92f5cef",
+      "files": {
+        "app/apologistic_rules.py": "255b952250866f9cbac9e556a862fe72e79c1ab6de8128110e23811f50c7f0b8",
+        "app/apologistic.py": "10f80a76c16c407cfb2c4253971c33dfc2014467f8796ba28b68c2b1b09d8ed3",
+        "app/timekeeping.py": "75f26947a9fce7f13968b6934a191296d5b6c1f6872b049517cae9d867660c7a",
+        "app/apologistic_snapshot.py": "7a1268bec658e916e8b3bc88e181b7968042b3c7708ea70d4a04eb2dc91ba0da",
+        "app/repo_apologistic.py": "f5b52feebf4cb6d0adb4ac8075cc995aed610141c0f21a4f7b900d81295f36ec",
+        "app/routes_apologistic.py": "7a6b2aa683f7a0466ab58a8855c4307e072f10ec9836e68345ed8f222d0a30fa",
+        "app/apologistic_submit.py": "fd2afa476ad70883af5a1e458f052d2a46508b45d29df99fa3248047ed348aa3",
+        "app/apologistic_batch_submit.py": "af44fb34d3fde61321d67090f906aeb5bfedb37d89317401a349fbd2562f82e6",
+        "app/timekeeping_export.py": "589e3410230d04df9028cd7769a763802e62cfe0324a6c16d417ec946c22092a",
+        "docs/APOLOGISTIKO_RULES_CATALOG.md": "a1862f5a8c2131b56dd979a51c6f3b79a6eaca24311a13aa17709419582208b1",
+        "docs/APOLOGISTIKO_LOGIC.md": "6a0e1d0808373051336458c65b7f7e141b94ca5905e94060603ccca5e335f2e8",
+        "scripts/render_rule_document.py": "6ffb332331a0e149d12b0b308e1e400ae3f9f12633dd2707b26dd18cf0272171",
+        "documentation/Μηχανισμός Απολογιστικού - Προς Έλεγχο Εργατολόγου.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "deliverables/rule_diagrams/build_diagrams.py": "9d717da5814410d1036c087f6a93b633a7d0ef64ce35c1010a24dfb38e68aa8f",
+        "deliverables/rule_diagrams/viewer.template.html": "a38e1202a85df1fec52899d347bb5dfd81d607e30dcb1b9d38ea1dba67197521",
+        "scripts/build_rule_diagrams.py": "48b203e3fe9bbe6c9c5491d2a40b0a63d09847f92c54e0a493b1f7fb8ea531fa",
+        "app/rule_diagram_versions.py": "a55ba8dae543a5c2cbc7a1a7734288fd6f5ac9d491eaf2b604ed4e7f946b7125"
+      },
+      "artifacts": {
+        "index.html": "f5b38d3bdef7ad4143458234cc947cf3e4570d85615948b0031d706c89bf64f8",
+        "rules.json": "5fc38b86b3ea7475f86aa616ac4de72dd3f089bb59c7a6b80bb6c546ae3b8955",
+        "flowcharts.md": "87f0a89595b0168b29e76cc9146041bc453aeba07a13984ae8b2a37912d4c695",
+        "catalog.md": "8d511b9249336061ecd98e8d768452cb098b183bf573cfeaa55c57dea9b879b7",
+        "catalog.html": "4fa4a2bae688aaea2b7ed8f41555ccf89c463039b163ab0d2f107fed0917e4c2",
+        "logic.md": "89d07bc5386f242bd644b43c3a29cb5855ed4ea8891bab0acfcb006d96185281",
+        "logic.html": "d5c61a648f2d20f2b9d2fb42777df5165a812bdcc2df005b50e3849982e62270",
+        "notes.html": "ba2d608c2bb5757d03e955af3aa8611f7bd3751941ce318027571cd8dceba936",
+        "overview.html": "d235e686fc608474429a7c7c1223fe0cfe726a4e5090ec041d52a7d1a18e5ed3",
+        "legal-review.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "complete.zip": "1cd2312dc35a1b301a215ecba9fd46ca0b7843d054cc878eb0e24685c3e39731"
+      },
+      "reviewed_at": "2026-09-22T12:46:27+00:00",
+      "source_commit": "00e1c8e52307e68ae6d132a0830b9629b7a3b32f",
+      "apologistic_version": "2026-09-22.canonical-single-boundary",
+      "timekeeping_version": "timekeeping-v13-canonical-intervals",
+      "count": 88
     }
   ],
-  "current": "rules-8ad1bc0c3c981837"
+  "current": "rules-16d0fa7237e03d9e"
 }

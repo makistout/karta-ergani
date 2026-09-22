@@ -18,7 +18,7 @@ from app.repo_holidays import get_effective_holidays_for_store
 from app.repo_store import get_action_settings, get_sunday_rest_transfer_enabled
 from app.repo_work_log import list_work_log_for_range, normalize_overnight_work_log_rows
 
-CALCULATION_VERSION = "2026-09-16.clean-from-jun1"
+CALCULATION_VERSION = "2026-09-22.canonical-single-boundary"
 
 
 def generate_store_week(

@@ -103,6 +103,9 @@ def test_full_time_nine_hour_declaration_identical_to_punch_is_capped_before_ove
     assert day["recognized_uncapped_work_minutes"] == 540
     assert day["recognized_work_minutes"] == 480
     assert day["basis_label"] == "09:00–17:00"
+    assert day["recognized_to"] == day["overwork_from"] == "17:00"
+    assert day["overwork_interval"] == "17:00–18:00"
+    assert day["overwork_contiguous_with_recognized"] is True
     assert day["base_cap_applied_minutes"] == 60
     assert day["premium_minutes"]["day"] == 480
     assert day["overwork_breakdown"]["day"] == 60
@@ -142,6 +145,8 @@ def test_visible_full_time_cap_keeps_outside_break_extension():
     )])["days"][0]
     assert day["recognized_work_minutes"] == 480
     assert day["basis_label"] == "09:00–17:30"
+    assert day["recognized_to"] == day["overwork_from"] == "17:30"
+    assert day["overwork_interval"] == "17:30–18:00"
     assert day["recognized_span_minutes"] == 570
 
 
@@ -171,6 +176,8 @@ def test_exact_six_forty_declaration_uses_six_forty_cap_independent_of_contract_
 
     assert day["recognized_work_minutes"] == 400
     assert day["basis_label"] == "09:00–15:40"
+    assert day["recognized_to"] == day["overwork_from"] == "15:40"
+    assert day["overwork_interval"] == "15:40–17:00"
     assert day["overwork_breakdown"]["day"] == 80
     assert day["overtime_40_breakdown"]["day"] == 60
 
@@ -360,9 +367,13 @@ def test_recognized_basis_late_long_ending_after_declared_runs_forward():
     day = build_timekeeping_report([_row(
         declared="09:00–17:00", proposed="10:00–18:00",
         actual="10:00–18:30", status="change", flex_minutes=60,
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=30,
     )])["days"][0]
     assert day["basis_label"] == "10:00–18:00"
     assert day["recognized_basis_rule"] == "late_long_forward"
+    assert day["recognized_to"] == day["overwork_from"] == "18:00"
+    assert day["overwork_interval"] == "18:00–18:30"
 
 
 def test_recognized_basis_late_punch_ending_inside_declared_keeps_declaration():
@@ -381,6 +392,51 @@ def test_recognized_basis_overnight_uses_absolute_timeline():
     )])["days"][0]
     assert day["basis_label"] == "19:00–03:00 (+1)"
     assert day["recognized_basis_rule"] == "late_long_forward"
+
+
+def test_overnight_canonical_overwork_starts_at_recognized_end():
+    day = build_timekeeping_report([_row(
+        work_date="17/08/2026", declared="19:00–04:00",
+        proposed="19:00–04:00", actual="19:00–04:00",
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+    )])["days"][0]
+
+    assert day["basis_label"] == "19:00–03:00 (+1)"
+    assert day["recognized_to"] == day["overwork_from"] == "03:00 (+1)"
+    assert day["overwork_interval"] == "03:00–04:00"
+    assert day["overwork_contiguous_with_recognized"] is True
+
+
+def test_split_canonical_overwork_starts_at_last_recognized_end():
+    day = build_timekeeping_report([_row(
+        declared="09:00–13:00 · 17:00–22:00",
+        proposed="09:00–13:00 · 17:00–22:00",
+        actual="09:00–13:00 · 17:00–22:00",
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+    )])["days"][0]
+
+    assert day["basis_label"] == "09:00–13:00 · 17:00–21:00"
+    assert day["recognized_to"] == day["overwork_from"] == "21:00"
+    assert day["overwork_interval"] == "21:00–22:00"
+
+
+def test_canonical_interval_gap_is_reported_instead_of_silently_corrected():
+    day = build_timekeeping_report([_row(
+        declared="09:00–17:00", proposed="09:00–17:00",
+        contract_kind="Πλήρης", weekly_days=5,
+        daily_overtime_basis_minutes=480, overwork_minutes=60,
+        overtime_minutes=60,
+        overtime_segments=[{
+            "date": "17/08/2026", "from": "19:00", "to": "20:00", "minutes": 60,
+        }],
+    )])["days"][0]
+
+    assert day["basis_label"] == "09:00–17:00"
+    assert day["overwork_interval"] == "18:00–19:00"
+    assert day["overwork_contiguous_with_recognized"] is False
+    assert any("Ασυνέχεια canonical" in warning for warning in day["warnings"])
 
 
 def test_overnight_sunday_and_night_overlap_are_partitioned():
