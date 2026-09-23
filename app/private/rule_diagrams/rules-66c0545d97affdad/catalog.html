@@ -1,0 +1,549 @@
+<!doctype html><html lang="el"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Κατάλογος κανόνων</title><style>body{font:16px/1.65 system-ui,sans-serif;color:#19344b;background:#fff;margin:0;padding:24px;overflow-wrap:anywhere}main{max-width:1050px;margin:auto}h1{font-size:26px}h2{font-size:22px}h3{font-size:19px}.version{padding:16px;background:#edf4f8;border-left:4px solid #2874a0}.warning{padding:16px;background:#fff4d9}td{border:1px solid #d7e1e8;padding:8px;vertical-align:top}table{border-collapse:collapse;width:100%}.table-wrap{overflow:auto}pre{white-space:pre-wrap;background:#f4f6f8;padding:12px}code{font-size:.9em}@media print{body{padding:0}.table-wrap{overflow:visible}}</style><main><div class="version">Έκδοση αρχείου: rules-66c0545d97affdad</div><p class="warning">Ιστορική περιγραφή του έργου, όχι επικαιροποιημένη επιβεβαίωση κανόνων. Για τις αποκλίσεις δείτε την ενότητα Αποκλίσεις και τα ελεγμένα διαγράμματα.</p><h1>Κατάλογος κανόνων Απολογιστικού — αναλυτική έκδοση (rules-v8)</h1>
+<p>Πηγές: <code>app/apologistic_rules.py</code>, <code>app/apologistic.py</code>, <code>docs/APOLOGISTIKO_LOGIC.md</code>.  </p>
+<p>Τελευταία ενημέρωση: Σεπτέμβριος 2026.</p>
+<p><strong>Αρχή:</strong> Κάθε ημέρα παίρνει ακριβώς ένα <code>rule_id</code>. Άγνωστη περίπτωση → <strong>Έλεγχος</strong>.  </p>
+<p>Το 5ήμερο/6ήμερο και οι κόφτες υπερεργασίας/υπερωρίας προέρχονται <strong>μόνο από τη σύμβαση</strong>.</p>
+<div class="table-wrap"><table><tbody>
+<tr><td>Badge</td><td>Όνομα</td><td>Σημασία</td></tr>
+<tr><td><strong>Σ</strong></td><td>Σύμφωνο (<code>ok</code>)</td><td>Δεν χρειάζεται απολογιστική μεταβολή· παραμένει το δηλωμένο.</td></tr>
+<tr><td><strong>Μ</strong></td><td>Μεταβολή (<code>change</code>)</td><td>Συγκεκριμένη πρόταση ωραρίου ή/και υπερωρίας προς έγκριση/υποβολή.</td></tr>
+<tr><td><strong>Ε</strong></td><td>Έλεγχος (<code>review</code>)</td><td>Ασάφεια ή ειδική περίπτωση· δεν εφαρμόζεται αυτόματα.</td></tr>
+<tr><td><strong>Μ\</strong>*</td><td>Μεταβολή από Έλεγχο</td><td>Αποδοχή γραμμής Ε ή ανταλλαγής· χειροκίνητο override.</td></tr>
+</tbody></table></div>
+<p>Για κάθε κανόνα παρακάτω: <strong>Είσοδος → Συνθήκες → Αποτέλεσμα → Παράδειγμα</strong>.</p>
+<hr>
+<h2>0. Κοινές έννοιες (πριν τους rule_id)</h2>
+<h3>Πεδίο</h3>
+<ul>
+<li>Ανάλυση ανά επιχείρηση / εργαζόμενο / ημερολογιακή ημέρα / εβδομάδα <strong>Δευτέρα–Κυριακή</strong>.</li>
+<li>Είσοδοι: δηλωμένο ψηφιακό ωράριο + κάρτα + τρέχον snapshot σύμβασης.</li>
+<li>Προβολή <code>/ui/apologistic</code> μόνο από αποθηκευμένο snapshot (<code>karta_apologistic_run</code> / <code>_day</code>).</li>
+<li>Παραγωγή: scheduled Δευτέρα 03:00 (προηγούμενη εβδομάδα) ή backfill.</li>
+<li>Επανυπολογισμός το πολύ έως <strong>χθες</strong>.</li>
+<li><code>generated_json</code> = κανόνας · <code>override_json</code> = χειροκίνητο · <code>effective_json</code> = UI.</li>
+</ul>
+<h3>Καταστάσεις ημέρας</h3>
+<p><code>ΕΡΓΑΣΙΑ</code> · <code>ΑΝΑΠΑΥΣΗ/ΡΕΠΟ</code> · <code>ΜΗ ΕΡΓΑΣΙΑ</code> · <code>ΤΗΛΕΡΓΑΣΙΑ</code> · <code>ΑΔΕΙΑ</code> · <code>ΑΡΓΙΑ</code> · χωρίς δηλωμένο.</p>
+<h3>Διάλειμμα</h3>
+<ul>
+<li>Αφαιρείται από την πραγματική διάρκεια <strong>μόνο</strong> αν <code>break_in_work=0</code> και θετική διάρκεια.</li>
+<li>Κενή ένδειξη → δεν αφαιρείται αυτόματα· απαιτεί επιβεβαίωση.</li>
+<li>Στην πρόταση ωραρίου <strong>δεν</strong> προστίθεται το διάλειμμα εκτός ως επέκταση του δηλωμένου διαστήματος.</li>
+</ul>
+<h3>Ευελιξία</h3>
+<ul>
+<li>Παράθυρο: δηλωμένη έναρξη … δηλωμένη έναρξη + <code>flex_arrival_minutes</code>.</li>
+<li>Μερική με flex: και τα δύο άκρα (είσοδος και έξοδος) πρέπει να είναι εντός παραθύρου για Σ.</li>
+</ul>
+<h3>Ζώνες υπερεργασίας / υπερωρίας (μόνο σύμβαση)</h3>
+<div class="table-wrap"><table><tbody>
+<tr><td>Καθεστώς</td><td>Βάση</td><td>Υπερεργασία</td><td>Υπερωρία</td><td>Max span (έλεγχος)</td></tr>
+<tr><td>Πλήρης 5ήμερο</td><td>έως 8:00</td><td>8:00–9:00</td><td>μετά 9:00 (έως 4:00/ημ.)</td><td>&gt;13ώ</td></tr>
+<tr><td>Πλήρης 6ήμερο</td><td>έως 6:40</td><td>6:40–8:00</td><td>μετά 8:00 (έως 4:00/ημ.)</td><td>&gt;12ώ</td></tr>
+<tr><td>Εκ περιτροπής</td><td>βάση σύμβασης 8:00/6:40</td><td>καμία</td><td>μετά τη βάση (έως 4:00)</td><td>όπως σύμβαση</td></tr>
+<tr><td>Μερική</td><td>τεκμαρτή / εβδομαδιαίο</td><td>καμία απολογιστική ΥΕ</td><td>χωρίς αυτόματη ΥΕ· στην ωρομέτρηση &gt;8:00/6:40 → 120%</td><td>—</td></tr>
+</tbody></table></div>
+<p>Ημερομηνία υποβολής υπερωρίας = ημέρα <strong>έναρξης</strong> του υπερωριακού διαστήματος.  </p>
+<p>Πρώτες 4ώ/ημέρα: 40%/60% από ετήσιο 150ώ · υπερβάλλον → 120%.  </p>
+<p>WTOOvA πάνω από 150ώ έτους → δεύτερη επιβεβαίωση.</p>
+<h3>Αντιστοίχιση χτυπημάτων (πριν τον κανόνα)</h3>
+<ul>
+<li><strong>Απλό, ένα ζεύγος:</strong> πλησιέστερο στη δηλωμένη έναρξη/λήξη.</li>
+<li><strong>Πολλαπλά μη σπαστά:</strong> μέγιστο έγκυρο διάστημα έναρξης → μεταγενέστερης λήξης.</li>
+<li><strong>Overnight:</strong> ρητό <code>is_end_date_different</code> (<code>*</code>) ή θετικό διάστημα ≤ 13ώ (5ήμ.) / 12ώ (6ήμ.).</li>
+<li><strong>Μεταφορά στην προηγούμενη:</strong> ζεύγη νέας ημέρας εντός 13/12ώ (+διάλειμμα εκτός) από θεωρούμενη έναρξη χθες, πριν την κύρια βάρδια σήμερα.</li>
+<li><strong>Δεύτερο άνοιγμα χωρίς κλείσιμο</strong> μετά πλήρες ζεύγος: τεκμαρτό κλείσιμο στην ώρα ανοίγματος.</li>
+<li><strong>Σπαστό δηλωμένο:</strong> ένα χτύπημα ανά τμήμα· ορφανά → Ε.</li>
+<li><strong>1 συνεχές δηλωμένο + 2 πλήρη ζεύγη, κενό ≥3ώ</strong> → πιθανό σπαστό (Ε).</li>
+<li><strong>Μόνο είσοδος ή μόνο έξοδος:</strong> συμπλήρωση από δηλωμένο· <strong>χωρίς</strong> υπερεργασία, υπερωρία ή άλλη ταξινόμηση πρόσθετου χρόνου από τεκμαρτό όριο. Σε ρεπό μισό χτύπημα → ίδια ώρα–ώρα, διάρκεια 0, Ε.</li>
+<li><strong>Χωρίς κανένα χτύπημα</strong> με δηλωμένη εργασία → Σ (κρατά δηλωμένο).</li>
+</ul>
+<hr>
+<h1>Α. Ημερήσιοι κανόνες — κανονικό (μη σπαστό) ωράριο</h1>
+<p>Οι κανόνες αξιολογούνται με τη σειρά του <code>normal_schedule_decision</code>· το πρώτο ταίριασμα κερδίζει. Μετά μπορεί να επανεγγραφούν από ειδικούς μετα-κανόνες (ορφανά, max span, μη εργασία, κ.λπ.).</p>
+<hr>
+<h2><code>NO_PUNCH_OK</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δηλωμένη κατάσταση (εργασία / ρεπό / ΜΕ / άδεια κ.λπ.)· <strong>κανένα</strong> χτύπημα κάρτας.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>has_punch = false</code> και <strong>όχι</strong> μη προβλέψιμο σε ημέρα εργασίας.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση = δηλωμένο όπως είναι. Χωρίς τεκμαρτή εργασία, χωρίς υπερωρία.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, χωρίς κάρτα → <strong>Σ</strong>, πρόταση <code>09:00–17:00</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNPREDICTABLE_NO_PUNCH</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Σύμβαση με μη προβλέψιμο ωράριο· ημέρα κατάστασης «Εργασία»· χωρίς χτύπημα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>unpredictable_schedule</code> + <code>day_state == Εργασία</code> + χωρίς κάρτα.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση <strong><code>ΜΗ ΕΡΓΑΣΙΑ</code></strong>.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Μη προβλέψιμο, δηλωμένο κάποιο ωράριο, χωρίς κάρτα → <strong>Μ</strong> <code>ΜΗ ΕΡΓΑΣΙΑ</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNPREDICTABLE_PUNCH</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μη προβλέψιμο + πραγματικό χτύπημα με ασφαλή όρια.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>unpredictable</code> + έγκυρα <code>actual_start</code> / <code>actual_end</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση από πραγματική έναρξη + διάρκεια = min(καθαρό χτύπημα, συμβατική βάση ή δηλωμένα λεπτά).</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>5ήμερο πλήρες, χτύπημα <code>08:00–18:00</code> (10ώ) → πρόταση έως 8:00: <code>08:00–16:00</code> (με διάλειμμα εντός).</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>INVALID_PUNCH_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Υπάρχει χτύπημα αλλά δεν προκύπτουν ασφαλή λεπτά έναρξης/λήξης/διάρκειας.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>actual_start</code> ή <code>actual_end</code> ή <code>actual_minutes</code> είναι <code>None</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση = ετικέτα πραγματικού όπως εμφανίζεται· χειροκίνητος έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Κατεστραμμένα/κενά όρια στην κάρτα χωρίς δυνατότητα τεκμαρτής συμπλήρωσης.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNDECLARED_OVERNIGHT_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Έξοδος αριθμητικά πριν την είσοδο· υπάρχει δηλωμένη διάρκεια· <strong>χωρίς</strong> δηλωμένο νυχτερινό wrap.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>raw_overnight</code> και όχι <code>declared_overnight</code> και <code>declared_minutes &gt; 0</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος σειράς χτυπημάτων· δεν εφαρμόζεται αυτόματη μεταβολή.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, κάρτα φαίνεται <code>22:00–06:00</code> χωρίς <code>*</code> και χωρίς δηλωμένο overnight → <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>TELEWORK_WITH_PUNCH</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Ημέρα <code>Τηλεργασία</code> με χτύπημα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>day_state == Τηλεργασία</code> + έγκυρο χτύπημα.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Όπως εργασία: πραγματική έναρξη + διάρκειας με κόφτη· τύπος πρότασης παραμένει <strong>ΤΗΛ</strong>.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Τηλεργασία δηλωμένη <code>09:00–17:00</code>, χτύπημα <code>08:45–16:45</code> → <strong>Μ</strong> με νέο διάστημα ΤΗΛ.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MISSING_ENTRY_NO_DURATION</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Λείπει είσοδος· δεν υπάρχει δηλωμένη διάρκεια ούτε συμβατική βάση.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>missing_start</code> και <code>duration = declared_minutes or base</code> είναι κενό/0.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Χειροκίνητος έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χτύπημα <code>–17:00</code> σε ημέρα χωρίς δηλωμένα λεπτά και άγνωστη σύμβαση.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MISSING_ENTRY_REBUILT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Λείπει είσοδος· υπάρχει διάρκεια από βάση σύμβασης· <strong>χωρίς</strong> δηλωμένα λεπτά ωραρίου.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>missing_start</code> + <code>not declared_minutes</code> + υπάρχει <code>duration</code> από base.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση ανάστροφα: λήξη εργασίας (− διάλειμμα εκτός) μείον διάρκεια.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χωρίς δηλωμένο, βάση 8:00, χτύπημα <code>–17:00</code>, διάλειμμα εντός → πρόταση <code>09:00–17:00</code> σε <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MISSING_ENTRY_EXTRA_BACKWARD</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Λείπει είσοδος· υπάρχει δηλωμένο· η χρήση δηλωμένης έναρξης θα δημιουργούσε έξτρα ώρες.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>missing_start</code> + δηλωμένα λεπτά + <code>(effective_actual) &gt; declared_minutes</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση: πραγματική λήξη (− διάλειμμα εκτός) μείον <strong>δηλωμένη</strong> διάρκεια προς τα πίσω.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>13:00–21:00</code> (8ώ), χτύπημα <code>–21:05</code> → πρόταση <code>13:05–21:05</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MISSING_EXIT_NO_DURATION</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Λείπει έξοδος· καμία ασφαλής διάρκεια.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>missing_end</code> και duration = 0.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Χειροκίνητος έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χτύπημα <code>09:00–</code> χωρίς δηλωμένα λεπτά και χωρίς βάση σύμβασης.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MISSING_EXIT_REBUILT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Λείπει έξοδος· υπάρχει συμβατική/δηλωμένη διάρκεια· <strong>χωρίς</strong> δηλωμένα λεπτά ωραρίου (μόνο βάση).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>missing_end</code> + <code>not declared_minutes</code> + υπάρχει duration.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση από πραγματική έναρξη + διάρκεια.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χτύπημα <code>09:00–</code>, βάση 8:00 → πρόταση <code>09:00–17:00</code> σε <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<p>Σημείωση: όταν υπάρχει δηλωμένο και λείπει μόνο η έξοδος, ο κύριος κανόνας συνεχίζει στα flex/early/late/shifted· η τεκμαρτή λήξη <strong>κόβεται</strong> στην πρόταση και όλες οι κατηγορίες πρόσθετου χρόνου μηδενίζονται, επειδή το τεκμαρτό όριο δεν αποδεικνύει επιπλέον εργασία.</p>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Παράδειγμα (με δηλωμένο)</strong></td><td>Δηλωμένο <code>13:00–21:00</code>, χτύπημα <code>09:00–</code> → πρόταση <code>09:00–17:00</code>, τεκμαρτή λήξη = 17:00, χωρίς υπερωρία.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNDECLARED_DAY_PUNCH_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Χτύπημα χωρίς δηλωμένα λεπτά ωραρίου (χωρίς ωράριο / ειδική ημέρα) και <strong>όχι</strong> ήδη ειδική ροή ρεπό↔εργασία.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Έγκυρο χτύπημα + <code>declared_minutes == 0</code> (μετά τα missing entry/exit).</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Ορατή πρόταση από πραγματική έναρξη + κόφτης βάσης· <strong>όχι</strong> αυτόματη εφαρμογή.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χωρίς δηλωμένο, χτύπημα <code>10:00–18:00</code>, 5ήμ. → πρόταση <code>10:00–18:00</code> (έως 8ώ) σε <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>PARTIAL_FLEX_COMPLIANT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μερική απασχόληση με θετική ευελιξία.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>Μερική</code> + <code>flex &gt; 0</code> + είσοδος στο <code>[δηλ.έναρξη … +flex]</code> + έξοδος ≤ <code>δηλ.λήξη + flex</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κρατά δηλωμένο· μικρή διαφορά διάρκειας είναι θέμα ωρομέτρησης, όχι απολογιστικής.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>10:00–14:00</code>, flex 30΄, χτύπημα <code>10:15–14:10</code> → <strong>Σ</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>PARTIAL_ACTUAL_CAPPED</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μερική· καθαρή πραγματική διάρκεια &gt; δηλωμένη.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>Μερική</code> και <code>effective_actual &gt; declared_minutes</code> (και όχι ήδη flex-compliant).</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση από πραγματική έναρξη με κόφτη πλήρους ημερήσιας βάσης (8:00/6:40)· <strong>χωρίς</strong> αυτόματη απολογιστική ΥΕ.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>10:00–14:00</code> (4ώ), χτύπημα <code>10:00–19:00</code> (9ώ), 5ήμ. → πρόταση έως 8:00: <code>10:00–18:00</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>FULL_SHORT_DECLARATION_BASE</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Πλήρης απασχόληση στη συγκεκριμένη ημέρα βάσει ιστορικής σύμβασης με τεκμηριωμένη χρονική κάλυψη, ημέρα Εργασία, ένα δηλωμένο και ένα αναγνωρισμένο συνεχές τμήμα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Γνωστή συμβατική βάση (5ήμερο 480 / 6ήμερο 400), ίδια με την επιλεγμένη ημερήσια βάση υπερωρίας· <code>0 &lt; declared_minutes &lt; proposal_daily_base &lt;= effective_actual</code>. Πλήρη μη τεκμαρτά όρια, χωρίς ορφανά, πιθανό σπαστό, αποκλεισμένη νυχτερινή συνέχεια, διευθέτηση ή ανισομερή κατανομή στη σύμβαση/ρύθμιση καταστήματος.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πραγματική είσοδος + συμβατική ημερήσια βάση, χωρίς προσθήκη διαλείμματος στην πρόταση. Το αρχικό δηλωμένο και οι διαφορές διατηρούνται. Υπερεργασία/υπερωρία δεν αλλάζουν.</td></tr>
+<tr><td><strong>Προτεραιότητα</strong></td><td>Μετά τους ειδικούς ημερήσιους χειρισμούς και τη μερική, πριν από <code>FLEX_COMPLIANT</code>, <code>EARLY_START_SHIFT</code> και <code>ACTUAL_SHIFTED</code>. Επιστρέφει Μ, άρα δεν μετατρέπεται σε <code>OVERTIME_ONLY</code>. Ο έλεγχος μέγιστης διάρκειας μπορεί ακόμη να δώσει Ε.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Πλήρης 5ήμερη, δηλωμένο <code>13:00–17:00</code>, πραγματικό <code>13:20–23:56</code>: πρόταση <code>13:20–21:20</code>, ακόμη και με είσοδο εντός ευελιξίας.</td></tr>
+<tr><td><strong>Εξαιρέσεις</strong></td><td>Δεν επεκτείνει πραγματική εργασία κάτω από τη βάση. Δηλωμένο ακριβώς 6:40 με συμβατικό 5ήμερο παραμένει στην υφιστάμενη ειδική ημερήσια βάση. Η ωρομέτρηση εξακολουθεί να τοποθετεί ανεξάρτητα την αναγνωρισμένη βάση από declared/actual.</td></tr>
+<tr><td><strong>Αρχική κάρτα</strong></td><td>Ακριβώς μία αρχική εγγραφή πριν από νυχτερινές συνενώσεις/αντιστοίχιση, με έγκυρα πλήρη όρια ίδια με τα υπολογισμένα και καθαρή διάρκεια τουλάχιστον ίση με τη συμβατική βάση. Διαφορετικά εφαρμόζεται <code>FULL_SHORT_EVIDENCE_REVIEW</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>FULL_SHORT_EVIDENCE_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μόνο υποψήφια επέκταση του <code>FULL_SHORT_DECLARATION_BASE</code>.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Δεν υπάρχει αποθηκευμένη έναρξη ισχύος σύμβασης έως την ημέρα εργασίας, έχει παρέλθει τυχόν λήξη, ή δεν επαληθεύεται μοναδικό αρχικό πλήρες ζεύγος με ίδια όρια και καθαρή διάρκεια ≥ βάση.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος χωρίς αυτόματη επέκταση. Η πρόταση του προγενέστερου γενικού κανόνα εμφανίζεται μόνο ως αναφορά, όχι ως εγκεκριμένο ωράριο.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δήλωση 13:00–17:00, χτυπήματα 13:00–17:15 και 20:00–00:05: δεν προτείνεται αυτόματα συνεχές 13:00–21:00.</td></tr>
+<tr><td><strong>Περιορισμός</strong></td><td>Δεν αλλάζει μερική, πραγματική διάρκεια κάτω βάσης ή προγενέστερους ειδικούς χειρισμούς. Το effective_from προέρχεται από το αποθηκευμένο ιστορικό (ergani_updated_at), όχι από ανεξάρτητη πιστοποίηση πληρότητας συμβάσεων.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>FLEX_COMPLIANT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δηλωμένο συνεχές ωράριο + χτύπημα εντός αποδεκτού παραθύρου, εφόσον δεν έχει εφαρμοστεί ο <code>FULL_SHORT_DECLARATION_BASE</code>.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Είσοδος στο παράθυρο ευελιξίας <strong>ή</strong> καθυστερημένη είσοδος αλλά έξοδος ≤ δηλ.λήξη+flex.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κρατά δηλωμένο. Αν υπάρχει χρόνος μετά το τέλος βάρδιας με διατήρηση ωραρίου → μπορεί να γίνει <code>OVERTIME_ONLY</code> (μετα-κανόνας).</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, flex 90΄, χτύπημα <code>09:30–17:20</code> → <strong>Σ</strong> (έξοδος εντός παραθύρου).</td></tr>
+<tr><td><strong>Παράδειγμα ΥΕ</strong></td><td>Ίδιο δηλωμένο, flex 90΄, διάλειμμα εκτός 30΄, χτύπημα <code>09:30–21:30</code> → ωράριο <strong>Σ</strong>/κρατά δηλωμένο, υπερωρία <code>19:00–21:30</code> → τελικά <strong>Μ</strong> <code>OVERTIME_ONLY</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>EARLY_START_SHIFT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Πραγματική έναρξη <strong>πριν</strong> τη δηλωμένη (εκτός ευελιξίας).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>actual_start &lt; declared_start</code> και όχι flex-compliant.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση: πραγματική έναρξη + <strong>δηλωμένη</strong> διάρκεια (χωρίς προσθήκη διαλείμματος στο ωράριο).</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code> (8ώ), χτύπημα <code>08:00–16:00</code> → πρόταση <code>08:00–16:00</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>LATE_SHORT_BACKWARD</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Καθυστερημένο χτύπημα με διάρκεια ≤ δηλωμένη και έξοδο μετά το παράθυρο.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>actual_minutes ≤ declared_minutes</code> και <code>actual_end &gt; declared_end + flex</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Ανάστροφα από πραγματική λήξη εργασίας (− διάλειμμα εκτός) με δηλωμένη διάρκεια.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, διάλειμμα εκτός 30΄, χτύπημα <code>09:57–15:59</code> (μικρότερο από 8ώ, έξοδος «νωρίς» σε σχέση με εργασία αλλά…) — όταν η έξοδος ξεπερνά παράθυρο: πρόταση από λήξη προς τα πίσω. Κλασικό: δηλωμένο 8ώ, σύντομο χτύπημα που τελειώνει μετά το παράθυρο → <code>work_end − declared</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>ACTUAL_SHIFTED</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Γενική απόκλιση πραγματικής από δηλωμένη (catch-all μετά early/late).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Υπάρχουν δηλωμένα όρια· δεν καλύφθηκε από flex / early / late-short.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πραγματική έναρξη + δηλωμένη διάρκεια.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, χτύπημα <code>10:30–19:00</code> → πρόταση <code>10:30–18:30</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNKNOWN_CASE_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Περίπτωση που δεν ταίριαξε σε κανέναν γνωστό κανόνα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Default στο τέλος του <code>normal_schedule_decision</code> ή αρχική τιμή πριν από ειδική διαδρομή.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Χειροκίνητος έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Ελλιπή δηλωμένα όρια χωρίς <code>declared_minutes</code> path που να καλύφθηκε νωρίτερα.</td></tr>
+</tbody></table></div>
+<hr>
+<h1>Β. Μετα-κανόνες μετά την κύρια απόφαση</h1>
+<p>Αυτοί <strong>αντικαθιστούν</strong> το <code>rule_id</code> / status αφού έχει ήδη υπολογιστεί πρόταση.</p>
+<hr>
+<h2><code>OVERTIME_ONLY</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Αρχικά αποτέλεσμα <strong>Σ</strong>, αλλά υπολογίστηκαν λεπτά υπερωρίας.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>status == ok</code> και <code>overtime_minutes &gt; 0</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κρατά δηλωμένο ωράριο· στήλη υπερωρίας γεμίζει με διάστημα.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code> εντός ευελιξίας, καθαρή εργασία έως μετά τις 9:00 → <strong>Μ</strong> μόνο για υπερωρία.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>ORPHAN_PUNCH_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Συνεχές (μη σπαστό) δηλωμένο + επιπλέον μη αντιστοιχισμένες εγγραφές κάρτας.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>orphan_punches</code> και <code>len(work_slots) == 1</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος· πρόταση μπορεί να υπάρχει από προηγούμενο κανόνα.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο ένα διάστημα, κάρτα με τρίτο ανοιχτό χτύπημα που δεν μπήκε στο ζεύγος → <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>MAX_DAILY_SPAN_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μικτή διάρκεια χτυπήματος πάνω από όριο σύμβασης.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>5ήμερο: <code>actual_minutes &gt; 780</code> (13ώ)· 6ήμερο: <code>&gt; 720</code> (12ώ).</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Status → review· <strong>η πρόταση των κανονικών κανόνων διατηρείται</strong> για έλεγχο.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χτύπημα <code>08:00–22:00</code> (14ώ) σε 5ήμερο → <strong>Ε</strong>, με πρόταση όπως υπολογίστηκε.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>POST_CARRY_COMPLIANT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μετά μεταφορά overnight ζευγών στην προηγούμενη ημέρα, απομένει κύρια βάρδια σήμερα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Υπάρχουν <code>excluded_overnight_punches</code>· ένα δηλωμένο slot· πρόταση <code>πραγμ.έναρξη + δηλ.διάρκεια</code> <strong>ίσον</strong> δηλωμένο.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Σύμφωνο με δηλωμένο.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Χθες πήρε <code>00:06–00:57</code>· σήμερα μένει <code>14:57–23:55</code> = δηλωμένο → <strong>Σ</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>POST_CARRY_MAIN_SHIFT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong> (ή Σ αν συμπίπτει — τότε COMPLIANT)</td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Ίδια μεταφορά overnight· η απομένουσα βάρδια δεν συμπίπτει με δηλωμένο.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>excluded_overnight_punches</code> + πρόταση ≠ δηλωμένο.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση από πραγματική έναρξη κύριας βάρδιας + δηλωμένη διάρκεια.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>15:00–23:00</code>, μετά carry η είσοδος είναι <code>14:57</code> → πρόταση <code>14:57–22:57</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h1>Γ. Χτύπημα σε ΡΕΠΟ / ΜΗ ΕΡΓΑΣΙΑ</h1>
+<p>Ειδική ροή <code>special_non_work_punch</code> μετά τον κανονικό κανόνα.</p>
+<hr>
+<h2><code>REST_WORK_EXCHANGE_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Χτύπημα σε Ρεπό ή ΜΗ Εργασία <strong>και</strong> υπάρχει τουλάχιστον μία δηλωμένη εργάσιμη χωρίς χτύπημα στην ίδια εβδομάδα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>exchange_options</code> μη κενό.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση εργασίας από πραγματική έναρξη + διάρκεια της υποψήφιας εργάσιμης. Υποψήφιες ανταλλαγές στο UI. <strong>Δεν</strong> εφαρμόζεται αυτόματα.</td></tr>
+<tr><td><strong>Έγκριση ανταλλαγής</strong></td><td>Ημέρα με χτύπημα → Εργασία· άλλη ημέρα παίρνει <code>ΜΗ ΕΡΓΑΣΙΑ</code> ή <code>ΑΝΑΠΑΥΣΗ/ΡΕΠΟ</code> όπως η αρχική· και οι δύο <strong>Μ\</strong>* + <strong>2× WTODailyA</strong>.</td></tr>
+<tr><td><strong>Ε απευθείας</strong></td><td>Αγνοεί ανταλλαγή· μόνο η ημέρα γίνεται <strong>Μ\</strong>* με την υπολογισμένη πρόταση.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Κυριακή ΡΕΠΟ με <code>10:00–18:00</code>· Τετάρτη δηλωμένο <code>09:00–17:00</code> χωρίς κάρτα → <strong>Ε</strong>, πρόταση <code>10:00–18:00</code>, υποψήφια Τετάρτη → <code>ΑΝΑΠΑΥΣΗ/ΡΕΠΟ</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>NON_WORK_DAY_BECOMES_WORK</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Χτύπημα σε Ρεπό/ΜΕ <strong>χωρίς</strong> διαθέσιμη ημέρα ανταλλαγής (ή περισσότερα ρεπό-χτυπήματα από διαθέσιμες αντικαταστάσεις — τα πλεονάζοντα γίνονται Μ).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>special_non_work_punch</code> και κενά <code>exchange_options</code> (ή αποκοπή μετά τη διαθεσιμότητα).</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Μεταβολή σε εργασία έως βάση σύμβασης. Υπο-κανόνες διάρκειας στο πεδίο <code>non_work_to_work_duration_rule</code>:</td></tr>
+</tbody></table></div>
+<h3>Υπο-κανόνες διάρκειας</h3>
+<div class="table-wrap"><table><tbody>
+<tr><td><code>non_work_to_work_duration_rule</code></td><td>Πότε</td><td>Τι</td></tr>
+<tr><td><code>PUNCH_DURATION_BELOW_CONTRACT_BASE</code></td><td>Πλήρης/εκ περιτροπής και καθαρό χτύπημα <strong>&amp;lt;</strong> βάση</td><td>Διατηρεί όλη τη διάρκεια χτυπήματος.</td></tr>
+<tr><td><code>CONTRACT_BASE_WITH_EXTRA_CLASSIFICATION</code></td><td>Πλήρης/εκ περιτροπής και χτύπημα <strong>≥</strong> βάση</td><td>Κόβει πρόταση στη βάση· έξτρα = ΥΕ/υπερωρία χωριστά.</td></tr>
+<tr><td><code>PARTIAL_PUNCH_DURATION_CAPPED_AT_FULL_DAY</code></td><td>Μερική</td><td>Διάρκεια χτυπήματος με κόφτη 8:00/6:40· χωρίς αυτόματη ΥΕ.</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Παράδειγμα 5ήμ.</strong></td><td>ΡΕΠΟ, χτύπημα <code>07:57–16:58</code> χωρίς ανταλλαγή → πρόταση <code>07:57–15:57</code>, ΥΕ <code>15:57–16:57</code> (μη δηλούμενη), υπερωρία <code>16:57–16:58</code>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SURPLUS_DECLARED_DAY_REST</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Εβδομαδιαίος μετα-έλεγχος: περισσότερες δηλωμένες εργάσιμες από ημέρες σύμβασης.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>δηλωμένες εργάσιμες − ημέρες σύμβασης &gt; 0</code>· εφαρμόζεται στις πρώτες ημέρες χωρίς χτύπημα έως το πλεόνασμα.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση <code>ΑΝΑΠΑΥΣΗ/ΡΕΠΟ</code> <strong>μόνο με έγκριση</strong> (<code>suggested_rest</code>).</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Σύμβαση 5ήμερο, 7 δηλωμένα ωράρια, Δευτέρα χωρίς κάρτα → <strong>Ε</strong> πρόταση ΡΕΠΟ.</td></tr>
+</tbody></table></div>
+<hr>
+<h1>Δ. Σπαστό ωράριο</h1>
+<hr>
+<h2><code>SPLIT_SINGLE_PUNCH_WITHIN_DECLARED</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δηλωμένο σπαστό (≥2 τμήματα)· <strong>ένα</strong> χτύπημα μέσα σε κάποιο τμήμα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>_single_punch_inside_declared_part</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κρατά <strong>ολόκληρο</strong> το δηλωμένο σπαστό.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–13:00 · 16:00–20:00</code>, κάρτα μόνο <code>09:30</code> (μέσα στο 1ο) → <strong>Σ</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_REBUILT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δηλωμένο σπαστό· ≥2 matched τμήματα χωρίς ορφανά· έγκυρα όρια.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Πλήρης απασχόληση + γνωστή ημερήσια βάση· 1ο μέρος δεν εξαντλεί τη βάση· κενό ≥3ώ χωρίς ανάγκη κοψίματος.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>1ο μέρος = πραγματικό· 2ο = έναρξη 2ης πραγματικής + υπόλοιπο συμβατικής ημέρας (+ διάλειμμα εκτός στη λήξη 2ου).</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Βάση 8:00, πραγματικά <code>08:00–12:00</code> και <code>16:00–…</code> → πρόταση <code>08:00–12:00 · 16:00–20:00</code> (4+4).</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_GAP_ADJUSTED</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Μ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Όπως REBUILT, αλλά το πραγματικό 1ο μέρος «τρώει» το κενό 3ώ.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>adjusted_first_end = min(first_end, second_start − 180)</code> ≠ <code>first_end</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κόβει τη λήξη του 1ου μέρους ώστε κενό ≥3ώ· μετά REBUILT λογική στο 2ο.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Πραγματικά <code>08:00–13:30</code> και <code>15:00–…</code> (κενό 1:30) → 1ο κόβεται σε <code>08:00–12:00</code> ώστε κενό 3ώ έως 15:00.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_COMPLIANT</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Σ</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μετά υπολογισμό σπαστού, πρόταση = δηλωμένο και υπερωρία 0.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>status == change</code> σε σπαστό, <code>proposed == declared_label</code>, <code>overtime_minutes == 0</code> → γίνεται ok.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Καμία μεταβολή.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο και πραγματικό ταυτόσημα σπαστά → <strong>Σ</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_NON_FULL_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Απόπειρα κανόνα σπαστού σε μη πλήρη ή χωρίς ημερήσια βάση.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>contract_kind != Πλήρης</code> ή <code>daily_base is None</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Απαγορεύεται αυτοματισμός σπαστού.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Μερική με δηλωμένο σπαστό → <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_INVALID_GAP_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δεν μπορεί να εξασφαλιστεί κενό 3ώ χωρίς να αντιστραφούν τα όρια.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>adjusted_first_end &lt;= first_start</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Χειροκίνητος έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δεύτερη έναρξη σχεδόν αμέσως μετά την πρώτη· κανένα έγκυρο κενό.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_FIRST_PART_EXHAUSTS_DAY</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Μετά την προσαρμογή κενού, το 1ο μέρος ≥ συμβατική ημέρα.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>first_minutes &gt;= daily_base</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος πρόσθετης εργασίας/υπερωρίας.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Βάση 8:00, 1ο μέρος 8:30 μετά το κόψιμο → <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_INCOMPLETE_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Δηλωμένο σπαστό με ελλιπές/ορφανό χτύπημα (όχι single-within, όχι 2 καθαρά matched).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>len(work_slots) &gt; 1</code> και αλλιώς ασαφή matched.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένα 2 τμήματα, ένα ορφανό τρίτο χτύπημα → <strong>Ε</strong>.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>SPLIT_INVALID_BOUNDARIES</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Matched υπάρχουν αλλά λεπτά έναρξης/λήξης τμημάτων δεν είναι parse-able.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>first_start/end</code> ή <code>second_start</code> None.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Χειροκίνητος έλεγχος.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>POSSIBLE_SPLIT_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Ένα δηλωμένο <strong>συνεχές</strong> ωράριο + ακριβώς δύο πλήρη πραγματικά ζεύγη με κενό ≥3ώ (μετά overnight carry).</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>possible_split_parts</code> ορισμένο.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Αιτία «ΠΙΘΑΝΟ ΣΠΑΣΤΟ ΩΡΑΡΙΟ»· πρόταση από κανόνες σπαστού ως υπόδειξη· <strong>απαιτεί ανθρώπινη επιβεβαίωση</strong>.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–17:00</code>, κάρτα <code>09:00–12:00</code> και <code>16:00–20:00</code> → <strong>Ε</strong> με πρόταση σπαστού.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>POSSIBLE_SPLIT_INVALID_BOUNDARIES</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Πιθανό σπαστό αλλά τα δύο ζεύγη δεν έχουν έγκυρα λεπτά.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td><code>possible_split_parts</code> με None όρια.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Έλεγχος χωρίς αξιόπιστη πρόταση.</td></tr>
+</tbody></table></div>
+<hr>
+<h1>Ε. Ανισομερής κατανομή (κατάστημα ON)</h1>
+<p>Προϋποθέσεις: <code>uneven_distribution_enabled</code> στο κατάστημα · πλήρης · γνωστό 5/6ήμερο · δηλωμένο εβδομαδιαίο άθροισμα <strong>ακριβώς 40:00</strong> · χωρίς σπαστά/ορφανά/άδειες στις συμμετέχουσες ημέρες.</p>
+<p>Όλες οι ημέρες της ομάδας μένουν σε <strong>Ε</strong> και εγκρίνονται <strong>μαζί</strong>.</p>
+<hr>
+<h2><code>UNEVEN_DISTRIBUTION_TARGET_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Ελλειμματική ημέρα: δηλωμένο &amp;lt; βάση και πλήρες χτύπημα ≥ βάση.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Μέλος πλάνου με <code>delta_minutes &gt; 0</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Πρόταση από <strong>πραγματική</strong> είσοδο με διάρκεια = δηλωμένα + μεταφερόμενα λεπτά.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–16:00</code> (7ώ), χτύπημα ≥8ώ → πρόταση επέκτασης κατά 1ώ από πραγματική έναρξη.</td></tr>
+</tbody></table></div>
+<hr>
+<h2><code>UNEVEN_DISTRIBUTION_DONOR_REVIEW</code></h2>
+<div class="table-wrap"><table><tbody>
+<tr><td><strong>Αποτέλεσμα</strong></td><td><strong>Ε</strong></td></tr>
+<tr><td><strong>Είσοδος</strong></td><td>Ημέρα-δότης: δηλωμένο &amp;gt; βάση.</td></tr>
+<tr><td><strong>Συνθήκες</strong></td><td>Μέλος πλάνου με <code>delta_minutes &lt; 0</code>.</td></tr>
+<tr><td><strong>Έξοδος</strong></td><td>Κρατά δηλωμένη έναρξη· μειώνει λήξη κατά τα λεπτά που δόθηκαν.</td></tr>
+<tr><td><strong>Παράδειγμα</strong></td><td>Δηλωμένο <code>09:00–18:00</code> (9ώ) δίνει 1ώ → πρόταση <code>09:00–17:00</code>.</td></tr>
+</tbody></table></div>
+<p>Αν δεν υπάρχει αρκετό διαθέσιμο από δότες για όλα τα ελλείμματα → <strong>καμία</strong> πρόταση ομάδας (χωρίς μερικό πλάνο).</p>
+<hr>
+<h1>ΣΤ. Μεταφορά ρεπό Κυριακής (όχι ξεχωριστό rule_id ημέρας)</h1>
+<p>Ρύθμιση καταστήματος <code>sunday_rest_transfer_enabled</code> + συμβατικό 5ήμερο + Κυριακή (ή αργία) τουλάχιστον 6η ημέρα με κάρτα + καθαρή διάρκεια <strong>&amp;gt; 5:00</strong> → εκκρεμότητα οφειλόμενου ρεπό στην επόμενη εβδομάδα (<code>pending</code> / <code>satisfied</code> / <code>cancelled</code>). Εμφάνιση «Οφείλεται ρεπό» στο UI της επόμενης εβδομάδας. Δεν αλλάζει από μόνο του το <code>rule_id</code> της Κυριακής.</p>
+<hr>
+<h1>Ζ. Ωρομέτρηση (μετά το απολογιστικό)</h1>
+<p>Τρέχει <strong>μόνο</strong> όταν όλα είναι Σ/Μ, <strong>χωρίς καμία Ε</strong>.</p>
+<ul>
+<li>Καθαρή βάση με διάλειμμα· ζώνες ημέρα / νύχτα 25% (<code>22:00–06:00</code>) / Κυρ-Αργία 75% / συνδυασμός.</li>
+<li>Πλήρης ανισομερής: επέκταση έως 40:00 εβδομαδιαίως· μετά ΥΕ/υπερωρία.</li>
+<li>Μερική 12%: θετική εβδομαδιαία διαφορά στα ημερήσια υπερβάλλοντα Δευ→Κυρ· ουρά πάνω από 8:00/6:40 → 120%.</li>
+<li>6η ημέρα πλήρους: με 6 αναγνωρισμένες ημέρες· προτεραιότητα σε δηλωμένο ρεπό/ΜΕ· fallback Κυρ→Δευ.</li>
+<li>Άδεια εξαιρείται από ωρομέτρηση / σύνολα / υπερωρίες.</li>
+<li>Το <code>basis_label</code>/<code>recognized_interval</code> και το <code>overwork_interval</code> εκτίθενται</li>
+</ul>
+<p>  από τα ίδια canonical timelines. Exporters δεν επιτρέπεται να εμφανίζουν το</p>
+<p>  <code>proposed</code> ως αναγνωρισμένο.</p>
+<ul>
+<li>Με θετική υπερεργασία, η λήξη της αναγνωρισμένης βάσης πρέπει να ισούται με</li>
+</ul>
+<p>  την έναρξη υπερεργασίας σε απόλυτο <code>datetime</code>· ασυνέχεια παράγει warning.</p>
+<p>Πλήρης περιγραφή: <code>docs/APOLOGISTIKO_LOGIC.md</code> (ενότητα Ωρομέτρηση).</p>
+<hr>
+<h1>Η. Υποβολή Ergani</h1>
+<ul>
+<li>Μεταβολές ωραρίου: <code>WTODailyA</code> (ζεύγη ανταλλαγής μαζί).</li>
+<li>Υπερωρίες: <code>WTOOvA</code> (μαζική: ένα πρωτόκολλο ανά τύπο όπου εφαρμόζεται).</li>
+<li>Η οθόνη προετοιμάζει· η υποβολή είναι ξεχωριστό βήμα με επιβεβαίωση.</li>
+<li>Επαναφορά <strong>Μ\</strong>*: σβήνει override· σε ζεύγος/ομάδα επαναφέρει όλες τις συνδεδεμένες· απαγορεύεται αν υπάρχει επιτυχής υποβολή Ergani ή κλειδωμένη εβδομάδα.</li>
+</ul>
+<hr>
+<h1>Θ. Γρήγορο ευρετήριο rule_id</h1>
+<div class="table-wrap"><table><tbody>
+<tr><td>rule_id</td><td>Badge</td></tr>
+<tr><td><code>NO_PUNCH_OK</code></td><td>Σ</td></tr>
+<tr><td><code>UNPREDICTABLE_NO_PUNCH</code></td><td>Μ</td></tr>
+<tr><td><code>UNPREDICTABLE_PUNCH</code></td><td>Μ</td></tr>
+<tr><td><code>TELEWORK_WITH_PUNCH</code></td><td>Μ</td></tr>
+<tr><td><code>FLEX_COMPLIANT</code></td><td>Σ</td></tr>
+<tr><td><code>PARTIAL_FLEX_COMPLIANT</code></td><td>Σ</td></tr>
+<tr><td><code>EARLY_START_SHIFT</code></td><td>Μ</td></tr>
+<tr><td><code>LATE_SHORT_BACKWARD</code></td><td>Μ</td></tr>
+<tr><td><code>ACTUAL_SHIFTED</code></td><td>Μ</td></tr>
+<tr><td><code>PARTIAL_ACTUAL_CAPPED</code></td><td>Μ</td></tr>
+<tr><td><code>MISSING_ENTRY_REBUILT</code></td><td>Ε</td></tr>
+<tr><td><code>MISSING_ENTRY_EXTRA_BACKWARD</code></td><td>Μ</td></tr>
+<tr><td><code>MISSING_ENTRY_NO_DURATION</code></td><td>Ε</td></tr>
+<tr><td><code>MISSING_EXIT_REBUILT</code></td><td>Ε</td></tr>
+<tr><td><code>MISSING_EXIT_NO_DURATION</code></td><td>Ε</td></tr>
+<tr><td><code>UNDECLARED_DAY_PUNCH_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>NON_WORK_DAY_BECOMES_WORK</code></td><td>Μ</td></tr>
+<tr><td><code>REST_WORK_EXCHANGE_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>OVERTIME_ONLY</code></td><td>Μ</td></tr>
+<tr><td><code>ORPHAN_PUNCH_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>INVALID_PUNCH_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>UNDECLARED_OVERNIGHT_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>MAX_DAILY_SPAN_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>UNKNOWN_CASE_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>SURPLUS_DECLARED_DAY_REST</code></td><td>Ε</td></tr>
+<tr><td><code>POST_CARRY_COMPLIANT</code></td><td>Σ</td></tr>
+<tr><td><code>POST_CARRY_MAIN_SHIFT</code></td><td>Μ</td></tr>
+<tr><td><code>PUNCH_DURATION_BELOW_CONTRACT_BASE</code></td><td>(υπο-κανόνας διάρκειας)</td></tr>
+<tr><td><code>CONTRACT_BASE_WITH_EXTRA_CLASSIFICATION</code></td><td>(υπο-κανόνας διάρκειας)</td></tr>
+<tr><td><code>PARTIAL_PUNCH_DURATION_CAPPED_AT_FULL_DAY</code></td><td>(υπο-κανόνας διάρκειας)</td></tr>
+<tr><td><code>SPLIT_COMPLIANT</code></td><td>Σ</td></tr>
+<tr><td><code>SPLIT_SINGLE_PUNCH_WITHIN_DECLARED</code></td><td>Σ</td></tr>
+<tr><td><code>SPLIT_REBUILT</code></td><td>Μ</td></tr>
+<tr><td><code>SPLIT_GAP_ADJUSTED</code></td><td>Μ</td></tr>
+<tr><td><code>SPLIT_NON_FULL_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>SPLIT_INVALID_GAP_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>SPLIT_FIRST_PART_EXHAUSTS_DAY</code></td><td>Ε</td></tr>
+<tr><td><code>SPLIT_INCOMPLETE_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>SPLIT_INVALID_BOUNDARIES</code></td><td>Ε</td></tr>
+<tr><td><code>POSSIBLE_SPLIT_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>POSSIBLE_SPLIT_INVALID_BOUNDARIES</code></td><td>Ε</td></tr>
+<tr><td><code>UNEVEN_DISTRIBUTION_TARGET_REVIEW</code></td><td>Ε</td></tr>
+<tr><td><code>UNEVEN_DISTRIBUTION_DONOR_REVIEW</code></td><td>Ε</td></tr>
+</tbody></table></div></main></html>

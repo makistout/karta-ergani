@@ -1,14 +1,15 @@
 # Λογικά διαγράμματα απολογιστικού και ωρομέτρησης
 
-Έκδοση διαγραμμάτων rules-8ebf3a077ddf80ee · Απολογιστικό 2026-09-22.canonical-single-boundary · Ωρομέτρηση timekeeping-v13-canonical-intervals
+Έκδοση διαγραμμάτων rules-66c0545d97affdad · Απολογιστικό 2026-09-23.full-short-evidence-review · Ωρομέτρηση timekeeping-v13-canonical-intervals
 
-- Τα διαγράμματα αποτυπώνουν την εφαρμογή στην έκδοση rules-8ebf3a077ddf80ee (έλεγχος 2026-09-23T09:31:48+00:00). Δεν αποτελούν ανεξάρτητη ερμηνεία της εργατικής νομοθεσίας.
+- Τα διαγράμματα αποτυπώνουν την εφαρμογή στην έκδοση rules-66c0545d97affdad (έλεγχος 2026-09-23T13:38:37+00:00). Δεν αποτελούν ανεξάρτητη ερμηνεία της εργατικής νομοθεσίας.
 - Σ = σύμφωνο, Μ = μεταβολή, Ε = έλεγχος. Οι ημερήσιοι κανόνες εκτελούνται κατά προτεραιότητα. Το πρώτο ταίριασμα της επιλεγμένης διαδρομής δίνει απόφαση, την οποία μπορούν να αντικαταστήσουν οι μετα-κανόνες.
 - Πραγματικό/καθαρό/δηλωμένο δεν είναι συνώνυμα. Η πραγματική μικτή διάρκεια και το περίβλημα που τροφοδοτεί την υπερωρία μπορεί να διαφέρουν σε πολλαπλά χτυπήματα.
 - Τα W- και A- IDs είναι αναγνωριστικά αυτής της τεκμηρίωσης. Τα κεφαλαία ονόματα με underscores είναι rule_id ή οι ρητά σημειωμένοι υπο-κανόνες του έργου.
 
 ## Αποκλίσεις τεκμηρίωσης από τον κώδικα
 
+- **Μικρή δήλωση πλήρους:** Οι παλιές εκδόσεις κρατούσαν τη μικρή διάρκεια μέσω ευελιξίας ή μετατόπισης. Ο FULL_SHORT_DECLARATION_BASE προηγείται πλέον και χρησιμοποιεί τη συμβατική βάση μόνο σε επιλέξιμη πραγματική εργασία που την καλύπτει. Από 23/09 απαιτούνται ιστορική χρονική κάλυψη και ένα αρχικό πλήρες ζεύγος, όχι απλώς αναγνωρισμένο περίβλημα πολλών εγγραφών. Αποτυχία οδηγεί σε FULL_SHORT_EVIDENCE_REVIEW. Τα declared/διαφορές/extras δεν αλλάζουν, ούτε η ανεξάρτητη αναγνωρισμένη βάση ωρομέτρησης.
 - **Ημερήσια βάση:** Ο νέος κατάλογος γράφει «μόνο σύμβαση». Ο caller επιλέγει βάση από ακριβώς 8:00 / 6:40 δηλωμένα λεπτά και αλλιώς από σύμβαση, και για εκ περιτροπής.
 - **Ευελιξία μερικής:** PARTIAL_FLEX_COMPLIANT δεν υπάρχει. Το PARTIAL_ACTUAL_CAPPED προηγείται της γενικής ευελιξίας.
 - **Ένα χτύπημα σε σπαστό:** SPLIT_SINGLE_PUNCH_WITHIN_DECLARED έχει αφαιρεθεί. Το ελλιπές σπαστό οδηγείται σε Ε.
@@ -31,7 +32,7 @@ flowchart TD
   D -->|Ναι| E["POSSIBLE_SPLIT_REVIEW"]
   D -->|Όχι| F{"Δηλωμένο σπαστό;"}
   F -->|Ναι| G["Έλεγχοι και ανακατασκευή σπαστού"]
-  F -->|Όχι| H["Κανονικοί κανόνες: πρώτο ταίριασμα"]
+  F -->|Όχι| H["Κανονικοί κανόνες: ειδικοί → πλήρης βάση μικρής δήλωσης → ευελιξία/μετατόπιση"]
   E --> I["POST_CARRY και κόψιμο τεκμαρτής λήξης"]
   G --> I
   H --> I
@@ -63,6 +64,8 @@ flowchart TD
 - [UNDECLARED_DAY_PUNCH_REVIEW — Χτύπημα χωρίς δηλωμένη διάρκεια](#undeclared-day-punch-review)
 - [PARTIAL_FLEX_COMPLIANT — Παλαιός κανόνας ευελιξίας μερικής](#partial-flex-compliant)
 - [PARTIAL_ACTUAL_CAPPED — Μερική με αυξημένη διάρκεια](#partial-actual-capped)
+- [FULL_SHORT_DECLARATION_BASE — Πλήρης βάση αντί μικρής δήλωσης](#full-short-declaration-base)
+- [FULL_SHORT_EVIDENCE_REVIEW — Έλεγχος αρχικής κάρτας και ιστορικής σύμβασης](#full-short-evidence-review)
 - [FLEX_COMPLIANT — Αποδεκτή ευελιξία](#flex-compliant)
 - [EARLY_START_SHIFT — Πρόωρη έναρξη](#early-start-shift)
 - [LATE_SHORT_BACKWARD — Καθυστερημένο σύντομο χτύπημα](#late-short-backward)
@@ -143,7 +146,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:188](../app/apologistic_rules.py#L188)
+Πηγή: [app/apologistic_rules.py:190](../app/apologistic_rules.py#L190)
 
 ```mermaid
 flowchart TD
@@ -159,7 +162,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:187](../app/apologistic_rules.py#L187)
+Πηγή: [app/apologistic_rules.py:189](../app/apologistic_rules.py#L189)
 
 ```mermaid
 flowchart TD
@@ -173,7 +176,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:196](../app/apologistic_rules.py#L196)
+Πηγή: [app/apologistic_rules.py:198](../app/apologistic_rules.py#L198)
 
 ```mermaid
 flowchart TD
@@ -189,7 +192,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:190](../app/apologistic_rules.py#L190)
+Πηγή: [app/apologistic_rules.py:192](../app/apologistic_rules.py#L192)
 
 ```mermaid
 flowchart TD
@@ -203,7 +206,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Μη προσβάσιμος από την τρέχουσα κύρια ροή**
 
-Πηγή: [app/apologistic_rules.py:192](../app/apologistic_rules.py#L192)
+Πηγή: [app/apologistic_rules.py:194](../app/apologistic_rules.py#L194)
 
 ```mermaid
 flowchart TD
@@ -219,7 +222,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:199](../app/apologistic_rules.py#L199)
+Πηγή: [app/apologistic_rules.py:201](../app/apologistic_rules.py#L201)
 
 ```mermaid
 flowchart TD
@@ -233,7 +236,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:203](../app/apologistic_rules.py#L203)
+Πηγή: [app/apologistic_rules.py:205](../app/apologistic_rules.py#L205)
 
 ```mermaid
 flowchart TD
@@ -247,7 +250,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:206](../app/apologistic_rules.py#L206)
+Πηγή: [app/apologistic_rules.py:208](../app/apologistic_rules.py#L208)
 
 ```mermaid
 flowchart TD
@@ -263,7 +266,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:209](../app/apologistic_rules.py#L209)
+Πηγή: [app/apologistic_rules.py:211](../app/apologistic_rules.py#L211)
 
 ```mermaid
 flowchart TD
@@ -277,7 +280,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:213](../app/apologistic_rules.py#L213)
+Πηγή: [app/apologistic_rules.py:215](../app/apologistic_rules.py#L215)
 
 ```mermaid
 flowchart TD
@@ -291,7 +294,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:215](../app/apologistic_rules.py#L215)
+Πηγή: [app/apologistic_rules.py:217](../app/apologistic_rules.py#L217)
 
 ```mermaid
 flowchart TD
@@ -307,7 +310,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:219](../app/apologistic_rules.py#L219)
+Πηγή: [app/apologistic_rules.py:221](../app/apologistic_rules.py#L221)
 
 ```mermaid
 flowchart TD
@@ -337,7 +340,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:222](../app/apologistic_rules.py#L222)
+Πηγή: [app/apologistic_rules.py:224](../app/apologistic_rules.py#L224)
 
 ```mermaid
 flowchart TD
@@ -348,16 +351,48 @@ flowchart TD
 
 Αυτός ο έλεγχος προηγείται του FLEX_COMPLIANT. Άγνωστη βάση: fallback στη δηλωμένη διάρκεια.
 
+<a id="full-short-declaration-base"></a>
+## FULL_SHORT_DECLARATION_BASE — Πλήρης βάση αντί μικρής δήλωσης
+
+**Απολογιστικό · ημερήσιοι · Ενεργός**
+
+Πηγή: [app/apologistic_rules.py:248](../app/apologistic_rules.py#L248)
+
+```mermaid
+flowchart TD
+  A["Έφτασε εδώ η ροή, χωρίς προγενέστερο ταίριασμα"] --> B{"Πλήρης εργασία, συμβατική βάση = ημερήσια βάση, 0 &lt; δηλωμένα &lt; βάση ≤ καθαρά πραγματικά, και μοναδικό αρχικό πλήρες ζεύγος με ίδια όρια/καθαρή διάρκεια ≥ βάση και ιστορική σύμβαση που καλύπτει την ημέρα;"}
+  B -->|Ναι| C["Μ · Πραγματική είσοδος + συμβατική βάση, χωρίς προσθήκη διαλείμματος."]
+  B -->|Όχι| D["Συνέχεια στον επόμενο έλεγχο."]
+```
+
+Πριν από ευελιξία/μετατόπιση. Caller: ένα δηλωμένο/αναγνωρισμένο τμήμα, χωρίς τεκμαρτά, ορφανά, πιθανό σπαστό, POST_CARRY, διευθέτηση ή ανισομερή κατανομή (σύμβαση ή flag καταστήματος). Βάση από συμβατικό 5/6ήμερο. Διατηρούνται declared και extras. Ακριβώς 6:40 σε συμβατικό 5ήμερο εξαιρείται λόγω διαφορετικής ημερήσιας βάσης. Η ωρομέτρηση κρατά χωριστή αναγνωρισμένη βάση.
+
+<a id="full-short-evidence-review"></a>
+## FULL_SHORT_EVIDENCE_REVIEW — Έλεγχος αρχικής κάρτας και ιστορικής σύμβασης
+
+**Απολογιστικό · ημερήσιοι · Ενεργός**
+
+Πηγή: [app/apologistic.py:708](../app/apologistic.py#L708)
+
+```mermaid
+flowchart TD
+  A["Έφτασε εδώ η ροή, χωρίς προγενέστερο ταίριασμα"] --> B{"Δεν υπάρχει αποθηκευμένη έναρξη ισχύος σύμβασης έως την ημέρα εργασίας, έχει παρέλθει τυχόν λήξη, ή δεν επαληθεύεται μοναδικό αρχικό πλήρες ζεύγος με ίδια όρια και καθαρή διάρκεια ≥ βάση."}
+  B -->|Ναι| C["Ε: Έλεγχος χωρίς αυτόματη επέκταση. Η πρόταση του προγενέστερου γενικού κανόνα εμφανίζεται μόνο ως αναφορά, όχι ως εγκεκριμένο ωράριο."]
+  B -->|Όχι| D["Συνέχεια στον επόμενο έλεγχο."]
+```
+
+Εφαρμόζεται μόνο σε υποψήφια FULL_SHORT_DECLARATION_BASE. Η αρχική κάρτα διατηρείται πριν από normalize_overnight_work_log_rows στο app/repo_work_log.py. Η παλιά πρόταση είναι αποκλειστικά αναφορά. Δεν μεταβάλλεται ο χωριστός υπολογισμός ωρομέτρησης.
+
 <a id="flex-compliant"></a>
 ## FLEX_COMPLIANT — Αποδεκτή ευελιξία
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:227](../app/apologistic_rules.py#L227)
+Πηγή: [app/apologistic_rules.py:254](../app/apologistic_rules.py#L254)
 
 ```mermaid
 flowchart TD
-  A["Έφτασε εδώ η ροή, χωρίς προγενέστερο ταίριασμα"] --> B{"Είσοδος μέσα στο [δηλωμένη έναρξη, +flex] Ή είσοδος μετά το παράθυρο και έξοδος ≤ δηλωμένη λήξη + flex;"}
+  A["Δεν εφαρμόστηκε πλήρης βάση μικρής δήλωσης ή άλλος προγενέστερος ημερήσιος κανόνας"] --> B{"Είσοδος μέσα στο [δηλωμένη έναρξη, +flex] Ή είσοδος μετά το παράθυρο και έξοδος ≤ δηλωμένη λήξη + flex;"}
   B -->|Ναι| C["Σ · Διατήρηση δηλωμένου. Αν υπάρχουν λεπτά υπερωρίας, ακολουθεί OVERTIME_ONLY."]
   B -->|Όχι| D["Συνέχεια στον επόμενο έλεγχο."]
 ```
@@ -369,7 +404,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:229](../app/apologistic_rules.py#L229)
+Πηγή: [app/apologistic_rules.py:256](../app/apologistic_rules.py#L256)
 
 ```mermaid
 flowchart TD
@@ -383,7 +418,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:232](../app/apologistic_rules.py#L232)
+Πηγή: [app/apologistic_rules.py:259](../app/apologistic_rules.py#L259)
 
 ```mermaid
 flowchart TD
@@ -399,7 +434,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:233](../app/apologistic_rules.py#L233)
+Πηγή: [app/apologistic_rules.py:260](../app/apologistic_rules.py#L260)
 
 ```mermaid
 flowchart TD
@@ -413,7 +448,7 @@ flowchart TD
 
 **Απολογιστικό · ημερήσιοι · Ενεργός**
 
-Πηγή: [app/apologistic_rules.py:234](../app/apologistic_rules.py#L234)
+Πηγή: [app/apologistic_rules.py:261](../app/apologistic_rules.py#L261)
 
 ```mermaid
 flowchart TD
@@ -427,7 +462,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1176](../app/apologistic.py#L1176)
+Πηγή: [app/apologistic.py:1243](../app/apologistic.py#L1243)
 
 ```mermaid
 flowchart TD
@@ -441,7 +476,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1178](../app/apologistic.py#L1178)
+Πηγή: [app/apologistic.py:1245](../app/apologistic.py#L1245)
 
 ```mermaid
 flowchart TD
@@ -457,7 +492,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1225](../app/apologistic.py#L1225)
+Πηγή: [app/apologistic.py:1292](../app/apologistic.py#L1292)
 
 ```mermaid
 flowchart TD
@@ -471,7 +506,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1103](../app/apologistic.py#L1103)
+Πηγή: [app/apologistic.py:1170](../app/apologistic.py#L1170)
 
 ```mermaid
 flowchart TD
@@ -487,7 +522,7 @@ flowchart TD
 
 **Απολογιστικό · μετα-κανόνες · Ενεργός**
 
-Πηγή: [app/apologistic.py:1111](../app/apologistic.py#L1111)
+Πηγή: [app/apologistic.py:1178](../app/apologistic.py#L1178)
 
 ```mermaid
 flowchart TD
@@ -501,7 +536,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1197](../app/apologistic.py#L1197)
+Πηγή: [app/apologistic.py:1264](../app/apologistic.py#L1264)
 
 ```mermaid
 flowchart TD
@@ -517,7 +552,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1202](../app/apologistic.py#L1202)
+Πηγή: [app/apologistic.py:1269](../app/apologistic.py#L1269)
 
 ```mermaid
 flowchart TD
@@ -533,7 +568,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1403](../app/apologistic.py#L1403)
+Πηγή: [app/apologistic.py:1470](../app/apologistic.py#L1470)
 
 ```mermaid
 flowchart TD
@@ -547,7 +582,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ανενεργός · μόνο στον παλιό κατάλογο**
 
-Πηγή: [docs/APOLOGISTIKO_RULES_CATALOG.md:435](../docs/APOLOGISTIKO_RULES_CATALOG.md#L435)
+Πηγή: [docs/APOLOGISTIKO_RULES_CATALOG.md:463](../docs/APOLOGISTIKO_RULES_CATALOG.md#L463)
 
 ```mermaid
 flowchart TD
@@ -595,7 +630,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1174](../app/apologistic.py#L1174)
+Πηγή: [app/apologistic.py:1241](../app/apologistic.py#L1241)
 
 ```mermaid
 flowchart TD
@@ -651,7 +686,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1064](../app/apologistic.py#L1064)
+Πηγή: [app/apologistic.py:1102](../app/apologistic.py#L1102)
 
 ```mermaid
 flowchart TD
@@ -665,7 +700,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1062](../app/apologistic.py#L1062)
+Πηγή: [app/apologistic.py:1100](../app/apologistic.py#L1100)
 
 ```mermaid
 flowchart TD
@@ -679,7 +714,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1044](../app/apologistic.py#L1044)
+Πηγή: [app/apologistic.py:1082](../app/apologistic.py#L1082)
 
 ```mermaid
 flowchart TD
@@ -693,7 +728,7 @@ flowchart TD
 
 **Απολογιστικό · σπαστό · Εσωτερικός · αντικαθίσταται πριν την έξοδο**
 
-Πηγή: [app/apologistic.py:1034](../app/apologistic.py#L1034)
+Πηγή: [app/apologistic.py:1072](../app/apologistic.py#L1072)
 
 ```mermaid
 flowchart TD
@@ -709,7 +744,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1462](../app/apologistic.py#L1462)
+Πηγή: [app/apologistic.py:1529](../app/apologistic.py#L1529)
 
 ```mermaid
 flowchart TD
@@ -725,7 +760,7 @@ flowchart TD
 
 **Απολογιστικό · εβδομάδα / ρεπό · Ενεργός**
 
-Πηγή: [app/apologistic.py:1463](../app/apologistic.py#L1463)
+Πηγή: [app/apologistic.py:1530](../app/apologistic.py#L1530)
 
 ```mermaid
 flowchart TD
@@ -741,7 +776,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:732](../app/apologistic.py#L732)
+Πηγή: [app/apologistic.py:760](../app/apologistic.py#L760)
 
 ```mermaid
 flowchart TD
@@ -803,7 +838,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
+Πηγή: [app/apologistic.py:835](../app/apologistic.py#L835)
 
 ```mermaid
 flowchart TD
@@ -863,7 +898,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
+Πηγή: [app/apologistic.py:835](../app/apologistic.py#L835)
 
 ```mermaid
 flowchart TD
@@ -879,7 +914,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
+Πηγή: [app/apologistic.py:835](../app/apologistic.py#L835)
 
 ```mermaid
 flowchart TD
@@ -895,7 +930,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
+Πηγή: [app/apologistic.py:835](../app/apologistic.py#L835)
 
 ```mermaid
 flowchart TD
@@ -911,7 +946,7 @@ flowchart TD
 
 **Απολογιστικό · κοινές αρχές · Ενεργός**
 
-Πηγή: [app/apologistic.py:807](../app/apologistic.py#L807)
+Πηγή: [app/apologistic.py:835](../app/apologistic.py#L835)
 
 ```mermaid
 flowchart TD

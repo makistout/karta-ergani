@@ -180,6 +180,8 @@ def normal_schedule_decision(
     raw_overnight: bool,
     declared_overnight: bool,
     hm: Callable[[int], str],
+    proposal_daily_base: int | None = None,
+    allow_full_base_proposal: bool = False,
 ) -> RuleDecision:
     base = contract_daily_base_minutes(contract_kind, weekly_days)
     if not has_punch:
@@ -220,6 +222,31 @@ def normal_schedule_decision(
     if contract_kind == "Μερική" and (effective_actual or 0) > declared_minutes:
         duration = min(effective_actual or actual_minutes, cap) if cap else (effective_actual or actual_minutes)
         return RuleDecision("change", "Η πραγματική διάρκεια μερικής υπερβαίνει τη δηλωμένη", f"{hm(actual_start)}–{hm(actual_start + duration)}", "Πραγματική διάρκεια με κόφτη πλήρους ημερήσιας βάσης", "PARTIAL_ACTUAL_CAPPED")
+    # Preserve the declaration for comparisons; only the proposal uses the
+    # contractual day when complete actual work demonstrably covers that day.
+    # This must precede flexibility, which otherwise returns the short label.
+    if (
+        allow_full_base_proposal
+        and contract_kind == "Πλήρης"
+        and day_state == "Εργασία"
+        and proposal_daily_base is not None
+        # Exact 6:40 declarations can intentionally select a different daily
+        # overtime basis. Do not introduce overlapping base/extra time there.
+        and proposal_daily_base == base
+        and 0 < declared_minutes < proposal_daily_base
+        and effective_actual is not None
+        and effective_actual >= proposal_daily_base
+        and not missing_start
+        and not missing_end
+    ):
+        return RuleDecision(
+            "change",
+            "Η δηλωμένη διάρκεια είναι μικρότερη της συμβατικής ημερήσιας βάσης, "
+            "η οποία καλύπτεται από την πραγματική εργασία",
+            f"{hm(actual_start)}–{hm(actual_start + proposal_daily_base)}",
+            "Πραγματική έναρξη και συμβατική ημερήσια βάση",
+            "FULL_SHORT_DECLARATION_BASE",
+        )
     if declared_start is not None and declared_end is not None:
         arrival_in_flex = declared_start <= actual_start <= declared_start + flex
         acceptable_exit = actual_start > declared_start + flex and actual_end <= declared_end + flex

@@ -153,3 +153,15 @@ def test_version_archive_and_current_outputs_are_fresh():
     result = subprocess.run([sys.executable, 'scripts/build_rule_diagrams.py', '--check'],
                             cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_archive_eol_conversion_preserves_integrity_check():
+    import runpy
+    from hashlib import sha256
+    matches = runpy.run_path(str(ROOT / 'scripts/build_rule_diagrams.py'))['artifact_matches']
+    lf = b'original\ntext\n'
+    crlf = lf.replace(b'\n', b'\r\n')
+    assert matches(lf, sha256(crlf).hexdigest(), 'index.html')
+    assert matches(crlf, sha256(lf).hexdigest(), 'index.html')
+    assert not matches(b'changed\ntext\n', sha256(crlf).hexdigest(), 'index.html')
+    assert not matches(lf, sha256(crlf).hexdigest(), 'complete.zip')

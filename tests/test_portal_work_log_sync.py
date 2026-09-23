@@ -280,6 +280,8 @@ def test_append_card_punches_does_not_attach_checkout_when_exit_only_row_exists(
 
 
 def test_card_report_uses_card_event_fallback_for_missing_exit(monkeypatch):
+    # Overnight normalization reads adjacent days through the repository alias.
+    monkeypatch.setattr("app.repo_work_log.list_work_log_for_store", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         "app.card_report.list_schedule_for_store",
         lambda employer_afm, branch_aa, work_date: [

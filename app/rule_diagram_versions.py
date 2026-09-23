@@ -11,6 +11,7 @@ SOURCE_FILES = (
     'app/apologistic_snapshot.py', 'app/repo_apologistic.py',
     'app/routes_apologistic.py', 'app/apologistic_submit.py',
     'app/apologistic_batch_submit.py', 'app/timekeeping_export.py',
+    'app/repo_work_log.py',
 )
 DOCUMENT_FILES = (
     'docs/APOLOGISTIKO_RULES_CATALOG.md', 'docs/APOLOGISTIKO_LOGIC.md',

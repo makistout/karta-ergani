@@ -705,6 +705,34 @@ def _contract_for_day(candidates: list[dict[str, Any]], work_date: str) -> dict[
     return min(active_candidates, key=lambda item: item[:2])[2] if active_candidates else None
 
 
+def _full_short_evidence_reasons(contract, work_date, day_punches,
+                                 actual_start, actual_end, daily_base, outside_break):
+    """Validate original card evidence only for a candidate full-base extension."""
+    reasons = []
+    target = datetime.strptime(work_date, "%d/%m/%Y").date()
+    start = _contract_date((contract or {}).get("effective_from"))
+    end = _contract_date((contract or {}).get("effective_to"))
+    if start is None or start > target or (end is not None and target > end):
+        reasons.append("Δεν τεκμηριώνεται χρονική κάλυψη από το αποθηκευμένο ιστορικό σύμβασης")
+    raw = next((r["_original_day_punches"] for r in day_punches
+                if "_original_day_punches" in r), day_punches)
+    if len(raw) != 1:
+        reasons.append("Περισσότερες από μία αρχικές εγγραφές κάρτας ή απουσία μοναδικού ζεύγους")
+    else:
+        interval = _valid_punch_interval(
+            raw[0], max_inferred_overnight_minutes=780 if daily_base == 480 else 720
+        )
+        if interval is None:
+            reasons.append("Η αρχική εγγραφή δεν έχει έγκυρη πραγματική είσοδο και έξοδο")
+        else:
+            a, b = interval
+            if (a, b) != (actual_start, actual_end):
+                reasons.append("Τα υπολογισμένα όρια διαφέρουν από το αρχικό πλήρες ζεύγος")
+            if max(0, b - a - outside_break) < daily_base:
+                reasons.append("Το αρχικό ζεύγος δεν καλύπτει την καθαρή συμβατική ημερήσια βάση")
+    return reasons
+
+
 def _is_catering_contract(contract: dict[str, Any] | None) -> bool:
     override = (contract or {}).get("catering_override")
     if override is not None:
@@ -813,6 +841,14 @@ def build_weekly_report(
 ) -> dict[str, Any]:
     schedules: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     punches: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    original_punches_by_day = {}
+    for row in work_rows:
+        key = (str(row.get("employee_afm") or "").zfill(9), str(row.get("work_date") or ""))
+        if "_original_day_punches" in row:
+            original_punches_by_day[key] = row["_original_day_punches"]
+    # Evidence is internal input, never part of displayed/saved punch records.
+    work_rows = [{k: v for k, v in row.items() if k != "_original_day_punches"}
+                 for row in work_rows]
     contract_segments_by_afm: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for contract_row in contracts:
         contract_segments_by_afm[str(contract_row.get("employee_afm") or "").zfill(9)].append(contract_row)
@@ -838,6 +874,8 @@ def build_weekly_report(
             schedules_by_afm.get(afm, []), contract_weekly_days
         )
 
+    for key, rows in punches.items():
+        original_punches_by_day.setdefault(key, list(rows))
     excluded_by_previous_overnight, carried_into_previous = (
         _partition_punches_covered_by_previous_overnight(
             punches, schedules, contracts_by_afm, weekly_system_by_afm
@@ -1063,7 +1101,7 @@ def build_weekly_report(
             else:
                 decision = RuleDecision("review", "Σπαστό με ελλιπές ή ορφανό χτύπημα", actual_label, "Χειροκίνητος έλεγχος", "SPLIT_INCOMPLETE_REVIEW")
         else:
-            decision = normal_schedule_decision(
+            decision_kwargs = dict(
                 contract_kind=contract_kind,
                 weekly_days=(classification_days if contract_kind in ("Πλήρης", "Εκ περιτροπής") else weekly_days),
                 day_state=state,
@@ -1085,7 +1123,36 @@ def build_weekly_report(
                 raw_overnight=raw_overnight,
                 declared_overnight=declared_overnight,
                 hm=_hm,
+                proposal_daily_base=contract_daily_base_minutes(
+                    contract_kind, _contract_weekly_days
+                ),
+                allow_full_base_proposal=(
+                    len(work_slots) == 1
+                    and len(matched) == 1
+                    and not inferred
+                    and not orphan_punches
+                    and not possible_split_parts
+                    and not excluded_overnight_punches
+                    and not contract_flags["work_arrangement"]
+                    and not contract_flags["uneven_distribution"]
+                    and not uneven_distribution_enabled
+                ),
             )
+            decision = normal_schedule_decision(**decision_kwargs)
+            if decision.rule_id == "FULL_SHORT_DECLARATION_BASE":
+                reasons = _full_short_evidence_reasons(
+                    contract, work_date, original_punches_by_day.get((afm, work_date), []), ps, pe,
+                    decision_kwargs["proposal_daily_base"], outside_break,
+                )
+                if reasons:
+                    prior = normal_schedule_decision(
+                        **{**decision_kwargs, "allow_full_base_proposal": False}
+                    )
+                    decision = RuleDecision(
+                        "review", " · ".join(reasons), prior.proposed,
+                        "Πρόταση πριν την επέκταση, μόνο ως αναφορά για χειροκίνητο έλεγχο",
+                        "FULL_SHORT_EVIDENCE_REVIEW",
+                    )
         if (
             excluded_overnight_punches
             and len(work_slots) == 1

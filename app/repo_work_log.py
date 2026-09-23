@@ -53,10 +53,28 @@ def normalize_overnight_work_log_rows(
                 if extra:
                     by_day[extra_wd] = [dict(r) for r in extra]
 
+    # Preserve day-local evidence before overnight rows are merged/removed.
+    # A synthesized pair must not qualify as one original complete card pair.
+    originals: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for wd, day_rows in by_day.items():
+        for row in day_rows:
+            key = (norm_afm(row.get("employee_afm") or ""), wd)
+            if "_original_day_punches" in row:
+                originals[key] = row["_original_day_punches"]
+            elif key not in originals or not any("_original_day_punches" in r for r in day_rows
+                                                 if norm_afm(r.get("employee_afm") or "") == key[0]):
+                originals.setdefault(key, []).append({
+                    field: row.get(field) for field in
+                    ("hour_from", "hour_to", "is_end_date_different")
+                })
     by_day = merge_overnight_exits_across_days(by_day)
     result: list[dict[str, Any]] = []
     for wd in ergani_dates:
-        result.extend(by_day.get(wd, []))
+        for row in by_day.get(wd, []):
+            row["_original_day_punches"] = originals.get(
+                (norm_afm(row.get("employee_afm") or ""), wd), []
+            )
+            result.append(row)
     return result
 
 

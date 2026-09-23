@@ -1,3 +1,5 @@
+import pytest
+
 from app.apologistic import build_weekly_report
 
 
@@ -15,7 +17,8 @@ def punch(start="09:00", end="17:00", day="03/08/2026", **extra):
 
 def contract(kind="ΠΛΗΡΗΣ ΑΠΑΣΧΟΛΗΣΗ", days="5", flex=0, **extra):
     value = {"employee_afm": "012345678", "characterization": kind,
-             "weekly_work_days": days, "flex_arrival_minutes": flex}
+             "weekly_work_days": days, "flex_arrival_minutes": flex,
+             "effective_from": "2026-01-01"}
     value.update(extra)
     return value
 
@@ -312,3 +315,143 @@ def test_six_declared_days_for_five_day_contract_proposes_one_rest():
     assert len(rest) == 1
     assert rest[0]["proposed"] == "ΑΝΑΠΑΥΣΗ/ΡΕΠΟ"
     assert rest[0]["rule_id"] == "SURPLUS_DECLARED_DAY_REST"
+
+
+# A short declaration is retained as evidence, but no longer caps a fully
+# worked contractual day in the ordinary continuous-work proposal.
+@pytest.mark.parametrize('declared_start,declared_end,entry,exit,flex,expected', [
+    ('13:00', '17:00', '13:00', '00:05', 0, '13:00–21:00'),
+    ('13:00', '17:00', '13:20', '23:56', 30, '13:20–21:20'),
+    ('14:00', '19:00', '13:54', '23:01', 0, '13:54–21:54'),
+    ('12:00', '19:00', '11:55', '22:30', 0, '11:55–19:55'),
+    ('13:00', '17:00', '13:40', '23:00', 0, '13:40–21:40'),
+    ('13:00', '17:00', '13:00', '21:00', 0, '13:00–21:00'),
+])
+def test_full_short_declaration_uses_contract_day_before_flex(
+    declared_start, declared_end, entry, exit, flex, expected,
+):
+    row = one([sched(start=declared_start, end=declared_end)],
+              [punch(entry, exit)], contract(flex=flex))
+    assert row['rule_id'] == 'FULL_SHORT_DECLARATION_BASE'
+    assert row['status'] == 'change'
+    assert row['proposed'] == expected
+    assert row['declared'] == f'{declared_start}–{declared_end}'
+    assert row['declared_minutes'] < 480
+    assert row['requires_confirmation']
+    assert row['overwork_minutes'] == max(0, min(row['effective_actual_minutes'], 540) - 480)
+    assert row['overtime_minutes'] == max(0, min(row['effective_actual_minutes'] - 540, 240))
+
+
+def test_full_short_declaration_uses_clean_duration_and_no_break_in_proposal():
+    agreement = contract(break_minutes=30, break_in_work=0)
+    short = one([sched(end='13:00')], [punch('09:00', '17:00')], agreement)
+    assert short['rule_id'] != 'FULL_SHORT_DECLARATION_BASE'
+    covered = one([sched(end='13:00')], [punch('09:00', '19:30')], agreement)
+    assert covered['proposed'] == '09:00–17:00'
+    assert covered['overtime_from'] == '18:30'
+    assert covered['overtime_minutes'] == 60
+
+
+def test_full_short_proposal_uses_six_day_contract_base():
+    row = one([sched(end='13:00')], [punch('09:00', '19:00')], contract(days='6'))
+    assert row['proposed'] == '09:00–15:40'
+    assert row['rule_id'] == 'FULL_SHORT_DECLARATION_BASE'
+    assert row['daily_overtime_basis_minutes'] == 400
+    assert row['overtime_from'] == '17:00'
+
+
+def test_full_short_proposal_preserves_exact_six_forty_daily_basis():
+    row = one([sched(end='15:40')], [punch('09:00', '19:00')], contract(days='5'))
+    assert row['rule_id'] == 'OVERTIME_ONLY'
+    assert row['proposed'] == '09:00–15:40'
+    assert row['daily_overtime_basis_minutes'] == 400
+    assert row['overtime_from'] == '17:00'
+
+
+@pytest.mark.parametrize('entry,exit', [('09:00', '16:59'), ('09:00', None), (None, '20:00')])
+def test_full_short_declaration_requires_complete_work_covering_base(entry, exit):
+    row = one([sched(end='13:00')], [punch(entry, exit)], contract())
+    assert row['rule_id'] != 'FULL_SHORT_DECLARATION_BASE'
+
+
+@pytest.mark.parametrize('extra', [
+    {'work_time_organization': 'ΔΙΕΥΘΕΤΗΣΗ'},
+    {'work_time_organization': 'ΑΝΙΣΟΜΕΡΗΣ'},
+    {'work_time_organization': 'ΜΗ ΠΡΟΒΛΕΨΙΜΟ'},
+])
+def test_full_short_declaration_preserves_special_contract_paths(extra):
+    row = one([sched(end='13:00')], [punch('09:00', '20:00')], contract(**extra))
+    assert row['rule_id'] != 'FULL_SHORT_DECLARATION_BASE'
+
+
+def test_full_short_declaration_preserves_weekly_distribution_path():
+    row = build_weekly_report([sched(end='13:00')], [punch('09:00', '20:00')],
+                              [contract()], uneven_distribution_enabled=True)['days'][0]
+    assert row['rule_id'] != 'FULL_SHORT_DECLARATION_BASE'
+
+
+def test_full_short_declaration_preserves_orphan_review():
+    row = one([sched(end='13:00')], [punch('09:00', '08:00')], contract())
+    assert row['rule_id'] == 'ORPHAN_PUNCH_REVIEW'
+    assert row['status'] == 'review'
+    assert row['proposed'] != '09:00–17:00'
+
+
+def test_full_short_declaration_keeps_maximum_span_review():
+    row = one([sched(end='13:00')], [punch('09:00', '22:01')], contract())
+    assert row['status'] == 'review'
+    assert row['rule_id'] == 'MAX_DAILY_SPAN_REVIEW'
+    assert row['proposed'] == '09:00–17:00'
+
+
+@pytest.mark.parametrize('punches', [
+    [punch('09:00', '13:15'), punch('16:00', '20:05')],
+    [punch('09:00', '14:00'), punch('20:00', None)],
+])
+def test_full_short_multiple_original_records_require_review(punches):
+    row = one([sched(end='13:00')], punches, contract())
+    assert row['rule_id'] == 'FULL_SHORT_EVIDENCE_REVIEW'
+    assert row['status'] == 'review'
+    assert row['proposed'] == '09:00–13:00'
+    assert row['requires_confirmation']
+
+
+@pytest.mark.parametrize('dates', [
+    {'effective_from': None}, {'effective_from': '2026-08-04'},
+    {'effective_from': '2026-01-01', 'effective_to': '2026-08-02'},
+])
+def test_full_short_requires_contract_covering_work_day(dates):
+    row = one([sched(end='13:00')], [punch('09:00', '19:00')], contract(**dates))
+    assert row['rule_id'] == 'FULL_SHORT_EVIDENCE_REVIEW'
+    assert row['status'] == 'review'
+
+
+def test_full_short_uses_historical_full_contract_not_current_partial():
+    row = build_weekly_report([sched(end='13:00')], [punch('09:00', '19:00')], [
+        contract(effective_from='2026-08-03', effective_to='2026-08-03'),
+        contract(kind='ΜΕΡΙΚΗ', effective_from='2026-08-04', is_current=True),
+    ])['days'][0]
+    assert row['rule_id'] == 'FULL_SHORT_DECLARATION_BASE'
+    partial = build_weekly_report([sched(end='13:00')], [punch('09:00', '19:00')], [
+        contract(kind='ΜΕΡΙΚΗ', effective_from='2026-08-03', effective_to='2026-08-03'),
+        contract(effective_from='2026-08-04', is_current=True),
+    ])['days'][0]
+    assert partial['rule_id'] == 'PARTIAL_ACTUAL_CAPPED'
+
+
+def test_full_short_does_not_treat_overnight_merge_as_original_pair():
+    from app.repo_work_log import normalize_overnight_work_log_rows
+    raw = [punch('17:00', None), punch(None, '02:00', day='04/08/2026')]
+    normalized = normalize_overnight_work_log_rows(
+        raw, employer_afm='123456789', branch_aa='0',
+        ergani_dates=['03/08/2026', '04/08/2026'],
+    )
+    row = one([sched(start='17:00', end='21:00')], normalized, contract())
+    assert row['rule_id'] == 'FULL_SHORT_EVIDENCE_REVIEW'
+    assert row['proposed'] == '17:00–21:00'
+    assert raw[0]['hour_to'] is None
+    normalized_again = normalize_overnight_work_log_rows(
+        normalized, employer_afm='123456789', branch_aa='0',
+        ergani_dates=['03/08/2026', '04/08/2026'],
+    )
+    assert one([sched(start='17:00', end='21:00')], normalized_again, contract()) == row
