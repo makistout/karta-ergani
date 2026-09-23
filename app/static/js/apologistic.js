@@ -471,13 +471,14 @@ function initProposalModal() {
   });
   form.querySelectorAll(".apologistic-proposal-type-option").forEach((option) => {
     option.addEventListener("click", (event) => {
-      if (event.target.closest(".field-input, .input-time-24, .leave-type-picker")) return;
+      if (event.target.closest(".field-input, .input-time-24, .leave-type-picker, .apologistic-proposal-clear-second, .apologistic-proposal-add-second")) return;
       const radio = option.querySelector('input[name="apologisticProposalType"]');
       if (!radio || radio.checked) return;
       radio.checked = true;
       radio.dispatchEvent(new Event("change", { bubbles: true }));
     });
   });
+  bindProposalSecondPairControls();
   document.getElementById("apologisticProposalLeaveTrigger")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -597,10 +598,11 @@ function syncProposalTypeUi() {
   if (workWrap) workWrap.classList.toggle("is-disabled", !workEnabled);
   if (teleWrap) teleWrap.classList.toggle("is-disabled", !teleEnabled);
   if (leaveWrap) leaveWrap.classList.toggle("is-disabled", !leaveEnabled);
+  const secondVisible = proposalSecondPairVisible();
   if (workFrom) workFrom.disabled = !workEnabled;
   if (workTo) workTo.disabled = !workEnabled;
-  if (workFrom2) workFrom2.disabled = !workEnabled;
-  if (workTo2) workTo2.disabled = !workEnabled;
+  if (workFrom2) workFrom2.disabled = !workEnabled || !secondVisible;
+  if (workTo2) workTo2.disabled = !workEnabled || !secondVisible;
   if (teleFrom) teleFrom.disabled = !teleEnabled;
   if (teleTo) teleTo.disabled = !teleEnabled;
   if (leaveTrigger) leaveTrigger.disabled = !leaveEnabled;
@@ -610,6 +612,49 @@ function syncProposalTypeUi() {
     const selected = Boolean(input?.checked);
     label.classList.toggle("is-selected", selected);
     label.classList.toggle("is-disabled", !selected);
+  });
+}
+
+function proposalSecondPairVisible() {
+  const wrap = document.getElementById("apologisticProposalSecondWrap");
+  return Boolean(wrap) && !wrap.classList.contains("is-hidden");
+}
+
+function setProposalSecondPairVisible(visible) {
+  const wrap = document.getElementById("apologisticProposalSecondWrap");
+  const addBtn = document.getElementById("apologisticProposalAddSecond");
+  const from2 = document.getElementById("apologisticProposalFrom2");
+  const to2 = document.getElementById("apologisticProposalTo2");
+  const workEnabled = selectedProposalType() === "work";
+  if (wrap) wrap.classList.toggle("is-hidden", !visible);
+  if (addBtn) addBtn.classList.toggle("is-hidden", visible);
+  if (!visible) {
+    if (from2) from2.value = "";
+    if (to2) to2.value = "";
+  }
+  if (from2) from2.disabled = !workEnabled || !visible;
+  if (to2) to2.disabled = !workEnabled || !visible;
+}
+
+function bindProposalSecondPairControls() {
+  const stopLabelToggle = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const clearBtn = document.getElementById("apologisticProposalClearSecond");
+  const addBtn = document.getElementById("apologisticProposalAddSecond");
+  clearBtn?.addEventListener("mousedown", stopLabelToggle);
+  addBtn?.addEventListener("mousedown", stopLabelToggle);
+  clearBtn?.addEventListener("click", (event) => {
+    stopLabelToggle(event);
+    setProposalType("work");
+    setProposalSecondPairVisible(false);
+  });
+  addBtn?.addEventListener("click", (event) => {
+    stopLabelToggle(event);
+    setProposalType("work");
+    setProposalSecondPairVisible(true);
+    document.getElementById("apologisticProposalFrom2")?.focus();
   });
 }
 
@@ -663,8 +708,12 @@ function buildProposedValueFromEditor() {
   }
   const from = Office.normalizeHourMinute(document.getElementById("apologisticProposalFrom")?.value || "");
   const to = Office.normalizeHourMinute(document.getElementById("apologisticProposalTo")?.value || "");
-  const from2 = Office.normalizeHourMinute(document.getElementById("apologisticProposalFrom2")?.value || "");
-  const to2 = Office.normalizeHourMinute(document.getElementById("apologisticProposalTo2")?.value || "");
+  const from2 = proposalSecondPairVisible()
+    ? Office.normalizeHourMinute(document.getElementById("apologisticProposalFrom2")?.value || "")
+    : "";
+  const to2 = proposalSecondPairVisible()
+    ? Office.normalizeHourMinute(document.getElementById("apologisticProposalTo2")?.value || "")
+    : "";
   if (!from || !to) return { error: "Συμπληρώστε έγκυρες ώρες σε μορφή ΩΩ:ΛΛ." };
   if ((from2 && !to2) || (!from2 && to2)) {
     return { error: "Συμπληρώστε και τα δύο πεδία του 2ου τμήματος ή αφήστε τα κενά." };
@@ -2195,8 +2244,10 @@ async function editProposal(employeeAfm, workDate) {
   document.getElementById("apologisticProposalTo").value = detected.type === "work" ? (detected.to || "") : "";
   const workFrom2 = document.getElementById("apologisticProposalFrom2");
   const workTo2 = document.getElementById("apologisticProposalTo2");
-  if (workFrom2) workFrom2.value = detected.type === "work" ? (detected.from2 || "") : "";
-  if (workTo2) workTo2.value = detected.type === "work" ? (detected.to2 || "") : "";
+  const hasSecond = detected.type === "work" && Boolean(detected.from2 || detected.to2);
+  if (workFrom2) workFrom2.value = hasSecond ? (detected.from2 || "") : "";
+  if (workTo2) workTo2.value = hasSecond ? (detected.to2 || "") : "";
+  setProposalSecondPairVisible(hasSecond);
   const teleFrom = document.getElementById("apologisticProposalTeleFrom");
   const teleTo = document.getElementById("apologisticProposalTeleTo");
   if (teleFrom) teleFrom.value = detected.type === "telework" ? (detected.from || "") : "";
@@ -2599,6 +2650,21 @@ function compactScheduleLabel(value) {
   if (upper.includes("ΑΡΓΙΑ")) return "ΑΡΓΙΑ";
   return raw;
 }
+
+function formatScheduleCell(value) {
+  const raw = String(value || "").trim();
+  const compact = compactScheduleLabel(value);
+  if (!compact || compact === "—") return "—";
+  const ranges = [...raw.matchAll(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/g)]
+    .map((match) => `${match[1]}–${match[2]}`);
+  if (ranges.length > 1) {
+    const tele = compact.startsWith("Τηλεργ.") || /ΤΗΛΕΡΓΑΣ|^ΤΗΛ /i.test(raw);
+    return ranges.map((range) => attr(tele ? `Τηλεργ. ${range}` : range)).join("<br>");
+  }
+  const parts = compact.split(/\s*·\s*|\n+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return attr(compact);
+  return parts.map((part) => attr(part)).join("<br>");
+}
 function compactDayState(value) {
   return ({"Εργασία":"Εργ.", "Ρεπό":"Ρεπό", "Μη εργασία":"Μη εργ.", "Τηλεργασία":"Τηλεργ.", "Άδεια":"Άδεια", "Αργία":"Αργία"})[value] || "Χωρίς";
 }
@@ -2929,7 +2995,7 @@ function renderRows(rows, store) {
       `<td title="${attr(netDetails)}" class="${diffClass(row.net_difference_minutes)}"><strong>${signedMins(row.net_difference_minutes)}</strong></td>` +
       `<td title="${attr((row.overtime_segments || []).map((segment) => `${segment.date}: ${segment.from}–${segment.to} (${mins(segment.minutes)})`).join(" · ") || "Δεν προκύπτει υπερωρία")}" class="apologistic-overtime-cell${row.overtime_minutes ? " time-diff--plus" : ""}">${overtimeCell(row)}</td>` +
       `<td class="apologistic-proposal-cell"><div class="apologistic-proposal-wrap">` +
-      `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${attr(compactScheduleLabel(row.proposed))}</strong></button>` +
+      `<button type="button" class="apologistic-proposal-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" title="Κλικ για αλλαγή προτεινόμενου ωραρίου"><strong>${formatScheduleCell(row.proposed)}</strong></button>` +
       `<div class="apologistic-proposal-history"><b>Ιστορικό πρότασης</b>${proposalHistory(row)}</div></div></td>` +
       `<td class="apologistic-result-cell" title="${attr(statusLabel(row.status, row))}">${renderResultBadge(row)}` +
       (changeFromReview(row) ? `<button type="button" class="apologistic-restore-review-btn" data-employee-afm="${attr(row.employee_afm)}" data-work-date="${attr(row.work_date)}" aria-label="Επαναφορά στην αρχική κατάσταση" title="Διαγραφή απόφασης ${statusShortLabel(row.status, row)} και επαναφορά στην αρχική κατάσταση"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></button>` : "") +

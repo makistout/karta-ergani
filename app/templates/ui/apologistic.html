@@ -252,16 +252,20 @@
                   <input id="apologisticProposalTo" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="17:00" autocomplete="off">
                 </span>
               </span>
-              <span class="apologistic-proposal-time-grid">
-                <span class="apologistic-proposal-time-field">
-                  <span class="apologistic-proposal-time-label">Από</span>
-                  <input id="apologisticProposalFrom2" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="" autocomplete="off">
+              <span id="apologisticProposalSecondWrap" class="apologistic-proposal-time-row">
+                <span class="apologistic-proposal-time-grid">
+                  <span class="apologistic-proposal-time-field">
+                    <span class="apologistic-proposal-time-label">Από</span>
+                    <input id="apologisticProposalFrom2" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="" autocomplete="off">
+                  </span>
+                  <span class="apologistic-proposal-time-field">
+                    <span class="apologistic-proposal-time-label">Έως</span>
+                    <input id="apologisticProposalTo2" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="" autocomplete="off">
+                  </span>
                 </span>
-                <span class="apologistic-proposal-time-field">
-                  <span class="apologistic-proposal-time-label">Έως</span>
-                  <input id="apologisticProposalTo2" class="field-input input-time-24" type="text" inputmode="numeric" maxlength="5" placeholder="" autocomplete="off">
-                </span>
+                <button type="button" id="apologisticProposalClearSecond" class="apologistic-proposal-clear-second" title="Αφαίρεση δεύτερου τμήματος" aria-label="Αφαίρεση δεύτερου τμήματος"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
               </span>
+              <button type="button" id="apologisticProposalAddSecond" class="apologistic-proposal-add-second is-hidden"><i class="bi bi-plus-lg" aria-hidden="true"></i> Δεύτερο τμήμα</button>
             </span>
           </span>
         </label>
@@ -358,6 +362,6 @@
 {% block scripts %}
 
   <script src="/static/js/office-date-picker.js?v=20260816apologistic1"></script>
-  <script src="/static/js/apologistic.js?v=20260819back1"></script>
+  <script src="/static/js/apologistic.js?v=20260923clearsecond1"></script>
 
 {% endblock %}
