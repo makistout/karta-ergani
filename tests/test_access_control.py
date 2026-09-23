@@ -202,7 +202,7 @@ def _compliance_menu_html(role, permissions=None):
     return client.get("/ui/").get_data(as_text=True)
 
 
-COMPLIANCE_LABELS = ("Ψηφιακό ωράριο", "Πραγματική απασχόληση", "Πρωτόκολλα", "Απολογιστικό")
+COMPLIANCE_LABELS = ("Πραγματική απασχόληση", "Πρωτόκολλα", "Απολογιστικό")
 
 
 @pytest.mark.parametrize("role", ["office_manager", "office", "admin", "backoffice_admin", "viewer"])
@@ -211,6 +211,7 @@ def test_compliance_menu_is_hidden_outside_accountant(role):
 
     for label in COMPLIANCE_LABELS:
         assert label not in html
+    assert "Ψηφιακό ωράριο" in html
     assert "Ψηφιακή κάρτα" in html
 
 
@@ -222,6 +223,7 @@ def test_compliance_menu_stays_hidden_with_stale_session_permissions():
 
     for label in COMPLIANCE_LABELS:
         assert label not in html
+    assert "Ψηφιακό ωράριο" in html
 
 
 def test_compliance_pages_and_apis_reject_office_manager():
@@ -241,10 +243,11 @@ def test_compliance_pages_and_apis_reject_office_manager():
         session[SESSION_SUPER_ADMIN] = False
         session[SESSION_PERMISSIONS] = sorted(permissions_for_role("office_manager"))
 
-    for path in ("/ui/schedule", "/ui/protocols", "/ui/apologistic"):
+    for path in ("/ui/protocols", "/ui/apologistic"):
         assert client.get(path).location == "/ui/"
     assert client.get("/api/apologistic/week").status_code == 403
-    assert client.get("/api/schedule/list").status_code == 403
+    assert client.get("/ui/schedule").status_code == 200
+    assert client.get("/api/schedule/list").status_code == 200
     # Η ψηφιακή κάρτα παραμένει διαθέσιμη.
     assert client.get("/api/work-card/list").status_code == 200
 

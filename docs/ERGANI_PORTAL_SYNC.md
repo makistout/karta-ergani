@@ -114,6 +114,8 @@
 - `count=0`,
 - χωρίς blocking error,
 - ώστε να συνεχίζονται post-sync notifications.
+- Το post-sync κοιτάει σήμερα **και χθες**, ώστε ανοιχτή νυχτερινή έξοδος
+  (π.χ. 01:00) να ειδοποιεί `late_check_out` την επομένη.
 
 ## Refactor Note
 

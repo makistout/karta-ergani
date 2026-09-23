@@ -468,6 +468,115 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
         }
         self.assertEqual(kinds, {"late_check_in", "late_check_out"})
 
+    def test_send_post_sync_includes_yesterday_overnight_late_check_out(self):
+        class FakeLogger:
+            def __init__(self, *args, **kwargs):
+                self.run_id = "notify-run"
+
+            def info(self, *args, **kwargs):
+                return None
+
+            def warning(self, *args, **kwargs):
+                return None
+
+            def error(self, *args, **kwargs):
+                return None
+
+        cfg = {
+            "id": 17,
+            "name": "ΛΑΔΟΚΟΛΛΑ",
+            "employer_afm": "803229207",
+            "branch_aa": "2",
+            "username": "u",
+            "password": "p",
+        }
+        today_report = {
+            "rows": [
+                {
+                    "employee_afm": "111111111",
+                    "eponymo": "ΣΗΜΕΡΑ",
+                    "onoma": "ΕΝΑΣ",
+                    "today_notify_kind": "late_check_in",
+                    "today_notify_snoozed": False,
+                    "work_date": "23/09/2026",
+                }
+            ]
+        }
+        yesterday_report = {
+            "rows": [
+                {
+                    "employee_afm": "164090865",
+                    "eponymo": "KOCIAJ",
+                    "onoma": "DENISA",
+                    "today_notify_kind": "late_check_out",
+                    "today_notify_snoozed": False,
+                    "work_date": "22/09/2026",
+                    "work_log": {"hour_from": "17:02", "hour_to": ""},
+                    "schedule": {"hour_from": "17:00", "hour_to": "01:00"},
+                }
+            ]
+        }
+
+        def _report(employer_afm, branch_aa, date_iso=None):
+            del employer_afm, branch_aa
+            return yesterday_report if date_iso == "2026-09-22" else today_report
+
+        scanned: list[str] = []
+
+        def _enrich(rows, store_id):
+            del store_id
+            scanned.extend(str(r.get("work_date") or "") for r in rows)
+
+        with (
+            patch(
+                "app.scheduled_sync_notifications.store_api_context",
+                return_value={
+                    "employer_afm": "803229207",
+                    "branch_aa": "2",
+                },
+            ),
+            patch(
+                "app.scheduled_sync_notifications.KartaLogger",
+                FakeLogger,
+            ),
+            patch(
+                "app.card_report.build_card_status_report",
+                side_effect=_report,
+            ),
+            patch(
+                "app.repo_today_alert.enrich_card_report_rows_with_today_notify",
+                side_effect=_enrich,
+            ),
+            patch(
+                "app.today_alert_service.send_today_punch_notifications",
+                return_value={"sent": 1, "total": 1, "errors": []},
+            ) as send_notify,
+            patch("app.scheduled_sync_notifications.repo_sync_log.finish_run"),
+            patch(
+                "app.scheduled_sync_notifications.repo_sync_log.update_run_progress"
+            ),
+        ):
+            result = scheduled_sync_notifications._send_post_sync_notifications(
+                cfg,
+                work_date_iso="2026-09-23",
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(send_notify.call_count, 2)
+        kinds = {
+            (call.kwargs["employee_afm"], call.kwargs["notify_kind"], call.kwargs["work_date"])
+            for call in send_notify.call_args_list
+        }
+        self.assertEqual(
+            kinds,
+            {
+                ("111111111", "late_check_in", "23/09/2026"),
+                ("164090865", "late_check_out", "22/09/2026"),
+            },
+        )
+        self.assertIn("23/09/2026", scanned)
+        self.assertIn("22/09/2026", scanned)
+
 
 if __name__ == "__main__":
     unittest.main()

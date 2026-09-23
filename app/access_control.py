@@ -18,13 +18,12 @@ ADMIN_ONLY_NAVS = {"sync", "settings", "synclog", "missingcards"}
 # Accountant βλέπει Ελλειπή + Ρυθμίσεις (μόνο αργίες) χωρίς πλήρη admin.
 ACCOUNTANT_ALLOWED_ADMIN_NAVS = {"settings", "missingcards"}
 
-# Συμμόρφωση (ωράριο, πραγματική, πρωτόκολλα, απολογιστικό, προειδοποιήσεις
+# Συμμόρφωση (πραγματική, πρωτόκολλα, απολογιστικό, προειδοποιήσεις
 # σύμβασης στην αρχική): μόνο λογιστής και super admin. Ούτε office manager
-# ούτε backoffice admin.
+# ούτε backoffice admin. Το Ψηφιακό ωράριο μένει κοινό (`schedule.view`).
 COMPLIANCE_ROLES = {"super_admin", "accountant"}
-COMPLIANCE_NAVS = {"schedule", "worklog", "protocols", "apologistic", "rule-diagrams"}
+COMPLIANCE_NAVS = {"worklog", "protocols", "apologistic", "rule-diagrams"}
 COMPLIANCE_PERMISSIONS: set[str] = {
-    "schedule.page.view",
     "work_log.page.view",
     "protocols.view",
     "apologistic.view",
@@ -163,7 +162,7 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/employees/contracts": "employees.view",
     "/ui/employees/detail": "employees.view",
     "/ui/employees/weekly-schedule": "schedule.view",
-    "/ui/schedule": "schedule.page.view",
+    "/ui/schedule": "schedule.view",
     "/ui/work-log": "work_log.page.view",
     # Ιστορικό ενός εργαζομένου: ανοίγει από Ψηφιακή κάρτα / Εργαζόμενοι.
     "/ui/work-log/history": "work_log.view",
@@ -181,7 +180,7 @@ UI_PERMISSIONS: dict[str, str] = {
 
 NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/", "nav": "home", "label": "Αρχική", "permission": "dashboard.view"},
-    {"href": "/ui/schedule", "nav": "schedule", "label": "Ψηφιακό ωράριο", "permission": "schedule.page.view"},
+    {"href": "/ui/schedule", "nav": "schedule", "label": "Ψηφιακό ωράριο", "permission": "schedule.view"},
     {"href": "/ui/work-log", "nav": "worklog", "label": "Πραγματική απασχόληση", "permission": "work_log.page.view"},
     {"href": "/ui/protocols", "nav": "protocols", "label": "Πρωτόκολλα", "icon": "file-earmark-text", "permission": "protocols.view"},
     {"href": "/ui/apologistic", "nav": "apologistic", "label": "Απολογιστικό", "icon": "clipboard-data", "permission": "apologistic.view"},
@@ -240,7 +239,7 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/schedule/day-form", "schedule.submit_daily"),
     RouteRule("POST", "/api/schedule/day-form/*", "schedule.submit_daily"),
     RouteRule("GET", "/api/schedule/sync/status/*", "schedule.sync"),
-    RouteRule("GET", "/api/schedule/*", "schedule.page.view"),
+    RouteRule("GET", "/api/schedule/*", "schedule.view"),
     RouteRule("POST", "/api/schedule/sync", "schedule.sync"),
     RouteRule("GET", "/api/work-log/list", "work_log.view"),
     RouteRule("GET", "/api/work-log/history", "work_log.view"),
@@ -321,7 +320,7 @@ def has_permission(permission: str | None, *, role: str | None = None) -> bool:
     if not permission:
         return True
     # Ρόλος και μόνο ρόλος αποφασίζει για τη συμμόρφωση· stale session permissions
-    # δεν ανοίγουν ωράριο/πρωτόκολλα/απολογιστικό σε office manager.
+    # δεν ανοίγουν πραγματική/πρωτόκολλα/απολογιστικό σε office manager.
     if permission in COMPLIANCE_PERMISSIONS and not is_compliance_role(role):
         return False
     if role is None:
@@ -362,7 +361,7 @@ def is_admin_role(role: str | None = None) -> bool:
 
 
 def is_compliance_role(role: str | None = None) -> bool:
-    """Ωράριο/πρωτόκολλα/απολογιστικό/προειδοποιήσεις: λογιστής + super admin."""
+    """Πραγματική/πρωτόκολλα/απολογιστικό/προειδοποιήσεις: λογιστής + super admin."""
     return normalize_role(role if role is not None else current_role()) in COMPLIANCE_ROLES
 
 

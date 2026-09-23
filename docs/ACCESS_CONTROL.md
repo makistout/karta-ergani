@@ -40,23 +40,24 @@
 
 ## Οθόνες συμμόρφωσης (λογιστής + super admin)
 
-Ψηφιακό ωράριο, Πραγματική απασχόληση, Πρωτόκολλα, Απολογιστικό και οι
-προειδοποιήσεις παραβάσεων σύμβασης στην Αρχική είναι ορατά **μόνο** σε
-`accountant` και `super_admin` (`COMPLIANCE_ROLES`). Ο `office_manager`, ο
-`office`, οι viewers και οι backoffice admins δεν τα βλέπουν.
+Πραγματική απασχόληση, Πρωτόκολλα, Απολογιστικό και οι προειδοποιήσεις
+παραβάσεων σύμβασης στην Αρχική είναι ορατά **μόνο** σε `accountant` και
+`super_admin` (`COMPLIANCE_ROLES`). Ο `office_manager`, ο `office`, οι
+viewers και οι backoffice admins δεν τα βλέπουν. Το **Ψηφιακό ωράριο**
+είναι κοινό (`schedule.view`) για όλους τους ρόλους που έχουν προβολή ωραρίου.
 
-- Permissions: `schedule.page.view`, `work_log.page.view`, `protocols.view`,
-  `apologistic.view`, `alerts.contract.view` (`COMPLIANCE_PERMISSIONS`).
+- Permissions: `work_log.page.view`, `protocols.view`, `apologistic.view`,
+  `alerts.contract.view` (`COMPLIANCE_PERMISSIONS`).
 - Ο έλεγχος είναι **ρόλου**: το `has_permission` απορρίπτει αυτά τα permissions
   για μη compliance ρόλο, ακόμη κι αν υπάρχουν stale entries στο session/DB.
-  Στο μενού ισχύει και `COMPLIANCE_NAVS` (schedule, worklog, protocols,
-  apologistic, rule-diagrams).
-- Backend: `/ui/schedule`, `/ui/work-log`, `/ui/protocols`, `/ui/apologistic*`,
-  `GET /api/schedule/*`, `GET /api/protocols/list` και όλα τα
-  `/api/apologistic/*` (GET/POST/PUT, μαζί με τις υποβολές WTODailyA/WTOOvA και
-  τα Excel ωρομέτρησης). Οι μη επιτρεπόμενοι ρόλοι παίρνουν redirect στο `/ui/`
-  ή `403`.
-- Παραμένουν κοινά, γιατί τα χρειάζεται η Ψηφιακή κάρτα και οι Εργαζόμενοι:
+  Στο μενού ισχύει και `COMPLIANCE_NAVS` (worklog, protocols, apologistic,
+  rule-diagrams).
+- Backend: `/ui/work-log`, `/ui/protocols`, `/ui/apologistic*`,
+  `GET /api/protocols/list` και όλα τα `/api/apologistic/*` (GET/POST/PUT,
+  μαζί με τις υποβολές WTODailyA/WTOOvA και τα Excel ωρομέτρησης). Οι μη
+  επιτρεπόμενοι ρόλοι παίρνουν redirect στο `/ui/` ή `403`.
+- Παραμένουν κοινά, γιατί τα χρειάζεται η Ψηφιακή κάρτα, οι Εργαζόμενοι
+  και το ψηφιακό ωράριο: `/ui/schedule`, `GET /api/schedule/*`,
   `GET /api/work-log/list`, `GET /api/work-log/history`, `/ui/work-log/history`,
   τα PDF πρωτοκόλλου (`/api/protocols/*/pdf`, `/api/protocols/by-code/pdf`) και
   τα `action-settings` του καταστήματος (`work_log.view`).
@@ -96,10 +97,9 @@
   - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
   - **Μεταβολή σύμβασης WebMA** (`/api/employees/contract/change/*` + UI στο detail):
     **μόνο `super_admin`** (επιπλέον του permission).
-- Ψηφιακό ωράριο: `schedule.page.view` (σελίδα + `GET /api/schedule/*`),
-  `schedule.sync`, `schedule.submit_daily`, `schedule.submit_weekly`,
-  `schedule.submit_leave`, `schedule.export`. Το `schedule.view` μένει για
-  δευτερεύουσες οθόνες (εβδομαδιαίο ωράριο εργαζομένου).
+- Ψηφιακό ωράριο: `schedule.view` (σελίδα + `GET /api/schedule/*` + εβδομαδιαίο
+  ωράριο εργαζομένου), `schedule.sync`, `schedule.submit_daily`,
+  `schedule.submit_weekly`, `schedule.submit_leave`, `schedule.export`.
 - Πραγματική απασχόληση: `work_log.page.view` (σελίδα λίστας), `work_log.view`
   (δεδομένα/ιστορικό για κάρτα και εργαζομένους), `work_log.sync`, `work_log.export`
   - Απολογιστική ωρομέτρηση Excel (συγκεντρωτικό + πλήρης ανάλυση): `apologistic.view`

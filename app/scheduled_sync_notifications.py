@@ -22,6 +22,55 @@ def _today_iso() -> str:
     return datetime.today().strftime("%Y-%m-%d")
 
 
+def _add_iso_days(date_iso: str, days: int) -> str:
+    from datetime import datetime, timedelta
+
+    base = datetime.strptime(str(date_iso)[:10], "%Y-%m-%d").date()
+    return (base + timedelta(days=int(days))).strftime("%Y-%m-%d")
+
+
+def _notify_row_key(row: dict[str, Any]) -> tuple[str, str]:
+    return (
+        str(row.get("employee_afm") or "").strip(),
+        str(row.get("work_date") or "").strip(),
+    )
+
+
+def _collect_post_sync_notify_rows(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    store_id: int,
+    today_iso: str,
+) -> list[dict[str, Any]]:
+    """Σήμερα + χθες: οι νυχτερινές έξοδοι (π.χ. 01:00) ανήκουν στη χθεσινή μέρα."""
+    from app.card_report import build_card_status_report
+    from app.repo_today_alert import enrich_card_report_rows_with_today_notify
+
+    dates = [today_iso]
+    yesterday = _add_iso_days(today_iso, -1)
+    if yesterday and yesterday not in dates:
+        dates.append(yesterday)
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for date_iso in dates:
+        report = build_card_status_report(
+            employer_afm,
+            branch_aa,
+            date_iso=date_iso,
+        )
+        rows = list(report.get("rows") or [])
+        enrich_card_report_rows_with_today_notify(rows, store_id)
+        for row in rows:
+            key = _notify_row_key(row)
+            if not key[0] or key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+    return merged
+
+
 def is_store_syncable(cfg: dict[str, Any]) -> bool:
     from app.scheduled_sync import is_store_syncable as _is_store_syncable
 
@@ -73,8 +122,6 @@ def _send_post_sync_notifications(
     skip_late_check_in_auto: bool = False,
 ) -> dict[str, Any]:
     """Αποστολή ειδοποιήσεων καμπάνας μετά από sync καταστήματος."""
-    from app.card_report import build_card_status_report
-    from app.repo_today_alert import enrich_card_report_rows_with_today_notify
     from app.today_alert_service import send_today_punch_notifications
     from app.today_notify_logic import merge_notify_work_hours, notify_kind_base
 
@@ -98,9 +145,11 @@ def _send_post_sync_notifications(
             "work_date": today,
         },
     )
+    yesterday = _add_iso_days(today, -1)
     log.info(
-        f"Έναρξη ασύγχρονων ειδοποιήσεων μετά το sync για {today}",
+        f"Έναρξη ασύγχρονων ειδοποιήσεων μετά το sync για {today} (+χθες {yesterday})",
         work_date=today,
+        yesterday=yesterday,
     )
 
     sent_total = 0
@@ -111,13 +160,12 @@ def _send_post_sync_notifications(
     attempted: list[dict[str, Any]] = []
 
     try:
-        report = build_card_status_report(
-            str(ctx.get("employer_afm") or ""),
-            str(ctx.get("branch_aa") or "0"),
-            date_iso=today,
+        rows = _collect_post_sync_notify_rows(
+            employer_afm=str(ctx.get("employer_afm") or ""),
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+            store_id=sid,
+            today_iso=today,
         )
-        rows = report.get("rows") or []
-        enrich_card_report_rows_with_today_notify(rows, sid)
         notify_rows = [
             row
             for row in rows

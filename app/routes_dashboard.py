@@ -157,7 +157,7 @@ def card_report():
             "branch_aa": ctx["branch_aa"],
         },
         "links": {
-            "schedule": has_permission("schedule.page.view"),
+            "schedule": has_permission("schedule.view"),
             "work_log": has_permission("work_log.page.view"),
         },
         **{**report, "rows": rows},
