@@ -37,6 +37,33 @@ Object.assign(window.Office, {
       else sb.appendChild(box);
     });
     this.initSidebarMenu();
+    this.initAssistantHealth();
+  },
+
+  initAssistantHealth() {
+    const el = document.getElementById("sidebarAssistantHealth");
+    if (!el || el.dataset.bound === "1") return;
+    el.dataset.bound = "1";
+    const labelEl = el.querySelector(".sidebar-assistant-health-label");
+    const apply = (data) => {
+      const status = String(data?.status || (data?.ok ? "ok" : "error"));
+      el.classList.remove("is-ok", "is-warn", "is-err", "is-error", "is-pending");
+      el.classList.add(status === "ok" ? "is-ok" : status === "warn" ? "is-warn" : "is-err");
+      if (labelEl) labelEl.textContent = data?.label || (status === "ok" ? "Telegram OK" : "Telegram σφάλμα");
+      el.title = data?.detail || "";
+    };
+    const load = async () => {
+      try {
+        const res = await fetch("/api/assistant/health", { headers: { Accept: "application/json" } });
+        if (res.status === 401 || res.status === 403) return;
+        const data = await res.json().catch(() => ({}));
+        if (data && (data.status || data.label)) apply(data);
+      } catch {
+        /* αγνοείται — μένει η ένδειξη από την αρχική απόδοση */
+      }
+    };
+    load();
+    window.setInterval(load, 60000);
   },
 
   initSidebarMenu() {

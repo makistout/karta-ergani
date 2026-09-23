@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request, session
 
-from app.access_control import can_access_store
+from app.access_control import can_access_store, is_super_admin
 from app.assistant_messages import ai_agent_disabled_message
 from app.audit_log import record_audit_event
 from app.office_auth import SESSION_USER
@@ -15,6 +15,23 @@ assistant_bp = Blueprint("assistant", __name__, url_prefix="/api/assistant")
 
 def _user() -> str:
     return str(session.get(SESSION_USER) or "").strip()
+
+
+@assistant_bp.get("/health")
+def assistant_health_status():
+    if not is_super_admin():
+        return jsonify({"error": "Μόνο super admin"}), 403
+    try:
+        from app.telegram_assistant_health import assistant_health
+
+        return jsonify(assistant_health())
+    except Exception as exc:
+        return jsonify({
+            "ok": False,
+            "status": "error",
+            "label": "Telegram σφάλμα",
+            "detail": str(exc)[:240],
+        }), 200
 
 
 def _context(store: dict) -> dict:

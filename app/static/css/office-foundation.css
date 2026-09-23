@@ -78,6 +78,36 @@ body {
   margin-top: 0.25rem;
 }
 
+.sidebar-assistant-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: start;
+  margin-top: 0.1rem;
+  padding: 0.12rem 0.15rem 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #d7e6f1;
+  line-height: 1.2;
+}
+
+.sidebar-assistant-health-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.sidebar-assistant-health.is-pending .sidebar-assistant-health-dot { background: #94a3b8; }
+.sidebar-assistant-health.is-ok .sidebar-assistant-health-dot { background: #6ee7b7; }
+.sidebar-assistant-health.is-warn .sidebar-assistant-health-dot { background: #fbbf24; }
+.sidebar-assistant-health.is-err,
+.sidebar-assistant-health.is-error { color: #fecaca; }
+.sidebar-assistant-health.is-err .sidebar-assistant-health-dot,
+.sidebar-assistant-health.is-error .sidebar-assistant-health-dot { background: #f87171; }
+
 .sidebar nav a {
   display: flex;
   align-items: center;

@@ -208,6 +208,7 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("POST", "/api/employees/hire/submit", "employees.sync"),
     RouteRule("GET", "/api/employees/specialty-catalog", "employees.view"),
     RouteRule("GET", "/api/store/list", "stores.select"),
+    RouteRule("GET", "/api/assistant/health", "stores.view"),
     RouteRule("GET", "/api/assistant/*", "stores.view"),
     RouteRule("POST", "/api/assistant/*", "stores.view"),
     RouteRule("GET", "/api/store/active", "stores.select"),
@@ -455,6 +456,19 @@ def user_payload(username: str | None = None, role: str | None = None) -> dict[s
     }
 
 
+def assistant_health_for_office() -> dict:
+    if not is_super_admin():
+        return {
+            "ok": True,
+            "status": "ok",
+            "label": "Telegram OK",
+            "detail": "",
+        }
+    from app.telegram_assistant_health import assistant_health
+
+    return assistant_health()
+
+
 def register_access_context(app: Flask) -> None:
     @app.context_processor
     def _access_context():
@@ -466,4 +480,5 @@ def register_access_context(app: Flask) -> None:
             "office_is_admin_role": is_admin_role,
             "office_is_compliance_role": is_compliance_role,
             "office_is_super_admin": is_super_admin,
+            "office_assistant_health": assistant_health_for_office,
         }

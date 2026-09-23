@@ -2,6 +2,16 @@
   <div class="logo">
     <img src="/static/img/erganios-logo.png" alt="erganiOS" class="logo-img">
     <small>Ψηφιακή Κάρτα Εργασίας</small>
+    {% if office_is_super_admin() %}
+    <div id="sidebarAssistantHealth"
+         class="sidebar-assistant-health is-pending"
+         data-assistant-health="1"
+         title="Έλεγχος telegram_assistant_service.py"
+         aria-live="polite">
+      <span class="sidebar-assistant-health-dot" aria-hidden="true"></span>
+      <span class="sidebar-assistant-health-label">Telegram…</span>
+    </div>
+    {% endif %}
   </div>
   <button type="button" class="sidebar-menu-toggle" aria-expanded="false" aria-controls="officeSidebarNav" aria-label="Άνοιγμα μενού">
     <span></span>

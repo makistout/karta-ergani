@@ -147,6 +147,11 @@ table.data td.work-log-action-cell a {
     line-height: 1.25;
   }
 
+  .sidebar-assistant-health {
+    grid-column: 1 / -1;
+    margin-top: 0.2rem;
+  }
+
   .sidebar-menu-toggle {
     display: inline-flex;
     align-items: center;

@@ -293,6 +293,23 @@ python scripts/run_migration_store_ai_agent.py
 python scripts/run_migration_unify_assistant_channels.py
 ```
 
+## Έλεγχος υγείας (super admin)
+
+Κάτω από το λογότυπο στο sidebar εμφανίζεται ένδειξη μόνο στον `super_admin`.
+Γεμίζει με AJAX (`GET /api/assistant/health`) στο φόρτωμα και κάθε 60 δευτερόλεπτα,
+όχι από το template, ώστε σφάλμα στον έλεγχο να μην ρίχνει το office shell.
+
+Κάθε κλήση κάνει `compile()` του `telegram_assistant_service.py`, κοιτάει
+Indentation/Syntax crash σε εισερχόμενες εντολές των τελευταίων 6 ωρών και το
+συγκρίνει με την τελευταία `completed`/`answered` εντολή. Αποτελέσματα cache 15s.
+
+- Πράσινο `Telegram OK`: το αρχείο φορτώνει, χωρίς νεότερο crash από την τελευταία επιτυχία.
+- Κίτρινο `Telegram προσοχή`: το αρχείο φορτώνει, αλλά έσκασε εντολή **μετά**
+  την τελευταία επιτυχημένη (όχι παλιό crash που ήδη διορθώθηκε).
+- Κόκκινο `Telegram σφάλμα`: το αρχείο δεν φορτώνει τώρα.
+
+API: `GET /api/assistant/health` (μόνο super admin).
+
 ## Ασφάλεια
 
 - Άγνωστα Telegram chat IDs αγνοούνται χωρίς parsing.
