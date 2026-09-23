@@ -1,0 +1,23 @@
+<!doctype html><html lang="el"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Αποκλίσεις</title><style>body{font:16px/1.65 system-ui,sans-serif;color:#19344b;background:#fff;margin:0;padding:24px;overflow-wrap:anywhere}main{max-width:1050px;margin:auto}h1{font-size:26px}h2{font-size:22px}h3{font-size:19px}.version{padding:16px;background:#edf4f8;border-left:4px solid #2874a0}.warning{padding:16px;background:#fff4d9}td{border:1px solid #d7e1e8;padding:8px;vertical-align:top}table{border-collapse:collapse;width:100%}.table-wrap{overflow:auto}pre{white-space:pre-wrap;background:#f4f6f8;padding:12px}code{font-size:.9em}@media print{body{padding:0}.table-wrap{overflow:visible}}</style><main><div class="version">Έκδοση αρχείου: rules-8ebf3a077ddf80ee</div><h1>Αποκλίσεις τεκμηρίωσης από κώδικα</h1>
+<h2>Ημερήσια βάση</h2>
+<p>Ο νέος κατάλογος γράφει «μόνο σύμβαση». Ο caller επιλέγει βάση από ακριβώς 8:00 / 6:40 δηλωμένα λεπτά και αλλιώς από σύμβαση, και για εκ περιτροπής.</p>
+<h2>Ευελιξία μερικής</h2>
+<p>PARTIAL_FLEX_COMPLIANT δεν υπάρχει. Το PARTIAL_ACTUAL_CAPPED προηγείται της γενικής ευελιξίας.</p>
+<h2>Ένα χτύπημα σε σπαστό</h2>
+<p>SPLIT_SINGLE_PUNCH_WITHIN_DECLARED έχει αφαιρεθεί. Το ελλιπές σπαστό οδηγείται σε Ε.</p>
+<h2>Ανενεργές τελικές καταστάσεις</h2>
+<p>UNDECLARED_OVERNIGHT_REVIEW υπάρχει στη helper αλλά raw_overnight δίνεται False. POSSIBLE_SPLIT_INVALID_BOUNDARIES αντικαθίσταται με POSSIBLE_SPLIT_REVIEW.</p>
+<h2>Διάλειμμα ωρομέτρησης</h2>
+<p>Η υλοποίηση επεκτείνει τη χρονική βάση κατά outside_break πριν αφαιρέσει το συνεχόμενο διάλειμμα, παρά τη διατύπωση του APOLOGISTIKO_LOGIC.md περί μη επέκτασης.</p>
+<h2>Πρόταση Μ έναντι χρονικής βάσης</h2>
+<p>Η ετικέτα Μ λαμβάνεται από proposed, αλλά σε ένα απλό πλήρες δηλωμένο/πραγματικό διάστημα η _recognized_basis_intervals χρησιμοποιεί το αρχικό declared και το actual για τοποθέτηση.</p>
+<h2>Μερική 12%</h2>
+<p>Η κατανομή είναι Κυριακή → Δευτέρα, όχι Δευτέρα → Κυριακή όπως γράφει η σύνοψη του καταλόγου.</p>
+<h2>6η / 7η</h2>
+<p>Επιλέγεται η μικρότερη βάση, όχι πρώτα δηλωμένο ρεπό. Στις 7 ημέρες η Κυριακή είναι κατ’ εξαίρεση και μπορεί να υπάρχει μία 6η στις άλλες έξι, όχι δύο 6ες.</p>
+<h2>Ανισομερής στην ωρομέτρηση</h2>
+<p>Με ειδικό flag μηδενίζεται η είσοδος νόμιμης υπερωρίας και παράγεται warning. Δεν εντοπίστηκε αυτόματη επέκταση μέχρι 40 ώρες.</p>
+<h2>Ελλιπή χτυπήματα / υπέρβαση</h2>
+<p>Δεν υπάρχει καθολικός μηδενισμός υπερωρίας από τεκμαρτά στο helper. Επίσης unlawful_overtime_minutes δεν προστίθενται αυτομάτως στην είσοδο _split_overtime. Η γενική περιγραφή των εγγράφων είναι ευρύτερη από την εφαρμογή.</p>
+<h2>Εβδομαδιαίο πλεόνασμα ανταλλαγών</h2>
+<p>Η μετατροπή υπεράριθμης υποψήφιας ανταλλαγής σε Μ διατηρεί την προηγούμενη πρόταση αντί να την ανακατασκευάζει στον ημερήσιο κόφτη.</p></main></html>

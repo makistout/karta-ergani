@@ -23,6 +23,17 @@ ARTIFACTS = {'index.html': OUTPUT / 'index.html', 'rules.json': OUTPUT / 'rules.
              'flowcharts.md': ROOT / 'docs/RULE_FLOWCHARTS.md'}
 
 
+def _artifact_hash_matches(content: bytes, expected: str) -> bool:
+    """Σύγκριση hash ανεξάρτητα από CRLF/LF. Το CI τρέχει σε Linux, το build σε Windows."""
+    raw = sha256(content).hexdigest()
+    if raw == expected:
+        return True
+    normalized = content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    if sha256(normalized).hexdigest() == expected:
+        return True
+    return sha256(normalized.replace(b'\n', b'\r\n')).hexdigest() == expected
+
+
 def check():
     try:
         data = versions.manifest()
@@ -32,10 +43,10 @@ def check():
         for version in data['versions']:
             for name, expected in version['artifacts'].items():
                 content = (ARCHIVE / version['id'] / name).read_bytes()
-                if sha256(content).hexdigest() != expected:
+                if not _artifact_hash_matches(content, expected):
                     raise ValueError('Αλλοιώθηκε αρχειοθετημένο διάγραμμα: ' + version['id'] + '/' + name)
         for name, path in ARTIFACTS.items():
-            if sha256(path.read_bytes()).hexdigest() != entry['artifacts'][name]:
+            if not _artifact_hash_matches(path.read_bytes(), entry['artifacts'][name]):
                 raise ValueError('Το τρέχον παραδοτέο διαφέρει από το αρχείο εκδόσεων: ' + name)
         print('OK: ' + entry['id'] + ' — πηγές και διαγράμματα συμφωνούν.')
         return 0
