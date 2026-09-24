@@ -82,7 +82,7 @@ async function loadStoresList() {
       actInner.className = "table-actions-inner";
       const isActive = activeId != null && Number(store.id) === Number(activeId);
       const selectCls = isActive ? "btn btn-select btn-select-active" : "btn btn-select";
-      const selectLabel = isActive ? "Ενεργό κατάστημα" : "Επιλογή";
+      const selectLabel = isActive ? "Ενεργό" : "Επιλογή";
       actInner.appendChild(
         mkBtn(selectLabel, selectCls, "check-circle", () => selectStore(store.id), { disabled: isActive })
       );
@@ -105,6 +105,7 @@ async function loadStoresList() {
     });
     wrap.innerHTML = "";
     wrap.appendChild(t);
+    Office.enhanceResponsiveTable?.(t);
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα: ${Office.formatMultilineHtml(String(e))}</p>`;
   }
@@ -116,7 +117,7 @@ function mkBtn(label, cls, iconName, fn, { disabled = false } = {}) {
   b.className = `${cls} btn-icon-only`;
   b.title = label;
   b.setAttribute("aria-label", label);
-  b.innerHTML = Office.icon(iconName);
+  b.innerHTML = `${Office.icon(iconName)}<span class="btn-icon-label">${Office.escapeHtml(label)}</span>`;
   if (disabled) {
     b.disabled = true;
   } else {

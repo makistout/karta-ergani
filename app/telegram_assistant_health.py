@@ -112,15 +112,15 @@ def assistant_health(*, use_cache: bool = True) -> dict[str, Any]:
         last_ok = last_successful_task()
         if not source.get("ok"):
             status = "error"
-            label = "Telegram σφάλμα"
+            label = "AI Agent σφάλμα"
             detail = str(source.get("error") or "Το telegram_assistant_service.py δεν φορτώνει.")
         elif crash_is_newer(crash, last_ok):
             status = "warn"
-            label = "Telegram προσοχή"
+            label = "AI Agent προσοχή"
             detail = str(crash.get("error_message") or "Πρόσφατο σφάλμα σε εντολή Telegram.")
         else:
             status = "ok"
-            label = "Telegram OK"
+            label = "AI Agent"
             detail = "Το telegram_assistant_service.py φορτώνει κανονικά."
         result = {
             "ok": status == "ok",
@@ -136,7 +136,7 @@ def assistant_health(*, use_cache: bool = True) -> dict[str, Any]:
         result = {
             "ok": False,
             "status": "error",
-            "label": "Telegram σφάλμα",
+            "label": "AI Agent σφάλμα",
             "detail": str(exc)[:240],
             "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source": {"ok": False, "error": str(exc)[:240]},

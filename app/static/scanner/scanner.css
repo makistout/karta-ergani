@@ -22,3 +22,8 @@ dialog.menu-drawer{position:fixed;inset:0 0 0 auto;margin:0;padding:0;width:min(
 #dry-run-dialog{width:min(94vw,640px)}
 
 .loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 16px;color:#4a6578}.loading-state p{margin:0;font-size:15px}.spinner{width:36px;height:36px;border:3px solid #d5e0e8;border-top-color:#2f6f4e;border-radius:50%;animation:scanner-spin .7s linear infinite}@keyframes scanner-spin{to{transform:rotate(360deg)}}#recent[aria-busy=true] .pagination{opacity:.45}
+#retry{display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%}
+.spinner-inline{width:18px;height:18px;border-width:2px;flex-shrink:0}
+#pending-loading{padding:28px 16px}
+#pending.is-sending #retry{cursor:wait;opacity:1}
+#pending.is-sending #pending-list{opacity:.4;pointer-events:none}

@@ -49,7 +49,7 @@ Object.assign(window.Office, {
       const status = String(data?.status || (data?.ok ? "ok" : "error"));
       el.classList.remove("is-ok", "is-warn", "is-err", "is-error", "is-pending");
       el.classList.add(status === "ok" ? "is-ok" : status === "warn" ? "is-warn" : "is-err");
-      if (labelEl) labelEl.textContent = data?.label || (status === "ok" ? "Telegram OK" : "Telegram σφάλμα");
+      if (labelEl) labelEl.textContent = data?.label || (status === "ok" ? "AI Agent" : "AI Agent σφάλμα");
       el.title = data?.detail || "";
     };
     const load = async () => {

@@ -461,7 +461,7 @@ def assistant_health_for_office() -> dict:
         return {
             "ok": True,
             "status": "ok",
-            "label": "Telegram OK",
+            "label": "AI Agent",
             "detail": "",
         }
     from app.telegram_assistant_health import assistant_health

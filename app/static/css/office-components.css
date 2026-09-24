@@ -207,6 +207,10 @@ table.data td.table-actions {
   display: block;
 }
 
+.table-actions-inner .btn-icon-label {
+  display: none;
+}
+
 .table-actions-inner .btn-select.btn-icon-only {
   border-color: #99f6e4;
   background: #fff;

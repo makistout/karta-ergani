@@ -22,9 +22,62 @@ from app.ergani_parse import parse_employer_afm
 from app.http_helpers import json_or_text
 from app.repo_store import get_store_config, list_store_configs
 from app.repo_entities import list_active_employees_for_store
-from app.work_card_payload import tz_athens
+from app.work_card_payload import parse_event_at, tz_athens, WorkCardPayloadError
 from config import Config
 from app.repo_scanner import store_menu_details
+
+# Λάθος ζώνη στο κινητό (π.χ. US) κάνει το ISO να φαίνεται ώρες στο μέλλον.
+# Μέχρι 24 ώρες το κρατάμε ως «τώρα»· μεγαλύτερο μέλλον απορρίπτεται.
+_CLOCK_SKEW_SEC = 24 * 3600
+_OFFLINE_CARD_NAME = "Κάρτα εκτός σύνδεσης"
+_EL_EVENT_AT = re.compile(
+    r"(?P<d>\d{1,2})/(?P<m>\d{1,2})/(?P<y>\d{4}),?\s+"
+    r"(?P<h>\d{1,2}):(?P<min>\d{2})(?::(?P<s>\d{2}))?\s*"
+    r"(?P<ampm>π\.?\s*μ\.?|μ\.?\s*μ\.?|AM|PM)?",
+    re.IGNORECASE,
+)
+
+
+def _parse_loose_event_at(text: str):
+    match = _EL_EVENT_AT.search(text)
+    if not match:
+        raise ValueError("unparsed")
+    hour = int(match.group("h"))
+    ampm = (match.group("ampm") or "").lower().replace(" ", "").replace(".", "")
+    if ampm in {"μμ", "pm"} and hour < 12:
+        hour += 12
+    if ampm in {"πμ", "am"} and hour == 12:
+        hour = 0
+    return datetime(
+        int(match.group("y")),
+        int(match.group("m")),
+        int(match.group("d")),
+        hour,
+        int(match.group("min")),
+        int(match.group("s") or 0),
+        tzinfo=tz_athens(),
+    )
+
+
+def _parse_scanner_event_at(raw):
+    text = str(raw or "").strip()
+    if not text:
+        raise ValueError("empty")
+    try:
+        at = parse_event_at(text, None)
+    except WorkCardPayloadError:
+        at = _parse_loose_event_at(text)
+    now = datetime.now(tz_athens())
+    ahead = (at - now).total_seconds()
+    if ahead > _CLOCK_SKEW_SEC:
+        raise ValueError("future")
+    if ahead > 0:
+        return now
+    return at
+
+
+def _offline_queued_punch(body: dict) -> bool:
+    return bool(body.get("offline")) or str(body.get("name") or "").strip() == _OFFLINE_CARD_NAME
 
 scanner_bp = Blueprint("scanner", __name__, url_prefix="/scanner")
 COOKIE = "erganios_scanner"
@@ -53,10 +106,21 @@ def _touch_session(digest: str) -> None:
         )
 
 
+def _norm_login(value) -> str:
+    return str(value or "").strip().casefold()
+
+
 def binding_matches(cfg, binding):
     if isinstance(binding, str):
-        return str(cfg.get("web_username") or "").strip() == binding
-    return str(cfg.get(binding["field"]) or "").strip() == binding["username"]
+        return _norm_login(cfg.get("web_username")) == _norm_login(binding)
+    return _norm_login(cfg.get(binding["field"])) == _norm_login(binding.get("username"))
+
+
+def _configured_usernames(cfg) -> tuple[str, str]:
+    return (
+        str(cfg.get("web_username") or "").strip(),
+        str(cfg.get("username") or "").strip(),
+    )
 
 
 @scanner_bp.errorhandler(pyodbc.Error)
@@ -95,12 +159,27 @@ def limited(key, maximum=10):
         return db.execute("SELECT count FROM attempts WHERE key=?", (key,)).fetchone()[0] > maximum
 
 
+def _origin_aliases(url: str) -> set[str]:
+    """Δέξου και www / χωρίς www για το ίδιο host."""
+    value = (url or "").strip().rstrip("/")
+    if "://" not in value:
+        return {value} if value else set()
+    scheme, rest = value.split("://", 1)
+    host = rest.split("/")[0]
+    aliases = {f"{scheme}://{host}"}
+    if host.startswith("www."):
+        aliases.add(f"{scheme}://{host[4:]}")
+    else:
+        aliases.add(f"{scheme}://www.{host}")
+    return aliases
+
+
 def _allowed_scanner_origins() -> set[str]:
     """Origins που επιτρέπονται για POST (public URL + τοπικό host πίσω από IIS)."""
     allowed = {request.host_url.rstrip("/")}
     public = str(Config.PUBLIC_BASE_URL or "").strip().rstrip("/")
     if public:
-        allowed.add(public)
+        allowed.update(_origin_aliases(public))
     return {o for o in allowed if o}
 
 
@@ -111,6 +190,11 @@ def guard():
         if request.headers.get("X-Scanner-Request") != "1" or (
             origin and origin not in _allowed_scanner_origins()
         ):
+            if request.path.rstrip("/").endswith("/login"):
+                current_app.logger.info(
+                    "scanner_login status=403 origin=%s host=%s allowed=%s",
+                    origin, request.host_url, ",".join(sorted(_allowed_scanner_origins())),
+                )
             return jsonify(error="Μη έγκυρη προέλευση αιτήματος"), 403
         if not isinstance(request.get_json(silent=True), dict):
             return jsonify(error="Αναμενόταν αντικείμενο JSON"), 400
@@ -169,37 +253,55 @@ def login():
     body = request.get_json(silent=True) or {}
     username = str(body.get("username", "")).strip()
     password = str(body.get("password", ""))
-    if limited("login:" + str(request.remote_addr)):
+    client_ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+    if limited("login:" + (client_ip or str(request.remote_addr))):
+        current_app.logger.info(
+            "scanner_login user=%s status=429 ip=%s origin=%s",
+            username[:40], client_ip[:80], (request.headers.get("Origin") or "")[:80],
+        )
         return jsonify(error="Πολλές προσπάθειες. Δοκιμάστε σε 5 λεπτά."), 429
     if not username or not password or len(username) > 200 or len(password) > 500:
         return jsonify(error="Συμπληρώστε κωδικούς ΕΡΓΑΝΗ"), 400
     # Both configured login types use their existing Ergani verification path.
-    candidates = [s for s in list_store_configs() if username in (str(s.get("web_username") or "").strip(), str(s.get("username") or "").strip())]
+    # IKA/EFKA usernames are often typed in lowercase on phones.
+    candidates = [
+        s for s in list_store_configs()
+        if _norm_login(username) in {_norm_login(u) for u in _configured_usernames(s) if u}
+    ]
     allowed = {}
     for cfg in candidates:
         ctx = store_api_context(cfg)
         client = ErganiClient(ctx["api_base_url"], timeout=20)
+        web_user, portal_user = _configured_usernames(cfg)
         try:
-            if str(cfg.get("username") or "").strip() == username:
+            if portal_user and _norm_login(portal_user) == _norm_login(username):
                 from app.portal_schedule_sync import _login_session
-                portal_ctx = dict(ctx, username=username, password=password)
+                portal_ctx = dict(ctx, username=portal_user, password=password)
                 try:
                     portal_session = _login_session(portal_ctx)
                     portal_session.close()
                 except (RuntimeError, ValueError):
                     continue
-                allowed[str(cfg["id"])] = {"field": "username", "username": username}
+                allowed[str(cfg["id"])] = {"field": "username", "username": portal_user}
                 continue
-            response = client.authenticate(username, password, "02")
+            response = client.authenticate(web_user or username, password, "02")
             data = json_or_text(response)
             if not response.ok or not isinstance(data, dict) or not data.get("accessToken"):
                 continue
             identity = client.execute_service("EX_BASE_01", [], data["accessToken"])
             if identity.ok and parse_employer_afm(json_or_text(identity)) == str(ctx["employer_afm"]).strip():
-                allowed[str(cfg["id"])] = username
+                allowed[str(cfg["id"])] = web_user or username
         except requests.RequestException:
+            current_app.logger.info(
+                "scanner_login user=%s status=503 candidates=%s ip=%s",
+                username[:40], len(candidates), client_ip[:80],
+            )
             return jsonify(error="Το ΕΡΓΑΝΗ δεν ανταποκρίνεται. Δοκιμάστε ξανά."), 503
     if not allowed:
+        current_app.logger.info(
+            "scanner_login user=%s status=401 candidates=%s ip=%s origin=%s",
+            username[:40], len(candidates), client_ip[:80], (request.headers.get("Origin") or "")[:80],
+        )
         return jsonify(error="Μη έγκυροι κωδικοί ή μη συνδεδεμένο κατάστημα στο erganiOS"), 401
     preferred_raw = body.get("preferred_store_id")
     preferred_id = None
@@ -223,6 +325,10 @@ def login():
             "INSERT INTO sessions(id,stores,store_id,expires) VALUES(?,?,?,?)",
             (sid, json.dumps(allowed), store_id, time.time() + SESSION_TTL_SECONDS),
         )
+    current_app.logger.info(
+        "scanner_login user=%s status=200 store_id=%s count=%s ip=%s origin=%s",
+        username[:40], store_id, len(allowed), client_ip[:80], (request.headers.get("Origin") or "")[:80],
+    )
     response = jsonify(success=True, store_id=store_id, store_count=len(allowed))
     return _set_session_cookie(response, token)
 
@@ -439,10 +545,12 @@ def submit():
             branch_aa=str(ctx.get("branch_aa") or "0"),
         ), 400
     try:
-        at = datetime.fromisoformat(str(body.get("event_at", "")).replace("Z", "+00:00"))
-        if at.tzinfo is None or (at - datetime.now(tz_athens())).total_seconds() > 30:
-            raise ValueError()
+        at = _parse_scanner_event_at(body.get("event_at"))
     except ValueError:
+        current_app.logger.info(
+            "scanner_submit invalid_event_at raw=%r",
+            str(body.get("event_at"))[:80],
+        )
         return jsonify(error="Μη έγκυρη ώρα σάρωσης"), 400
     payload = {
         "employee_afm": employee["afm"],
@@ -466,9 +574,12 @@ def submit():
             return jsonify(error="Η υποβολή έχει αβέβαιο αποτέλεσμα. Ελέγξτε τις αποστολές πριν από νέα σάρωση.", uncertain=True), 409
         if (datetime.now(tz_athens()) - at).total_seconds() > 900:
             from app.work_card_payload import AITIOLOGIA_CODES
-            if body.get("aitiologia") not in AITIOLOGIA_CODES:
+            reason = body.get("aitiologia")
+            if reason not in AITIOLOGIA_CODES and _offline_queued_punch(body):
+                reason = "003"
+            if reason not in AITIOLOGIA_CODES:
                 return jsonify(error="Απαιτείται αιτιολογία εκπρόθεσμης υποβολής", late=True), 422
-            payload["aitiologia"] = body["aitiologia"]
+            payload["aitiologia"] = reason
         db.execute("INSERT INTO submissions VALUES(?,?,?,?,NULL,NULL,?)", (key, g.scanner["id"], ctx["id"], canonical, time.time()))
     try:
         if Config.SCANNER_DRY_RUN:

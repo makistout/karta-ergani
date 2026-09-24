@@ -41,6 +41,7 @@ body {
 #workCardWrap,
 #cardReportWrap,
 #storesWrap,
+#storesListWrap,
 #notifyActionsWrap,
 #syncLogDetailLines {
   width: 100%;
@@ -230,6 +231,7 @@ table.data td.work-log-action-cell a {
   #workCardWrap,
   #cardReportWrap,
   #storesWrap,
+  #storesListWrap,
   #notifyActionsWrap,
   #syncLogDetailLines {
     overflow-x: visible;
@@ -310,15 +312,39 @@ table.data td.work-log-action-cell a {
 
   table.data.responsive-data-table td.table-actions,
   table.data.responsive-data-table td.work-log-action-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     justify-content: stretch;
+    gap: 0.45rem;
+  }
+
+  table.data.responsive-data-table td.table-actions .table-actions-inner {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 0.5rem;
   }
 
   table.data.responsive-data-table td.table-actions .btn,
+  table.data.responsive-data-table td.table-actions .btn-icon-only,
   table.data.responsive-data-table td.work-log-action-cell .btn,
   table.data.responsive-data-table td.work-log-action-cell a {
     width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.55rem;
+    gap: 0.4rem;
     justify-content: center;
-    white-space: normal;
+    white-space: nowrap;
+  }
+
+  table.data.responsive-data-table td.table-actions .btn-icon-label {
+    display: inline;
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.15;
   }
 
   .table-pager {

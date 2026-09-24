@@ -35,7 +35,7 @@ def test_health_payload_has_status_for_current_file(monkeypatch):
     health = assistant_health(use_cache=False)
     assert health["status"] == "ok"
     assert health["ok"] is True
-    assert "Telegram" in health["label"]
+    assert health["label"] == "AI Agent"
 
 
 def test_health_api_forbidden_for_non_super_admin(monkeypatch):
@@ -55,7 +55,7 @@ def test_health_api_ok_for_super_admin(monkeypatch):
     monkeypatch.setattr("app.routes_assistant.is_super_admin", lambda: True)
     monkeypatch.setattr(
         "app.telegram_assistant_health.assistant_health",
-        lambda: {"ok": True, "status": "ok", "label": "Telegram OK", "detail": "ok"},
+        lambda: {"ok": True, "status": "ok", "label": "AI Agent", "detail": "ok"},
     )
     with app.test_client() as client:
         response = client.get("/api/assistant/health")

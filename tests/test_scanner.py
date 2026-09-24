@@ -54,6 +54,14 @@ def test_scanner_requires_own_session_and_csrf(setup):
             headers={**HEADERS, "Origin": "https://erganios.gr"},
         )
     assert r.status_code != 403
+    with patch("app.routes_scanner.Config") as cfg:
+        cfg.PUBLIC_BASE_URL = "https://erganios.gr"
+        www = client.post(
+            "/scanner/api/login",
+            json={"username": "x", "password": "y"},
+            headers={**HEADERS, "Origin": "https://www.erganios.gr"},
+        )
+    assert www.status_code != 403
     assert client.get('/scanner/').status_code == 200
 
 
@@ -135,6 +143,62 @@ def test_unknown_submission_never_replayed(setup):
         assert cls.call_count==1
 
 
+def test_submit_accepts_small_device_clock_skew(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "0123456789-0123456789-skew0001",
+        "qr": EMP["afm"],
+        "event": "in",
+        "event_at": (datetime.now(timezone.utc) + timedelta(seconds=90)).isoformat().replace("+00:00", "Z"),
+    }
+    auth = Mock(ok=True)
+    auth.json.return_value = {"accessToken": "token"}
+    with patch("app.routes_scanner.ErganiClient") as cls, patch("app.routes_work_card._submit_work_card") as submit:
+        cls.return_value.authenticate.return_value = auth
+        submit.side_effect = lambda **kwargs: (jsonify(success=True, persisted=True), 200)
+        response = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+    assert response.status_code == 200
+
+
+def test_submit_rejects_event_far_in_the_future(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "0123456789-0123456789-future01",
+        "qr": EMP["afm"],
+        "event": "in",
+        "event_at": (datetime.now(timezone.utc) + timedelta(hours=30)).isoformat(),
+    }
+    with patch("app.routes_scanner.ErganiClient") as cls:
+        response = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+    assert response.status_code == 400
+    assert "ώρα" in response.json["error"]
+    cls.assert_not_called()
+
+
+def test_submit_clamps_wrong_phone_timezone_future(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "0123456789-0123456789-tzphone1",
+        "qr": EMP["afm"],
+        "event": "in",
+        "name": "Κάρτα εκτός σύνδεσης",
+        "event_at": "2026-09-24T18:21:56.867Z",
+    }
+    auth = Mock(ok=True)
+    auth.json.return_value = {"accessToken": "token"}
+    with patch("app.routes_scanner.ErganiClient") as cls, patch("app.routes_work_card._submit_work_card") as submit:
+        cls.return_value.authenticate.return_value = auth
+        submit.side_effect = lambda **kwargs: (jsonify(success=True, persisted=True), 200)
+        response = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+    assert response.status_code == 200
+
+
 def test_late_submission_requires_explicit_reason(setup):
     app,client=setup;sign_in(app,client)
     body={'store_id':7,'request_id':'0123456789-0123456789-0123456789','qr':EMP['afm'],'event':'in','event_at':(datetime.now(timezone.utc)-timedelta(minutes=16)).isoformat()}
@@ -142,6 +206,35 @@ def test_late_submission_requires_explicit_reason(setup):
         response=client.post('/scanner/api/submit',json=body,headers=HEADERS)
         assert response.status_code==422 and response.json['late']
         cls.assert_not_called()
+
+
+def test_offline_late_punch_uses_connection_reason(setup):
+    app, client = setup
+    sign_in(app, client)
+    body = {
+        "store_id": 7,
+        "request_id": "0123456789-0123456789-offlate1",
+        "qr": EMP["afm"],
+        "event": "in",
+        "name": "Κάρτα εκτός σύνδεσης",
+        "event_at": (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(),
+    }
+    auth = Mock(ok=True)
+    auth.json.return_value = {"accessToken": "token"}
+    with patch("app.routes_scanner.ErganiClient") as cls, patch("app.routes_work_card._submit_work_card") as submit:
+        cls.return_value.authenticate.return_value = auth
+        submit.side_effect = lambda **kwargs: (jsonify(success=True, persisted=True), 200)
+        response = client.post("/scanner/api/submit", json=body, headers=HEADERS)
+    assert response.status_code == 200
+    assert submit.call_args.kwargs["body"]["aitiologia"] == "003"
+
+
+def test_parse_greek_locale_event_at():
+    from app.routes_scanner import _parse_scanner_event_at
+    at = _parse_scanner_event_at("24/9/2026, 11:21:56 πμ")
+    assert at.hour == 11
+    assert at.minute == 21
+    assert at.second == 56
 
 
 def test_store_change_cannot_redirect_queued_punch(setup):
@@ -163,6 +256,22 @@ def test_existing_portal_user_can_login_without_web_credentials(setup):
         assert data['stores'][0]['name']=='Official Company SA'
         assert data['stores'][0]['username']=='EFKA-test'
         assert data['stores'][0]['last_card_at']=='09/09/2026 11:00'
+
+
+def test_portal_login_accepts_case_insensitive_username(setup):
+    app, client = setup
+    cfg = dict(STORE, username="IKA00012AB9", password="stored")
+    with patch("app.routes_scanner.list_store_configs", return_value=[cfg]), \
+            patch("app.routes_scanner.get_store_config", return_value=cfg), \
+            patch("app.portal_schedule_sync._login_session") as portal:
+        response = client.post(
+            "/scanner/api/login",
+            json={"username": "ika00012ab9", "password": "entered"},
+            headers=HEADERS,
+        )
+    assert response.status_code == 200
+    assert portal.call_args.args[0]["username"] == "IKA00012AB9"
+    assert portal.call_args.args[0]["password"] == "entered"
 
 
 def test_multi_branch_login_requires_selection_unless_preferred(setup):

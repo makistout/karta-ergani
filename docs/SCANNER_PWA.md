@@ -7,8 +7,10 @@ scanner session and no office/admin login. No App Store / Google Play package.
 
 - Authenticate configured `web_username` through Ergani API (usertype 02 and
   EX_BASE_01 employer verification), or configured portal `username` through the
-  existing portal login flow, including EFKA users. Only stores mapped to the
-  verified account are offered. Submissions still use the store's web/API account.
+  existing portal login flow, including EFKA users. Username match is
+  case-insensitive (phones often type IKA/EFKA in lowercase); portal login uses
+  the stored canonical username. Only stores mapped to the verified account are
+  offered. Submissions still use the store's web/API account.
   No arbitrary employer/branch ids from the browser.
 - Right-side hamburger menu shows store details. With a single matching store the
   session selects it automatically. With **two or more** stores for the same
@@ -32,7 +34,12 @@ scanner session and no office/admin login. No App Store / Google Play package.
   manual sync endpoints έχουν αφαιρεθεί· ο συγχρονισμός υποβάθρου του erganiOS
   παραμένει η πηγή ενημερώσεων work_log.
 - Εκκρεμείς: separate tab and count of local unconfirmed submissions, with retry,
-  late reason selection and explicit unknown-result handling.
+  late reason selection and explicit unknown-result handling. «Αποστολή εκκρεμών»
+  δείχνει spinner και «Αποστολή…» όσο τρέχει η ουρά· το κουμπί κλειδώνει.
+- Offline queued punches stamp `event_at` in Europe/Athens wall-clock ISO and
+  set `offline:true`. Late replay without an explicit reason uses aitiologia
+  `003` (εκτός σύνδεσης). Device clocks up to 24 hours ahead are clamped to now;
+  farther future times are still rejected.
 - Same-day re-entry after a closed in/out pair is allowed as a **new punch**.
   A `409` with `correction_available` is only for conflict with the current open
   or already-closed cycle. The PWA dialog asks for **νέο χτύπημα** (not
@@ -85,7 +92,7 @@ scanner session and no office/admin login. No App Store / Google Play package.
 - Ministry logo on login and scanner home uses the supplied remote image with
   CSS multiply blending to visually remove its white background. The JPEG itself
   is not an alpha-transparent asset and requires network access to load.
-- Service worker v12 replaces old shell caches and refreshes successful cached
+- Service worker v16 replaces old shell caches and refreshes successful cached
   shell responses. Business data and API responses are excluded.
 - Πλαϊνό μενού σε κινητό: στενότερο (~78vw / max 300px) και μικρότερα γράμματα
   (επωνυμία ~15px, στοιχεία ~12px, στοιχεία μενού ~14px).
@@ -130,9 +137,9 @@ transactional store implementation before deployment. Never expose the file via 
 
 Use one stable HTTPS origin (`PUBLIC_BASE_URL`, π.χ. `https://erganios.gr`).
 POST requests require `X-Scanner-Request: 1` and, when `Origin` is present, it must
-match either that public base URL or the Flask `host_url` (loopback behind IIS is
-accepted via `PUBLIC_BASE_URL`). No automated production submissions were
-performed during implementation.
+match the public base URL, its `www`/apex alias, or the Flask `host_url`
+(loopback behind IIS is accepted via `PUBLIC_BASE_URL`). No automated production
+submissions were performed during implementation.
 
 ## Device acceptance checks still required
 

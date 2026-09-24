@@ -1,10 +1,10 @@
 /* Split stylesheet manifest. Keep imports ordered to preserve legacy cascade. */
-@import url("./office-foundation.css?v=20260923aihealth1");
+@import url("./office-foundation.css?v=20260924aitele1");
 @import url("./office-work-card.css?v=20260810listenerrowactions1");
-@import url("./office-components.css?v=20260817dialog2");
+@import url("./office-components.css?v=20260924storeact1");
 @import url("./office-sync.css?v=20260911sched2");
 @import url("./office-forms-date.css?v=20260629rolematrix2");
 @import url("./office-report-worklog.css?v=20260923clearsecond1");
 @import url("./office-landing.css?v=20260706cta-fix");
-@import url("./office-responsive.css?v=20260923aihealth1");
+@import url("./office-responsive.css?v=20260924storeact1");
 @import url("./assistant-chat.css?v=20260817unified1");

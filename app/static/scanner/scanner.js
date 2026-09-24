@@ -4,6 +4,21 @@ let session = null, stream = null, scanning = false, facing = 'environment', act
 let recentPage = 0, recentLoading = false;
 let serverOnline = null, connectivityCheck = null;
 let loginUsername = '';
+function eventAtAthensIso() {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Athens',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date()).map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
 const PREF_STORE_KEY = 'erganios-scanner-preferred-store';
 const CREDS_KEY = 'erganios-scanner-creds';
 const dbPromise = new Promise((resolve, reject) => {
@@ -311,7 +326,7 @@ async function scanFrame() {
       } catch(error) {
         if(error.status) { message(error.message,true); return; }
         serverOnline=false; network();
-        preview={qr:qrData,event:action,event_at:new Date().toISOString(),name:'Κάρτα εκτός σύνδεσης'};
+        preview={qr:qrData,event:action,event_at:eventAtAthensIso(),name:'Κάρτα εκτός σύνδεσης',offline:true};
       }
       $('confirm-name').textContent=preview.name;
       $('confirm-detail').textContent=`${action==='in'?'Προσέλευση':'Αποχώρηση'} · ${new Date(preview.event_at).toLocaleTimeString('el-GR')} ${preview.employee_afm?'· ΑΦΜ '+preview.employee_afm:'· Τα στοιχεία θα ελεγχθούν όταν συνδεθεί η συσκευή.'}`;
@@ -334,12 +349,45 @@ $('confirm').onclick=safeTask(async()=>{
 });
 async function outbox() { return (await storage('getAll')).filter(item=>item.store_id===session?.store_id && item.owner===session?.owner); }
 function beep() { if(!$('sound').checked) return; try {const C=window.AudioContext||window.webkitAudioContext;const ac=new C();const osc=ac.createOscillator();const gain=ac.createGain();gain.gain.value=.07;osc.frequency.value=880;osc.connect(gain);gain.connect(ac.destination);osc.start();osc.stop(ac.currentTime+.14);osc.onended=()=>ac.close();}catch{} }
+function setPendingSending(active) {
+  const page=$('pending'), button=$('retry');
+  if(!page || !button) return;
+  page.classList.toggle('is-sending', active);
+  if(active) page.setAttribute('aria-busy','true');
+  else page.removeAttribute('aria-busy');
+  if(active){
+    if(!button.dataset.label) button.dataset.label=button.textContent.trim() || 'Αποστολή εκκρεμών';
+    button.disabled=true;
+    button.replaceChildren();
+    const spin=document.createElement('span');
+    spin.className='spinner spinner-inline';
+    spin.setAttribute('aria-hidden','true');
+    button.append(spin, document.createTextNode('Αποστολή…'));
+    let banner=$('pending-loading');
+    if(!banner){
+      banner=document.createElement('div');
+      banner.id='pending-loading';
+      banner.className='loading-state';
+      banner.setAttribute('role','status');
+      const spinner=document.createElement('div');
+      spinner.className='spinner';
+      spinner.setAttribute('aria-hidden','true');
+      banner.append(spinner, textNode('p','Αποστολή εκκρεμών… Περιμένετε.'));
+      button.after(banner);
+    }
+  } else {
+    button.textContent=button.dataset.label || 'Αποστολή εκκρεμών';
+    const banner=$('pending-loading');
+    if(banner) banner.remove();
+  }
+}
 async function sendPending() {
   if(sending || !navigator.onLine || serverOnline!==true || !session?.store_id) return;
   sending=true;
+  setPendingSending(true);
   try {
     for(const item of await outbox()) {
-      if(!['pending','sending'].includes(item.state)) continue;
+      if(!['pending','sending','failed'].includes(item.state)) continue;
       item.state='sending'; await storage('put',item);
       try {
         const data=await api('submit',item);
@@ -390,7 +438,7 @@ async function sendPending() {
       }
       await storage('put',item);
     }
-  } finally {sending=false;await renderPending();}
+  } finally {sending=false;setPendingSending(false);await renderPending();}
 }
 let correctionResolve=null;
 function askCorrection(item) {
@@ -431,7 +479,7 @@ $('correction-dialog').addEventListener('cancel',event=>{
 });
 function textNode(tag,text,className='') {const el=document.createElement(tag);el.textContent=text;el.className=className;return el;}
 async function renderPending() {
-  const items=(await outbox()).filter(i=>i.state!=='success');$('pending-count').textContent=items.length; $('retry').disabled=!navigator.onLine || serverOnline!==true || sending || !items.some(i=>['pending','sending','needs_correction'].includes(i.state));$('pending-list').replaceChildren();
+  const items=(await outbox()).filter(i=>i.state!=='success');$('pending-count').textContent=items.length; $('retry').disabled=!navigator.onLine || serverOnline!==true || sending || !items.some(i=>['pending','sending','needs_correction','failed'].includes(i.state));$('pending-list').replaceChildren();
   for(const item of items.reverse()) {
     const el=document.createElement('article');el.className='event';const info=document.createElement('div');
     info.append(textNode('strong',item.name),textNode('p',`${item.event==='in'?'Προσέλευση':'Αποχώρηση'} · ${new Date(item.event_at).toLocaleString('el-GR')}`),textNode('p',item.note));

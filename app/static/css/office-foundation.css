@@ -83,6 +83,7 @@ body {
   align-items: center;
   gap: 0.35rem;
   justify-self: start;
+  max-width: 100%;
   margin-top: 0.1rem;
   padding: 0.12rem 0.15rem 0;
   font-size: 0.68rem;
@@ -90,6 +91,10 @@ body {
   letter-spacing: 0.02em;
   color: #d7e6f1;
   line-height: 1.2;
+}
+
+.sidebar-assistant-health-label {
+  min-width: 0;
 }
 
 .sidebar-assistant-health-dot {
