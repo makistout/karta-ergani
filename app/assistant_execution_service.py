@@ -7,6 +7,7 @@ import hashlib
 import threading
 import time
 from datetime import datetime, timedelta
+from collections.abc import Callable
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,7 @@ _AUTH_CACHE: dict[tuple[Any, ...], tuple[str, float]] = {}
 _AUTH_CACHE_DEFAULT_TTL_SEC = 300.0
 _AUTH_CACHE_EXPIRY_MARGIN_SEC = 30.0
 _ATHENS = ZoneInfo("Europe/Athens")
+ProgressCallback = Callable[[str], None]
 
 
 def _payload(task: dict[str, Any]) -> dict[str, Any]:
@@ -104,6 +106,144 @@ def _employees(store: dict[str, Any], afms: list[str]) -> list[dict[str, Any]]:
     return [by_afm[afm] for afm in afms]
 
 
+def _display_name(employee: dict[str, Any]) -> str:
+    name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
+    return name or "Εργαζόμενος"
+
+
+def _command_afms(command: dict[str, Any]) -> list[str]:
+    afms = command.get("employee_afms")
+    if not isinstance(afms, list):
+        afms = [command.get("employee_afm")] if command.get("employee_afm") else []
+    return [str(value or "").strip() for value in afms if str(value or "").strip()]
+
+
+def _action_label(intent: str) -> str:
+    if intent.startswith("card_check_in"):
+        return "Είσοδος"
+    if intent.startswith("card_check_out"):
+        return "Έξοδος"
+    if intent == "rest_day":
+        return "Ρεπό"
+    if intent == "schedule_change":
+        return "Ωράριο"
+    if intent == "leave":
+        return "Άδεια"
+    if intent == "sync_employees":
+        return "Συγχρονισμός"
+    return "Εντολή"
+
+
+def _safe_employees(store: dict[str, Any], afms: list[str]) -> list[dict[str, Any]]:
+    if not afms:
+        return []
+    try:
+        return _employees(store, afms)
+    except Exception:
+        return [{"afm": afm, "eponymo": afm, "onoma": ""} for afm in afms]
+
+
+def plan_execution_queue(
+    store: dict[str, Any],
+    commands: list[dict[str, Any]],
+    stagger_offsets: list[int],
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    punch_i = 0
+    for command in commands:
+        intent = str(command.get("intent") or "")
+        label = _action_label(intent)
+        if intent == "sync_employees":
+            items.append({
+                "employee": "Προσωπικό",
+                "action": label,
+                "offset_min": 0,
+                "staggered": False,
+            })
+            continue
+        for employee in _safe_employees(store, _command_afms(command)):
+            offset = 0
+            staggered = bool(intent.endswith("_now") and intent.startswith("card_check_"))
+            if staggered:
+                if punch_i < len(stagger_offsets):
+                    offset = int(stagger_offsets[punch_i] or 0)
+                punch_i += 1
+            items.append({
+                "employee": _display_name(employee),
+                "action": label,
+                "offset_min": offset,
+                "staggered": staggered,
+            })
+    return items
+
+
+def remaining_wait_minutes(wall_start: float, offset_min: int) -> int:
+    delay = wall_start + (int(offset_min or 0) * 60.0) - time.monotonic()
+    if delay <= 0:
+        return 0
+    return max(1, int(round(delay / 60.0)))
+
+
+def _done_line(row: dict[str, Any]) -> str:
+    name = str(row.get("employee") or "Εργαζόμενος").strip()
+    action = str(row.get("action") or "").strip()
+    prefix = f"{name} · {action}" if action else name
+    if row.get("success"):
+        protocol = str(row.get("protocol") or "").strip()
+        if protocol:
+            return f"{prefix} · Επιτυχία · Πρωτόκολλο: {protocol}"
+        detail = str(row.get("detail") or "").strip()
+        if detail:
+            return f"{prefix} · Επιτυχία · {detail}"
+        return f"{prefix} · Επιτυχία"
+    return f"{prefix} · Αποτυχία · {row.get('error') or 'Άγνωστο σφάλμα'}"
+
+
+def format_execution_progress(
+    done: list[dict[str, Any]],
+    pending: list[dict[str, Any]],
+    *,
+    wall_start: float | None = None,
+    intro: str | None = None,
+) -> str:
+    lines: list[str] = []
+    if intro:
+        lines.append(intro)
+        lines.append("")
+    if done:
+        lines.append("Εκτελέστηκε:")
+        for row in done:
+            lines.append(f"• {_done_line(row)}")
+    else:
+        lines.append("Εκτελέστηκε: —")
+    if pending:
+        if lines:
+            lines.append("")
+        lines.append("Περιμένει:")
+        for item in pending:
+            name = str(item.get("employee") or "Εργαζόμενος").strip()
+            action = str(item.get("action") or "").strip()
+            label = f"{name} · {action}" if action else name
+            wait = item.get("wait_minutes")
+            if wait is None and wall_start is not None:
+                wait = remaining_wait_minutes(wall_start, int(item.get("offset_min") or 0))
+            wait = int(wait or 0)
+            if wait <= 0:
+                lines.append(f"• {label} · τώρα")
+            else:
+                lines.append(f"• {label} · σε ~{wait}′")
+    return "\n".join(lines)
+
+
+def _emit_progress(progress_cb: ProgressCallback | None, text: str) -> None:
+    if not progress_cb:
+        return
+    try:
+        progress_cb(text)
+    except Exception:
+        pass
+
+
 def _leave_code(value: str) -> str:
     from app.leave_types import LEAVE_TYPES
 
@@ -149,6 +289,9 @@ def _execute_command(
     stagger_offsets: list[int] | None = None,
     queue_wall_start: float | None = None,
     queue_base_now: datetime | None = None,
+    progress_cb: ProgressCallback | None = None,
+    progress_done: list[dict[str, Any]] | None = None,
+    progress_pending: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     store_id = int(parsed.get("store_id") or store.get("id") or 0)
     afms = [str(value or "").strip() for value in (parsed.get("employee_afms") or []) if str(value or "").strip()]
@@ -182,8 +325,9 @@ def _execute_command(
         if linked is not None:
             parts.append(f"συνδέσεις={linked}")
         summary = " · ".join(str(p) for p in parts if p is not None and str(p).strip())
-        return [{
+        sync_row = {
             "employee": "Προσωπικό",
+            "action": _action_label(intent),
             "success": ok,
             "protocol": None,
             "detail": summary,
@@ -191,10 +335,28 @@ def _execute_command(
             "qr_synced": qr_synced,
             "linked_employees": linked,
             "error": None if ok else summary,
-        }]
+        }
+        if progress_pending:
+            progress_pending.pop(0)
+        return [sync_row]
+
+    def _after_item() -> None:
+        if progress_pending:
+            progress_pending.pop(0)
+        if progress_pending:
+            _emit_progress(
+                progress_cb,
+                format_execution_progress(
+                    list(progress_done or []) + results,
+                    progress_pending,
+                    wall_start=wall_start,
+                ),
+            )
 
     for index, employee in enumerate(employees, start=1):
-        name = f"{employee.get('eponymo') or ''} {employee.get('onoma') or ''}".strip()
+        current = progress_pending[0] if progress_pending else {}
+        name = _display_name(employee)
+        action = str(current.get("action") or _action_label(intent))
         global_batch_index = punch_index_offset + index
         zero_based = global_batch_index - 1
         offset_min = 0
@@ -254,10 +416,12 @@ def _execute_command(
             if blocked:
                 results.append({
                     "employee": name,
+                    "action": action,
                     "success": False,
                     "protocol": None,
                     "error": blocked,
                 })
+                _after_item()
                 continue
             body = {
                 "employee_afm": employee.get("afm"), "eponymo": employee.get("eponymo"),
@@ -276,6 +440,7 @@ def _execute_command(
             data = response.get_json() if hasattr(response, "get_json") else {}
             row = {
                 "employee": name,
+                "action": action,
                 "success": status == 200 and bool(data.get("success")),
                 "protocol": data.get("protocol"),
                 "http_status": status,
@@ -311,19 +476,25 @@ def _execute_command(
                 "comments": "Υποβολή από AI Agent",
             }
             data = apply_import_row(store, schedule_row, bearer, batch_meta={"source": source})
-            row = {"employee": name, "success": bool(data.get("success")),
+            row = {"employee": name, "action": action, "success": bool(data.get("success")),
                    "protocol": data.get("protocol"), "http_status": data.get("http_status"), "error": data.get("error")}
         elif intent == "leave":
             data = _submit_leave(store, bearer, client, employee, parsed)
-            row = {"employee": name, **data}
+            row = {"employee": name, "action": action, **data}
         else:
-            row = {"employee": name, "success": False, "protocol": None,
+            row = {"employee": name, "action": action, "success": False, "protocol": None,
                    "error": f"Μη υποστηριζόμενη εκτέλεση: {intent}"}
         results.append(row)
+        _after_item()
     return results
 
 
-def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, Any]:
+def execute_confirmed_task(
+    task: dict[str, Any],
+    *,
+    source: str,
+    progress_cb: ProgressCallback | None = None,
+) -> dict[str, Any]:
     from app.repo_telegram_assistant import finish_task_execution
 
     task_id = int(task["id"])
@@ -354,6 +525,21 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
         stagger_offsets = precompute_batch_offsets(punch_total) if punch_total > 1 else [0]
         queue_wall_start = time.monotonic()
         queue_base_now = datetime.now(_ATHENS)
+        pending = plan_execution_queue(store, normalized_commands, stagger_offsets)
+        if pending:
+            staggered = any(bool(item.get("staggered")) for item in pending)
+            intro = "Εκτέλεση εντολών."
+            if staggered and len(pending) > 1:
+                intro = (
+                    f"Εκτέλεση {len(pending)} εντολών. "
+                    "Απόσταση 1–2 λεπτά μεταξύ χτυπημάτων."
+                )
+            _emit_progress(
+                progress_cb,
+                format_execution_progress(
+                    [], pending, wall_start=queue_wall_start, intro=intro,
+                ),
+            )
         punch_offset = 0
         commands_started = time.monotonic()
         for command in normalized_commands:
@@ -364,6 +550,9 @@ def execute_confirmed_task(task: dict[str, Any], *, source: str) -> dict[str, An
                     stagger_offsets=stagger_offsets,
                     queue_wall_start=queue_wall_start,
                     queue_base_now=queue_base_now,
+                    progress_cb=progress_cb,
+                    progress_done=results,
+                    progress_pending=pending,
                 )
             )
             intent = str(command.get("intent") or "")

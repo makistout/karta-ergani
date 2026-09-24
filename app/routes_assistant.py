@@ -147,9 +147,17 @@ def confirm(task_id: int):
     if not task:
         return jsonify({"error": "Η εντολή δεν είναι διαθέσιμη για επιβεβαίωση"}), 409
     from app.assistant_execution_service import execute_confirmed_task, execution_answer
-    result = execute_confirmed_task(task, source="assistant_ui")
+    office_user = _user()
+
+    def _progress(text: str) -> None:
+        record_ui_outbound_message(
+            office_user=office_user, store_id=store_id, text=text,
+            context={"notification_type": "assistant_progress", "notification_reference_id": str(task_id)},
+        )
+
+    result = execute_confirmed_task(task, source="assistant_ui", progress_cb=_progress)
     answer = execution_answer(task_id, result)
-    record_ui_outbound_message(office_user=_user(), store_id=store_id, text=answer,
+    record_ui_outbound_message(office_user=office_user, store_id=store_id, text=answer,
                                context={"notification_type": "assistant_confirmation", "notification_reference_id": str(task_id)})
     record_audit_event(action="assistant.execute", success=bool(result.get("success")), entity_type="assistant_task",
                        entity_id=str(task_id), details={"channel": "ui", "store_id": store_id, "result": result})

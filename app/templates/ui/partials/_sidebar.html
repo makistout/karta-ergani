@@ -21,7 +21,22 @@
   <nav id="officeSidebarNav">
     {% for item in office_nav_items %}
       {% if office_nav_item_allowed(item) %}
+        {% if item.children %}
+        <div class="sidebar-nav-group {% if active_nav and active_nav.startswith(item.nav) %}is-open{% endif %}">
+          <button type="button" class="sidebar-nav-parent" data-nav="{{ item.nav }}" aria-expanded="{{ 'true' if active_nav and active_nav.startswith(item.nav) else 'false' }}">
+            {% if item.icon %}<i class="bi bi-{{ item.icon }}" aria-hidden="true"></i>{% endif %}<span>{{ item.label }}</span>
+          </button>
+          <div class="sidebar-nav-children">
+            {% for child in item.children %}
+              {% if office_nav_item_allowed(child) %}
+                <a href="{{ child.href }}" data-nav="{{ child.nav }}" class="{{ 'active' if active_nav == child.nav else '' }}"><span>{{ child.label }}</span></a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
         <a href="{{ item.href }}" data-nav="{{ item.nav }}" class="{{ 'active' if active_nav == item.nav else '' }}">{% if item.icon %}<i class="bi bi-{{ item.icon }}" aria-hidden="true"></i>{% endif %}<span>{{ item.label }}</span></a>
+        {% endif %}
       {% endif %}
     {% endfor %}
   </nav>

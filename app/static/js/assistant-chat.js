@@ -79,9 +79,10 @@
     btn.textContent = "Εκτέλεση…";
     const executing = document.createElement("div");
     executing.className = "ai-chat-message ai-chat-message--out ai-chat-message--loading";
-    executing.innerHTML = '<small class="ai-chat-channel">erganiOS</small><span>Εκτέλεση εντολών. Παρακαλώ περιμένετε...</span><span class="ai-chat-loading-dots" aria-label="Αναμονή"><i></i><i></i><i></i></span>';
+    executing.innerHTML = '<small class="ai-chat-channel">erganiOS</small><span>Εκτέλεση εντολών. Θα ενημερώνω τι ολοκληρώθηκε και τι περιμένει.</span><span class="ai-chat-loading-dots" aria-label="Αναμονή"><i></i><i></i><i></i></span>';
     messages.appendChild(executing);
     messages.scrollTop = messages.scrollHeight;
+    const poll = setInterval(() => { loadHistory().catch(() => {}); }, 2500);
     try {
       const res = await fetch(`/api/assistant/task/${taskId}/confirm`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({store_id:store.id})});
       const data = await readJsonResponse(res, "Αποτυχία επιβεβαίωσης");
@@ -92,6 +93,8 @@
       btn.disabled = false;
       btn.textContent = "Επιβεβαίωση";
       await Office.alert(error.message || "Αποτυχία επιβεβαίωσης", { title: "Σφάλμα επιβεβαίωσης" });
+    } finally {
+      clearInterval(poll);
     }
   }
 

@@ -92,7 +92,7 @@ Object.assign(window.Office, {
     headerRow.classList.add("responsive-table-header");
 
     rows.forEach((row) => {
-      if (row === headerRow) return;
+      if (row === headerRow || row.classList.contains("billing-plan-group")) return;
       Array.from(row.children).forEach((cell, index) => {
         if (!cell.dataset.label) cell.dataset.label = headers[index] || "";
       });

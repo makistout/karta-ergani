@@ -4,7 +4,11 @@ from unittest.mock import patch
 
 from flask import Flask, jsonify
 
-from app.assistant_execution_service import execute_confirmed_task, execution_answer
+from app.assistant_execution_service import (
+    execute_confirmed_task,
+    execution_answer,
+    format_execution_progress,
+)
 
 
 class _AuthResponse:
@@ -97,7 +101,10 @@ def test_batch_card_punches_queue_and_stagger_now():
              jsonify({"success": True, "protocol": "P-1"}), 200,
          )) as submit, \
          patch("app.repo_telegram_assistant.finish_task_execution"):
-        result = execute_confirmed_task(task, source="assistant_telegram")
+        progress = []
+        result = execute_confirmed_task(
+            task, source="assistant_telegram", progress_cb=progress.append,
+        )
 
     assert result["success"] is True
     assert submit.call_count == 2
@@ -113,6 +120,24 @@ def test_batch_card_punches_queue_and_stagger_now():
     sleep_mock.assert_called()
     assert result["results"][0]["queue_offset_minutes"] == 0
     assert result["results"][1]["queue_offset_minutes"] == 2
+    assert progress
+    assert "Απόσταση 1–2 λεπτά" in progress[0]
+    assert "A ONE" in progress[0] and "B TWO" in progress[0]
+    assert any(
+        "Πρωτόκολλο: P-1" in msg and "Περιμένει:" in msg and "B TWO" in msg
+        for msg in progress
+    )
+
+
+def test_format_execution_progress_lists_done_and_waiting():
+    text = format_execution_progress(
+        [{"employee": "HOXHA DASHURI", "action": "Έξοδος", "success": True, "protocol": "P-1"}],
+        [{"employee": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ", "action": "Έξοδος", "wait_minutes": 2}],
+    )
+    assert "Εκτελέστηκε:" in text
+    assert "HOXHA DASHURI · Έξοδος · Επιτυχία · Πρωτόκολλο: P-1" in text
+    assert "Περιμένει:" in text
+    assert "ΒΗΧΟΣ ΙΩΑΝΝΗΣ · Έξοδος · σε ~2′" in text
 
 
 def test_batch_executes_every_command_and_collects_every_protocol():
@@ -126,6 +151,7 @@ def test_batch_executes_every_command_and_collects_every_protocol():
     with patch("app.assistant_execution_service.get_store_config", return_value={"id": 4}), \
          patch("app.assistant_execution_service.get_action_settings", return_value={"ai_agent_enabled": True}), \
          patch("app.assistant_execution_service._authenticate", return_value=("token", client)), \
+         patch("app.assistant_execution_service._employees", return_value=[{"afm": "111", "eponymo": "A", "onoma": "ONE"}]), \
          patch("app.assistant_execution_service._execute_command", side_effect=[first, second]) as execute, \
          patch("app.repo_telegram_assistant.finish_task_execution") as finish:
         result = execute_confirmed_task(task, source="assistant_telegram")

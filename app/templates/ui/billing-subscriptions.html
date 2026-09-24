@@ -1,0 +1,17 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Συνδρομές' %}
+{% set shell = "office" %}
+{% set active_nav = 'billing-subs' %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-calendar2-check" aria-hidden="true"></i> Συνδρομές</h1>
+      <p class="page-desc">Πακέτα τιμολόγησης. Η επιλογή συνδρομής γίνεται στην έκδοση παραστατικού και καταχωρείται στην καρτέλα του πελάτη.</p>
+
+      <div class="card">
+        <h2 class="billing-section-title">Πακέτα</h2>
+        <div id="billingPlansWrap"></div>
+        <div id="billingSubMsg" class="msg"></div>
+      </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/billing-subscriptions.js?v=20260924bill24"></script>
+{% endblock %}

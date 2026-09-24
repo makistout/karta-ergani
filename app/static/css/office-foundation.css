@@ -128,6 +128,69 @@ body {
   opacity: 0.9;
 }
 
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-nav-parent {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55rem 1.25rem;
+  border: 0;
+  background: transparent;
+  color: #c5d9e8;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-nav-parent .sidebar-nav-caret {
+  margin-left: auto;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-nav-group.is-open > .sidebar-nav-parent .sidebar-nav-caret {
+  transform: rotate(-180deg);
+}
+
+.sidebar-nav-parent:hover,
+.sidebar-nav-group.is-open > .sidebar-nav-parent {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-nav-children {
+  display: none;
+  flex-direction: column;
+  padding: 0 0 0.25rem;
+}
+
+.sidebar-nav-group.is-open > .sidebar-nav-children {
+  display: flex;
+}
+
+.sidebar nav .sidebar-nav-children a {
+  padding: 0.32rem 1.25rem 0.32rem 2.85rem;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.sidebar nav .sidebar-nav-children a::before {
+  content: "•";
+  flex-shrink: 0;
+  width: 0.75rem;
+  opacity: 0.8;
+}
+
+.sidebar nav .sidebar-nav-children a .bi {
+  display: none;
+}
+
 .sidebar-active-store {
   display: flex;
   align-items: flex-start;

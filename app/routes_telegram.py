@@ -232,8 +232,12 @@ def _handle_assistant_message(update: dict, message: dict, chat_id: str, text: s
         mark_inbound(inbound_id, "conversation")
         if pin_result == "confirmed":
             from app.assistant_execution_service import execute_confirmed_task, execution_answer
-            _reply_chat(chat_id, "Εκτέλεση εντολών. Παρακαλώ περιμένετε...")
-            result = execute_confirmed_task(task or conversation, source="assistant_telegram")
+            _reply_chat(chat_id, "Εκτέλεση εντολών. Θα ενημερώνω τι ολοκληρώθηκε και τι περιμένει.")
+            result = execute_confirmed_task(
+                task or conversation,
+                source="assistant_telegram",
+                progress_cb=lambda text: _reply_chat(chat_id, text),
+            )
             _reply_chat(chat_id, execution_answer(task_id, result))
             record_audit_event(
                 action="assistant.execute", success=bool(result.get("success")),

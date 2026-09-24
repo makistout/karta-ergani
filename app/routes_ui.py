@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, redirect, render_template
+from flask import Blueprint, abort, redirect, render_template
 
 from app.landing_seo import LANDING_HOME_PATH, SEO_PAGES
 from app.public_urls import effective_public_base_url
@@ -237,6 +237,36 @@ def ui_sync_log():
 @ui_bp.get("/users")
 def ui_users():
     return render_template("ui/users-list.html")
+
+
+@ui_bp.get("/billing")
+def ui_billing():
+    return render_template("ui/billing-list.html")
+
+
+@ui_bp.get("/billing/customer")
+def ui_billing_customer():
+    return render_template("ui/billing-customer.html")
+
+
+@ui_bp.get("/billing/subscriptions")
+def ui_billing_subscriptions():
+    return render_template("ui/billing-subscriptions.html")
+
+
+@ui_bp.get("/billing/invoices")
+def ui_billing_invoices():
+    return render_template("ui/billing-invoices.html")
+
+
+@ui_bp.get("/billing/invoice/<int:document_id>")
+def ui_billing_invoice(document_id: int):
+    from app.billing_invoice_form import invoice_view
+
+    view = invoice_view(document_id)
+    if not view:
+        abort(404)
+    return render_template("ui/billing-invoice-print.html", **view)
 
 
 def register_ui_redirects(app):

@@ -73,7 +73,10 @@ def test_ui_confirmation_is_scoped_to_user_and_store():
         response = client.post("/api/assistant/task/41/confirm", json={"store_id": 4})
     assert response.status_code == 200
     confirm.assert_called_once_with(task_id=41, store_id=4, office_user="admin")
-    execute.assert_called_once_with(task, source="assistant_ui")
+    execute.assert_called_once()
+    assert execute.call_args.args[0] == task
+    assert execute.call_args.kwargs["source"] == "assistant_ui"
+    assert callable(execute.call_args.kwargs.get("progress_cb"))
     assert "Πρωτόκολλο: P-1" in response.get_json()["answer"]
 
 

@@ -9,6 +9,8 @@
 - Το `super_admin` βλέπει όλα τα καταστήματα και έχει όλα τα permissions.
 - Μόνο `super_admin` βλέπει την ένδειξη υγείας AI Agent κάτω από το
   λογότυπο. Το `GET /api/assistant/health` επιστρέφει 403 στους υπόλοιπους.
+- Μόνο `super_admin` βλέπει **Τιμολογήσεις** (`billing.manage`) με υπομενού
+  Πελάτες / Συνδρομές / Τιμολόγια. Δεν δίνει δικαιώματα στην κάρτα ΕΡΓΑΝΗ.
 - Τα δικαιώματα ρόλου είναι πάντα η βάση· τα `karta_user_permission` προσθέτουν μόνο
   managed extras (π.χ. exports, users.*). Δεν μπορούν να αφαιρέσουν δικαίωμα ρόλου.
 - Για κάθε request ελέγχουμε login, permission και όπου υπάρχει store context, store access.

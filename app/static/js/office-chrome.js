@@ -18,12 +18,20 @@ Object.assign(window.Office, {
       sync: "arrow-repeat",
       synclog: "journal-text",
       users: "person-gear",
+      billing: "receipt",
     };
     document.querySelectorAll(".sidebar nav a[data-nav]").forEach((a) => {
-      if (a.querySelector(".bi")) return;
+      if (a.closest(".sidebar-nav-children") || a.querySelector(".bi")) return;
       const key = a.dataset.nav;
       const label = a.textContent.trim();
       a.innerHTML = `${this.icon(navIcons[key] || "circle")}<span>${label}</span>`;
+    });
+    document.querySelectorAll(".sidebar-nav-parent").forEach((btn) => {
+      if (btn.querySelector(".sidebar-nav-caret")) return;
+      const caret = document.createElement("i");
+      caret.className = "bi bi-chevron-down sidebar-nav-caret";
+      caret.setAttribute("aria-hidden", "true");
+      btn.appendChild(caret);
     });
     document.querySelectorAll(".sidebar").forEach((sb) => {
       let box = sb.querySelector("#sidebarActiveStore");
@@ -37,7 +45,22 @@ Object.assign(window.Office, {
       else sb.appendChild(box);
     });
     this.initSidebarMenu();
+    this.initNavGroups();
     this.initAssistantHealth();
+  },
+
+  initNavGroups() {
+    document.querySelectorAll(".sidebar-nav-parent").forEach((btn) => {
+      if (btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", () => {
+        const group = btn.closest(".sidebar-nav-group");
+        if (!group) return;
+        const open = !group.classList.contains("is-open");
+        group.classList.toggle("is-open", open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
   },
 
   initAssistantHealth() {

@@ -211,6 +211,12 @@ table.data td.work-log-action-cell a {
     white-space: normal;
   }
 
+  .sidebar nav .sidebar-nav-children a {
+    padding-left: 1.85rem;
+    padding-right: 1rem;
+    font-size: 0.78rem;
+  }
+
   .sidebar-active-store {
     grid-column: 1 / -1;
     display: none;

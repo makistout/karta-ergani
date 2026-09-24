@@ -201,6 +201,37 @@ class Config:
     PUBLIC_BASE_URL = (
         os.environ.get("PUBLIC_BASE_URL") or "https://erganios.gr"
     ).strip().rstrip("/")
+    OXYGEN_API_BASE = (os.environ.get("OXYGEN_API_BASE") or "").strip().rstrip("/")
+    OXYGEN_API_KEY = (os.environ.get("OXYGEN_API_KEY") or "").strip()
+    OXYGEN_ISSUER_VAT = (os.environ.get("OXYGEN_ISSUER_VAT") or "").strip()
+    OXYGEN_ISSUER_BRANCH = (os.environ.get("OXYGEN_ISSUER_BRANCH") or "0").strip() or "0"
+    BILLING_ISSUER_NAME = (os.environ.get("BILLING_ISSUER_NAME") or "erganiOS ΜΟΝΟΠΡΟΣΩΠΗ ΙΚΕ").strip()
+    BILLING_ISSUER_AFM = (os.environ.get("BILLING_ISSUER_AFM") or OXYGEN_ISSUER_VAT or "803072758").strip()
+    BILLING_ISSUER_DOY = (os.environ.get("BILLING_ISSUER_DOY") or "ΔΟΥ ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ").strip()
+    BILLING_ISSUER_ADDRESS = (
+        os.environ.get("BILLING_ISSUER_ADDRESS") or "Λεωφ. Κηφισίας 00, 15125 Μαρούσι"
+    ).strip()
+    BILLING_ISSUER_GEMH = (os.environ.get("BILLING_ISSUER_GEMH") or "000000000000").strip()
+    BILLING_ISSUER_EMAIL = (os.environ.get("BILLING_ISSUER_EMAIL") or "info@erganios.gr").strip()
+    BILLING_ISSUER_PHONE = (os.environ.get("BILLING_ISSUER_PHONE") or "210 0000 000").strip()
+    BILLING_ISSUER_ACTIVITY = (
+        os.environ.get("BILLING_ISSUER_ACTIVITY") or "Υπηρεσίες λογισμικού — Ψηφιακή Κάρτα Εργασίας"
+    ).strip()
+    BILLING_BANK_NBG = (
+        os.environ.get("BILLING_BANK_NBG") or "GR00 0110 0000 0000 0000 0000 000"
+    ).strip()
+    BILLING_BANK_PIRAEUS = (
+        os.environ.get("BILLING_BANK_PIRAEUS") or "GR00 0172 0000 0000 0000 0000 000"
+    ).strip()
+    BILLING_BANK_EUROBANK = (
+        os.environ.get("BILLING_BANK_EUROBANK") or "GR00 0260 0000 0000 0000 0000 000"
+    ).strip()
+    BILLING_PROVIDER_NAME = (
+        os.environ.get("BILLING_PROVIDER_NAME") or "Cloudnet Services I.K.E."
+    ).strip()
+    BILLING_PROVIDER_URL = (
+        os.environ.get("BILLING_PROVIDER_URL") or "https://www.oxygen.gr/"
+    ).strip()
     SERVER_INSTANCE_ID = (os.environ.get("SERVER_INSTANCE_ID") or "").strip()
     ERGANI_EGRESS_IP = (os.environ.get("ERGANI_EGRESS_IP") or "").strip()
 

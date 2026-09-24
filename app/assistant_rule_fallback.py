@@ -61,7 +61,9 @@ _PUNCH_IMPERATIVE = (
 )
 
 _ATHENS = ZoneInfo("Europe/Athens")
-_CHECKIN_STATUSES = frozenset({"needs_checkin", "late_arrival"})
+_CHECKIN_STATUSES = frozenset({
+    "needs_checkin", "late_arrival", "pending", "absent", "completed",
+})
 _CHECKOUT_STATUSES = frozenset({"at_work", "needs_checkout"})
 
 

@@ -176,6 +176,11 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/sync": "sync.view",
     "/ui/sync-log": "logs.view",
     "/ui/users": "users.view",
+    "/ui/billing": "billing.manage",
+    "/ui/billing/customer": "billing.manage",
+    "/ui/billing/subscriptions": "billing.manage",
+    "/ui/billing/invoices": "billing.manage",
+    "/ui/billing/invoice": "billing.manage",
 }
 
 NAV_ITEMS: tuple[dict[str, str], ...] = (
@@ -193,9 +198,19 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/stores/notify", "nav": "settings", "label": "Ρυθμίσεις", "permission": "settings.holidays.view"},
     {"href": "/ui/sync-log", "nav": "synclog", "label": "Καταγραφές", "permission": "logs.view"},
     {"href": "/ui/users", "nav": "users", "label": "Χρήστες", "permission": "users.view"},
+    {"href": "/ui/billing", "nav": "billing", "label": "Τιμολογήσεις", "icon": "receipt", "permission": "billing.manage", "role": "super_admin", "children": (
+        {"href": "/ui/billing", "nav": "billing-customers", "label": "Πελάτες", "permission": "billing.manage", "role": "super_admin"},
+        {"href": "/ui/billing/subscriptions", "nav": "billing-subs", "label": "Συνδρομές", "permission": "billing.manage", "role": "super_admin"},
+        {"href": "/ui/billing/invoices", "nav": "billing-invoices", "label": "Τιμολόγια", "permission": "billing.manage", "role": "super_admin"},
+    )},
 )
 
 API_RULES: tuple[RouteRule, ...] = (
+    RouteRule("GET", "/api/billing", "billing.manage"),
+    RouteRule("GET", "/api/billing/*", "billing.manage"),
+    RouteRule("POST", "/api/billing/*", "billing.manage"),
+    RouteRule("PUT", "/api/billing/*", "billing.manage"),
+    RouteRule("DELETE", "/api/billing/*", "billing.manage"),
     RouteRule("GET", "/api", "dashboard.view"),
     RouteRule("GET", "/api/dashboard/*", "dashboard.view"),
     RouteRule("GET", "/api/employees/*", "employees.view"),
@@ -435,6 +450,8 @@ def permission_for_path(path: str, method: str) -> str | None:
         return "work_card.view"
     if norm == "/api/mobile/submit":
         return "work_card.submit_live"
+    if norm.startswith("/ui/billing"):
+        return "billing.manage"
     if norm.startswith("/ui/") or norm == "/ui":
         return UI_PERMISSIONS.get(norm if norm != "/ui" else "/ui/")
     for rule in API_RULES:

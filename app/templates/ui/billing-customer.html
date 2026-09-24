@@ -1,0 +1,65 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Πελάτης' %}
+{% set shell = "office" %}
+{% set active_nav = 'billing-customers' %}
+{% block content %}
+      <div class="page-title-bar">
+        <a class="page-back-btn" href="/ui/billing" aria-label="Πίσω στους πελάτες"><i class="bi bi-arrow-left"></i></a>
+        <h1 class="page-title" id="billingCustomerTitle"><i class="bi bi-building" aria-hidden="true"></i> Νέος πελάτης</h1>
+      </div>
+      <p class="page-desc">Στοιχεία τιμολόγησης, καταστήματα και συνδρομές που καταχωρήθηκαν από έκδοση παραστατικού.</p>
+
+      <div class="card">
+        <h2 class="billing-section-title">Στοιχεία πελάτη</h2>
+        <div class="billing-fields">
+          <label>Επωνυμία<input class="field-input" id="custEponimia" required></label>
+          <label>Επάγγελμα<input class="field-input" id="custEpaggelma"></label>
+          <label class="billing-span2">Διεύθυνση<input class="field-input" id="custAddress"></label>
+          <label>ΑΦΜ<input class="field-input" id="custAfm" inputmode="numeric" maxlength="9"></label>
+          <label>ΔΟΥ<input class="field-input" id="custDoy"></label>
+          <label>Email<input class="field-input" id="custEmail" type="email"></label>
+          <label>Τηλέφωνο<input class="field-input" id="custPhone"></label>
+          <label class="billing-span2">Σημειώσεις<textarea class="field-input" id="custNotes" rows="2"></textarea></label>
+          <label class="billing-active-toggle"><input id="custActive" type="checkbox" checked> Ενεργός</label>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" id="btnSaveCustomer">
+            <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση στοιχείων</span>
+          </button>
+        </div>
+        <div id="billingCustMsg" class="msg"></div>
+      </div>
+
+      <div class="card" id="billingStoresCard" hidden>
+        <h2 class="billing-section-title">Καταστήματα</h2>
+        <p class="page-desc">Ένα κατάστημα ανήκει σε έναν μόνο πελάτη. Επιλέξτε από τα ήδη καταχωρημένα.</p>
+        <div class="billing-store-add">
+          <label class="billing-search-field">Αναζήτηση καταστήματος
+            <div class="ac-wrap">
+              <input class="field-input" id="custStoreInput" type="search" placeholder="Όνομα ή ΑΦΜ…" autocomplete="off"
+                role="combobox" aria-autocomplete="list" aria-controls="custStoreList" aria-expanded="false">
+              <ul id="custStoreList" class="ac-list" role="listbox"></ul>
+            </div>
+          </label>
+          <input type="hidden" id="custStorePick">
+          <button type="button" class="btn btn-secondary" id="btnAddStore">
+            <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Προσθήκη</span>
+          </button>
+        </div>
+        <div id="custStoresWrap"></div>
+      </div>
+
+      <div class="card" id="billingSubsCard" hidden>
+        <h2 class="billing-section-title">Συνδρομές</h2>
+        <div id="custSubsWrap"></div>
+      </div>
+
+      <div class="card" id="billingDocsCard" hidden>
+        <h2 class="billing-section-title">Παραστατικά</h2>
+        <div id="custDocsWrap"></div>
+      </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/office-autocomplete.js?v=20260924bill5"></script>
+  <script src="/static/js/billing-customer.js?v=20260924bill22"></script>
+{% endblock %}

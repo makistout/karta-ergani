@@ -263,7 +263,7 @@ def _assistant_prompt_guide() -> list[str]:
         "Καθυστερημένη είσοδος/έξοδος («ποιος έχει καθυστέρηση») → today_info από today_home: status late_arrival = καθυστερημένη είσοδος, needs_checkout = καθυστερημένη έξοδος. Όχι card_check_*.",
         "Με ώρα: «ποιος δουλεύει/εργάζεται/ξεκινάει/έρχεται στις 12» = ίδια ερώτηση ωραρίου (έναρξη)· «ποιος τελειώνει στις…» = λήξη. Χωρίς ώρα: «ποιοι δουλεύουν ακόμα» = αυτή τη στιγμή σε εργασία.",
         "Ομαδικό/κριτήριο (όσους, όσοι δουλεύουν, μετά τις Χ, τελειώνουν…): ΜΗΝ χρησιμοποιείς ονόματα από conversation_focus· διάλεξε ΑΦΜ από today_home.stores (σήμερα) ή today_home.yesterday (χθες ανοιχτές) βάσει κριτηρίου.",
-        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: χωρίς ήδη είσοδο· ήδη ανοιχτές παραλείπονται. *_now: at_work/needs_checkout ή needs_checkin/late_arrival. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας. «κλείσε όλους εκτός από Χ/Υ» = ανοιχτοί ΜΕΙΟΝ τους εξαιρούμενους. «άνοιξε όλους/όσους» = μόνο όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα (όχι ρεπό/χωρίς ωράριο)· «εκτός από» αφαιρεί εξαιρέσεις.",
+        "Έξοδος: μόνο ανοιχτές κάρτες· ήδη κλειστές παραλείπονται. Είσοδος: ήδη ανοιχτές παραλείπονται. Αν έχουν ανοίξει ΚΑΙ κλείσει, μπορούν να ανοίξουν ξανά. *_now: at_work/needs_checkout ή needs_checkin/late_arrival/completed. Κλείσιμο ανοιχτών χθες → card_check_out_retro ή *_now με date=yesterday_date και ΑΦΜ ΜΟΝΟ από yesterday (όχι επιπλέον ονόματα). «κλείσε όλες/όσους» = όλα τα ΑΦΜ ανοιχτών της ημερομηνίας. «κλείσε όλους εκτός από Χ/Υ» = ανοιχτοί ΜΕΙΟΝ τους εξαιρούμενους. «άνοιξε όλους/όσους» = κανονικό ωράριο σήμερα χωρίς ανοιχτή κάρτα (όχι ρεπό/χωρίς ωράριο)· όσοι έκλεισαν ήδη ξαναμπαίνουν· «εκτός από» αφαιρεί εξαιρέσεις.",
         "Βάσει ωραρίου → *_schedule χωρίς ώρα. Ρεπό=rest_day. Άδεια=leave+leave_type. Ωράριο=hour_from/hour_to ή intervals για σπαστό.",
         "Συγχρονισμός προσωπικού/εργαζομένων/Μητρώου/QR («συγχρόνισε προσωπικό», «συγχρονισμός εργαζομένων») → intent=sync_employees. Χωρίς employee_afms και χωρίς date. ΜΗΝ το μπερδεύεις με συγχρονισμό ωραρίου/πραγματικής.",
         "conversation_focus/reply_context κληρονομούνται μόνο σε σύντομες απαντήσεις για τα ΙΔΙΑ πρόσωπα. Ώρες 17.00→17:00. Ασαφές→unknown+clarification_question.",
@@ -1165,7 +1165,7 @@ def _asks_close_all_open_cards(text: str) -> bool:
 
 
 def _asks_open_all_cards(text: str) -> bool:
-    """«άνοιξε όλους / όσους» χωρίς ρητά ονόματα → όσοι δεν έχουν ακόμα είσοδο."""
+    """«άνοιξε όλους / όσους» χωρίς ρητά ονόματα → όσοι μπορούν να ανοίξουν (όχι ανοιχτοί)."""
     folded = _fold_text(text)
     if any(token in folded for token in ("κλεισ", "close", "checkout", "clockout", "clock out")):
         return False
@@ -1250,7 +1250,7 @@ def _checkin_all_matches_for_date(
     store_id: int,
     date_iso: str,
 ) -> list[dict[str, Any]]:
-    """Όσοι έχουν κανονικό ωράριο σήμερα και δεν έχουν ανοίξει κάρτα."""
+    """Όσοι έχουν κανονικό ωράριο και δεν έχουν ανοιχτή κάρτα (κλεισμένοι ξανανοίγουν)."""
     from app.card_report import _is_rest_day, build_card_status_report
 
     report = build_card_status_report(
@@ -1275,7 +1275,11 @@ def _checkin_all_matches_for_date(
         if not has_hours:
             continue
         card = row.get("card") if isinstance(row.get("card"), dict) else {}
-        if card.get("has_check_in"):
+        status = str(row.get("status") or "").strip()
+        currently_open = status in {"at_work", "needs_checkout"} or (
+            bool(card.get("has_check_in")) and not bool(card.get("has_check_out"))
+        )
+        if currently_open:
             continue
         afm = str(row.get("employee_afm") or "").strip()
         if afm:
@@ -1549,7 +1553,7 @@ def _validate_single_command(
                     "Δεν υπάρχουν ανοιχτές κάρτες για κλείσιμο αυτή την ημερομηνία"
                 )
 
-    # «άνοιξε όλους» → όσοι δεν έχουν είσοδο ακόμη (όχι επινόηση LLM).
+    # «άνοιξε όλους» → όσοι μπορούν να ανοίξουν (όχι επινόηση LLM).
     if (
         intent.startswith("card_check_in")
         and store_id in allowed_store_ids
@@ -1584,11 +1588,11 @@ def _validate_single_command(
         if not matches:
             if excluded:
                 errors.append(
-                    "Μετά τις εξαιρέσεις δεν μένουν εργαζόμενοι με ωράριο χωρίς είσοδο αυτή την ημερομηνία"
+                    "Μετά τις εξαιρέσεις δεν μένουν εργαζόμενοι με ωράριο που μπορούν να ανοίξουν κάρτα"
                 )
             else:
                 errors.append(
-                    "Δεν υπάρχουν εργαζόμενοι με ωράριο σήμερα που να μην έχουν ανοίξει κάρτα"
+                    "Δεν υπάρχουν εργαζόμενοι με ωράριο σήμερα που μπορούν να ανοίξουν κάρτα"
                 )
 
     skipped_card: list[str] = []

@@ -315,6 +315,7 @@ def test_checkin_all_matches_only_scheduled_without_card():
         {"store_id": 9, "afm": "222", "name": "REST"},
         {"store_id": 9, "afm": "333", "name": "WORK WITH CARD"},
         {"store_id": 9, "afm": "444", "name": "NO SCHEDULE"},
+        {"store_id": 9, "afm": "555", "name": "CLOSED CAN REOPEN"},
     ]
     report = {
         "rows": [
@@ -342,6 +343,17 @@ def test_checkin_all_matches_only_scheduled_without_card():
                 "card": {"has_check_in": False},
                 "status": "no_schedule",
             },
+            {
+                "employee_afm": "555",
+                "schedule": {"hour_from": "10:00", "hour_to": "18:00", "shift_type": "ΕΡΓΑΣΙΑ"},
+                "card": {
+                    "has_check_in": True,
+                    "has_check_out": True,
+                    "check_in": "10:05",
+                    "check_out": "14:00",
+                },
+                "status": "completed",
+            },
         ]
     }
     with patch("app.card_report.build_card_status_report", return_value=report):
@@ -351,7 +363,7 @@ def test_checkin_all_matches_only_scheduled_without_card():
             store_id=9,
             date_iso="2026-09-09",
         )
-    assert [m["afm"] for m in matches] == ["111"]
+    assert [m["afm"] for m in matches] == ["111", "555"]
 
 
 def test_close_all_except_names_excludes_from_open_list():
@@ -619,7 +631,10 @@ def test_correct_pin_is_redacted_and_executes_without_gemini():
     assert create_inbound.call_args.kwargs["text"] == "[REDACTED_PIN]"
     assert create_inbound.call_args.kwargs["raw_payload"]["message"]["text"] == "[REDACTED_PIN]"
     verify.assert_called_once_with(41, chat_id="123", pin="1234")
-    execute.assert_called_once_with(conversation, source="assistant_telegram")
+    execute.assert_called_once()
+    assert execute.call_args.args[0] == conversation
+    assert execute.call_args.kwargs["source"] == "assistant_telegram"
+    assert callable(execute.call_args.kwargs.get("progress_cb"))
     parse.assert_not_called()
     assert "Πρωτόκολλο: P-1" in reply.call_args.args[1]
 
