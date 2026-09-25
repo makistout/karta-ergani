@@ -781,6 +781,30 @@ def _name_token_score(token: str, employee: dict[str, Any]) -> int | None:
     return min(scores) if scores else None
 
 
+def _employee_matches_name_tokens(employee: dict[str, Any], tokens: list[str]) -> bool:
+    return any(_name_token_score(token, employee) is not None for token in tokens)
+
+
+def _filter_afms_matching_name_tokens(
+    afms: list[str],
+    tokens: list[str],
+    employees: list[dict[str, Any]],
+    store_id: int | None,
+) -> list[str]:
+    if not afms or not tokens:
+        return []
+    kept: list[str] = []
+    for afm in afms:
+        hits = [
+            emp for emp in employees
+            if str(emp.get("afm") or "").strip() == afm
+            and (store_id is None or emp.get("store_id") == store_id)
+        ]
+        if any(_employee_matches_name_tokens(emp, tokens) for emp in hits):
+            kept.append(afm)
+    return kept
+
+
 def _assign_query_tokens_to_employees(
     tokens: list[str], employees: list[dict[str, Any]],
 ) -> list[str]:
@@ -1030,11 +1054,19 @@ def _inherit_conversation_context(
         store_id = int(store_id) if store_id is not None else None
     except (TypeError, ValueError):
         store_id = None
+    named_tokens = _query_tokens(user_text)
+    from app.assistant_rule_fallback import looks_like_card_punch
+
     if mentioned_stores:
         if len(mentioned_stores) == 1:
             store_id = mentioned_stores[0]
     elif focus.get("store_id") in allowed_store_ids:
-        store_id = int(focus["store_id"])
+        sticky = int(focus["store_id"])
+        if named_tokens and looks_like_card_punch(user_text):
+            if _mentioned_afms(user_text, employees, sticky):
+                store_id = sticky
+        else:
+            store_id = sticky
     if store_id in allowed_store_ids:
         parsed["store_id"] = store_id
 
@@ -1053,11 +1085,11 @@ def _inherit_conversation_context(
     )
     from app.assistant_rule_fallback import looks_like_card_punch
 
-    named_tokens = _query_tokens(user_text)
     intent_now = str(parsed.get("intent") or "unknown")
     # Name-choice / group: trust Gemini. Sticky focus: if the user did not name
     # anyone this turn, keep the previous people even if the model invents AFMs.
     # Named punch («άνοιξε γκουμα») must never reuse the previous group's AFMs.
+    # Gemini AFMs are kept only when they actually match the named tokens.
     if pending_clarification.get("kind") == "name_choice" and parsed_afms:
         afms = parsed_afms
     elif intent_now == "today_info" and parsed_afms:
@@ -1067,7 +1099,35 @@ def _inherit_conversation_context(
     elif named_in_message:
         afms = named_in_message
     elif named_tokens and looks_like_card_punch(user_text):
-        afms = parsed_afms
+        scoped = store_id if store_id in allowed_store_ids else None
+        trusted = _filter_afms_matching_name_tokens(
+            parsed_afms, named_tokens, employees, scoped,
+        )
+        if trusted:
+            afms = trusted
+        else:
+            across = _mentioned_afms(user_text, employees, None)
+            across = [
+                afm for afm in across
+                if any(
+                    str(emp.get("afm") or "") == afm
+                    and int(emp.get("store_id") or 0) in allowed_store_ids
+                    for emp in employees
+                )
+            ]
+            if across:
+                afms = across
+                hit_stores = {
+                    int(emp["store_id"])
+                    for emp in employees
+                    if str(emp.get("afm") or "") in set(across)
+                    and int(emp.get("store_id") or 0) in allowed_store_ids
+                }
+                if len(hit_stores) == 1:
+                    store_id = next(iter(hit_stores))
+                    parsed["store_id"] = store_id
+            else:
+                afms = []
     elif not named_in_message and focus.get("employee_afms"):
         afms = [str(value).strip() for value in focus["employee_afms"] if str(value or "").strip()]
     elif parsed_afms:

@@ -608,6 +608,12 @@ body.users-page .main {
   justify-items: end;
 }
 
+.user-row-stores {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .user-row-icon-btn,
 .user-row-resend-email {
   align-items: center;
@@ -744,15 +750,60 @@ body.users-page .main {
 
 .users-active-toggle {
   align-items: center;
-  display: flex;
-  gap: 0.5rem;
-}
-
-.users-active-toggle {
   color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
   font-size: 0.85rem;
   font-weight: 700;
+  gap: 0.55rem;
+  position: relative;
   text-transform: uppercase;
+  user-select: none;
+}
+
+.users-active-toggle input {
+  height: 0 !important;
+  margin: 0;
+  opacity: 0;
+  position: absolute;
+  width: 0 !important;
+}
+
+.users-switch-slider {
+  background: #c5d0da;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 2.4rem;
+  height: 1.3rem;
+  position: relative;
+  transition: background 0.15s ease;
+  width: 2.4rem;
+}
+
+.users-switch-slider::after {
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+  content: "";
+  height: 1rem;
+  left: 0.15rem;
+  position: absolute;
+  top: 0.15rem;
+  transition: transform 0.15s ease;
+  width: 1rem;
+}
+
+.users-active-toggle input:checked + .users-switch-slider {
+  background: var(--brand);
+}
+
+.users-active-toggle input:checked + .users-switch-slider::after {
+  transform: translateX(1.1rem);
+}
+
+.users-active-toggle input:focus-visible + .users-switch-slider {
+  outline: 2px solid var(--brand-light);
+  outline-offset: 2px;
 }
 
 .users-actions {

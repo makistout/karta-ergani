@@ -253,6 +253,16 @@ def _store_id_from_reply_context(reply_context: dict[str, Any] | None) -> int | 
     return None
 
 
+def _is_explicit_message_reply(reply_context: dict[str, Any] | None) -> bool:
+    """Reply σε συγκεκριμένο μήνυμα ή συνέχεια διευκρίνισης — όχι νέα εντολή."""
+    if not isinstance(reply_context, dict):
+        return False
+    if reply_context.get("focus_locked"):
+        return True
+    pending = reply_context.get("pending_clarification")
+    return bool(isinstance(pending, dict) and pending)
+
+
 def _resolve_access_store_id(
     *,
     text: str,
@@ -263,9 +273,9 @@ def _resolve_access_store_id(
     """
     Phone/chat → allowed stores:
       1 store → that one
-      many → unique name in message
-      sticky από reply / τελευταίο outbound (και χωρίς focus_locked)
-      else → None (caller asks store list)
+      many → unique name in the new message
+      reply σε μήνυμα / συνέχεια διευκρίνισης → store από εκείνο
+      νέα εντολή → None (ρώτα λίστα, χωρίς sticky από ειδοποιήσεις)
     """
     from app.telegram_assistant_service import _mentioned_store_ids
 
@@ -284,6 +294,8 @@ def _resolve_access_store_id(
     mentioned = _mentioned_store_ids(text, contexts)
     if len(mentioned) == 1 and mentioned[0] in allowed:
         return mentioned[0]
+    if not _is_explicit_message_reply(reply_context):
+        return None
     focus_sid = _store_id_from_reply_context(reply_context)
     if focus_sid in allowed:
         return focus_sid
@@ -818,9 +830,8 @@ def process_assistant_command(
         if resolved is not None:
             return resolved
 
-    # Phone/chat → stores: 1 auto · many → name in message · else ask list (no LLM yet).
-    # Συγχρονισμός προσωπικού: με πολλά καταστήματα ρώτα πάντα ποιο —
-    # το sticky από τελευταία ειδοποίηση δεν μετράει (εκτός αν ανέφερε όνομα).
+    # Phone/chat → stores: 1 auto · many → όνομα στο μήνυμα ή reply · αλλιώς ρώτα.
+    # Νέα εντολή δεν κληρονομεί κατάστημα από την τελευταία ειδοποίηση.
     access_stores = _authorized_store_rows(contexts)
     if (
         not office_user

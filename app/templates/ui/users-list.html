@@ -24,8 +24,9 @@
           <div class="users-panel-head">
             <h2 id="userFormTitle">Νέος χρήστης</h2>
             <label class="users-active-toggle">
-              <input id="userActive" type="checkbox" checked>
               <span>Ενεργός</span>
+              <input id="userActive" type="checkbox" checked>
+              <span class="users-switch-slider" aria-hidden="true"></span>
             </label>
           </div>
           <input type="hidden" id="userId" value="">
@@ -124,5 +125,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/users-list.js?v=20260821acc1"></script>
+  <script src="/static/js/users-list.js?v=20260925stores1"></script>
 {% endblock %}

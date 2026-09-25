@@ -212,6 +212,16 @@ function renderRoleOptions() {
     .join("");
 }
 
+function userStoreAccessLabel(user) {
+  const total = (usersState.stores || []).length;
+  if (user?.role === "super_admin" || user?.is_super_admin) {
+    return total ? `Όλα (${total})` : "Όλα τα καταστήματα";
+  }
+  const count = (user?.store_ids || []).length;
+  if (count === 1) return "1 κατάστημα";
+  return `${count} καταστήματα`;
+}
+
 function renderUsersList() {
   const wrap = document.getElementById("usersListWrap");
   if (!usersState.users.length) {
@@ -221,6 +231,7 @@ function renderUsersList() {
   const rows = usersState.users.map((u) => {
     const active = u.is_active ? "Ενεργός" : "Ανενεργός";
     const activeCls = u.is_active ? "ok" : "err";
+    const storesLabel = userStoreAccessLabel(u);
     const selected = usersState.selected && Number(usersState.selected.id) === Number(u.id);
     const label = Office.escapeHtml(u.username || "");
     const actions =
@@ -268,6 +279,7 @@ function renderUsersList() {
       `</span>` +
       `<span class="user-row-meta">` +
       `<code>${Office.escapeHtml(u.role || "")}</code>` +
+      `<span class="user-row-stores">${Office.escapeHtml(storesLabel)}</span>` +
       `<span class="${activeCls}">${active}</span>` +
       `</span>` +
       `</div>`

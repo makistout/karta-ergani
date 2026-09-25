@@ -259,69 +259,50 @@ def test_reply_notification_text_selects_store_before_asking_list(monkeypatch):
     assert "Επιλέξτε κατάστημα" not in result["answer"]
 
 
-def test_sticky_store_from_previous_today_info_without_reply(monkeypatch):
-    """Μετά «στο Ερατο ποιοι δουλεύουν», follow-up χωρίς reply κρατάει το Ερατο."""
+def test_new_command_asks_store_even_with_sticky_notification(monkeypatch):
+    """Νέα εντολή με πολλά καταστήματα: ρώτα, αγνόησε την τελευταία ειδοποίηση."""
     created: dict = {}
-    parsed_seen: dict = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return 912
 
     monkeypatch.setattr(
         "app.repo_telegram_assistant.latest_pending_clarification",
         lambda **kwargs: None,
     )
     monkeypatch.setattr("app.repo_telegram_assistant.mark_inbound", lambda *a, **k: None)
+    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
 
-    def fake_create_task(**kwargs):
-        created.update(kwargs)
-        return 912
+    def boom(**kwargs):
+        raise AssertionError("LLM must not run before store choice on a new command")
 
-    monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create_task)
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", boom)
 
-    def fake_parse(**kwargs):
-        parsed_seen["reply_store"] = (kwargs.get("reply_context") or {}).get("store_id")
-        return (
-            {
-                "intent": "card_check_out_now",
-                "store_id": 9,
-                "employee_afms": ["111", "222"],
-                "date": "2026-08-22",
-                "confidence": 1.0,
-            },
-            [],
-            {},
-        )
-
-    monkeypatch.setattr("app.telegram_assistant_service.parse_command", fake_parse)
-    monkeypatch.setattr(
-        "app.telegram_assistant_service.validate_and_describe",
-        lambda *a, **k: (
-            "draft",
-            {"valid": True, "errors": [], "execution_enabled": True},
-            "Κλείσιμο κάρτας",
-        ),
-    )
     contexts = [
         {"store_id": 4, "store_name": "Training Room Ίλιον", "employer_afm": "1", "branch_aa": "0", "recipient_id": 8},
-        {"store_id": 9, "store_name": "ERATO", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
-        {"store_id": 10, "store_name": "APERIO", "employer_afm": "3", "branch_aa": "0", "recipient_id": 40},
+        {"store_id": 17, "store_name": "ΛΑΔΟΚΟΛΛΑ", "employer_afm": "2", "branch_aa": "0", "recipient_id": 36},
     ]
-    # latest_chat_context shape: store_id from previous answered today_info, no focus_locked
     result = process_assistant_command(
-        text="κλείσε όσους τελειώνουν 19:40",
+        text="Άνοιξε ΤΟΥΤΟΥΔΑΚΗ πριν 10",
         contexts=contexts,
         inbound_id=204,
         chat_id="6809632515",
         confirmation_mode="pin",
         reply_context={
-            "store_id": 9,
-            "notification_type": "assistant_reply",
-            "message_text": "Στο ERATO εργάζονται ακόμα: …",
-            "context": {"store_id": 9},
+            "store_id": 17,
+            "notification_type": "today_alert",
+            "message_text": "erganiOS — ΛΑΔΟΚΟΛΛΑ\nΥπερβάσεις σύμβασης…",
+            "context": {"store_id": 17, "employee_afm": "180137703"},
         },
     )
-    assert result["status"] == "draft"
-    assert "Επιλέξτε κατάστημα" not in result["answer"]
-    assert parsed_seen["reply_store"] == 9
-    assert created.get("store_id") == 9
+    assert result["status"] == "needs_clarification"
+    assert "Επιλέξτε κατάστημα" in result["answer"]
+    assert "ΛΑΔΟΚΟΛΛΑ" in result["answer"]
+    assert "Training Room" in result["answer"]
+    assert created["parsed"]["clarification_kind"] == "store_choice"
+    assert created["parsed"]["original_message"] == "Άνοιξε ΤΟΥΤΟΥΔΑΚΗ πριν 10"
+    assert created["store_id"] is None
 
 
 def test_store_choice_reply_replays_original_message(monkeypatch):
@@ -1112,28 +1093,11 @@ def test_named_open_does_not_continue_unrelated_awaiting_pin(monkeypatch):
         return 455
 
     monkeypatch.setattr("app.repo_telegram_assistant.create_task", fake_create)
-    monkeypatch.setattr(
-        "app.telegram_assistant_service.parse_command",
-        lambda **kwargs: (
-            {
-                "intent": "card_check_in_now",
-                "store_id": 1,
-                "employee_afms": ["180000001"],
-                "date": "2026-09-03",
-                "confidence": 0.95,
-            },
-            [{"store_id": 1, "afm": "180000001", "name": "ΓΚΟΥΜΑΣ ΜΗΝΑΣ"}],
-            {},
-        ),
-    )
-    monkeypatch.setattr(
-        "app.telegram_assistant_service.validate_and_describe",
-        lambda parsed, **kwargs: (
-            "draft",
-            {"valid": True, "errors": [], "execution_enabled": True},
-            "ΓΚΟΥΜΑΣ ΜΗΝΑΣ · Άνοιγμα κάρτας τώρα",
-        ),
-    )
+
+    def boom(**kwargs):
+        raise AssertionError("LLM must not run before store choice on a new command")
+
+    monkeypatch.setattr("app.telegram_assistant_service.parse_command", boom)
 
     result = process_assistant_command(
         text="Άνοιξε γκουμα",
@@ -1149,9 +1113,10 @@ def test_named_open_does_not_continue_unrelated_awaiting_pin(monkeypatch):
 
     assert cancelled == [454]
     assert result["task_id"] == 455
-    assert result["task_id"] != 454
-    assert created["parsed"]["employee_afms"] == ["180000001"]
-    assert "ΓΚΟΥΜΑΣ" in result["answer"]
+    assert result["status"] == "needs_clarification"
+    assert "Επιλέξτε κατάστημα" in result["answer"]
+    assert created["parsed"]["clarification_kind"] == "store_choice"
+    assert created["parsed"]["original_message"] == "Άνοιξε γκουμα"
 
 
 def test_name_choice_greeklish_answer_uses_gemini(monkeypatch):

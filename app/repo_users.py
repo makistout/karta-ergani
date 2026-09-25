@@ -777,9 +777,27 @@ def reset_password(user_id: int, password: str, *, must_change_password: bool = 
             )
 
 
+def _ensure_permission_codes(cur: Any, codes: list[str]) -> None:
+    """Γράφει στον κατάλογο όσα δικαιώματα λείπουν, ώστε να μην σπάει το FK."""
+    for code in codes:
+        cur.execute(
+            """
+            IF NOT EXISTS (SELECT 1 FROM dbo.karta_permission WHERE code = ?)
+                INSERT INTO dbo.karta_permission (code, name, description)
+                VALUES (?, ?, ?)
+            """,
+            code,
+            code,
+            code,
+            code,
+        )
+
+
 def _replace_permissions(cur: Any, user_id: int, permissions: list[str] | None) -> None:
     cur.execute("DELETE FROM dbo.karta_user_permission WHERE user_id = ?", int(user_id))
-    for permission in sorted({str(x).strip() for x in (permissions or []) if str(x).strip()}):
+    codes = sorted({str(x).strip() for x in (permissions or []) if str(x).strip()})
+    _ensure_permission_codes(cur, codes)
+    for permission in codes:
         cur.execute(
             """
             INSERT INTO dbo.karta_user_permission (user_id, permission_code)
