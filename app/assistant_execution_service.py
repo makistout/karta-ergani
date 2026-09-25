@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import random
 import threading
 import time
 from datetime import datetime, timedelta
@@ -157,7 +158,7 @@ def plan_execution_queue(
             items.append({
                 "employee": "Προσωπικό",
                 "action": label,
-                "offset_min": 0,
+                "offset_sec": 0,
                 "staggered": False,
             })
             continue
@@ -171,17 +172,17 @@ def plan_execution_queue(
             items.append({
                 "employee": _display_name(employee),
                 "action": label,
-                "offset_min": offset,
+                "offset_sec": offset,
                 "staggered": staggered,
             })
     return items
 
 
-def remaining_wait_minutes(wall_start: float, offset_min: int) -> int:
-    delay = wall_start + (int(offset_min or 0) * 60.0) - time.monotonic()
+def remaining_wait_seconds(wall_start: float, offset_sec: int) -> int:
+    delay = wall_start + float(int(offset_sec or 0)) - time.monotonic()
     if delay <= 0:
         return 0
-    return max(1, int(round(delay / 60.0)))
+    return max(1, int(round(delay)))
 
 
 def _done_line(row: dict[str, Any]) -> str:
@@ -224,14 +225,17 @@ def format_execution_progress(
             name = str(item.get("employee") or "Εργαζόμενος").strip()
             action = str(item.get("action") or "").strip()
             label = f"{name} · {action}" if action else name
-            wait = item.get("wait_minutes")
+            wait = item.get("wait_seconds")
             if wait is None and wall_start is not None:
-                wait = remaining_wait_minutes(wall_start, int(item.get("offset_min") or 0))
+                wait = remaining_wait_seconds(
+                    wall_start,
+                    int(item.get("offset_sec") or item.get("offset_min") or 0),
+                )
             wait = int(wait or 0)
             if wait <= 0:
                 lines.append(f"• {label} · τώρα")
             else:
-                lines.append(f"• {label} · σε ~{wait}′")
+                lines.append(f"• {label} · σε ~{wait}″")
     return "\n".join(lines)
 
 
@@ -289,6 +293,7 @@ def _execute_command(
     stagger_offsets: list[int] | None = None,
     queue_wall_start: float | None = None,
     queue_base_now: datetime | None = None,
+    clock_jitter_sec: int = 0,
     progress_cb: ProgressCallback | None = None,
     progress_done: list[dict[str, Any]] | None = None,
     progress_pending: list[dict[str, Any]] | None = None,
@@ -359,22 +364,22 @@ def _execute_command(
         action = str(current.get("action") or _action_label(intent))
         global_batch_index = punch_index_offset + index
         zero_based = global_batch_index - 1
-        offset_min = 0
+        offset_sec = 0
         if punch_total > 1 and zero_based >= 0:
             if zero_based < len(offsets):
-                offset_min = int(offsets[zero_based] or 0)
+                offset_sec = int(offsets[zero_based] or 0)
             else:
-                from app.punch_batch_stagger import cumulative_stagger_minutes
+                from app.punch_batch_stagger import cumulative_stagger_seconds
 
-                offset_min = cumulative_stagger_minutes(zero_based)
+                offset_sec = cumulative_stagger_seconds(zero_based)
 
         if (
             intent.endswith("_now")
             and punch_total > 1
-            and offset_min > 0
+            and offset_sec > 0
         ):
-            # Ουρά μόνο για ζωντανά «τώρα»: περίμενε μέχρι το λεπτό offset από την έναρξη.
-            due = wall_start + (offset_min * 60.0)
+            # Ουρά μόνο για ζωντανά «τώρα»: περίμενε μέχρι το offset από την έναρξη.
+            due = wall_start + float(offset_sec)
             delay = due - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
@@ -391,18 +396,23 @@ def _execute_command(
                 event_time = str((parsed.get("resolved_schedule_times") or {}).get(str(employee.get("afm") or "")) or "")
 
             ref_date = str(parsed.get("date") or base_now.date().isoformat())
+            extra_sec = int(offset_sec or 0)
             if event_time:
+                extra_sec += int(clock_jitter_sec or 0)
                 try:
-                    hh, mm = [int(part) for part in str(event_time).strip()[:5].split(":", 1)]
+                    clock_parts = str(event_time).strip().replace(".", ":").split(":")
+                    hh = int(clock_parts[0])
+                    mm = int(clock_parts[1]) if len(clock_parts) > 1 else 0
+                    ss = int(clock_parts[2]) if len(clock_parts) > 2 else 0
                     event_dt = datetime(
                         int(ref_date[0:4]), int(ref_date[5:7]), int(ref_date[8:10]),
-                        hh, mm, 0, tzinfo=_ATHENS,
-                    ) + timedelta(minutes=offset_min)
+                        hh, mm, ss, tzinfo=_ATHENS,
+                    ) + timedelta(seconds=extra_sec)
                 except (TypeError, ValueError, IndexError):
-                    event_dt = base_now + timedelta(minutes=offset_min)
+                    event_dt = base_now + timedelta(seconds=extra_sec)
             else:
-                # «τώρα»: ίδια βάση για όλη την παρτίδα + stagger 1–2′.
-                event_dt = base_now + timedelta(minutes=offset_min)
+                # «τώρα»: ίδια βάση για όλη την παρτίδα + stagger 50–100″.
+                event_dt = base_now + timedelta(seconds=extra_sec)
             event_at = event_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
             blocked = new_card_punch_blocked_reason(
@@ -446,7 +456,7 @@ def _execute_command(
                 "http_status": status,
                 "error": data.get("error"),
                 "event_at": event_at,
-                "queue_offset_minutes": offset_min,
+                "queue_offset_seconds": offset_sec,
             }
         elif intent in {"schedule_change", "rest_day"}:
             from app.schedule_import_service import apply_import_row
@@ -518,11 +528,16 @@ def execute_confirmed_task(
         store["api_base_url"] = client.base_url
         results: list[dict[str, Any]] = []
         commands = parsed.get("commands") if isinstance(parsed.get("commands"), list) else [parsed]
-        from app.punch_batch_stagger import count_card_punches_in_commands, precompute_batch_offsets
+        from app.punch_batch_stagger import (
+            count_card_punches_in_commands,
+            first_punch_seconds_jitter,
+            precompute_batch_offsets,
+        )
 
         normalized_commands = [command for command in commands if isinstance(command, dict)]
         punch_total = count_card_punches_in_commands(normalized_commands) or 1
         stagger_offsets = precompute_batch_offsets(punch_total) if punch_total > 1 else [0]
+        clock_jitter_sec = first_punch_seconds_jitter() if punch_total > 1 else 0
         queue_wall_start = time.monotonic()
         queue_base_now = datetime.now(_ATHENS)
         pending = plan_execution_queue(store, normalized_commands, stagger_offsets)
@@ -532,7 +547,7 @@ def execute_confirmed_task(
             if staggered and len(pending) > 1:
                 intro = (
                     f"Εκτέλεση {len(pending)} εντολών. "
-                    "Απόσταση 1–2 λεπτά μεταξύ χτυπημάτων."
+                    "Απόσταση 50–100″ μεταξύ χτυπημάτων."
                 )
             _emit_progress(
                 progress_cb,
@@ -550,6 +565,7 @@ def execute_confirmed_task(
                     stagger_offsets=stagger_offsets,
                     queue_wall_start=queue_wall_start,
                     queue_base_now=queue_base_now,
+                    clock_jitter_sec=clock_jitter_sec,
                     progress_cb=progress_cb,
                     progress_done=results,
                     progress_pending=pending,

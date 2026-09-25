@@ -428,7 +428,7 @@ def _submit_work_card(
     if batch_total > 1 and batch_index >= 1:
         from app.punch_batch_stagger import apply_batch_stagger_to_event_at
 
-        # Ισχύει και για «τώρα» (χωρίς ρητό event_at): αληθοφάνεια +1–2′ ανά χτύπημα.
+        # Ισχύει και για «τώρα» (χωρίς ρητό event_at): αληθοφάνεια +50–100″ ανά χτύπημα.
         event_at_str = apply_batch_stagger_to_event_at(
             event_at_str,
             reference_date=ref_date,

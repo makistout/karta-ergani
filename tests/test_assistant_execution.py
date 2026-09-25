@@ -96,7 +96,7 @@ def test_batch_card_punches_queue_and_stagger_now():
          patch("app.assistant_execution_service._employees", side_effect=fake_employees), \
          patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None), \
          patch("app.assistant_execution_service.time.sleep") as sleep_mock, \
-         patch("app.punch_batch_stagger.precompute_batch_offsets", return_value=[0, 2]), \
+         patch("app.punch_batch_stagger.precompute_batch_offsets", return_value=[0, 75]), \
          patch("app.routes_work_card._submit_work_card", return_value=(
              jsonify({"success": True, "protocol": "P-1"}), 200,
          )) as submit, \
@@ -116,12 +116,12 @@ def test_batch_card_punches_queue_and_stagger_now():
     assert first_body["event_at"] and second_body["event_at"]
     from datetime import datetime as _dt
     delta = _dt.fromisoformat(second_body["event_at"]) - _dt.fromisoformat(first_body["event_at"])
-    assert delta.total_seconds() == 120
+    assert delta.total_seconds() == 75
     sleep_mock.assert_called()
-    assert result["results"][0]["queue_offset_minutes"] == 0
-    assert result["results"][1]["queue_offset_minutes"] == 2
+    assert result["results"][0]["queue_offset_seconds"] == 0
+    assert result["results"][1]["queue_offset_seconds"] == 75
     assert progress
-    assert "Απόσταση 1–2 λεπτά" in progress[0]
+    assert "Απόσταση 50–100″" in progress[0]
     assert "A ONE" in progress[0] and "B TWO" in progress[0]
     assert any(
         "Πρωτόκολλο: P-1" in msg and "Περιμένει:" in msg and "B TWO" in msg
@@ -129,15 +129,61 @@ def test_batch_card_punches_queue_and_stagger_now():
     )
 
 
+def test_batch_retro_check_in_sends_immediately_with_realistic_seconds():
+    app = Flask(__name__)
+    task = {
+        "id": 12, "store_id": 4,
+        "payload_json": json.dumps({
+            "store_id": 4,
+            "commands": [
+                {"intent": "card_check_in_retro", "store_id": 4, "employee_afms": ["111"], "date": "2026-09-25", "time": "12:17"},
+                {"intent": "card_check_in_retro", "store_id": 4, "employee_afms": ["222"], "date": "2026-09-25", "time": "12:17"},
+            ],
+        }),
+    }
+    store = {"id": 4, "employer_afm": "123456789", "branch_aa": "0"}
+    employees_by_afm = {
+        "111": {"afm": "111", "eponymo": "A", "onoma": "ONE"},
+        "222": {"afm": "222", "eponymo": "B", "onoma": "TWO"},
+    }
+    client = SimpleNamespace(base_url="https://example.invalid/")
+
+    def fake_employees(_store, afms):
+        return [employees_by_afm[afm] for afm in afms]
+
+    with app.app_context(), \
+         patch("app.assistant_execution_service.get_store_config", return_value=store), \
+         patch("app.assistant_execution_service.get_action_settings", return_value={"ai_agent_enabled": True}), \
+         patch("app.assistant_execution_service._authenticate", return_value=("token", client)), \
+         patch("app.assistant_execution_service._employees", side_effect=fake_employees), \
+         patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None), \
+         patch("app.assistant_execution_service.time.sleep") as sleep_mock, \
+         patch("app.punch_batch_stagger.precompute_batch_offsets", return_value=[0, 79]), \
+         patch("app.punch_batch_stagger.first_punch_seconds_jitter", return_value=53), \
+         patch("app.routes_work_card._submit_work_card", return_value=(
+             jsonify({"success": True, "protocol": "P-1"}), 200,
+         )) as submit, \
+         patch("app.repo_telegram_assistant.finish_task_execution"):
+        result = execute_confirmed_task(task, source="assistant_telegram")
+
+    assert result["success"] is True
+    assert submit.call_count == 2
+    sleep_mock.assert_not_called()
+    first_body = submit.call_args_list[0].kwargs["body"]
+    second_body = submit.call_args_list[1].kwargs["body"]
+    assert first_body["event_at"] == "2026-09-25T12:17:53"
+    assert second_body["event_at"] == "2026-09-25T12:19:12"
+
+
 def test_format_execution_progress_lists_done_and_waiting():
     text = format_execution_progress(
         [{"employee": "HOXHA DASHURI", "action": "Έξοδος", "success": True, "protocol": "P-1"}],
-        [{"employee": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ", "action": "Έξοδος", "wait_minutes": 2}],
+        [{"employee": "ΒΗΧΟΣ ΙΩΑΝΝΗΣ", "action": "Έξοδος", "wait_seconds": 75}],
     )
     assert "Εκτελέστηκε:" in text
     assert "HOXHA DASHURI · Έξοδος · Επιτυχία · Πρωτόκολλο: P-1" in text
     assert "Περιμένει:" in text
-    assert "ΒΗΧΟΣ ΙΩΑΝΝΗΣ · Έξοδος · σε ~2′" in text
+    assert "ΒΗΧΟΣ ΙΩΑΝΝΗΣ · Έξοδος · σε ~75″" in text
 
 
 def test_batch_executes_every_command_and_collects_every_protocol():
