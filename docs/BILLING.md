@@ -10,8 +10,24 @@
 - **Πελάτες** `/ui/billing` — αναζήτηση με το ίδιο autocomplete (επωνυμία / ΑΦΜ).
 - **Συνδρομές** `/ui/billing/subscriptions` — κατάλογος **πακέτων** (όχι έκδοση).
 - **Τιμολόγια** `/ui/billing/invoices` — επιλογή συνδρομών και έκδοση.
+- **Παρουσιάσεις** `/ui/billing/presentations` — πάνω αριστερά μικρό πεδίο
+  email και κουμπί **Αποστολή** στην ίδια γραμμή. Κάτω προεπισκόπηση των
+  δύο PDF. `POST /api/billing/presentation` μετά από έλεγχο μορφής, BCC
+  `info@erganios.gr`. PDF: `GET /api/billing/presentation/files/<key>`.
 
-Η καρτέλα πελάτη έχει στοιχεία, καταστήματα, συνδρομές και παραστατικά.
+Η καρτέλα πελάτη έχει στοιχεία (και **Εκπρόσωπο**), καταστήματα, συνδρομές και
+παραστατικά. Τα κουμπιά **Προσφορά** και **Συμφωνητικό** κατεβάζουν συμπληρωμένα
+Word (`POST /api/billing/offer`, `POST /api/billing/agreement`) από
+`app/private/billing/prosfora_erganios.docx` και
+`app/private/billing/symfonitiko_analipsis_efthynis.docx`. Χωρίς εκπρόσωπο δεν
+κατεβαίνουν. Προσφορά: Προς = επωνυμία, ημερομηνία = σήμερα. Συμφωνητικό:
+Πάροχος = `BILLING_ISSUER_*`, Εργοδότης = επωνυμία / ΑΦΜ / έδρα / εκπρόσωπος.
+Το **Αποστολή παρουσίασης** στέλνει στο καταχωρημένο email τα PDF
+`erganiOS_apologistiko_orometrisi.pdf` και `erganiOS_AI-Agent.pdf`
+(`POST /api/billing/presentation`). Χωρίς email δεν στέλνει. Υπογραφή:
+`BILLING_CONTACT_NAME` / `BILLING_CONTACT_PHONE` / `BILLING_ISSUER_EMAIL` /
+`PUBLIC_BASE_URL` (αλλιώς erganiOS, 6977392742, info@erganios.gr,
+https://erganios.gr). Η γραμμή ιστοτόπου γράφεται `Web: …`. BCC `info@erganios.gr`.
 
 ## Πακέτα (Συνδρομές)
 
@@ -27,7 +43,8 @@
 1. Πελάτης (autocomplete) + τύπος / σειρά / έναρξη (`ηη/μμ/εεεε`).
 2. Γκρουπ πακέτων collapsed· με `+` ανοίγουν μία γραμμή το καθένα.
    Επιλεγμένη γραμμή γίνεται γκρι. Κλικ στην τιμή → modal μόνο για αυτό το
-   παραστατικό (όχι αλλαγή καταλόγου).
+   παραστατικό (όχι αλλαγή καταλόγου)· η αλλαγή ποσού επιλέγει τη γραμμή,
+   η ξε-επιλογή επαναφέρει την τιμή καταλόγου.
 3. **Έκδοση** κάτω από τη λίστα.
 4. Τύπος ΑΠΥ `11.2` ή ΤΠΥ `2.1`.
 5. `POST /v2/invoices` στο `https://sandbox-api.mydataprovider.gr/v2`
@@ -64,3 +81,9 @@ IIS venv.
 ```powershell
 python -X utf8 scripts/run_migration_billing.py
 ```
+
+Η στήλη `representative` είναι στο `sql/alter_add_billing.sql` (και στο
+`sql/alter_add_billing_customer_representative.sql` για υπάρχουσες βάσεις).
+
+Στοιχεία υπογραφής παρουσίασης στο `.env`: `BILLING_CONTACT_NAME`,
+`BILLING_CONTACT_PHONE`, `BILLING_ISSUER_EMAIL`, `PUBLIC_BASE_URL`.

@@ -93,7 +93,7 @@ function renderPlanPick() {
     <label class="billing-plan-option">
       <input type="checkbox" name="plan" value="${plan.id}">
       <span>${Office.escapeHtml(plan.name || "")}</span>
-      <button type="button" class="billing-plan-amount" data-plan="${plan.id}" data-amount="${Office.escapeHtml(String(plan.amount_net || "0"))}">${Office.escapeHtml(String(plan.amount_net || "0"))} €</button>
+      <button type="button" class="billing-plan-amount" data-plan="${plan.id}" data-original="${Office.escapeHtml(String(plan.amount_net || "0"))}" data-amount="${Office.escapeHtml(String(plan.amount_net || "0"))}">${Office.escapeHtml(String(plan.amount_net || "0"))} €</button>
     </label>`).join("")}
       </div>
     </div>
@@ -120,10 +120,37 @@ function renderPlanPick() {
     });
   });
   wrap.querySelectorAll(".billing-plan-option input[name='plan']").forEach((input) => {
-    const sync = () => input.closest(".billing-plan-option")?.classList.toggle("is-selected", input.checked);
-    input.addEventListener("change", sync);
-    sync();
+    input.addEventListener("change", () => {
+      syncPlanOption(input);
+      if (!input.checked) restorePlanAmount(planAmountButton(input));
+    });
+    syncPlanOption(input);
   });
+}
+
+function planAmountButton(input) {
+  return input?.closest("label")?.querySelector(".billing-plan-amount") || null;
+}
+
+function catalogAmount(btn) {
+  return String(btn?.dataset.original || btn?.dataset.amount || "0");
+}
+
+function restorePlanAmount(btn) {
+  if (!btn) return;
+  const original = catalogAmount(btn);
+  btn.dataset.amount = original;
+  btn.textContent = `${original} €`;
+}
+
+function syncPlanOption(input) {
+  input?.closest(".billing-plan-option")?.classList.toggle("is-selected", Boolean(input?.checked));
+}
+
+function selectPlanOption(input) {
+  if (!input) return;
+  input.checked = true;
+  syncPlanOption(input);
 }
 
 function planFamilyTitle(plan) {
@@ -190,6 +217,7 @@ function applyAmountModal() {
   const next = Number.isFinite(num) && num >= 0 ? num.toFixed(2) : current;
   amountEditBtn.dataset.amount = next;
   amountEditBtn.textContent = `${next} €`;
+  selectPlanOption(amountEditBtn.closest("label")?.querySelector('input[name="plan"]'));
   closeAmountModal();
 }
 
@@ -292,7 +320,8 @@ async function issueInvoice() {
   Office.showMsg("billingInvMsg", data.document?.mark ? `Εκδόθηκε · MARK ${data.document.mark}` : "Εκδόθηκε.", true);
   document.querySelectorAll('input[name="plan"]:checked').forEach((el) => {
     el.checked = false;
-    el.closest(".billing-plan-option")?.classList.remove("is-selected");
+    syncPlanOption(el);
+    restorePlanAmount(planAmountButton(el));
   });
   if (data.document?.form_url) {
     window.open(data.document.form_url, "_blank", "noopener");

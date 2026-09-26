@@ -10,6 +10,7 @@ BEGIN
         doy NVARCHAR(120) NULL,
         email NVARCHAR(200) NULL,
         phone NVARCHAR(40) NULL,
+        representative NVARCHAR(200) NULL,
         notes NVARCHAR(1000) NULL,
         is_active BIT NOT NULL CONSTRAINT DF_karta_billing_customer_active DEFAULT (1),
         created_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_billing_customer_created DEFAULT (SYSDATETIMEOFFSET()),

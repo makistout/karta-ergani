@@ -214,9 +214,13 @@ class Config:
     BILLING_ISSUER_GEMH = (os.environ.get("BILLING_ISSUER_GEMH") or "000000000000").strip()
     BILLING_ISSUER_EMAIL = (os.environ.get("BILLING_ISSUER_EMAIL") or "info@erganios.gr").strip()
     BILLING_ISSUER_PHONE = (os.environ.get("BILLING_ISSUER_PHONE") or "210 0000 000").strip()
+    BILLING_CONTACT_PHONE = (os.environ.get("BILLING_CONTACT_PHONE") or "").strip()
+    BILLING_CONTACT_NAME = (os.environ.get("BILLING_CONTACT_NAME") or "").strip()
     BILLING_ISSUER_ACTIVITY = (
         os.environ.get("BILLING_ISSUER_ACTIVITY") or "Υπηρεσίες λογισμικού — Ψηφιακή Κάρτα Εργασίας"
     ).strip()
+    BILLING_ISSUER_CITY = (os.environ.get("BILLING_ISSUER_CITY") or "").strip()
+    BILLING_ISSUER_REPRESENTATIVE = (os.environ.get("BILLING_ISSUER_REPRESENTATIVE") or "").strip()
     BILLING_BANK_NBG = (
         os.environ.get("BILLING_BANK_NBG") or "GR00 0110 0000 0000 0000 0000 000"
     ).strip()

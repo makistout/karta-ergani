@@ -20,6 +20,7 @@ DOC_TYPE_LABELS = {
 
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "alter_add_billing.sql"
 _SQL_OXYGEN_PATH = Path(__file__).resolve().parents[1] / "sql" / "alter_add_billing_invoice_oxygen.sql"
+_SQL_REP_PATH = Path(__file__).resolve().parents[1] / "sql" / "alter_add_billing_customer_representative.sql"
 _tables_ready = False
 
 
@@ -63,7 +64,8 @@ def ensure_tables() -> None:
         return
     raw = _SQL_PATH.read_text(encoding="utf-8")
     extra = _SQL_OXYGEN_PATH.read_text(encoding="utf-8") if _SQL_OXYGEN_PATH.exists() else ""
-    batches = [part.strip() for part in (raw + "\nGO\n" + extra).split("GO") if part.strip()]
+    extra_rep = _SQL_REP_PATH.read_text(encoding="utf-8") if _SQL_REP_PATH.exists() else ""
+    batches = [part.strip() for part in (raw + "\nGO\n" + extra + "\nGO\n" + extra_rep).split("GO") if part.strip()]
     with cursor() as cur:
         for batch in batches:
             cur.execute(batch)
@@ -89,7 +91,7 @@ def list_customers() -> list[dict[str, Any]]:
             """
             SELECT
               c.id, c.eponimia, c.epaggelma, c.address, c.afm, c.doy,
-              c.email, c.phone, c.notes, CAST(c.is_active AS int) AS is_active,
+              c.email, c.phone, c.representative, c.notes, CAST(c.is_active AS int) AS is_active,
               CONVERT(varchar(33), c.created_at, 126) AS created_at,
               CONVERT(varchar(33), c.updated_at, 126) AS updated_at,
               (
@@ -114,7 +116,7 @@ def get_customer(customer_id: int) -> dict[str, Any] | None:
             """
             SELECT
               c.id, c.eponimia, c.epaggelma, c.address, c.afm, c.doy,
-              c.email, c.phone, c.notes, CAST(c.is_active AS int) AS is_active,
+              c.email, c.phone, c.representative, c.notes, CAST(c.is_active AS int) AS is_active,
               CONVERT(varchar(33), c.created_at, 126) AS created_at,
               CONVERT(varchar(33), c.updated_at, 126) AS updated_at
             FROM dbo.karta_billing_customer c
@@ -147,6 +149,7 @@ def _clean_customer(data: dict[str, Any]) -> dict[str, Any]:
         "doy": str(data.get("doy") or "").strip()[:120] or None,
         "email": str(data.get("email") or "").strip()[:200] or None,
         "phone": str(data.get("phone") or "").strip()[:40] or None,
+        "representative": str(data.get("representative") or "").strip()[:200] or None,
         "notes": str(data.get("notes") or "").strip()[:1000] or None,
         "is_active": 0 if str(data.get("is_active")).lower() in {"0", "false"} else 1,
     }
@@ -159,9 +162,9 @@ def create_customer(data: dict[str, Any]) -> dict[str, Any]:
         cur.execute(
             """
             INSERT INTO dbo.karta_billing_customer
-              (eponimia, epaggelma, address, afm, doy, email, phone, notes, is_active)
+              (eponimia, epaggelma, address, afm, doy, email, phone, representative, notes, is_active)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload["eponimia"],
@@ -171,6 +174,7 @@ def create_customer(data: dict[str, Any]) -> dict[str, Any]:
                 payload["doy"],
                 payload["email"],
                 payload["phone"],
+                payload["representative"],
                 payload["notes"],
                 payload["is_active"],
             ),
@@ -189,7 +193,7 @@ def update_customer(customer_id: int, data: dict[str, Any]) -> dict[str, Any]:
             """
             UPDATE dbo.karta_billing_customer
             SET eponimia=?, epaggelma=?, address=?, afm=?, doy=?,
-                email=?, phone=?, notes=?, is_active=?,
+                email=?, phone=?, representative=?, notes=?, is_active=?,
                 updated_at=SYSDATETIMEOFFSET()
             WHERE id=?
             """,
@@ -201,6 +205,7 @@ def update_customer(customer_id: int, data: dict[str, Any]) -> dict[str, Any]:
                 payload["doy"],
                 payload["email"],
                 payload["phone"],
+                payload["representative"],
                 payload["notes"],
                 payload["is_active"],
                 int(customer_id),

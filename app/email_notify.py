@@ -61,6 +61,7 @@ def send_email_message(
     *,
     html_body: str | None = None,
     bcc: str | list[str] | None = None,
+    attachments: list[tuple[str, bytes]] | None = None,
 ) -> dict[str, Any]:
     settings = _smtp_settings()
     to_addr = str(to_email or "").strip()
@@ -82,6 +83,13 @@ def send_email_message(
     msg.set_content(text_body or "")
     if html_body:
         msg.add_alternative(html_body, subtype="html")
+    attached_names: list[str] = []
+    for raw_name, raw_data in attachments or []:
+        filename = str(raw_name or "attachment").strip() or "attachment"
+        data = raw_data if isinstance(raw_data, (bytes, bytearray)) else b""
+        subtype = "pdf" if filename.lower().endswith(".pdf") else "octet-stream"
+        msg.add_attachment(bytes(data), maintype="application", subtype=subtype, filename=filename)
+        attached_names.append(filename)
 
     recipients = [to_addr, *bcc_addrs]
     recipients = list(dict.fromkeys(addr for addr in recipients if addr))
@@ -114,6 +122,8 @@ def send_email_message(
     out: dict[str, Any] = {"ok": True, "to": to_addr}
     if bcc_addrs:
         out["bcc"] = bcc_addrs
+    if attached_names:
+        out["attachments"] = attached_names
     return out
 
 

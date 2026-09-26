@@ -1194,6 +1194,10 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-employee-search .field-input { width: 100%; padding-left: 2.15rem; padding-right: 1.65rem; }
 .apologistic-employee-search .field-input::-webkit-search-cancel-button { cursor:pointer; }
 .apologistic-employee-search .field-input::-ms-clear { cursor:pointer; }
+.toolbar-dates-row .apologistic-employee-search { flex: 0 1 320px; }
+@media (max-width: 1024px) {
+  .toolbar-dates-row .apologistic-employee-search { width: 100%; flex-basis: 100%; }
+}
 .apologistic-table td { vertical-align:top; }
 .apologistic-table { width:100%; table-layout:fixed; font-size:11px; }
 .apologistic-table thead th { height:auto; min-height:0; padding:.55rem .2rem .4rem; vertical-align:bottom; text-align:center; white-space:nowrap; line-height:1.05; position:relative; overflow:visible; }

@@ -259,6 +259,11 @@ def ui_billing_invoices():
     return render_template("ui/billing-invoices.html")
 
 
+@ui_bp.get("/billing/presentations")
+def ui_billing_presentations():
+    return render_template("ui/billing-presentations.html")
+
+
 @ui_bp.get("/billing/invoice/<int:document_id>")
 def ui_billing_invoice(document_id: int):
     from app.billing_invoice_form import invoice_view

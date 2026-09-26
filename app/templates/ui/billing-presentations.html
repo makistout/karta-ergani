@@ -1,0 +1,35 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Παρουσιάσεις' %}
+{% set shell = "office" %}
+{% set active_nav = 'billing-presentations' %}
+{% block content %}
+      <h1 class="page-title"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> Παρουσιάσεις</h1>
+      <p class="page-desc">Δείτε τα δύο PDF και στείλτε τα στο email που θα συμπληρώσετε. Αντίγραφο πάει στο info@erganios.gr.</p>
+
+      <div class="card">
+        <div class="billing-presentation-send">
+          <label class="billing-presentation-email" for="presEmail">Email</label>
+          <div class="billing-presentation-email-row">
+            <input class="field-input" id="presEmail" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="">
+            <button type="button" class="btn" id="btnPresentationSend">
+              <i class="bi bi-send" aria-hidden="true"></i><span>Αποστολή</span>
+            </button>
+          </div>
+        </div>
+        <div id="billingPresMsg" class="msg"></div>
+      </div>
+
+      <div class="billing-presentation-previews">
+        <section class="card billing-presentation-preview">
+          <h2 class="billing-section-title">Απολογιστικό &amp; Ωρομέτρηση</h2>
+          <iframe class="billing-presentation-frame" title="Απολογιστικό και Ωρομέτρηση" src="/api/billing/presentation/files/apologistiko"></iframe>
+        </section>
+        <section class="card billing-presentation-preview">
+          <h2 class="billing-section-title">AI Agent</h2>
+          <iframe class="billing-presentation-frame" title="AI Agent" src="/api/billing/presentation/files/ai-agent"></iframe>
+        </section>
+      </div>
+{% endblock %}
+{% block scripts %}
+  <script src="/static/js/billing-presentations.js?v=20260926pres4"></script>
+{% endblock %}

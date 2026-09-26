@@ -6,6 +6,29 @@ document.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(location.search);
   billingState.id = params.get("id") ? Number(params.get("id")) : null;
   document.getElementById("btnSaveCustomer")?.addEventListener("click", saveCustomer);
+  document.getElementById("btnAgreementDownload")?.addEventListener("click", () => {
+    downloadCustomerDoc({
+      url: "/api/billing/agreement",
+      buttonId: "btnAgreementDownload",
+      fallbackName: "Symfonitiko_Analipsis_Efthynis.docx",
+      failLabel: "Αποτυχία συμφωνητικού",
+    });
+  });
+  document.getElementById("btnOfferDownload")?.addEventListener("click", () => {
+    downloadCustomerDoc({
+      url: "/api/billing/offer",
+      buttonId: "btnOfferDownload",
+      fallbackName: "Prosfora_erganiOS.docx",
+      failLabel: "Αποτυχία προσφοράς",
+    });
+  });
+  document.getElementById("btnPresentationSend")?.addEventListener("click", sendPresentation);
+  document.getElementById("custRepresentative")?.addEventListener("input", () => {
+    document.getElementById("custRepresentative")?.classList.remove("field-err");
+  });
+  document.getElementById("custEmail")?.addEventListener("input", () => {
+    document.getElementById("custEmail")?.classList.remove("field-err");
+  });
   document.getElementById("btnAddStore")?.addEventListener("click", addStore);
   initStoreAutocomplete();
   if (billingState.id) loadCustomer();
@@ -48,6 +71,7 @@ function customerPayload() {
     doy: val("custDoy"),
     email: val("custEmail"),
     phone: val("custPhone"),
+    representative: val("custRepresentative"),
     notes: val("custNotes"),
     is_active: document.getElementById("custActive")?.checked ? 1 : 0,
   };
@@ -61,6 +85,7 @@ function fillCustomer(c) {
   document.getElementById("custDoy").value = c.doy || "";
   document.getElementById("custEmail").value = c.email || "";
   document.getElementById("custPhone").value = c.phone || "";
+  document.getElementById("custRepresentative").value = c.representative || "";
   document.getElementById("custNotes").value = c.notes || "";
   document.getElementById("custActive").checked = Number(c.is_active) !== 0;
   document.getElementById("billingCustomerTitle").innerHTML =
@@ -83,6 +108,82 @@ async function loadCustomer() {
   document.getElementById("billingSubsCard").hidden = false;
   document.getElementById("billingDocsCard").hidden = false;
   await loadStoreOptions();
+}
+
+async function downloadCustomerDoc({ url, buttonId, fallbackName, failLabel }) {
+  const btn = document.getElementById(buttonId);
+  const rep = document.getElementById("custRepresentative");
+  if (!val("custRepresentative")) {
+    rep?.classList.add("field-err");
+    rep?.focus();
+    Office.showMsg("billingCustMsg", "Απαιτείται το όνομα του εκπροσώπου", false);
+    return;
+  }
+  rep?.classList.remove("field-err");
+  Office.setButtonLoading(btn, true);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(customerPayload()),
+    });
+    if (!res.ok) {
+      let data = {};
+      try { data = await res.json(); } catch { data = {}; }
+      Office.showMsg("billingCustMsg", data.error || failLabel, false);
+      return;
+    }
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const raw = res.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(raw);
+    link.href = href;
+    link.download = match ? decodeURIComponent(match[1]) : fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+  } catch (err) {
+    Office.showMsg("billingCustMsg", String(err || failLabel), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
+}
+
+async function sendPresentation() {
+  const emailEl = document.getElementById("custEmail");
+  const email = val("custEmail");
+  if (!email) {
+    emailEl?.classList.add("field-err");
+    emailEl?.focus();
+    Office.showMsg("billingCustMsg", "Απαιτείται το email του πελάτη", false);
+    return;
+  }
+  emailEl?.classList.remove("field-err");
+  if (!await Office.confirm(`Να σταλεί η παρουσίαση στο ${email};`, {
+    title: "Αποστολή παρουσίασης",
+    confirmText: "Αποστολή",
+  })) return;
+  const btn = document.getElementById("btnPresentationSend");
+  Office.setButtonLoading(btn, true);
+  try {
+    const res = await fetch("/api/billing/presentation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(customerPayload()),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      Office.showMsg("billingCustMsg", data.error || "Αποτυχία αποστολής παρουσίασης", false);
+      return;
+    }
+    Office.showMsg("billingCustMsg", `Η παρουσίαση στάλθηκε στο ${data.to || email}.`, true);
+  } catch (err) {
+    Office.showMsg("billingCustMsg", String(err || "Αποτυχία αποστολής παρουσίασης"), false);
+  } finally {
+    Office.setButtonLoading(btn, false);
+  }
 }
 
 async function saveCustomer() {

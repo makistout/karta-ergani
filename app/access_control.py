@@ -181,6 +181,7 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/billing/subscriptions": "billing.manage",
     "/ui/billing/invoices": "billing.manage",
     "/ui/billing/invoice": "billing.manage",
+    "/ui/billing/presentations": "billing.manage",
 }
 
 NAV_ITEMS: tuple[dict[str, str], ...] = (
@@ -202,6 +203,7 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
         {"href": "/ui/billing", "nav": "billing-customers", "label": "Πελάτες", "permission": "billing.manage", "role": "super_admin"},
         {"href": "/ui/billing/subscriptions", "nav": "billing-subs", "label": "Συνδρομές", "permission": "billing.manage", "role": "super_admin"},
         {"href": "/ui/billing/invoices", "nav": "billing-invoices", "label": "Τιμολόγια", "permission": "billing.manage", "role": "super_admin"},
+        {"href": "/ui/billing/presentations", "nav": "billing-presentations", "label": "Παρουσιάσεις", "permission": "billing.manage", "role": "super_admin"},
     )},
 )
 

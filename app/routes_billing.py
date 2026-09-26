@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from io import BytesIO
+
+from flask import Blueprint, jsonify, request, send_file
 
 from app import repo_billing
+from app.billing_agreement import (
+    agreement_filename,
+    customer_for_agreement,
+    fill_agreement_docx,
+    fill_offer_docx,
+    offer_filename,
+)
+from app.billing_presentation import presentation_file, send_presentation
+from app.email_notify import EmailNotConfigured
 
 billing_bp = Blueprint("billing", __name__, url_prefix="/api/billing")
 
@@ -59,6 +70,56 @@ def customers_deactivate(customer_id: int):
         return jsonify(success=True)
     except Exception as exc:
         return _error(exc)
+
+
+@billing_bp.post("/agreement")
+def billing_agreement():
+    try:
+        customer = customer_for_agreement(request.get_json(silent=True) or {})
+        content = fill_agreement_docx(customer)
+    except Exception as exc:
+        return _error(exc)
+    return send_file(
+        BytesIO(content),
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=agreement_filename(customer),
+    )
+
+
+@billing_bp.post("/offer")
+def billing_offer():
+    try:
+        customer = customer_for_agreement(request.get_json(silent=True) or {})
+        content = fill_offer_docx(customer)
+    except Exception as exc:
+        return _error(exc)
+    return send_file(
+        BytesIO(content),
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=offer_filename(customer),
+    )
+
+
+@billing_bp.post("/presentation")
+def billing_presentation():
+    try:
+        result = send_presentation(request.get_json(silent=True) or {})
+    except EmailNotConfigured as exc:
+        return jsonify(error=str(exc)), 503
+    except Exception as exc:
+        return _error(exc)
+    return jsonify(success=True, **result)
+
+
+@billing_bp.get("/presentation/files/<key>")
+def billing_presentation_file(key: str):
+    try:
+        path = presentation_file(key)
+    except Exception as exc:
+        return _error(exc)
+    return send_file(path, mimetype="application/pdf", as_attachment=False, download_name=path.name)
 
 
 @billing_bp.put("/customers/<int:customer_id>/stores")

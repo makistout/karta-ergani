@@ -7,7 +7,27 @@ from app.oxygen_invoice import (
     credit_invoice_type,
     vat_category,
 )
+from app.billing_agreement import (
+    agreement_filename,
+    customer_for_agreement,
+    fill_agreement_docx,
+    fill_offer_docx,
+    issuer_city,
+    offer_filename,
+)
 from app.billing_invoice_form import greek_date, issuer_profile
+from app.billing_presentation import (
+    PRESENTATION_BCC,
+    PRESENTATION_FILES,
+    PRESENTATION_SUBJECT,
+    build_presentation_email,
+    customer_for_presentation,
+    presentation_attachments,
+    presentation_contact,
+    presentation_file,
+    presentation_items,
+    send_presentation,
+)
 from app.billing_qr import qr_svg_data_uri
 from app.repo_billing import (
     afm_is_valid,
@@ -56,10 +76,131 @@ def test_billing_paths_are_super_admin_permission():
     assert permission_for_path("/ui/billing/subscriptions", "GET") == "billing.manage"
     assert permission_for_path("/ui/billing/invoices", "GET") == "billing.manage"
     assert permission_for_path("/ui/billing/invoice/12", "GET") == "billing.manage"
+    assert permission_for_path("/ui/billing/presentations", "GET") == "billing.manage"
     assert permission_for_path("/api/billing/customers", "GET") == "billing.manage"
     assert permission_for_path("/api/billing/documents/issue", "POST") == "billing.manage"
     assert permission_for_path("/api/billing/documents/1/credit", "POST") == "billing.manage"
     assert permission_for_path("/api/billing/plans/1/duplicate", "POST") == "billing.manage"
+    assert permission_for_path("/api/billing/agreement", "POST") == "billing.manage"
+    assert permission_for_path("/api/billing/offer", "POST") == "billing.manage"
+    assert permission_for_path("/api/billing/presentation", "POST") == "billing.manage"
+    assert permission_for_path("/api/billing/presentation/files/apologistiko", "GET") == "billing.manage"
+
+
+def test_agreement_fills_customer_and_issuer():
+    import zipfile
+    from io import BytesIO
+
+    assert issuer_city("Λαχανά 17, 12131 Περιστέρι") == "Περιστέρι"
+    customer = customer_for_agreement({
+        "eponimia": "ΑΙΣΤΟΟΥ ΥΠΗΡΕΣΙΕΣ ΙΝΤΕΡΝΕΤ Μ.ΙΚΕ",
+        "afm": "998031206",
+        "address": "ΛΑΧΑΝΑ 17 ΠΕΡΙΣΤΕΡΙ ΤΚ 12131",
+        "representative": "Μάκης Τουτουδάκης",
+    })
+    content = fill_agreement_docx(customer)
+    xml = zipfile.ZipFile(BytesIO(content)).read("word/document.xml").decode("utf-8")
+    assert "ΑΙΣΤΟΟΥ ΥΠΗΡΕΣΙΕΣ ΙΝΤΕΡΝΕΤ Μ.ΙΚΕ" in xml
+    assert "998031206" in xml
+    assert "Μάκης Τουτουδάκης" in xml
+    assert "erganiOS" in xml or "ΙΚΕ" in xml
+    assert "__________" not in xml
+    assert "___/___/____" not in xml
+    assert agreement_filename(customer).endswith(".docx")
+
+
+def test_offer_fills_customer_and_date():
+    import zipfile
+    from io import BytesIO
+
+    customer = customer_for_agreement({
+        "eponimia": "ΑΙΣΤΟΟΥ ΥΠΗΡΕΣΙΕΣ ΙΝΤΕΡΝΕΤ Μ.ΙΚΕ",
+        "afm": "998031206",
+        "address": "ΛΑΧΑΝΑ 17 ΠΕΡΙΣΤΕΡΙ ΤΚ 12131",
+        "representative": "Μάκης Τουτουδάκης",
+    })
+    content = fill_offer_docx(customer)
+    xml = zipfile.ZipFile(BytesIO(content)).read("word/document.xml").decode("utf-8")
+    assert "ΑΙΣΤΟΟΥ ΥΠΗΡΕΣΙΕΣ ΙΝΤΕΡΝΕΤ Μ.ΙΚΕ" in xml
+    assert "\u2026\u2026\u2026\u2026\u2026\u2026\u2026" not in xml
+    assert "\u2026\u2026\u2026\u2026\u2026\u2026" not in xml
+    assert offer_filename(customer).endswith(".docx")
+
+
+def test_presentation_templates_and_email(monkeypatch):
+    import pytest
+
+    attachments = presentation_attachments()
+    assert [name for name, _data in attachments] == [path.name for path in PRESENTATION_FILES]
+    assert all(data.startswith(b"%PDF") for _name, data in attachments)
+    items = presentation_items()
+    assert [item["key"] for item in items] == ["apologistiko", "ai-agent"]
+    assert presentation_file("apologistiko").name == "erganiOS_apologistiko_orometrisi.pdf"
+    with pytest.raises(KeyError):
+        presentation_file("missing")
+    with pytest.raises(ValueError, match="Απαιτείται το email του πελάτη"):
+        customer_for_presentation({"eponimia": "Δοκιμή ΑΕ"})
+    with pytest.raises(ValueError, match="Μη έγκυρο email πελάτη"):
+        customer_for_presentation({"email": "oxi-email"})
+    recipient = customer_for_presentation({
+        "eponimia": "Δοκιμή ΑΕ",
+        "representative": "Μάκης Τουτουδάκης",
+        "email": "client@example.gr",
+    })
+    monkeypatch.setattr("app.billing_presentation.Config.BILLING_CONTACT_PHONE", "6977392742")
+    monkeypatch.setattr("app.billing_presentation.Config.BILLING_CONTACT_NAME", "Μάκης Τουτουδάκης")
+    monkeypatch.setattr("app.billing_presentation.Config.BILLING_ISSUER_EMAIL", "info@erganios.gr")
+    monkeypatch.setattr("app.billing_presentation.Config.PUBLIC_BASE_URL", "https://erganios.gr")
+    text, html_body = build_presentation_email(recipient)
+    assert PRESENTATION_SUBJECT
+    assert PRESENTATION_BCC == "info@erganios.gr"
+    assert "Παρακαλώ βρείτε επισυναπτόμενη μια συνοπτική παρουσίαση της υπηρεσίας erganiOS" in text
+    assert "παραμένουμε στη διάθεσή σας για οποιαδήποτε διευκρίνιση." in text
+    assert "Αξιότιμε/η κ. Μάκης Τουτουδάκης," in text
+    assert "Με εκτίμηση,\nΜάκης Τουτουδάκης" in text
+    assert "6977392742" in text
+    assert "info@erganios.gr" in text
+    assert "Web: https://erganios.gr" in text
+    assert "Web: <a href=\"https://erganios.gr\"" in html_body
+    assert "Παρακαλώ βρείτε επισυναπτόμενη" in html_body
+    contact = presentation_contact()
+    assert contact["name"] == "Μάκης Τουτουδάκης"
+    assert contact["phone"] == "6977392742"
+    assert contact["email"] == "info@erganios.gr"
+
+
+def test_send_presentation_attaches_pdfs(monkeypatch):
+    captured = {}
+
+    def fake_send(to_email, subject, text_body, **kwargs):
+        captured["to"] = to_email
+        captured["subject"] = subject
+        captured["text"] = text_body
+        captured["kwargs"] = kwargs
+        return {"ok": True, "to": to_email, "bcc": [PRESENTATION_BCC]}
+
+    monkeypatch.setattr("app.billing_presentation.send_email_message", fake_send)
+    result = send_presentation({
+        "eponimia": "Δοκιμή ΑΕ",
+        "email": "client@example.gr",
+    })
+    assert result["ok"] is True
+    assert captured["to"] == "client@example.gr"
+    assert captured["subject"] == PRESENTATION_SUBJECT
+    assert captured["kwargs"]["bcc"] == PRESENTATION_BCC
+    names = [name for name, _data in captured["kwargs"]["attachments"]]
+    assert names == [path.name for path in PRESENTATION_FILES]
+
+
+def test_agreement_requires_representative():
+    import pytest
+
+    with pytest.raises(ValueError, match="Απαιτείται το όνομα του εκπροσώπου"):
+        customer_for_agreement({
+            "eponimia": "ΑΙΣΤΟΟΥ ΥΠΗΡΕΣΙΕΣ ΙΝΤΕΡΝΕΤ Μ.ΙΚΕ",
+            "afm": "998031206",
+            "address": "ΛΑΧΑΝΑ 17",
+        })
 
 
 def test_invoice_form_placeholders():

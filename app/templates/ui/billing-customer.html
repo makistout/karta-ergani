@@ -19,13 +19,34 @@
           <label>ΔΟΥ<input class="field-input" id="custDoy"></label>
           <label>Email<input class="field-input" id="custEmail" type="email"></label>
           <label>Τηλέφωνο<input class="field-input" id="custPhone"></label>
+          <label>Εκπρόσωπος<input class="field-input" id="custRepresentative" autocomplete="name"></label>
           <label class="billing-span2">Σημειώσεις<textarea class="field-input" id="custNotes" rows="2"></textarea></label>
-          <label class="billing-active-toggle"><input id="custActive" type="checkbox" checked> Ενεργός</label>
+          <label class="billing-active-toggle">
+            <span>Ενεργός</span>
+            <span class="billing-switch">
+              <input id="custActive" type="checkbox" checked>
+              <span class="billing-switch-slider" aria-hidden="true"></span>
+            </span>
+          </label>
         </div>
-        <div class="actions">
+        <div class="billing-customer-actions">
           <button type="button" class="btn" id="btnSaveCustomer">
             <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση στοιχείων</span>
           </button>
+          <div class="billing-doc-actions">
+            <button type="button" class="btn btn-secondary" id="btnOfferDownload" title="Λήψη εμπορικής προσφοράς">
+              <i class="bi bi-download" aria-hidden="true"></i>
+              <span>Προσφορά</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnAgreementDownload" title="Λήψη συμφωνητικού ανάληψης ευθύνης">
+              <i class="bi bi-download" aria-hidden="true"></i>
+              <span>Συμφωνητικό</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnPresentationSend" title="Αποστολή παρουσίασης στο email του πελάτη">
+              <i class="bi bi-envelope" aria-hidden="true"></i>
+              <span>Αποστολή παρουσίασης</span>
+            </button>
+          </div>
         </div>
         <div id="billingCustMsg" class="msg"></div>
       </div>
@@ -61,5 +82,5 @@
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260924bill5"></script>
-  <script src="/static/js/billing-customer.js?v=20260924bill22"></script>
+  <script src="/static/js/billing-customer.js?v=20260926pres1"></script>
 {% endblock %}

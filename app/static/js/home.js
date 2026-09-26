@@ -2,6 +2,13 @@ let reportDatePicker = null;
 let leaveTypes = [];
 let leaveModalRow = null;
 let wtoDailyModalRow = null;
+let reportState = {
+  rows: [],
+  meta: {},
+  multiDay: false,
+  employeeSearch: "",
+  loaded: false,
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("home");
@@ -17,11 +24,47 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   });
   document.getElementById("btnRefreshReport").onclick = () => loadCardReport();
+  document.getElementById("homeEmployeeSearch")?.addEventListener("input", (event) => {
+    reportState.employeeSearch = String(event.target.value || "");
+    if (reportState.loaded) renderVisibleReport();
+  });
   initLeaveModal();
   initWtoDailyModal();
   loadLeaveTypes();
   loadCardReport();
 });
+
+function normalizedEmployeeSearch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("el-GR")
+    .trim();
+}
+
+function visibleReportRows() {
+  const employeeSearch = normalizedEmployeeSearch(reportState.employeeSearch);
+  if (!employeeSearch) return reportState.rows;
+  return reportState.rows.filter((row) => normalizedEmployeeSearch(
+    `${row.eponymo || ""} ${row.onoma || ""} ${row.onoma || ""} ${row.eponymo || ""}`
+  ).includes(employeeSearch));
+}
+
+function renderVisibleReport() {
+  const wrap = document.getElementById("cardReportWrap");
+  if (!wrap || !reportState.loaded) return;
+  if (!reportState.meta.has_schedule && !reportState.meta.has_work_log) {
+    renderTable(wrap, [], reportState.meta, reportState.multiDay);
+    return;
+  }
+  const rows = visibleReportRows();
+  if (!rows.length && normalizedEmployeeSearch(reportState.employeeSearch)) {
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">Δεν υπάρχουν αποτελέσματα για την αναζήτηση.</p>`;
+    return;
+  }
+  renderTable(wrap, rows, reportState.meta, reportState.multiDay);
+}
 
 function reportRange() {
   return reportDatePicker ? reportDatePicker.getRange() : { start: "", end: "" };
@@ -430,6 +473,7 @@ async function loadCardReport() {
     return;
   }
 
+  reportState.loaded = false;
   Office.showTableLoading(wrap, "Φόρτωση αναφοράς…");
   sumEl.innerHTML = "";
   meta.textContent = "";
@@ -468,13 +512,12 @@ async function loadCardReport() {
       return;
     }
 
+    reportState.rows = sortReportRows(data.rows || []);
+    reportState.meta = data.meta || {};
+    reportState.multiDay = isMultiDayReport(data);
+    reportState.loaded = true;
     renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date, data.links || {});
-    renderTable(
-      wrap,
-      sortReportRows(data.rows || []),
-      data.meta || {},
-      isMultiDayReport(data)
-    );
+    renderVisibleReport();
   } catch (e) {
     wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
   }
