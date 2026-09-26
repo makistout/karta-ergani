@@ -637,6 +637,34 @@ def _yesterday_iso(*, now: datetime | None = None) -> str:
     return (current.date() - timedelta(days=1)).isoformat()
 
 
+def _orphan_digest_work_date_iso(text: str) -> str | None:
+    """Ημερομηνία από digest «Ορφανά χτυπήματα χθες/εχθές (ηη/μμ/εεεε)»."""
+    raw = str(text or "")
+    folded = _fold_text(raw)
+    if "ορφανα χτυπηματα" not in folded:
+        return None
+    if not any(token in folded for token in ("χθεσ", "εχθεσ")):
+        return None
+    match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", raw)
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def _user_named_explicit_date(text: str) -> bool:
+    """Ρητή ημερομηνία στο μήνυμα του χρήστη (όχι η προεπιλογή «σήμερα»)."""
+    raw = str(text or "")
+    folded = _fold_text(raw)
+    if any(_has_whole_token(folded, token) for token in ("σημερα", "today")):
+        return True
+    if re.search(r"\d{4}-\d{2}-\d{2}", raw):
+        return True
+    return bool(re.search(r"\d{1,2}/\d{1,2}/\d{4}", raw))
+
+
 _GREEK_TO_LATIN = str.maketrans({
     "α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "i",
     "θ": "th", "ι": "i", "κ": "k", "λ": "l", "μ": "m", "ν": "n", "ξ": "x",
@@ -1212,6 +1240,26 @@ def _inherit_conversation_context(
         and not str(parsed.get("date") or "").strip()
     ):
         parsed["date"] = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
+    if str(parsed.get("intent") or "").startswith("card_check_out"):
+        reply_text = ""
+        if isinstance(reply_context, dict):
+            reply_text = str(reply_context.get("message_text") or "")
+        orphan_date = _orphan_digest_work_date_iso(reply_text)
+        if orphan_date and not _user_named_explicit_date(user_text):
+            parsed["date"] = orphan_date
+            today_iso = datetime.now(ZoneInfo("Europe/Athens")).date().isoformat()
+            # Χθεσινό digest: όχι «τώρα» με ημερομηνία αναφοράς χθες
+            # (ο Ergani απορρίπτει ΗΜΕΡΟΜΗΝΙΑ ΑΝΑΦΟΡΑΣ / ΩΡΑ ΑΠΟΧΩΡΗΣΗΣ).
+            # Κλείσιμο στην ημερομηνία του μηνύματος, με ώρα ωραρίου ή ρητή ώρα.
+            if orphan_date < today_iso:
+                if re.fullmatch(
+                    r"(?:[01]\d|2[0-3]):[0-5]\d",
+                    str(parsed.get("time") or "").strip(),
+                ):
+                    parsed["intent"] = "card_check_out_retro"
+                else:
+                    parsed["intent"] = "card_check_out_schedule"
+                    parsed["time"] = None
 
 
 def _asks_close_all_open_cards(text: str) -> bool:

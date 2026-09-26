@@ -86,6 +86,12 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
     `KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_ENABLED` /
     `KARTA_SCHEDULED_CONTRACT_OVERAGE_NOTIFY_TIME`, προεπιλογή `21:00`·
     αλλαγή `.env` → recycle app pool)
+  - αποστολή ορφανών χτυπημάτων **για χθες** στους λήπτες στις **10:00**
+    (`scheduled_orphan_punch_notify`· env
+    `KARTA_SCHEDULED_ORPHAN_PUNCH_NOTIFY_ENABLED` /
+    `KARTA_SCHEDULED_ORPHAN_PUNCH_NOTIFY_TIME`· περιλαμβάνει εξόδους μετά
+    τα μεσάνυχτα που ανήκουν στη χθεσινή βάρδια· reply «κλείσε» κλείνει
+    με ώρα ωραρίου εκείνης της ημέρας)
 - Post-sync `late_check_in`: το skip σε αβέβαιο κενό Excel
   (`work_log_empty_uncertain`) είναι **απενεργοποιημένο** μέχρι νεωτέρας
   (`SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN=OFF` στο

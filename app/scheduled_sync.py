@@ -211,6 +211,10 @@ def _run_configured_auto_actions(
         run_contract_overage_notify_for_store,
         should_run_contract_overage_notify,
     )
+    from app.orphan_punch_notifications import (
+        run_orphan_punch_notify_for_store,
+        should_run_orphan_punch_notify,
+    )
 
     overage_should_run, overage_target, overage_reason = (
         should_run_contract_overage_notify(cfg)
@@ -226,6 +230,22 @@ def _run_configured_auto_actions(
             "skipped": True,
             "reason": overage_reason,
             "target_date": overage_target or None,
+        }
+
+    orphan_should_run, orphan_target, orphan_reason = (
+        should_run_orphan_punch_notify(cfg)
+    )
+    if orphan_should_run:
+        actions["orphan_punch_notify"] = run_orphan_punch_notify_for_store(
+            cfg,
+            target_date_iso=orphan_target,
+            parent_run_id=parent_run_id,
+        )
+    else:
+        actions["orphan_punch_notify"] = {
+            "skipped": True,
+            "reason": orphan_reason,
+            "target_date": orphan_target or None,
         }
 
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)

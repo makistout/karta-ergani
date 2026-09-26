@@ -6,7 +6,11 @@ from flask import Flask
 
 from app.routes_telegram import telegram_bp
 from app.repo_telegram_assistant import create_task
-from app.telegram_assistant_service import parse_command, validate_and_describe
+from app.telegram_assistant_service import (
+    _orphan_digest_work_date_iso,
+    parse_command,
+    validate_and_describe,
+)
 
 
 def _app():
@@ -71,6 +75,100 @@ def test_reply_to_notification_inherits_store_and_afm_from_message_text():
     assert parsed["store_id"] == 4
     assert parsed["employee_afms"] == ["136967547"]
     assert "HOXHA DASHURI" in proposed
+
+
+def test_orphan_digest_date_from_message_text():
+    digest = (
+        "erganiOS — ERATO\n"
+        "Ορφανά χτυπήματα χθες (25/09/2026):\n"
+        "\n"
+        "• ΚΑΝΑΚΗΣ ΣΤΥΛΙΑΝΟΣ (ΑΦΜ 074281686): είσοδος 16:00 χωρίς έξοδο"
+    )
+    assert _orphan_digest_work_date_iso(digest) == "2026-09-25"
+    assert _orphan_digest_work_date_iso(
+        "erganiOS — ERATO\nΟρφανά χτυπήματα εχθές (25/09/2026):"
+    ) == "2026-09-25"
+    assert _orphan_digest_work_date_iso(
+        "erganiOS — ERATO\nΥπερβάσεις σύμβασης για αύριο (27/09/2026)"
+    ) is None
+
+
+def test_reply_to_orphan_digest_closes_on_message_date():
+    parsed = {
+        "intent": "unknown",
+        "store_id": None,
+        "employee_afms": [],
+    }
+    digest = (
+        "erganiOS — ERATO\n"
+        "Ορφανά χτυπήματα χθες (25/09/2026):\n"
+        "\n"
+        "• ΚΑΝΑΚΗΣ ΣΤΥΛΙΑΝΟΣ (ΑΦΜ 074281686): είσοδος 16:00 χωρίς έξοδο\n"
+        "• BAGUNAS ATOLIN (ΑΦΜ 201980886): έξοδος 01:04 χωρίς είσοδο (μετά τα μεσάνυχτα)"
+    )
+    with (
+        patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None),
+        patch(
+            "app.repo_schedule.list_schedule_for_store",
+            return_value=[
+                {"employee_afm": "074281686", "hour_from": "16:00", "hour_to": "22:40"},
+                {"employee_afm": "201980886", "hour_from": "17:01", "hour_to": "01:04"},
+            ],
+        ),
+    ):
+        status, _, proposed = validate_and_describe(
+            parsed,
+            contexts=[
+                {"store_id": 9, "store_name": "ERATO", "employer_afm": "123456789", "branch_aa": "0"},
+                {"store_id": 3, "store_name": "EKIBEN II", "employer_afm": "987654321", "branch_aa": "0"},
+            ],
+            employees=[
+                {"store_id": 9, "afm": "074281686", "name": "ΚΑΝΑΚΗΣ ΣΤΥΛΙΑΝΟΣ"},
+                {"store_id": 9, "afm": "201980886", "name": "BAGUNAS ATOLIN"},
+            ],
+            reply_context={"message_text": digest},
+            user_text="κλειστά",
+        )
+    assert status == "draft"
+    assert parsed["intent"] == "card_check_out_schedule"
+    assert parsed["store_id"] == 9
+    assert parsed["date"] == "2026-09-25"
+    assert parsed["employee_afms"] == ["074281686", "201980886"]
+    assert "25/09/2026" in proposed
+    assert "τώρα" not in proposed
+    assert "22:40" in proposed
+
+    parsed_close = {
+        "intent": "unknown",
+        "store_id": None,
+        "employee_afms": [],
+    }
+    with (
+        patch("app.work_card_guards.new_card_punch_blocked_reason", return_value=None),
+        patch(
+            "app.repo_schedule.list_schedule_for_store",
+            return_value=[
+                {"employee_afm": "074281686", "hour_from": "16:00", "hour_to": "22:40"},
+                {"employee_afm": "201980886", "hour_from": "17:01", "hour_to": "01:04"},
+            ],
+        ),
+    ):
+        status, _, _ = validate_and_describe(
+            parsed_close,
+            contexts=[
+                {"store_id": 9, "store_name": "ERATO", "employer_afm": "123456789", "branch_aa": "0"},
+            ],
+            employees=[
+                {"store_id": 9, "afm": "074281686", "name": "ΚΑΝΑΚΗΣ ΣΤΥΛΙΑΝΟΣ"},
+                {"store_id": 9, "afm": "201980886", "name": "BAGUNAS ATOLIN"},
+            ],
+            reply_context={"message_text": digest},
+            user_text="κλείσε",
+        )
+    assert status == "draft"
+    assert parsed_close["intent"] == "card_check_out_schedule"
+    assert parsed_close["date"] == "2026-09-25"
+    assert parsed_close["employee_afms"] == ["074281686", "201980886"]
 
 
 def test_sticky_focus_keeps_store_and_names_until_user_changes_them():
