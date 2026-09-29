@@ -10,7 +10,7 @@ from app.db import cursor
 from app import repo_apologistic
 from app.apologistic_snapshot import generate_store_week
 from app.ergani_client import ErganiClient
-from app.ergani_parse import parse_branches, parse_employees, parse_employer_profile
+from app.ergani_parse import extract_raw_list, parse_branches, parse_employees, parse_employer_profile
 from app.http_helpers import json_or_text
 from app.karta_log import KartaLogger
 from app.portal_schedule_sync import iter_schedule_sync_events
@@ -177,14 +177,22 @@ def _sync_employees_api(
                     emp.get("eponymo"),
                     emp.get("onoma"),
                     flex_arrival_minutes=emp.get("flex_arrival_minutes"),
+                    amka=emp.get("amka"),
+                    amika=emp.get("amika"),
                 )
                 if emp_id:
-                    upsert_employment(cur, employer_id, emp_id, part_id)
+                    upsert_employment(
+                        cur, employer_id, emp_id, part_id,
+                        hire_date=emp.get("hire_date"),
+                    )
                     synced += 1
             if active_afms:
                 deactivate_stale_employments(
                     cur, employer_id, active_afms, parartima_id=part_id
                 )
+        from app.repo_employment_contract import apply_ex_base_05_items
+
+        apply_ex_base_05_items(afm, aa, extract_raw_list(p05), log=log)
         log.info(f"Προσωπικό: αποθηκεύτηκαν {synced} εργαζόμενοι (EX_BASE_05)", count=synced)
         return {"success": True, "detail": f"{synced} εργαζόμενοι", "count": synced}
     except Exception as ex:

@@ -2,8 +2,14 @@ document.addEventListener("DOMContentLoaded", () => {
   Office.setActiveNav("employees");
   const btnSync = document.getElementById("btnSyncEmployees");
   if (btnSync) btnSync.onclick = runSync;
+  initEmployeesMonthSelect();
+  initEmployeesNameSearch();
   loadEmployees();
 });
+
+const EMP_MONTH_NAMES = ["Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος", "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος"];
+const NO_SPECIALTY = "Χωρίς ειδικότητα";
+const EMPLOYEES_MONTHS_BACK = 6;
 
 const employeesState = {
   allRows: [],
@@ -13,7 +19,53 @@ const employeesState = {
   activeCount: 0,
   inactiveCount: 0,
   filter: "active",
+  nameQuery: "",
+  year: null,
+  month: null,
 };
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function initEmployeesMonthSelect() {
+  const select = document.getElementById("employeesMonthSelect");
+  if (!select || select.options.length) return;
+  const now = new Date();
+  for (let offset = 0; offset <= EMPLOYEES_MONTHS_BACK; offset += 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const option = document.createElement("option");
+    option.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    option.textContent = `${EMP_MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    select.appendChild(option);
+  }
+  select.value = currentMonthKey();
+  select.onchange = () => loadEmployees();
+}
+
+function initEmployeesNameSearch() {
+  const input = document.getElementById("employeesNameSearch");
+  if (!input) return;
+  input.value = employeesState.nameQuery;
+  input.addEventListener("input", () => {
+    employeesState.nameQuery = input.value;
+    renderEmployeesView();
+  });
+}
+
+function selectedEmployeesMonth() {
+  const select = document.getElementById("employeesMonthSelect");
+  const raw = (select?.value || currentMonthKey()).split("-").map(Number);
+  return { year: raw[0], month: raw[1] };
+}
+
+function syncEmployeesMonthSelect(year, month) {
+  const select = document.getElementById("employeesMonthSelect");
+  if (!select || !year || !month) return;
+  const key = `${year}-${String(month).padStart(2, "0")}`;
+  if ([...select.options].some((opt) => opt.value === key)) select.value = key;
+}
 
 function isEmployeeActive(emp) {
   const v = emp.active;
@@ -71,7 +123,10 @@ async function loadEmployees() {
     if (btnSync) btnSync.disabled = false;
     await Office.loadActiveStore();
 
-    const res = await fetch("/api/employees/list");
+    wrap.innerHTML =
+      `<p style="color:var(--muted);">${Office.icon("hourglass-split")}<span style="margin-left:0.35rem;">Φόρτωση…</span></p>`;
+    const { year, month } = selectedEmployeesMonth();
+    const res = await fetch(`/api/employees/list?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`);
     const data = await res.json();
     if (!res.ok) {
       wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
@@ -81,6 +136,9 @@ async function loadEmployees() {
     employeesState.store = data.store || null;
     employeesState.openPunchesMonthLabel = data.open_punches_month_label || "";
     employeesState.normalLeaveLatestMonth = data.normal_leave_latest_month || null;
+    employeesState.year = data.year || year;
+    employeesState.month = data.month || month;
+    syncEmployeesMonthSelect(employeesState.year, employeesState.month);
     const counts = getEmployeeCounts();
     employeesState.activeCount = counts.active;
     employeesState.inactiveCount = counts.inactive;
@@ -102,24 +160,93 @@ function filterEmployees(rows, filter) {
   return rows.filter(isEmployeeActive);
 }
 
+function filterEmployeesByName(rows, query) {
+  const q = String(query || "").toLocaleLowerCase("el").trim();
+  if (!q) return rows;
+  return rows.filter((emp) => {
+    const hay = `${emp.eponymo || ""} ${emp.onoma || ""} ${emp.afm || ""}`.toLocaleLowerCase("el");
+    return hay.includes(q);
+  });
+}
+
+function groupEmployeesBySpecialty(rows) {
+  const groups = new Map();
+  rows.forEach((emp) => {
+    const key = String(emp.specialty || "").trim() || NO_SPECIALTY;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(emp);
+  });
+  const names = [...groups.keys()].sort((a, b) => {
+    if (a === NO_SPECIALTY) return 1;
+    if (b === NO_SPECIALTY) return -1;
+    return a.localeCompare(b, "el");
+  });
+  return names.map((specialty) => ({ specialty, rows: groups.get(specialty) }));
+}
+
 function renderEmployeesView() {
   const wrap = document.getElementById("employeesWrap");
   wrap.innerHTML = "";
   wrap.appendChild(buildEmployeesTabs());
-  const filtered = filterEmployees(employeesState.allRows, employeesState.filter);
+  const storeMeta = buildEmployeesStoreMeta(employeesState.store, employeesState.allRows);
+  if (storeMeta) wrap.appendChild(storeMeta);
+  const filtered = filterEmployeesByName(
+    filterEmployees(employeesState.allRows, employeesState.filter),
+    employeesState.nameQuery
+  );
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.style.color = "var(--muted)";
-    empty.innerHTML =
-      employeesState.filter === "inactive"
+    const hasSearch = Boolean(String(employeesState.nameQuery || "").trim());
+    empty.innerHTML = hasSearch
+      ? `${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν εργαζόμενοι με αυτό το όνομα.</span>`
+      : employeesState.filter === "inactive"
         ? `${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν ανενεργοί εργαζόμενοι.</span>`
         : `${Office.icon("person-x")}<span style="margin-left:0.35rem;">Δεν βρέθηκαν ενεργοί εργαζόμενοι.</span>`;
     wrap.appendChild(empty);
     return;
   }
-  wrap.appendChild(
-    buildEmployeesTable(filtered, employeesState.store, employeesState.openPunchesMonthLabel)
-  );
+  const meta = document.createElement("p");
+  meta.className = "employees-list-count";
+  meta.style.cssText = "font-size:0.85rem;color:var(--muted);margin:0.35rem 0 0.75rem;";
+  meta.textContent = `${filtered.length} εργαζόμενοι (${employeesState.filter === "inactive" ? "ανενεργοί" : "ενεργοί"})`;
+  wrap.appendChild(meta);
+  groupEmployeesBySpecialty(filtered).forEach((group) => {
+    wrap.appendChild(buildSpecialtyGroup(group.specialty, group.rows));
+  });
+}
+
+function buildEmployeesStoreMeta(store, rows) {
+  if (!store) return null;
+  const branchAa = store?.branch_aa ?? rows[0]?.parartima_aa ?? "—";
+  const branchDesc = (rows || []).find((r) => r.parartima_desc)?.parartima_desc || "";
+  const branchText = branchDesc
+    ? `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))} — ${Office.escapeHtml(branchDesc)}`
+    : `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))}`;
+  const storeLine = document.createElement("div");
+  storeLine.className = "employees-store-meta";
+  storeLine.style.cssText =
+    "font-size:0.85rem;color:var(--muted);margin:0.75rem 0 0.5rem;line-height:1.45;";
+  storeLine.innerHTML =
+    `<div>${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ` +
+    `ΑΦΜ εργοδότη ${Office.escapeHtml(store.employer_afm)}</div>` +
+    `<div style="margin-top:0.15rem;padding-left:1.35rem;">${branchText}</div>`;
+  return storeLine;
+}
+
+function buildSpecialtyGroup(specialty, rows) {
+  const section = document.createElement("section");
+  section.className = "employees-specialty-group";
+  const title = document.createElement("h2");
+  title.className = "employees-specialty-title";
+  title.appendChild(document.createTextNode(specialty));
+  const count = document.createElement("span");
+  count.className = "employees-tab-count";
+  count.textContent = String(rows.length);
+  title.appendChild(count);
+  section.appendChild(title);
+  section.appendChild(buildEmployeesTable(rows));
+  return section;
 }
 
 function buildEmployeesTabs() {
@@ -151,29 +278,9 @@ function buildEmployeesTabs() {
   return tabs;
 }
 
-function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
+function buildEmployeesTable(rows) {
   const fragment = document.createDocumentFragment();
-  const branchAa = store?.branch_aa ?? rows[0]?.parartima_aa ?? "—";
-  const branchDesc = rows.find((r) => r.parartima_desc)?.parartima_desc || "";
-  const branchText = branchDesc
-    ? `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))} — ${Office.escapeHtml(branchDesc)}`
-    : `Παράρτημα Ergani ${Office.escapeHtml(String(branchAa))}`;
-  if (store) {
-    const storeLine = document.createElement("div");
-    storeLine.className = "employees-store-meta";
-    storeLine.style.cssText =
-      "font-size:0.85rem;color:var(--muted);margin:0.75rem 0 0.5rem;line-height:1.45;";
-    storeLine.innerHTML =
-      `<div>${Office.icon("shop-window")} <strong>${Office.escapeHtml(store.name)}</strong> · ` +
-      `ΑΦΜ εργοδότη ${Office.escapeHtml(store.employer_afm)}</div>` +
-      `<div style="margin-top:0.15rem;padding-left:1.35rem;">${branchText}</div>`;
-    fragment.appendChild(storeLine);
-  }
-  const meta = document.createElement("p");
-  meta.style.cssText = "font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem;";
-  meta.textContent = `${rows.length} εργαζόμενοι (${employeesState.filter === "inactive" ? "ανενεργοί" : "ενεργοί"})`;
-  fragment.appendChild(meta);
-
+  const openPunchesMonthLabel = employeesState.openPunchesMonthLabel;
   const openPunchesHeader = "Ανοιχτά";
   const t = document.createElement("table");
   t.className = "data employees-list-table";
@@ -220,7 +327,9 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
       th.className = "col-normal-leave";
       th.innerHTML = `<span>Άδεια</span>` +
         (employeesState.normalLeaveLatestMonth ? `<small>${Office.escapeHtml(employeesState.normalLeaveLatestMonth)}</small>` : "");
-      th.title = "Ημέρες κανονικής άδειας που έχουν ληφθεί / δικαιούμενες ημέρες";
+      th.title = employeesState.normalLeaveLatestMonth
+        ? `Ημέρες κανονικής άδειας έως ${employeesState.normalLeaveLatestMonth}`
+        : "Ημέρες κανονικής άδειας που έχουν ληφθεί / δικαιούμενες ημέρες";
     } else if (h === "Κατάσταση") {
       th.className = "col-status";
       th.textContent = h;
@@ -306,7 +415,7 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
       ? "—"
       : `${Number(leaveTaken)}/${Number(leaveEntitled)}`;
     tdLeave.title = leaveTaken == null || leaveEntitled == null
-      ? "Δεν υπάρχουν διαθέσιμα στοιχεία κανονικής άδειας για το τρέχον έτος"
+      ? "Δεν υπάρχουν διαθέσιμα στοιχεία κανονικής άδειας για τον επιλεγμένο μήνα"
       : `${leaveTaken} ημέρες κανονικής άδειας από ${leaveEntitled} δικαιούμενες`;
     tr.appendChild(tdLeave);
 
@@ -315,7 +424,9 @@ function buildEmployeesTable(rows, store, openPunchesMonthLabel) {
     tdOpen.className = "col-open-punches";
     if (openCount > 0) {
       tdOpen.innerHTML =
-        `<span class="employees-open-punches employees-open-punches--warn" title="Ελλιπή χτυπήματα τον τρέχοντα μήνα">${openCount}</span>`;
+        `<span class="employees-open-punches employees-open-punches--warn" title="${Office.escapeHtml(
+          openPunchesMonthLabel ? `Ελλιπή χτυπήματα ${openPunchesMonthLabel}` : "Ελλιπή χτυπήματα"
+        )}">${openCount}</span>`;
     } else {
       tdOpen.innerHTML = `<span class="employees-open-punches">0</span>`;
     }

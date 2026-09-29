@@ -1353,3 +1353,381 @@ tr.notify-recipient-row--paused td:not(.col-notify-actions) {
 .row-muted { opacity:.55; }
 .holiday-toggle { font-size:.75rem; cursor:pointer; color:var(--accent); background:none; border:none; padding:0; text-decoration:underline; }
 .holiday-toggle:hover { color:var(--brand-light); }
+
+/* Payroll parameters + embedded timekeeping list */
+.payroll-param-toolbar .settings-section-head {
+  margin-bottom: 0.85rem;
+}
+.payroll-param-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 22rem;
+}
+.payroll-param-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.payroll-param-filters .field-input {
+  width: 100%;
+  max-width: 16rem;
+}
+.payroll-param-list {
+  display: flex;
+  flex-direction: column;
+}
+.payroll-param-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 8.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.payroll-param-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.payroll-param-label {
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.payroll-param-row .field-input,
+.payroll-param-row .input-select {
+  width: 100%;
+}
+.payroll-param-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .payroll-param-row {
+    grid-template-columns: 1fr;
+    gap: 0.28rem;
+    padding: 0.7rem 0;
+  }
+  .payroll-param-row .field-input,
+  .payroll-param-row .input-select {
+    max-width: 10rem;
+  }
+}
+.payroll-money {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.payroll-warn {
+  color: var(--err);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.payroll-add-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  max-width: 28rem;
+  margin-top: 0.75rem;
+}
+.payroll-add-custom label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.payroll-add-custom .field-input,
+.payroll-add-custom .input-select {
+  width: 100%;
+}
+.payroll-embed {
+  margin: 0 0 1rem;
+}
+.payroll-embed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 0 0 0.85rem;
+}
+.payroll-embed-head h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+.payroll-embed-note,
+.payroll-embed-loading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.payroll-embed-total {
+  font-size: 1.15rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.payroll-embed-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.payroll-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.payroll-list-table th,
+.payroll-list-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.payroll-list-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.payroll-list-table th.payroll-money,
+.payroll-list-table td.payroll-money {
+  text-align: right;
+  white-space: nowrap;
+}
+.payroll-list-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 650;
+}
+.apologistic-employee-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.payroll-list-info {
+  width: 4.4rem;
+  text-align: right;
+  padding-left: 0.15rem;
+  white-space: nowrap;
+}
+.payroll-list-info .apologistic-info-btn + .apologistic-info-btn {
+  margin-left: 0.15rem;
+}
+.payroll-apd-btn.payroll-apd-missing {
+  color: var(--err);
+}
+.payroll-apd-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 1.25rem;
+  margin: 0 0 1rem;
+}
+.payroll-apd-kv div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.payroll-apd-kv dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.payroll-apd-kv dt::after {
+  content: "";
+}
+.payroll-apd-kv dd {
+  margin: 0;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.payroll-apd-xml {
+  margin-top: 1rem;
+}
+.payroll-apd-xml textarea {
+  width: 100%;
+  min-height: 12rem;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.payroll-apd-gaps {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem 0.65rem 1.35rem;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.payroll-apd-ready {
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+#storeAme {
+  width: 11rem;
+  max-width: 100%;
+}
+.payroll-employee-fund {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.92rem;
+}
+.payroll-modal-table tr.payroll-efka-aux-row td {
+  background: #eff6ff;
+  font-weight: 650;
+}
+.payroll-list-kind,
+.payroll-list-afm {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.payroll-warn-inline {
+  color: var(--err);
+  font-size: 0.76rem;
+  margin: 0.2rem 0 0;
+}
+.office-modal-panel.payroll-info-modal-panel {
+  width: min(96vw, 960px);
+  max-height: min(92vh, 820px);
+  display: flex;
+  flex-direction: column;
+}
+.payroll-modal-body {
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.payroll-modal-method {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.payroll-modal-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem 0.9rem;
+  align-items: stretch;
+  margin: 0 0 0.95rem;
+}
+.payroll-modal-meta-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.payroll-modal-meta label {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  min-height: 4.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.payroll-modal-meta label span {
+  min-height: 2.1em;
+  display: flex;
+  align-items: flex-end;
+}
+.payroll-modal-meta .payroll-modal-num {
+  width: 100%;
+  max-width: none;
+  height: 2.15rem;
+  box-sizing: border-box;
+}
+.payroll-modal-table-wrap {
+  overflow: auto;
+}
+.payroll-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  table-layout: auto;
+}
+.payroll-modal-table th,
+.payroll-modal-table td {
+  padding: 0.4rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.payroll-modal-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.payroll-modal-table th:nth-child(1),
+.payroll-modal-table td:nth-child(1),
+.payroll-modal-table th:nth-child(2),
+.payroll-modal-table td:nth-child(2) {
+  white-space: nowrap;
+  width: auto;
+}
+.payroll-modal-table th:nth-child(n+3):nth-child(-n+5),
+.payroll-modal-table td:nth-child(n+3):nth-child(-n+5) {
+  width: 4rem;
+  white-space: nowrap;
+}
+.payroll-modal-num {
+  width: 5.4rem;
+  text-align: right;
+  padding: 0.28rem 0.4rem;
+}
+.payroll-modal-table .payroll-modal-num {
+  width: 3.6rem;
+  max-width: 3.6rem;
+  padding: 0.28rem 0.3rem;
+}
+.payroll-formula {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  min-width: 14rem;
+}
+.payroll-allowance-title {
+  margin: 1.1rem 0 0.55rem;
+  font-size: 0.92rem;
+}
+.payroll-modal-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.65rem;
+  padding: 0.28rem 0.4rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--border);
+}
+.payroll-modal-total + .payroll-modal-total {
+  margin-top: 0;
+}
+.payroll-modal-total strong {
+  font-size: inherit;
+  font-weight: 650;
+}
+.payroll-modal-total:last-child {
+  font-weight: 700;
+  border-bottom: 0;
+}

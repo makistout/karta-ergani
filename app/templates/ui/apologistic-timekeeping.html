@@ -17,16 +17,83 @@
       <button type="button" class="btn btn-secondary" id="timekeepingDetailedExport">
         <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Πλήρης ανάλυση Excel
       </button>
+      {% if office_has_permission('payroll.view') %}
+      <a class="btn btn-secondary" id="timekeepingPayrollParams" href="/ui/payroll/parameters">
+        <i class="bi bi-sliders" aria-hidden="true"></i> Παράμετροι μισθοδοσίας
+      </a>
+      {% endif %}
     </div>
   </div>
 
   <div id="timekeepingSummary" class="apologistic-summary"></div>
-  <div class="card list-card">
+
+  {% if office_has_permission('payroll.view') %}
+  <section class="card list-card payroll-embed hidden" id="payrollEmbed">
+    <div class="payroll-embed-head">
+      <div>
+        <h2>Μεικτά μισθοδοσίας</h2>
+        <p class="payroll-embed-note">Ώρες × σύμβαση × συντελεστές, επιδόματα ΕΓΣΣΕ, δώρα/επίδομα αδείας στον μήνα καταβολής, ΕΦΚΑ και ΦΜΥ. Καθαρά πληρωτέα.</p>
+      </div>
+      <div class="payroll-embed-actions">
+        <button type="button" class="btn btn-secondary" id="payrollExport">
+          <i class="bi bi-file-earmark-excel" aria-hidden="true"></i> Excel μισθοδοσίας
+        </button>
+        <button type="button" class="btn btn-secondary" id="payrollApdXml">
+          <i class="bi bi-filetype-xml" aria-hidden="true"></i> XML ΑΠΔ
+        </button>
+        <strong class="payroll-embed-total" id="payrollGrandTotal"></strong>
+      </div>
+    </div>
+    <div id="payrollWrap" class="list-wrap"></div>
+  </section>
+  {% endif %}
+
+  <div class="card list-card" id="timekeepingHoursCard">
     <div id="timekeepingWrap" class="list-wrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Υπολογισμός…</p></div>
   </div>
   <div class="msg hidden" id="timekeepingMsg" role="status"></div>
+
+  <div id="payrollInfoModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="payrollInfoModalTitle">
+    <div class="office-modal-backdrop" data-payroll-info-close></div>
+    <div class="office-modal-panel office-modal-panel--history payroll-info-modal-panel">
+      <h2 id="payrollInfoModalTitle" class="office-modal-title">Υπολογισμός μισθοδοσίας</h2>
+      <p id="payrollInfoModalSub" class="office-modal-sub"></p>
+      <div id="payrollInfoModalBody" class="payroll-modal-body"></div>
+      <div class="office-modal-actions">
+        <button type="button" class="btn btn-secondary" id="payrollInfoReset">Επαναφορά</button>
+        <button type="button" class="btn btn-primary" data-payroll-info-close>Κλείσιμο</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="payrollApdModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="payrollApdModalTitle">
+    <div class="office-modal-backdrop" data-payroll-apd-close></div>
+    <div class="office-modal-panel office-modal-panel--history payroll-info-modal-panel">
+      <h2 id="payrollApdModalTitle" class="office-modal-title">Προεπισκόπηση ΑΠΔ</h2>
+      <p id="payrollApdModalSub" class="office-modal-sub"></p>
+      <div id="payrollApdModalBody" class="payroll-modal-body"></div>
+      <div class="office-modal-actions">
+        <button type="button" class="btn btn-primary" data-payroll-apd-close>Κλείσιμο</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="apologisticEmployeeModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="apologisticEmployeeModalTitle">
+    <div class="office-modal-backdrop" data-apologistic-employee-close></div>
+    <div class="office-modal-panel apologistic-employee-modal-panel">
+      <div class="apologistic-employee-modal-head">
+        <h2 id="apologisticEmployeeModalTitle" class="office-modal-title">Στοιχεία εργαζομένου</h2>
+        <div class="apologistic-employee-modal-actions">
+          <a id="apologisticEmployeePageLink" class="btn btn-secondary hidden" href="/ui/employees">Καρτέλα</a>
+          <button type="button" class="btn btn-secondary" data-apologistic-employee-close aria-label="Κλείσιμο"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <p id="apologisticEmployeeModalMeta" class="office-modal-sub"></p>
+      <div id="apologisticEmployeeModalBody" class="apologistic-employee-modal-body"></div>
+    </div>
+  </div>
 {% endblock %}
 
 {% block scripts %}
-  <script src="/static/js/apologistic-timekeeping.js?v=20260820exports2"></script>
+  <script src="/static/js/apologistic-timekeeping.js?v=20260929apd2"></script>
 {% endblock %}

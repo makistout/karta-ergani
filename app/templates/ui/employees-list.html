@@ -17,10 +17,20 @@
         {% endif %}
       </div>
       <div class="card">
+        <div class="toolbar-dates-row employees-list-toolbar">
+          <label class="field-inline employee-month-picker">
+            <span>Μήνας</span>
+            <select id="employeesMonthSelect" class="input-select" aria-label="Μήνας για Ανοιχτά και Άδεια"></select>
+          </label>
+          <label class="apologistic-employee-search">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <input type="search" class="field-input" id="employeesNameSearch" placeholder="Αναζήτηση ονόματος ή ΑΦΜ" autocomplete="off" aria-label="Αναζήτηση ονόματος">
+          </label>
+        </div>
         <div id="employeesWrap"><p style="color:var(--muted);"><i class="bi bi-hourglass-split"></i> Φόρτωση…</p></div>
       </div>
       <div id="empMsg" class="msg"></div>
 {% endblock %}
 {% block scripts %}
-  <script src="/static/js/employees-list.js?v=20260915hire1"></script>
+  <script src="/static/js/employees-list.js?v=20260928spec1"></script>
 {% endblock %}

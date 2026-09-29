@@ -9,8 +9,11 @@ const CONTRACT_FIELDS = [
   ["employee_afm", "ΑΦΜ εργαζομένου"],
   ["eponymo", "Επώνυμο"],
   ["onoma", "Όνομα"],
+  ["hire_date", "Ημερομηνία πρόσληψης"],
   ["specialty", "Ειδικότητα"],
   ["characterization", "Χαρακτηρισμός"],
+  ["kyria_asfalish", "Κύρια ασφάλιση"],
+  ["epikourikiki_kod", "Επικουρική ασφάλιση"],
   ["step92", "ΣΤΕΠ 92"],
   ["weekly_work_days", "Ημέρες εβδομαδιαίας απασχόλησης"],
   ["prior_service", "Προϋπηρεσία"],
@@ -141,6 +144,31 @@ function attachLinkedSpecialtyAutocompletes({
   return { stepAc, analAc, clearSpecialtyFields };
 }
 
+const AUX_FUND_SHORT = {
+  "001": "ΕΤΕΑΕΠ",
+  "002": "ΤΕΚΑ",
+  "003": "ΕΤΕΑΠΕΠ",
+  "004": "ΤΕΑΥΦΕ",
+  "005": "ΤΕΑΥΕΤ",
+  "006": "ΤΕΑ-ΕΑΠΑΕ",
+  "007": "ΕΔΟΕΑΠ",
+  "008": "ΜΤΠΥ",
+  "009": "ΜΤΠΥ ΤτΕ",
+  "010": "ΚΕΑΝ",
+};
+const MAIN_FUND_SHORT = { "001": "e-ΕΦΚΑ", "002": "ΝΑΤ", "003": "ΤτΕ" };
+
+function displayDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || "");
+}
+
+function insuranceCode(value, fallback = "") {
+  const match = String(value || "").trim().match(/^(\d{1,10})/);
+  if (!match || match[1] === "0") return fallback;
+  return match[1].length <= 3 ? match[1].padStart(3, "0") : match[1];
+}
+
 function displayValue(key, value) {
   if (value == null || value === "") return "—";
   if (key === "break_in_work") {
@@ -149,6 +177,20 @@ function displayValue(key, value) {
   }
   if (key === "flex_arrival_minutes" && Office.formatFlexMinutes) {
     return Office.formatFlexMinutes(value);
+  }
+  if (key === "hire_date") {
+    const shown = displayDate(value);
+    return shown ? `${shown} (Ergani)` : "—";
+  }
+  if (key === "epikourikiki_kod") {
+    const code = insuranceCode(value, "001");
+    const label = AUX_FUND_SHORT[code];
+    return label ? `${code} — ${label}` : String(value);
+  }
+  if (key === "kyria_asfalish") {
+    const code = insuranceCode(value, "001");
+    const label = MAIN_FUND_SHORT[code];
+    return label ? `${code} — ${label}` : String(value);
   }
   if (key === "synced_at" || key === "last_checked_at") {
     return String(value).replace("T", " ").slice(0, 19);
@@ -678,72 +720,72 @@ async function reloadEmployeeContractHistory(afm) {
 }
 
 function renderEmployeeContractHistory(afm, data, title, meta, wrap, histSection, histWrap) {
-  const rows = data.contracts || [];
+    const rows = data.contracts || [];
   if (data.employee_name && title) title.textContent = data.employee_name;
   if (data.store && meta) {
-    meta.textContent = `ΑΦΜ ${afm} · ${data.store.name || ""} · παράρτημα ${data.store.branch_aa ?? "0"}`;
-  }
-  if (!rows.length) {
-    wrap.innerHTML =
-      `<p style="color:var(--muted);">Δεν υπάρχουν στοιχεία σύμβασης.</p>`;
+      meta.textContent = `ΑΦΜ ${afm} · ${data.store.name || ""} · παράρτημα ${data.store.branch_aa ?? "0"}`;
+    }
+    if (!rows.length) {
+      wrap.innerHTML =
+        `<p style="color:var(--muted);">Δεν υπάρχουν στοιχεία σύμβασης.</p>`;
     histSection?.classList.add("hidden");
-    return;
-  }
-  const current =
-    rows.find((r) => r.is_current === true || r.is_current === 1 || r.is_current === "1") ||
-    rows[0];
-  const previous = rows.filter((r) => r !== current);
-  wrap.innerHTML = "";
-  wrap.appendChild(renderContractFieldsTable(current));
+      return;
+    }
+    const current =
+      rows.find((r) => r.is_current === true || r.is_current === 1 || r.is_current === "1") ||
+      rows[0];
+    const previous = rows.filter((r) => r !== current);
+    wrap.innerHTML = "";
+    wrap.appendChild(renderContractFieldsTable(current));
 
-  if (!previous.length) {
+    if (!previous.length) {
     histSection?.classList.add("hidden");
-    return;
-  }
+      return;
+    }
   histSection?.classList.remove("hidden");
-  const t = document.createElement("table");
-  t.className = "data";
-  const hr = document.createElement("tr");
-  ["Αποθήκευση έκδοσης", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", ""].forEach((h) => {
-    const th = document.createElement("th");
-    th.textContent = h;
-    hr.appendChild(th);
-  });
-  t.appendChild(hr);
-  previous.forEach((row) => {
-    const tr = document.createElement("tr");
-    [
-      displayValue("synced_at", row.synced_at),
-      displayValue("ergani_updated_at", row.ergani_updated_at),
-      displayValue("specialty", row.specialty),
-      displayValue("weekly_hours", row.weekly_hours),
-      displayValue("salary", row.salary),
-    ].forEach((text) => {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.appendChild(td);
+    const t = document.createElement("table");
+    t.className = "data";
+    const hr = document.createElement("tr");
+    ["Αποθήκευση έκδοσης", "Ενημ. Ergani", "Ειδικότητα", "Ώρες", "Αποδοχές", ""].forEach((h) => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      hr.appendChild(th);
     });
-    const tdAct = document.createElement("td");
-    tdAct.className = "work-log-action-cell";
+    t.appendChild(hr);
+    previous.forEach((row) => {
+      const tr = document.createElement("tr");
+      [
+        displayValue("synced_at", row.synced_at),
+        displayValue("ergani_updated_at", row.ergani_updated_at),
+        displayValue("specialty", row.specialty),
+        displayValue("weekly_hours", row.weekly_hours),
+        displayValue("salary", row.salary),
+      ].forEach((text) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      const tdAct = document.createElement("td");
+      tdAct.className = "work-log-action-cell";
     const histBtn = document.createElement("button");
     histBtn.type = "button";
     histBtn.className = "btn btn-sm btn-secondary";
     histBtn.innerHTML = Office.icon("table");
     histBtn.title = "Αναλυτικά";
     histBtn.addEventListener("click", () => {
-      wrap.innerHTML = "";
-      const note = document.createElement("p");
-      note.className = "table-meta";
-      note.textContent =
-        `Προβολή προηγούμενης έκδοσης · αποθήκευση ${displayValue("synced_at", row.synced_at)}`;
-      wrap.appendChild(note);
-      wrap.appendChild(renderContractFieldsTable(row));
-      wrap.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+        wrap.innerHTML = "";
+        const note = document.createElement("p");
+        note.className = "table-meta";
+        note.textContent =
+          `Προβολή προηγούμενης έκδοσης · αποθήκευση ${displayValue("synced_at", row.synced_at)}`;
+        wrap.appendChild(note);
+        wrap.appendChild(renderContractFieldsTable(row));
+        wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     tdAct.appendChild(histBtn);
-    tr.appendChild(tdAct);
-    t.appendChild(tr);
-  });
+      tr.appendChild(tdAct);
+      t.appendChild(tr);
+    });
   if (histWrap) {
     histWrap.innerHTML = "";
     histWrap.appendChild(t);

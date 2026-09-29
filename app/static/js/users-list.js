@@ -83,6 +83,11 @@ const PERMISSION_COMPONENTS = {
     type: "Admin",
     description: "Ρυθμίσεις συστήματος, scheduler και ευαίσθητα secrets.",
   },
+    payroll: {
+    label: "Μισθοδοσία",
+    type: "Super admin",
+    description: "Παράμετροι συντελεστών. Τα μεικτά εμφανίζονται στην ολοκληρωμένη ωρομέτρηση. Μόνο super admin.",
+  },
   ergani: {
     label: "Κατάλογοι ΕΡΓΑΝΗ",
     type: "Βοηθητικό",

@@ -11,6 +11,9 @@
   λογότυπο. Το `GET /api/assistant/health` επιστρέφει 403 στους υπόλοιπους.
 - Μόνο `super_admin` βλέπει **Τιμολογήσεις** (`billing.manage`) με υπομενού
   Πελάτες / Συνδρομές / Τιμολόγια. Δεν δίνει δικαιώματα στην κάρτα ΕΡΓΑΝΗ.
+- Μόνο `super_admin` βλέπει **Μισθοδοσία** (`payroll.view` / `payroll.edit`):
+  παράμετροι συντελεστών και μεικτά στην ολοκληρωμένη ωρομέτρηση. Ο λογιστής
+  δεν τα βλέπει, ούτε με stale session permissions.
 - Τα δικαιώματα ρόλου είναι πάντα η βάση· τα `karta_user_permission` προσθέτουν μόνο
   managed extras (π.χ. exports, users.*). Δεν μπορούν να αφαιρέσουν δικαίωμα ρόλου.
 - Για κάθε request ελέγχουμε login, permission και όπου υπάρχει store context, store access.
@@ -44,14 +47,17 @@
 
 ## Οθόνες συμμόρφωσης (λογιστής + super admin)
 
-Πραγματική απασχόληση, Πρωτόκολλα, Απολογιστικό και οι προειδοποιήσεις
-παραβάσεων σύμβασης στην Αρχική είναι ορατά **μόνο** σε `accountant` και
-`super_admin` (`COMPLIANCE_ROLES`). Ο `office_manager`, ο `office`, οι
+Πραγματική απασχόληση, Πρωτόκολλα, Απολογιστικό και οι
+προειδοποιήσεις παραβάσεων σύμβασης στην Αρχική είναι ορατά **μόνο** σε
+`accountant` και `super_admin` (`COMPLIANCE_ROLES`). Ο `office_manager`, ο `office`, οι
 viewers και οι backoffice admins δεν τα βλέπουν. Το **Ψηφιακό ωράριο**
 είναι κοινό (`schedule.view`) για όλους τους ρόλους που έχουν προβολή ωραρίου.
+Τα μεικτά μισθοδοσίας και οι παράμετροι (`/ui/payroll/parameters`) είναι **μόνο
+super_admin** (`SUPER_ADMIN_ONLY_PERMISSIONS`).
 
 - Permissions: `work_log.page.view`, `protocols.view`, `apologistic.view`,
-  `alerts.contract.view` (`COMPLIANCE_PERMISSIONS`).
+  `alerts.contract.view` (`COMPLIANCE_PERMISSIONS`). Μισθοδοσία:
+  `payroll.view`, `payroll.edit` μόνο για `super_admin`.
 - Ο έλεγχος είναι **ρόλου**: το `has_permission` απορρίπτει αυτά τα permissions
   για μη compliance ρόλο, ακόμη κι αν υπάρχουν stale entries στο session/DB.
   Στο μενού ισχύει και `COMPLIANCE_NAVS` (worklog, protocols, apologistic,
@@ -59,7 +65,8 @@ viewers και οι backoffice admins δεν τα βλέπουν. Το **Ψηφ�
 - Backend: `/ui/work-log`, `/ui/protocols`, `/ui/apologistic*`,
   `GET /api/protocols/list` και όλα τα `/api/apologistic/*` (GET/POST/PUT,
   μαζί με τις υποβολές WTODailyA/WTOOvA και τα Excel ωρομέτρησης). Οι μη
-  επιτρεπόμενοι ρόλοι παίρνουν redirect στο `/ui/` ή `403`.
+  επιτρεπόμενοι ρόλοι παίρνουν redirect στο `/ui/` ή `403`. Η μισθοδοσία
+  (`/ui/payroll*`, `/api/payroll/*`) είναι μόνο `super_admin`.
 - Παραμένουν κοινά, γιατί τα χρειάζεται η Ψηφιακή κάρτα, οι Εργαζόμενοι
   και το ψηφιακό ωράριο: `/ui/schedule`, `GET /api/schedule/*`,
   `GET /api/work-log/list`, `GET /api/work-log/history`, `/ui/work-log/history`,

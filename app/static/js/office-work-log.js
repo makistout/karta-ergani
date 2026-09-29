@@ -909,7 +909,11 @@ Object.assign(window.Office, {
   /** Ετικέτα ειδοποίησης τύπου 2 (σήμερα). */
   todayNotifyLabel(kind, graceMinutes) {
     const [base, slot] = String(kind || "").split("@");
-    const grace = graceMinutes === 30 || graceMinutes === 45 ? graceMinutes : 15;
+    const allowed = [5, 10, 15, 20, 25, 30];
+    const parsed = parseInt(String(graceMinutes ?? "15"), 10);
+    const grace = allowed.includes(parsed)
+      ? parsed
+      : allowed.reduce((best, cur) => (Math.abs(cur - parsed) < Math.abs(best - parsed) ? cur : best), 15);
     const labels = {
       exit_without_entry: "εξόδος χωρίς είσοδο",
       late_check_in: `καθυστέρηση εισόδου (>${grace}' από ωράριο)`,

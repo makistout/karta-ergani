@@ -9,6 +9,8 @@
 - `app/*_service.py`, `app/*_sync.py`: business flows και orchestration.
 - `app/*_payload.py`: κατασκευή/validation payloads προς Ergani.
 - `app/portal_*.py`: portal automation/parsing και Excel/grid fallback.
+- `app/payroll.py`, `app/repo_payroll.py`, `app/routes_payroll.py`: μισθοδοσία
+  ωρομέτρησης και παράμετροι συντελεστών (`karta_payroll_parameter`).
 - `app/templates/ui`: Flask templates για το runtime UI.
 - `app/static/js`: page scripts και shared browser helpers.
 - `app/static/css`: shared και feature CSS.

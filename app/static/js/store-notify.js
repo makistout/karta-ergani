@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNotifyRecipientButtons();
   initActionSettingsButtons();
   initCardListenerButtons();
+  initEfkaSettingsButtons();
   await initStorePicker();
 });
 
@@ -266,6 +267,9 @@ async function selectStore(storeId, pushUrl) {
   if (document.getElementById("cardListenerCard")) {
     tasks.push(loadCardListenerSettings(storeId));
   }
+  if (document.getElementById("storeEfkaCard")) {
+    tasks.push(loadEfkaSettings(storeId));
+  }
   try {
     await Promise.all(tasks);
   } catch (e) { /* ignore */ }
@@ -305,6 +309,8 @@ function updateNotifyUiState() {
   const pairBtn = document.getElementById("btnPairListener");
   const togglePairBtn = document.getElementById("btnTogglePairListener");
   const deviceName = document.getElementById("listenerDeviceName");
+  const ameBtn = document.getElementById("btnSaveStoreAme");
+  const ameInput = document.getElementById("storeAme");
   if (saveBtn) saveBtn.disabled = !hasId;
   if (testBtn) testBtn.disabled = !hasId;
   if (addBtn) addBtn.disabled = !hasId;
@@ -314,6 +320,8 @@ function updateNotifyUiState() {
   if (pairBtn) pairBtn.disabled = !hasId;
   if (togglePairBtn) togglePairBtn.disabled = !hasId;
   if (deviceName) deviceName.disabled = !hasId;
+  if (ameBtn) ameBtn.disabled = !hasId;
+  if (ameInput) ameInput.disabled = !hasId;
 }
 
 function renderCardListenerSettings() {
@@ -542,10 +550,15 @@ function formatActionLastRunDate(iso) {
   return raw;
 }
 
+const ALLOWED_NOTIFY_GRACE_MINUTES = [5, 10, 15, 20, 25, 30];
+
 function normalizeNotifyGraceMinutes(value) {
   const n = parseInt(String(value ?? "15"), 10);
-  if (n === 30 || n === 45) return n;
-  return 15;
+  if (ALLOWED_NOTIFY_GRACE_MINUTES.includes(n)) return n;
+  if (!Number.isFinite(n)) return 15;
+  return ALLOWED_NOTIFY_GRACE_MINUTES.reduce((best, cur) => (
+    Math.abs(cur - n) < Math.abs(best - n) ? cur : best
+  ));
 }
 
 function renderActionSettings() {
@@ -1000,6 +1013,82 @@ async function saveApologisticSettings() {
     );
     renderActionSettings();
     Office.showMsg("stepMsg", "Οι ρυθμίσεις απολογιστικού αποθηκεύτηκαν.", true);
+    return true;
+  } catch (e) {
+    Office.showMsg("stepMsg", String(e), false);
+    return false;
+  } finally {
+    updateNotifyUiState();
+  }
+}
+
+function normalizeAmeInput(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 20);
+}
+
+function initEfkaSettingsButtons() {
+  const saveBtn = document.getElementById("btnSaveStoreAme");
+  const input = document.getElementById("storeAme");
+  if (!saveBtn && !input) return;
+  if (saveBtn) saveBtn.onclick = () => saveEfkaSettings();
+  input?.addEventListener("input", () => {
+    const next = normalizeAmeInput(input.value);
+    if (input.value !== next) input.value = next;
+  });
+}
+
+async function loadEfkaSettings(storeId) {
+  const input = document.getElementById("storeAme");
+  const hint = document.getElementById("storeEfkaKadHint");
+  if (!input) return;
+  try {
+    const res = await fetch(`/api/store/${storeId}/efka-settings`, { credentials: "same-origin" });
+    const data = await Office.parseJson(res);
+    if (!res.ok) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία φόρτωσης ΑΜΕ", false);
+      input.value = "";
+      if (hint) hint.hidden = true;
+      return;
+    }
+    input.value = normalizeAmeInput(data.settings?.ame);
+    if (hint) {
+      const kad = String(data.settings?.kad_code || "").trim();
+      const kadDesc = String(data.settings?.kad_desc || "").trim();
+      if (kad) {
+        hint.hidden = false;
+        hint.textContent = kadDesc ? `ΚΑΔ καταστήματος: ${kad} — ${kadDesc}` : `ΚΑΔ καταστήματος: ${kad}`;
+      } else {
+        hint.hidden = true;
+        hint.textContent = "";
+      }
+    }
+  } catch (e) {
+    Office.showMsg("stepMsg", `Σφάλμα φόρτωσης ΑΜΕ: ${e}`, false);
+  }
+}
+
+async function saveEfkaSettings() {
+  if (!currentStoreId) {
+    Office.showMsg("stepMsg", "Επιλέξτε κατάστημα.", false);
+    return false;
+  }
+  const saveBtn = document.getElementById("btnSaveStoreAme");
+  const input = document.getElementById("storeAme");
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const res = await fetch(`/api/store/${currentStoreId}/efka-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ ame: normalizeAmeInput(input?.value) }),
+    });
+    const data = await Office.parseJson(res);
+    if (!res.ok) {
+      Office.showMsg("stepMsg", data.error || "Αποτυχία αποθήκευσης ΑΜΕ", false);
+      return false;
+    }
+    if (input) input.value = normalizeAmeInput(data.settings?.ame);
+    Office.showMsg("stepMsg", "Το ΑΜΕ αποθηκεύτηκε.", true);
     return true;
   } catch (e) {
     Office.showMsg("stepMsg", String(e), false);

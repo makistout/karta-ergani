@@ -1,0 +1,97 @@
+{% extends "ui/base.html" %}
+{% set page_title = 'erganiOS - Παράμετροι μισθοδοσίας' %}
+{% set shell = "office" %}
+{% set active_nav = 'apologistic' %}
+
+{% block content %}
+  <div class="timekeeping-page-head">
+    <div>
+      <a class="timekeeping-back" id="payrollParamsBack" href="/ui/apologistic"><i class="bi bi-arrow-left"></i> Απολογιστικό</a>
+      <h1 class="page-title"><i class="bi bi-sliders" aria-hidden="true"></i> Παράμετροι μισθοδοσίας</h1>
+      <p class="page-desc">
+        Συντελεστές και ποσοστά στη βάση, με ημερομηνία ισχύος. Αλλαγή νόμου = νέα τιμή + «Ισχύει από».
+        Οι αποδοχές του εργαζομένου μένουν στη σύμβαση. Τα μεικτά εμφανίζονται στην ολοκληρωμένη ωρομέτρηση.
+      </p>
+    </div>
+  </div>
+
+  <section class="card settings-section payroll-param-toolbar">
+    <div class="settings-section-head">
+      <div>
+        <h2>Ισχύουσα έκδοση</h2>
+        <p class="field-hint">Κενό κατάστημα = εταιρικές τιμές. Άλλος αριθμός = override μόνο γι’ αυτό το κατάστημα.</p>
+      </div>
+      {% if office_has_permission('payroll.edit') %}
+      <button type="button" class="btn btn-primary" id="payrollSave">
+        <i class="bi bi-save" aria-hidden="true"></i> Αποθήκευση
+      </button>
+      {% endif %}
+    </div>
+    <div class="payroll-param-filters">
+      <label>Ισχύει από
+        <input id="payrollValidFrom" class="field-input" type="date">
+      </label>
+      <label>Override καταστήματος
+        <input id="payrollStoreId" class="field-input" type="number" min="0" step="1" placeholder="0 = εταιρεία">
+      </label>
+    </div>
+  </section>
+
+  <div id="payrollParamSections" class="settings-layout"></div>
+
+  <section class="card settings-section">
+    <div class="settings-section-head">
+      <div>
+        <h2>Προσθήκη παραμέτρου</h2>
+        <p class="field-hint">Για νέο συντελεστή νομοθεσίας χωρίς αλλαγή κώδικα.</p>
+      </div>
+    </div>
+    <div class="payroll-add-custom">
+      <label>Κωδικός <input id="customCode" class="field-input" placeholder="π.χ. extra_allowance_percent"></label>
+      <label>Ετικέτα <input id="customLabel" class="field-input"></label>
+      <label>Τιμή <input id="customValue" class="field-input"></label>
+      <label>Είδος
+        <select id="customKind" class="input-select">
+          <option value="percent">percent</option>
+          <option value="money">money</option>
+          <option value="factor">factor</option>
+          <option value="number">number</option>
+          <option value="time">time</option>
+          <option value="text">text</option>
+        </select>
+      </label>
+      {% if office_has_permission('payroll.edit') %}
+      <button type="button" class="btn btn-secondary" id="payrollAddCustom">Προσθήκη</button>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card settings-section">
+    <div class="settings-section-head">
+      <div>
+        <h2>Ιστορικό τιμών</h2>
+        <p class="field-hint">Όλες οι εκδόσεις (εταιρικές και καταστήματος) για έλεγχο ισχύος.</p>
+      </div>
+    </div>
+    <div class="list-wrap">
+      <table class="data" id="payrollHistoryTable">
+        <thead>
+          <tr>
+            <th>Κωδικός</th>
+            <th>Τιμή</th>
+            <th>Από</th>
+            <th>Έως</th>
+            <th>Κατάστημα</th>
+            <th>Νόμος</th>
+          </tr>
+        </thead>
+        <tbody id="payrollHistoryBody"></tbody>
+      </table>
+    </div>
+  </section>
+  <div class="msg hidden" id="payrollParamMsg" role="status"></div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/payroll-parameters.js?v=20260929pay13"></script>
+{% endblock %}

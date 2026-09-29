@@ -10,14 +10,27 @@ import pyodbc
 
 from app.db import cursor
 from app.row_util import rows_to_dicts
+from app.employment_contract_parse import map_marital_status
+from app.web_ma_payload import normalize_epikourikiki_kod, normalize_kyria_asfalish
 from app.work_card_payload import norm_afm
 
+_KEEP_IF_EMPTY = (
+    "prior_service",
+    "arithmos_teknon",
+    "marital_status",
+    "kyria_asfalish",
+    "epikourikiki_kod",
+)
 _TRACKED_FIELDS = (
     "specialty",
     "characterization",
     "step92",
     "weekly_work_days",
     "prior_service",
+    "arithmos_teknon",
+    "marital_status",
+    "kyria_asfalish",
+    "epikourikiki_kod",
     "employment_relation",
     "fixed_term_from",
     "fixed_term_to",
@@ -91,6 +104,18 @@ def _normalize_row(
         "step92": _norm_str(row.get("step92"))[:64] or None,
         "weekly_work_days": _norm_str(row.get("weekly_work_days"))[:64] or None,
         "prior_service": _norm_str(row.get("prior_service"))[:64] or None,
+        "arithmos_teknon": _norm_str(row.get("arithmos_teknon"))[:16] or None,
+        "marital_status": map_marital_status(row.get("marital_status"))[:32] or None,
+        "kyria_asfalish": (
+            normalize_kyria_asfalish(_norm_str(row.get("kyria_asfalish")))[:16]
+            if _norm_str(row.get("kyria_asfalish"))
+            else None
+        ),
+        "epikourikiki_kod": (
+            normalize_epikourikiki_kod(_norm_str(row.get("epikourikiki_kod")))[:16]
+            if _norm_str(row.get("epikourikiki_kod"))
+            else None
+        ),
         "employment_relation": _norm_str(row.get("employment_relation"))[:200] or None,
         "fixed_term_from": _norm_str(row.get("fixed_term_from"))[:32] or None,
         "fixed_term_to": _norm_str(row.get("fixed_term_to"))[:32] or None,
@@ -113,6 +138,32 @@ def _normalize_row(
     return out
 
 
+def _merge_kept_personal(data: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+    """Το HTML του portal συχνά δεν έχει τέκνα/γάμο· μην τα σβήνεις από την τρέχουσα σύμβαση."""
+    changed = False
+    for key in _KEEP_IF_EMPTY:
+        if data.get(key) or not previous.get(key):
+            continue
+        data[key] = previous.get(key)
+        changed = True
+    if changed:
+        data["content_hash"] = content_hash_for_contract(data)
+    return data
+
+
+_CONTRACT_COLUMNS = """
+                id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
+                specialty, characterization, step92, weekly_work_days, prior_service,
+                arithmos_teknon, marital_status, kyria_asfalish, epikourikiki_kod,
+                employment_relation, fixed_term_from, fixed_term_to, regime,
+                weekly_hours, salary, hourly_wage, total_weekly_hours,
+                fulltime_contract_weekly_hours, break_minutes, break_in_work,
+                flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
+                CAST(synced_at AS datetime2) AS synced_at,
+                CAST(last_checked_at AS datetime2) AS last_checked_at, source
+"""
+
+
 def latest_for_employee(
     employer_afm: str,
     branch_aa: str,
@@ -125,16 +176,9 @@ def latest_for_employee(
         return None
     with cursor(commit=False) as cur:
         cur.execute(
-            """
+            f"""
             SELECT TOP (1)
-                id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
-                specialty, characterization, step92, weekly_work_days, prior_service,
-                employment_relation, fixed_term_from, fixed_term_to, regime,
-                weekly_hours, salary, hourly_wage, total_weekly_hours,
-                fulltime_contract_weekly_hours, break_minutes, break_in_work,
-                flex_arrival_minutes, ergani_updated_at, content_hash, is_current,
-                CAST(synced_at AS datetime2) AS synced_at,
-                CAST(last_checked_at AS datetime2) AS last_checked_at, source
+            {_CONTRACT_COLUMNS}
             FROM dbo.karta_employment_contract
             WHERE employer_afm = ? AND branch_aa = ? AND employee_afm = ?
               AND is_current = 1
@@ -160,6 +204,7 @@ def insert_if_changed(
         data["employer_afm"], data["branch_aa"], data["employee_afm"]
     )
     if previous:
+        data = _merge_kept_personal(data, previous)
         prev_hash = _norm_str(previous.get("content_hash"))
         if prev_hash and prev_hash == data["content_hash"]:
             with cursor() as cur:
@@ -189,6 +234,7 @@ def insert_if_changed(
             INSERT INTO dbo.karta_employment_contract (
                 employer_afm, branch_aa, employee_afm, eponymo, onoma,
                 specialty, characterization, step92, weekly_work_days, prior_service,
+                arithmos_teknon, marital_status, kyria_asfalish, epikourikiki_kod,
                 employment_relation, fixed_term_from, fixed_term_to, regime,
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
@@ -198,6 +244,7 @@ def insert_if_changed(
             VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?,
@@ -216,6 +263,10 @@ def insert_if_changed(
                 data["step92"],
                 data["weekly_work_days"],
                 data["prior_service"],
+                data["arithmos_teknon"],
+                data["marital_status"],
+                data["kyria_asfalish"],
+                data["epikourikiki_kod"],
                 data["employment_relation"],
                 data["fixed_term_from"],
                 data["fixed_term_to"],
@@ -272,6 +323,7 @@ def list_current_for_store(
             SELECT TOP ({lim})
                 id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
                 specialty, characterization, step92, weekly_work_days, prior_service,
+                arithmos_teknon, marital_status, kyria_asfalish, epikourikiki_kod,
                 employment_relation, fixed_term_from, fixed_term_to, regime,
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
@@ -300,6 +352,7 @@ def list_history_for_store(
             SELECT TOP ({lim})
                 id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
                 specialty, characterization, step92, weekly_work_days, prior_service,
+                arithmos_teknon, marital_status, kyria_asfalish, epikourikiki_kod,
                 employment_relation, fixed_term_from, fixed_term_to, regime,
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
@@ -333,6 +386,7 @@ def list_history_for_employee(
             SELECT TOP ({lim})
                 id, employer_afm, branch_aa, employee_afm, eponymo, onoma,
                 specialty, characterization, step92, weekly_work_days, prior_service,
+                arithmos_teknon, marital_status, kyria_asfalish, epikourikiki_kod,
                 employment_relation, fixed_term_from, fixed_term_to, regime,
                 weekly_hours, salary, hourly_wage, total_weekly_hours,
                 fulltime_contract_weekly_hours, break_minutes, break_in_work,
@@ -346,3 +400,170 @@ def list_history_for_employee(
             (afm, aa, e_afm),
         )
         return rows_to_dicts(cur)
+
+
+def _pick_personal(pers: dict[str, Any], latest: dict[str, Any], key: str) -> Any:
+    val = pers.get(key)
+    if val is None or str(val).strip() == "":
+        return latest.get(key)
+    return val
+
+
+def apply_ex_base_05_personal(
+    employer_afm: str,
+    branch_aa: str,
+    item: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Ενημερώνει ταυτότητα (ΑΜΚΑ/ΑΜΑ/πρόσληψη) και προσωπικά σύμβασης από EX_BASE_05."""
+    from app.web_ma_payload import personal_fields_from_ex_base_05
+
+    afm = norm_afm(item.get("afm") or item.get("Afm") or "")
+    if not afm:
+        return None
+    pers = personal_fields_from_ex_base_05(item)
+    from app.ergani_parse import (
+        hire_date_from_ergani_item,
+        parse_ergani_calendar_date,
+        parse_flex_arrival_minutes,
+        parse_registry_digits,
+    )
+    from app.repo_entities import fill_employment_hire_date_if_empty, upsert_employee_by_afm
+
+    hire = hire_date_from_ergani_item(item) or parse_ergani_calendar_date(
+        pers.get("hire_date")
+    )
+    if hire:
+        fill_employment_hire_date_if_empty(employer_afm, branch_aa, afm, hire)
+    upsert_employee_by_afm(
+        afm,
+        pers.get("eponymo"),
+        pers.get("onoma"),
+        flex_arrival_minutes=parse_flex_arrival_minutes(item),
+        amka=pers.get("amka") or parse_registry_digits(
+            item, "Amka", "AMKA", "amka", max_len=11,
+        ),
+        amika=pers.get("amika") or parse_registry_digits(
+            item, "AmIka", "AMIKA", "AmIKA", "amika", max_len=20,
+        ),
+    )
+    latest = latest_for_employee(employer_afm, branch_aa, afm) or {}
+    row = {
+        "employee_afm": afm,
+        "eponymo": _pick_personal(pers, latest, "eponymo") or latest.get("eponymo"),
+        "onoma": _pick_personal(pers, latest, "onoma") or latest.get("onoma"),
+        "specialty": _pick_personal(pers, latest, "specialty"),
+        "characterization": _pick_personal(pers, latest, "characterization"),
+        "step92": _pick_personal(pers, latest, "step92"),
+        "weekly_work_days": _pick_personal(pers, latest, "weekly_work_days"),
+        "prior_service": _pick_personal(pers, latest, "prior_service"),
+        "arithmos_teknon": _pick_personal(pers, latest, "arithmos_teknon"),
+        "marital_status": map_marital_status(
+            item.get("MaritalStatus") or item.get("marital_status")
+        ) or latest.get("marital_status"),
+        "kyria_asfalish": _pick_personal(pers, latest, "kyria_asfalish"),
+        "epikourikiki_kod": _pick_personal(pers, latest, "epikourikiki_kod"),
+        "employment_relation": _pick_personal(pers, latest, "employment_relation"),
+        "fixed_term_from": latest.get("fixed_term_from"),
+        "fixed_term_to": latest.get("fixed_term_to"),
+        "regime": _pick_personal(pers, latest, "regime"),
+        "weekly_hours": _pick_personal(pers, latest, "weekly_hours"),
+        "salary": _pick_personal(pers, latest, "salary"),
+        "hourly_wage": _pick_personal(pers, latest, "hourly_wage"),
+        "total_weekly_hours": latest.get("total_weekly_hours"),
+        "fulltime_contract_weekly_hours": _pick_personal(
+            pers, latest, "fulltime_contract_weekly_hours"
+        ),
+        "break_minutes": _pick_personal(pers, latest, "break_minutes"),
+        "break_in_work": _pick_personal(pers, latest, "break_in_work"),
+        "flex_arrival_minutes": _pick_personal(pers, latest, "flex_arrival_minutes"),
+        "ergani_updated_at": latest.get("ergani_updated_at"),
+        "source": latest.get("source") or "ergani",
+    }
+    return insert_if_changed(employer_afm, branch_aa, row)
+
+
+def apply_ex_base_05_items(
+    employer_afm: str,
+    branch_aa: str,
+    items: list[dict[str, Any]],
+    *,
+    only_afms: set[str] | None = None,
+    log: Any = None,
+) -> dict[str, int]:
+    scanned = 0
+    inserted = 0
+    errors = 0
+    wanted = {norm_afm(a) for a in only_afms} if only_afms is not None else None
+    if wanted is not None:
+        wanted.discard("")
+    for item in items:
+        afm = norm_afm(item.get("afm") or item.get("Afm") or "")
+        if not afm:
+            continue
+        if wanted is not None and afm not in wanted:
+            continue
+        scanned += 1
+        try:
+            result = apply_ex_base_05_personal(employer_afm, branch_aa, item) or {}
+            if result.get("inserted"):
+                inserted += 1
+        except Exception as ex:  # noqa: BLE001
+            errors += 1
+            if log:
+                log.error(f"Σύμβαση από EX_BASE_05 {afm}: {ex}")
+    return {"scanned": scanned, "inserted": inserted, "errors": errors}
+
+
+def refresh_personal_from_ex_base_05(
+    ctx: dict[str, Any],
+    *,
+    only_afms: set[str] | list[str] | None = None,
+    log: Any = None,
+) -> dict[str, Any]:
+    """Ημ. πρόσληψης, ΑΜΚΑ, ΑΜΑ και προσωπικά σύμβασης από EX_BASE_05.
+
+    Χρησιμοποιεί web/API credentials (όχι portal admin) και δεν εξαρτάται από
+    Flask request/session — ώστε να τρέχει και στο ημερήσιο job των 04:00.
+    """
+    from app.ergani_env import api_login_credentials, client_for_store
+    from app.ergani_parse import extract_raw_list
+    from app.http_helpers import json_or_text
+
+    try:
+        api_user, api_pwd, api_ut = api_login_credentials(ctx)
+    except ValueError:
+        return {"success": False, "skipped": True, "detail": "no_api_user"}
+    try:
+        client = client_for_store(ctx)
+        auth = client.authenticate(api_user, api_pwd, api_ut)
+        auth_payload = json_or_text(auth)
+        if not auth.ok or not isinstance(auth_payload, dict) or not auth_payload.get("accessToken"):
+            return {"success": False, "detail": "auth_fail"}
+        bearer = str(auth_payload["accessToken"])
+        resp = client.execute_service("EX_BASE_05", [], bearer)
+        if not resp.ok:
+            return {"success": False, "detail": f"HTTP {resp.status_code}"}
+        items = extract_raw_list(json_or_text(resp))
+        wanted = None
+        if only_afms is not None:
+            wanted = {norm_afm(a) for a in only_afms}
+            wanted.discard("")
+        stats = apply_ex_base_05_items(
+            str(ctx.get("employer_afm") or ""),
+            str(ctx.get("branch_aa") or "0"),
+            items,
+            only_afms=wanted,
+            log=log,
+        )
+        if log:
+            log.info(
+                f"Προσωπικά EX_BASE_05: {stats['inserted']} νέες εκδόσεις "
+                f"({stats['scanned']} εργαζόμενοι)",
+                **stats,
+            )
+        return {"success": True, **stats}
+    except Exception as ex:  # noqa: BLE001
+        if log:
+            log.error(f"Προσωπικά EX_BASE_05: {ex}")
+        return {"success": False, "detail": str(ex)}
+

@@ -14,6 +14,7 @@ _fixed_exit_col: bool | None = None
 _sunday_rest_transfer_col: bool | None = None
 _uneven_distribution_col: bool | None = None
 _ai_agent_col: bool | None = None
+_ame_col: bool | None = None
 
 
 def sync_meta_columns_available() -> bool:
@@ -143,6 +144,63 @@ def ai_agent_column_available() -> bool:
     return _ai_agent_col
 
 
+def ame_column_available() -> bool:
+    global _ame_col
+    if _ame_col is True:
+        return _ame_col
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute("SELECT COL_LENGTH(N'dbo.karta_store_config', N'ame')")
+            row = cur.fetchone()
+            _ame_col = row is not None and row[0] is not None
+    except Exception:
+        _ame_col = False
+    return _ame_col
+
+
+def _store_ame_select_extra() -> str:
+    if ame_column_available():
+        return ", ame"
+    return ", CAST(NULL AS nvarchar(20)) AS ame"
+
+
+def normalize_ame(value: Any) -> str | None:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:20]
+    return digits or None
+
+
+def get_efka_settings(store_id: int) -> dict[str, Any]:
+    cfg = get_store_config(int(store_id))
+    if not cfg:
+        raise ValueError(f"Δεν βρέθηκε κατάστημα id={store_id}")
+    return {
+        "ame": str(cfg.get("ame") or "").strip(),
+        "kad_code": str(cfg.get("kad_code") or "").strip(),
+        "kad_desc": str(cfg.get("kad_desc") or "").strip(),
+        "employer_afm": str(cfg.get("employer_afm") or "").strip(),
+        "branch_aa": str(cfg.get("branch_aa") or "").strip(),
+        "name": str(cfg.get("name") or "").strip(),
+        "db_setup": None if ame_column_available() else "sql/alter_add_apd_identity.sql",
+    }
+
+
+def save_store_ame(store_id: int, ame: Any) -> dict[str, Any]:
+    if not ame_column_available():
+        raise RuntimeError("Λείπει migration: sql/alter_add_apd_identity.sql")
+    if not get_store_config(int(store_id)):
+        raise ValueError(f"Δεν βρέθηκε κατάστημα id={store_id}")
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE dbo.karta_store_config
+            SET ame = ?, updated_at = SYSDATETIMEOFFSET()
+            WHERE id = ?
+            """,
+            (normalize_ame(ame), int(store_id)),
+        )
+    return get_efka_settings(store_id)
+
+
 def get_sunday_rest_transfer_enabled(store_id: int) -> bool:
     if not sunday_rest_transfer_column_available():
         return False
@@ -207,7 +265,8 @@ def list_store_configs() -> list[dict[str, Any]]:
                employer_afm, branch_aa,
                ISNULL(ergani_env, N'production') AS ergani_env,
                sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
-               kallikratis_code, kallikratis_desc,
+               kallikratis_code, kallikratis_desc
+               {_store_ame_select_extra()},
                CAST(updated_at AS datetime2) AS updated_at,
                CAST(last_sync_at AS datetime2) AS last_sync_at,
                {_store_sync_select_extra()},
@@ -252,7 +311,8 @@ def get_store_config(store_id: int) -> dict[str, Any] | None:
                employer_afm, branch_aa,
                ISNULL(ergani_env, N'production') AS ergani_env,
                sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
-               kallikratis_code, kallikratis_desc,
+               kallikratis_code, kallikratis_desc
+               {_store_ame_select_extra()},
                CAST(updated_at AS datetime2) AS updated_at,
                CAST(last_sync_at AS datetime2) AS last_sync_at,
                {_store_sync_select_extra()},
@@ -266,13 +326,14 @@ def get_store_config(store_id: int) -> dict[str, Any] | None:
 
 
 def get_store_by_afm(employer_afm: str, branch_aa: str = "0") -> dict[str, Any] | None:
-    sql = """
+    sql = f"""
         SELECT TOP (1) id, name, username, password, usertype,
                web_username, web_password,
                employer_afm, branch_aa,
                ISNULL(ergani_env, N'production') AS ergani_env,
                sepe_code, sepe_desc, oaed_code, oaed_desc, kad_code, kad_desc,
                kallikratis_code, kallikratis_desc
+               {_store_ame_select_extra()}
         FROM dbo.karta_store_config
         WHERE employer_afm = ? AND branch_aa = ?
     """

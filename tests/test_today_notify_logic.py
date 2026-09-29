@@ -4,8 +4,10 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.today_notify_logic import (
+    ALLOWED_NOTIFY_GRACE_MINUTES,
     NOTIFY_GRACE_MINUTES,
     card_action_for_today_kind,
+    normalize_notify_grace_minutes,
     notify_kind_label,
     notify_auto_send_once,
     resolve_today_notify_kind,
@@ -290,6 +292,15 @@ class TodayNotifyLogicTests(unittest.TestCase):
 
     def test_grace_constant_is_fifteen_minutes(self):
         self.assertEqual(NOTIFY_GRACE_MINUTES, 15)
+
+    def test_normalize_notify_grace_keeps_ten_minutes(self):
+        self.assertEqual(ALLOWED_NOTIFY_GRACE_MINUTES, (5, 10, 15, 20, 25, 30))
+        self.assertEqual(normalize_notify_grace_minutes(10), 10)
+        self.assertEqual(normalize_notify_grace_minutes("10"), 10)
+        self.assertEqual(normalize_notify_grace_minutes(5), 5)
+        self.assertEqual(normalize_notify_grace_minutes(25), 25)
+        self.assertEqual(normalize_notify_grace_minutes(12), 10)
+        self.assertEqual(normalize_notify_grace_minutes(45), 30)
 
     def test_only_late_check_in_auto_sends_once(self):
         self.assertTrue(notify_auto_send_once("late_check_in"))

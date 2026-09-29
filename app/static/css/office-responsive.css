@@ -585,6 +585,11 @@ body.login-page {
   font-size: 1rem;
 }
 
+.login-card .btn.is-loading {
+  min-width: 9.5rem;
+  pointer-events: none;
+}
+
 .sidebar nav a[data-nav="logout"] {
   margin-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -600,6 +605,38 @@ body.login-page {
 
 #employeesWrap .employees-filter-tabs {
   margin-top: 0;
+}
+
+#employeesWrap .employees-specialty-group {
+  margin-top: 1.2rem;
+}
+
+#employeesWrap .employees-specialty-group:first-of-type {
+  margin-top: 0.15rem;
+}
+
+#employeesWrap .employees-specialty-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.employees-list-toolbar {
+  align-items: flex-end;
+  margin-bottom: 0.85rem;
+}
+
+.employees-list-toolbar .employee-month-picker .input-select {
+  min-width: 12.5rem;
+}
+
+.employees-list-toolbar .apologistic-employee-search {
+  flex: 1 1 220px;
+  max-width: 320px;
 }
 
 #employeesWrap .employees-tab-count {
@@ -620,7 +657,9 @@ body.login-page {
   color: var(--brand);
 }
 
-#employeesWrap .employees-action-btn {
+#employeesWrap .employees-action-btn,
+#payrollWrap .employees-action-btn,
+#timekeepingWrap .employees-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -636,19 +675,27 @@ body.login-page {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-#employeesWrap .employees-action-btn .bi {
+#employeesWrap .employees-action-btn .bi,
+#payrollWrap .employees-action-btn .bi,
+#timekeepingWrap .employees-action-btn .bi {
   font-size: 1.05rem;
   line-height: 1;
 }
 
 #employeesWrap .employees-action-btn:hover,
-#employeesWrap .employees-action-btn:focus-visible {
+#employeesWrap .employees-action-btn:focus-visible,
+#payrollWrap .employees-action-btn:hover,
+#payrollWrap .employees-action-btn:focus-visible,
+#timekeepingWrap .employees-action-btn:hover,
+#timekeepingWrap .employees-action-btn:focus-visible {
   background: #eff6ff;
   border-color: #93c5fd;
   color: var(--brand);
 }
 
-#employeesWrap .employees-action-button {
+#employeesWrap .employees-action-button,
+#payrollWrap .employees-action-button,
+#timekeepingWrap .employees-action-button {
   cursor: pointer;
 }
 
@@ -1291,5 +1338,40 @@ body.login-page {
 
   .weekly-submit-bar .btn {
     justify-content: center;
+  }
+}
+
+@media (max-width: 700px) {
+  .payroll-embed-head {
+    flex-direction: column;
+  }
+  .payroll-embed-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .payroll-embed-actions .btn {
+    width: auto;
+  }
+  .payroll-list-table th,
+  .payroll-list-table td {
+    padding: 0.45rem 0.5rem;
+  }
+  .payroll-modal-num {
+    width: 4.6rem;
+  }
+  .payroll-modal-meta,
+  .payroll-modal-meta-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .payroll-modal-meta .payroll-modal-num {
+    width: 100%;
+  }
+  .payroll-modal-table .payroll-modal-num {
+    width: 3.4rem;
+    max-width: 3.4rem;
+  }
+  .payroll-apd-kv {
+    grid-template-columns: 1fr;
   }
 }

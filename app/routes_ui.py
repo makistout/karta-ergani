@@ -187,6 +187,16 @@ def ui_apologistic_timekeeping():
     return render_template("ui/apologistic-timekeeping.html")
 
 
+@ui_bp.get("/payroll")
+def ui_payroll():
+    return redirect("/ui/payroll/parameters")
+
+
+@ui_bp.get("/payroll/parameters")
+def ui_payroll_parameters():
+    return render_template("ui/payroll-parameters.html")
+
+
 @ui_bp.get("/work-card")
 def ui_work_card():
     return render_template("ui/work-card-list.html")

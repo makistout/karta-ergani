@@ -12,6 +12,38 @@ from app.db import cursor
 from app.row_util import rows_to_dicts
 from app.work_card_payload import norm_afm
 
+_employee_amka_cols: bool | None = None
+
+
+def employee_amka_columns_available() -> bool:
+    global _employee_amka_cols
+    if _employee_amka_cols is True:
+        return _employee_amka_cols
+    try:
+        with cursor(commit=False) as cur:
+            cur.execute("SELECT COL_LENGTH(N'dbo.karta_employee', N'amka')")
+            row = cur.fetchone()
+            _employee_amka_cols = row is not None and row[0] is not None
+    except Exception:
+        _employee_amka_cols = False
+    return _employee_amka_cols
+
+
+def _employee_identity_select() -> str:
+    if employee_amka_columns_available():
+        return ", emp.amka, emp.amika"
+    return ", CAST(NULL AS nvarchar(11)) AS amka, CAST(NULL AS nvarchar(20)) AS amika"
+
+
+def normalize_amka(value: Any) -> str | None:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:11]
+    return digits or None
+
+
+def normalize_amika(value: Any) -> str | None:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:20]
+    return digits or None
+
 
 def list_employees(limit: int = 500) -> list[dict[str, Any]]:
     lim = max(1, min(int(limit), 2000))
@@ -51,7 +83,8 @@ def list_employees_for_employer(
     afm = norm_afm(employer_afm)
     sql = f"""
         SELECT TOP ({lim})
-            emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes,
+            emp.id, emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes
+            {_employee_identity_select()},
             e.active, e.hire_date, e.departure_date, e.catering_override,
             CASE WHEN NULLIF(e.work_time_qr_data_url, N'') IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS has_work_time_qr,
             CAST(e.work_time_qr_synced_at AS datetime2) AS work_time_qr_synced_at,
@@ -298,17 +331,24 @@ def upsert_employee_by_afm(
     onoma: str | None,
     *,
     flex_arrival_minutes: int | None = None,
+    amka: str | None = None,
+    amika: str | None = None,
 ) -> int | None:
     """Δημιουργία/ενημέρωση εργαζόμενου από ΑΦΜ (π.χ. μετά από portal ωράριο)."""
     ep = (eponymo or "").strip()[:200] or None
     on = (onoma or "").strip()[:200] or None
+    amka_n = normalize_amka(amka)
+    amika_n = normalize_amika(amika)
     if not norm_afm(afm):
         return None
-    if not ep and not on and flex_arrival_minutes is None:
+    if not ep and not on and flex_arrival_minutes is None and not amka_n and not amika_n:
         return None
     with cursor() as cur:
         return upsert_employee(
-            cur, afm, ep, on, flex_arrival_minutes=flex_arrival_minutes
+            cur, afm, ep, on,
+            flex_arrival_minutes=flex_arrival_minutes,
+            amka=amka_n,
+            amika=amika_n,
         )
 
 
@@ -438,6 +478,8 @@ def link_employee_to_store(
     onoma: str | None,
     *,
     flex_arrival_minutes: int | None = None,
+    amka: str | None = None,
+    amika: str | None = None,
 ) -> bool:
     """Δημιουργεί/ενεργοποιεί σύνδεση μόνο για επιβεβαιωμένο εργαζόμενο Μητρώου."""
     afm = norm_afm(employer_afm)
@@ -450,6 +492,8 @@ def link_employee_to_store(
         employee_id = upsert_employee(
             cur, employee_afm, eponymo, onoma,
             flex_arrival_minutes=flex_arrival_minutes,
+            amka=amka,
+            amika=amika,
         )
         if not employee_id:
             return False
@@ -492,44 +536,95 @@ def upsert_employee(
     onoma: str | None,
     *,
     flex_arrival_minutes: int | None = None,
+    amka: str | None = None,
+    amika: str | None = None,
 ) -> int | None:
     a = norm_afm(afm)
+    amka_n = normalize_amka(amka)
+    amika_n = normalize_amika(amika)
+    identity = employee_amka_columns_available()
     cur.execute("SELECT id FROM dbo.karta_employee WHERE afm = ?", (a,))
     row = cur.fetchone()
     if row:
+        sets = [
+            "eponymo = COALESCE(NULLIF(?, ''), eponymo)",
+            "onoma = COALESCE(NULLIF(?, ''), onoma)",
+        ]
+        params: list[Any] = [eponymo or "", onoma or ""]
         if flex_arrival_minutes is not None:
-            cur.execute(
-                """
-                UPDATE dbo.karta_employee
-                SET eponymo = COALESCE(NULLIF(?, ''), eponymo),
-                    onoma = COALESCE(NULLIF(?, ''), onoma),
-                    flex_arrival_minutes = ?,
-                    updated_at = SYSDATETIMEOFFSET()
-                WHERE id = ?
-                """,
-                (eponymo or "", onoma or "", int(flex_arrival_minutes), int(row[0])),
-            )
-        else:
-            cur.execute(
-                """
-                UPDATE dbo.karta_employee
-                SET eponymo = COALESCE(NULLIF(?, ''), eponymo),
-                    onoma = COALESCE(NULLIF(?, ''), onoma),
-                    updated_at = SYSDATETIMEOFFSET()
-                WHERE id = ?
-                """,
-                (eponymo or "", onoma or "", int(row[0])),
-            )
+            sets.append("flex_arrival_minutes = ?")
+            params.append(int(flex_arrival_minutes))
+        if identity and amka_n:
+            sets.append("amka = ?")
+            params.append(amka_n)
+        if identity and amika_n:
+            sets.append("amika = ?")
+            params.append(amika_n)
+        sets.append("updated_at = SYSDATETIMEOFFSET()")
+        params.append(int(row[0]))
+        cur.execute(
+            f"UPDATE dbo.karta_employee SET {', '.join(sets)} WHERE id = ?",
+            params,
+        )
         return int(row[0])
-    cur.execute(
-        """
-        INSERT INTO dbo.karta_employee (afm, eponymo, onoma, flex_arrival_minutes)
-        OUTPUT INSERTED.id VALUES (?, ?, ?, ?)
-        """,
-        (a, eponymo, onoma, flex_arrival_minutes),
-    )
+    if identity:
+        cur.execute(
+            """
+            INSERT INTO dbo.karta_employee (afm, eponymo, onoma, flex_arrival_minutes, amka, amika)
+            OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (a, eponymo, onoma, flex_arrival_minutes, amka_n, amika_n),
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO dbo.karta_employee (afm, eponymo, onoma, flex_arrival_minutes)
+            OUTPUT INSERTED.id VALUES (?, ?, ?, ?)
+            """,
+            (a, eponymo, onoma, flex_arrival_minutes),
+        )
     ins = cur.fetchone()
     return int(ins[0]) if ins else None
+
+
+def fill_employment_hire_date_if_empty(
+    employer_afm: str,
+    branch_aa: str,
+    employee_afm: str,
+    hire_date: date,
+) -> bool:
+    """Γράφει ημερομηνία πρόσληψης Ergani μόνο αν το τοπικό πεδίο είναι κενό."""
+    if hire_date is None:
+        return False
+    afm = norm_afm(employer_afm)
+    e_afm = norm_afm(employee_afm)
+    aa = str(branch_aa or "0").strip()[:32] or "0"
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE e SET hire_date=?, updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            LEFT JOIN dbo.karta_parartima p ON p.id=e.parartima_id
+            WHERE em.afm=? AND emp.afm=? AND e.hire_date IS NULL
+              AND ISNULL(p.code_aa, N'0') = ?
+            """,
+            (hire_date, afm, e_afm, aa),
+        )
+        if cur.rowcount:
+            return True
+        cur.execute(
+            """
+            UPDATE e SET hire_date=?, updated_at=SYSDATETIMEOFFSET()
+            FROM dbo.karta_employment e
+            JOIN dbo.karta_employee emp ON emp.id=e.employee_id
+            JOIN dbo.karta_employer em ON em.id=e.employer_id
+            WHERE em.afm=? AND emp.afm=? AND e.hire_date IS NULL
+            """,
+            (hire_date, afm, e_afm),
+        )
+        return bool(cur.rowcount)
 
 
 def upsert_employment(
@@ -537,6 +632,8 @@ def upsert_employment(
     employer_id: int,
     employee_id: int,
     parartima_id: int | None,
+    *,
+    hire_date: date | None = None,
 ) -> None:
     cur.execute(
         """
@@ -551,21 +648,34 @@ def upsert_employment(
     )
     row = cur.fetchone()
     if row:
-        cur.execute(
-            """
-            UPDATE dbo.karta_employment
-            SET parartima_id = ?, active = 1, updated_at = SYSDATETIMEOFFSET()
-            WHERE id = ?
-            """,
-            (parartima_id, int(row[0])),
-        )
+        if hire_date is not None:
+            cur.execute(
+                """
+                UPDATE dbo.karta_employment
+                SET parartima_id = ?, active = 1, updated_at = SYSDATETIMEOFFSET(),
+                    hire_date = COALESCE(hire_date, ?)
+                WHERE id = ?
+                """,
+                (parartima_id, hire_date, int(row[0])),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE dbo.karta_employment
+                SET parartima_id = ?, active = 1, updated_at = SYSDATETIMEOFFSET()
+                WHERE id = ?
+                """,
+                (parartima_id, int(row[0])),
+            )
         return
     cur.execute(
         """
-        INSERT INTO dbo.karta_employment (employer_id, employee_id, parartima_id, active)
-        VALUES (?, ?, ?, 1)
+        INSERT INTO dbo.karta_employment (
+            employer_id, employee_id, parartima_id, active, hire_date
+        )
+        VALUES (?, ?, ?, 1, ?)
         """,
-        (employer_id, employee_id, parartima_id),
+        (employer_id, employee_id, parartima_id, hire_date),
     )
 
 

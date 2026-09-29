@@ -64,6 +64,18 @@ def _stamp(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _is_syntax_crash(crash: dict[str, Any] | None) -> bool:
+    text = str((crash or {}).get("error_message") or "").lower()
+    return any(
+        token in text
+        for token in (
+            "indentationerror",
+            "syntaxerror",
+            "expected an indented block",
+        )
+    )
+
+
 def crash_is_newer(crash: dict[str, Any] | None, last_ok: dict[str, Any] | None) -> bool:
     """Προσοχή μόνο αν το crash έγινε μετά την τελευταία επιτυχημένη εντολή."""
     if not crash:
@@ -110,6 +122,8 @@ def assistant_health(*, use_cache: bool = True) -> dict[str, Any]:
         source = check_source()
         crash = recent_inbound_crash() if source.get("ok") else None
         last_ok = last_successful_task()
+        if source.get("ok") and _is_syntax_crash(crash):
+            crash = None
         if not source.get("ok"):
             status = "error"
             label = "AI Agent σφάλμα"

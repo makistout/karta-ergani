@@ -26,6 +26,7 @@ BEGIN
         oaed_desc NVARCHAR(500) NULL,
         kad_code NVARCHAR(32) NULL,
         kad_desc NVARCHAR(500) NULL,
+        ame NVARCHAR(20) NULL,
         kallikratis_code NVARCHAR(16) NULL,
         kallikratis_desc NVARCHAR(500) NULL,
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_store_updated DEFAULT (SYSDATETIMEOFFSET()),
@@ -273,6 +274,8 @@ BEGIN
         eponymo NVARCHAR(200) NULL,
         onoma NVARCHAR(200) NULL,
         flex_arrival_minutes INT NULL,
+        amka NVARCHAR(11) NULL,
+        amika NVARCHAR(20) NULL,
         updated_at DATETIMEOFFSET(7) NOT NULL CONSTRAINT DF_karta_employee_updated DEFAULT (SYSDATETIMEOFFSET()),
         CONSTRAINT UQ_karta_employee_afm UNIQUE (afm)
     );

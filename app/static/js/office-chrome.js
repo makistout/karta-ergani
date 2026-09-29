@@ -19,6 +19,7 @@ Object.assign(window.Office, {
       synclog: "journal-text",
       users: "person-gear",
       billing: "receipt",
+      payroll: "calculator",
     };
     document.querySelectorAll(".sidebar nav a[data-nav]").forEach((a) => {
       if (a.closest(".sidebar-nav-children") || a.querySelector(".bi")) return;

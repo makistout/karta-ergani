@@ -226,12 +226,39 @@ def test_compliance_menu_stays_hidden_with_stale_session_permissions():
     assert "Ψηφιακό ωράριο" in html
 
 
+def test_payroll_pages_and_apis_reject_accountant_even_with_stale_permissions():
+    app = _make_app()
+    app.add_url_rule("/ui/apologistic", "ui_apologistic", lambda: "apologistic")
+    app.add_url_rule("/ui/payroll", "ui_payroll", lambda: "payroll")
+    app.add_url_rule("/ui/payroll/parameters", "ui_payroll_parameters", lambda: "params")
+    app.add_url_rule("/api/payroll/parameters", "api_payroll_parameters", lambda: {"ok": True})
+    app.add_url_rule("/api/payroll/calculate", "api_payroll_calculate", lambda: {"ok": True}, methods=["POST"])
+    client = app.test_client()
+
+    with client.session_transaction() as session:
+        session[SESSION_LOGGED_IN] = True
+        session[SESSION_USER] = "accountant1"
+        session[SESSION_ROLE] = "accountant"
+        session[SESSION_SUPER_ADMIN] = False
+        session[SESSION_PERMISSIONS] = sorted(
+            permissions_for_role("accountant") | {"payroll.view", "payroll.edit"}
+        )
+
+    assert client.get("/ui/apologistic").status_code == 200
+    for path in ("/ui/payroll", "/ui/payroll/parameters"):
+        assert client.get(path).location == "/ui/"
+    assert client.get("/api/payroll/parameters").status_code == 403
+    assert client.post("/api/payroll/calculate").status_code == 403
+
+
 def test_compliance_pages_and_apis_reject_office_manager():
     app = _make_app()
     app.add_url_rule("/ui/schedule", "ui_schedule", lambda: "schedule")
     app.add_url_rule("/ui/protocols", "ui_protocols", lambda: "protocols")
     app.add_url_rule("/ui/apologistic", "ui_apologistic", lambda: "apologistic")
+    app.add_url_rule("/ui/payroll", "ui_payroll", lambda: "payroll")
     app.add_url_rule("/api/apologistic/week", "api_apologistic", lambda: {"ok": True})
+    app.add_url_rule("/api/payroll/parameters", "api_payroll_parameters", lambda: {"ok": True})
     app.add_url_rule("/api/schedule/list", "api_schedule_list", lambda: {"ok": True})
     app.add_url_rule("/api/work-card/list", "api_work_card", lambda: {"ok": True})
     client = app.test_client()
@@ -243,9 +270,10 @@ def test_compliance_pages_and_apis_reject_office_manager():
         session[SESSION_SUPER_ADMIN] = False
         session[SESSION_PERMISSIONS] = sorted(permissions_for_role("office_manager"))
 
-    for path in ("/ui/protocols", "/ui/apologistic"):
+    for path in ("/ui/protocols", "/ui/apologistic", "/ui/payroll"):
         assert client.get(path).location == "/ui/"
     assert client.get("/api/apologistic/week").status_code == 403
+    assert client.get("/api/payroll/parameters").status_code == 403
     assert client.get("/ui/schedule").status_code == 200
     assert client.get("/api/schedule/list").status_code == 200
     # Η ψηφιακή κάρτα παραμένει διαθέσιμη.

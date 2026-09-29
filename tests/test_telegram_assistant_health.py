@@ -29,6 +29,27 @@ def test_old_crash_before_success_is_not_warning():
     ) is True
 
 
+def test_fixed_source_ignores_stale_indentation_crash(monkeypatch):
+    monkeypatch.setattr(
+        "app.telegram_assistant_health.recent_inbound_crash",
+        lambda **kwargs: {
+            "error_message": (
+                "expected an indented block after 'if' statement on line 222 "
+                "(telegram_assistant_service.py, line 223)"
+            ),
+            "received_at": "2026-09-29T21:02:32+03:00",
+        },
+    )
+    monkeypatch.setattr(
+        "app.telegram_assistant_health.last_successful_task",
+        lambda: {"created_at": "2026-09-29T20:34:33+03:00"},
+    )
+    health = assistant_health(use_cache=False)
+    assert health["status"] == "ok"
+    assert health["ok"] is True
+    assert health["last_crash"] is None
+
+
 def test_health_payload_has_status_for_current_file(monkeypatch):
     monkeypatch.setattr("app.telegram_assistant_health.recent_inbound_crash", lambda **kwargs: None)
     monkeypatch.setattr("app.telegram_assistant_health.last_successful_task", lambda: None)

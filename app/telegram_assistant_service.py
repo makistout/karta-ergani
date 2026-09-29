@@ -219,8 +219,7 @@ def _call_gemini(prompt: dict[str, Any], *, deadline: float) -> tuple[dict[str, 
             if response.ok:
                 break
             last_http_error = f"HTTP {response.status_code}: {response.text[:300]}"
-            if response.status_code not in _GEMINI_RETRY_STATUSES:
-                break
+            if response.status_code not in _GEMINI_RETRY_STATUSES: break
             time.sleep(min(0.8, max(0.25, remaining / 8)))
         if response is not None and response.ok:
             break

@@ -30,6 +30,12 @@ COMPLIANCE_PERMISSIONS: set[str] = {
     "alerts.contract.view",
 }
 
+# Μισθοδοσία: μόνο super_admin. Ούτε λογιστής, ούτε stale session permissions.
+SUPER_ADMIN_ONLY_PERMISSIONS: set[str] = {
+    "payroll.view",
+    "payroll.edit",
+}
+
 MANAGED_PERMISSION_CODES: set[str] = {
     "employees.sync",
     "employees.export",
@@ -172,6 +178,8 @@ UI_PERMISSIONS: dict[str, str] = {
     "/ui/monthly-status": "monthly_status.view",
     "/ui/apologistic": "apologistic.view",
     "/ui/apologistic/timekeeping": "apologistic.view",
+    "/ui/payroll": "payroll.view",
+    "/ui/payroll/parameters": "payroll.view",
     "/ui/work-card": "work_card.view",
     "/ui/sync": "sync.view",
     "/ui/sync-log": "logs.view",
@@ -208,6 +216,10 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
 )
 
 API_RULES: tuple[RouteRule, ...] = (
+    RouteRule("GET", "/api/payroll", "payroll.view"),
+    RouteRule("GET", "/api/payroll/*", "payroll.view"),
+    RouteRule("POST", "/api/payroll/*", "payroll.view"),
+    RouteRule("PUT", "/api/payroll/*", "payroll.edit"),
     RouteRule("GET", "/api/billing", "billing.manage"),
     RouteRule("GET", "/api/billing/*", "billing.manage"),
     RouteRule("POST", "/api/billing/*", "billing.manage"),
@@ -235,6 +247,8 @@ API_RULES: tuple[RouteRule, ...] = (
     RouteRule("GET", "/api/store/*/action-settings", "work_log.view"),
     RouteRule("PUT", "/api/store/*/action-settings", "settings.scheduler.manage"),
     RouteRule("PUT", "/api/store/*/apologistic-settings", "work_log.view"),
+    RouteRule("GET", "/api/store/*/efka-settings", "payroll.view"),
+    RouteRule("PUT", "/api/store/*/efka-settings", "payroll.edit"),
     RouteRule("GET", "/api/store/*/card-listener-settings", "settings.view"),
     RouteRule("PUT", "/api/store/*/card-listener-settings", "settings.scheduler.manage"),
     RouteRule("POST", "/api/store/*/card-listener/*", "settings.scheduler.manage"),
@@ -341,6 +355,8 @@ def has_permission(permission: str | None, *, role: str | None = None) -> bool:
     # δεν ανοίγουν πραγματική/πρωτόκολλα/απολογιστικό σε office manager.
     if permission in COMPLIANCE_PERMISSIONS and not is_compliance_role(role):
         return False
+    if permission in SUPER_ADMIN_ONLY_PERMISSIONS and not _is_super_admin_role(role):
+        return False
     if role is None:
         session_permissions = session.get(SESSION_PERMISSIONS)
         if isinstance(session_permissions, list):
@@ -368,6 +384,10 @@ def current_permissions() -> set[str]:
         permissions = set()
     permissions |= permissions_for_role(current_role())
     return permissions
+
+
+def _is_super_admin_role(role: str | None = None) -> bool:
+    return normalize_role(role if role is not None else current_role()) == "super_admin"
 
 
 def is_super_admin() -> bool:
@@ -454,6 +474,8 @@ def permission_for_path(path: str, method: str) -> str | None:
         return "work_card.submit_live"
     if norm.startswith("/ui/billing"):
         return "billing.manage"
+    if norm.startswith("/ui/payroll"):
+        return "payroll.view"
     if norm.startswith("/ui/") or norm == "/ui":
         return UI_PERMISSIONS.get(norm if norm != "/ui" else "/ui/")
     for rule in API_RULES:

@@ -24,11 +24,11 @@ from app.repo_work_log import (
     list_work_log_history_for_employee,
     work_log_table_missing_message,
     enrich_work_log_rows_with_schedule,
-    enrich_work_log_history_with_card_punch,
     enrich_work_log_rows_with_card_punch,
     append_card_punches_missing_from_work_log,
     list_work_log_missing_cards_paged,
     normalize_overnight_work_log_rows,
+    drop_same_day_leftover_exit_rows,
 )
 from app.protocol_pdf_ui import enrich_work_log_rows_with_protocol_pdf
 from app.repo_schedule import schedule_table_missing_message
@@ -152,9 +152,34 @@ def work_log_history():
         )
     except pyodbc.Error as ex:
         return _db_error(ex)
+    dates = list(
+        dict.fromkeys(
+            str(r.get("work_date") or "").strip()
+            for r in rows
+            if str(r.get("work_date") or "").strip()
+        )
+    )
+    if dates:
+        rows = normalize_overnight_work_log_rows(
+            rows,
+            employer_afm=ctx["employer_afm"],
+            branch_aa=ctx["branch_aa"],
+            ergani_dates=dates,
+        )
+        rows = drop_same_day_leftover_exit_rows(rows)
     try:
-        enrich_work_log_history_with_card_punch(
-            rows, ctx["employer_afm"], ctx["branch_aa"], employee_afm
+        enrich_work_log_rows_with_schedule(
+            rows, ctx["employer_afm"], ctx["branch_aa"], dates
+        )
+    except pyodbc.Error as ex:
+        if not schedule_table_missing_message(ex):
+            raise
+        for r in rows:
+            r["schedule_label"] = "—"
+            r["schedule"] = None
+    try:
+        enrich_work_log_rows_with_card_punch(
+            rows, ctx["employer_afm"], ctx["branch_aa"]
         )
     except pyodbc.Error as ex:
         if not schedule_table_missing_message(ex):

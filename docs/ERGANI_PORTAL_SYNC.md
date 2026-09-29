@@ -35,7 +35,12 @@
   Ergani και ανακτηθούν επιτυχώς τα στοιχεία σύμβασης. Μη τρέχοντα ΑΦΜ δεν
   συνδέονται αυτόματα.
 - Ημερήσιο scheduled: `scheduled_employment_contract_sync` (default `04:00`,
-  `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`).
+  `KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_*`). Πριν το HTML Μητρώου καλεί
+  `EX_BASE_05` με web/API user (όχι portal admin / Flask session) και γράφει
+  ημ. πρόσληψης, ΑΜΚΑ, ΑΜΑ στο `karta_employee` / `karta_employment`.
+- ΑΜΚΑ/ΑΜΑ: `sql/alter_add_apd_identity.sql` /
+  `python scripts/run_migration_apd_identity.py`. ΑΜΕ εργοδότη στις ρυθμίσεις
+  καταστήματος (e-ΕΦΚΑ, δεν έρχεται από Εργάνη).
 - **Opportunistic enrichment:** μετά το 15λεπτο (`scheduled_today_sync`) τρέχει
   στο παρασκήνιο `opportunistic_employment_enrichment`:
   - συγκρίνει τρέχον Μητρώο (Current) με snapshot ΑΦΜ

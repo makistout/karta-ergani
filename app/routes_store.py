@@ -117,6 +117,31 @@ def save_store_action_settings(store_id: int):
     return jsonify({"success": True, "settings": settings})
 
 
+@store_bp.get("/<int:store_id>/efka-settings")
+def get_store_efka_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    try:
+        settings = repo.get_efka_settings(store_id)
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 404
+    return jsonify({"success": True, "settings": settings})
+
+
+@store_bp.put("/<int:store_id>/efka-settings")
+def save_store_efka_settings(store_id: int):
+    if not can_access_store(store_id):
+        return jsonify({"error": "Δεν έχετε πρόσβαση σε αυτό το κατάστημα"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        settings = repo.save_store_ame(store_id, data.get("ame"))
+    except RuntimeError as ex:
+        return jsonify({"error": str(ex), "db_setup": "sql/alter_add_apd_identity.sql"}), 503
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 404
+    return jsonify({"success": True, "settings": settings})
+
+
 @store_bp.put("/<int:store_id>/apologistic-settings")
 def save_store_apologistic_settings(store_id: int):
     """Μόνο ρυθμίσεις απολογιστικού (ΡΕΠΟ Κυριακής / ανισομερής) — για λογιστή κ.ά."""

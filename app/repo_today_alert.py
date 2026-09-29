@@ -240,7 +240,7 @@ def enrich_card_report_rows_with_today_notify(
     rows: list[dict[str, Any]],
     store_id: int,
 ) -> None:
-    """Σημαία today_notify_kind / today_notify_snoozed για γραμμές αναφοράς αρχικής."""
+    """Σημαία today_notify_kind / today_notify_snoozed για την Αρχική."""
     from app.repo_store import get_notify_grace_minutes
     from app.today_notify_logic import (
         card_event_blocks_today_notify,
@@ -249,13 +249,6 @@ def enrich_card_report_rows_with_today_notify(
     )
 
     grace = get_notify_grace_minutes(store_id)
-    dates = sorted(
-        {
-            str(r.get("work_date") or "").strip()
-            for r in rows
-            if str(r.get("work_date") or "").strip()
-        }
-    )
     for row in rows:
         wl = row.get("work_log") if isinstance(row.get("work_log"), dict) else {}
         card = row.get("card") if isinstance(row.get("card"), dict) else {}

@@ -241,6 +241,10 @@ def test_normalize_kyria_asfalish():
     )
 
     assert normalize_epikourikiki_kod("ΤΕΚΑ") == "002"
+    from app.web_ma_payload import supplementary_fund_short_label
+
+    assert supplementary_fund_short_label("002") == "ΤΕΚΑ"
+    assert supplementary_fund_short_label("001") == "ΕΤΕΑΕΠ"
 
 
 
@@ -449,3 +453,42 @@ def test_normalize_topos_ergasias_from_ex_base_label():
         branch_aa="0",
     )
     assert payload["AnaggeliesMA"]["AnaggeliaMA"][0]["f_topos_ergasias"] == "0"
+
+
+def test_personal_fields_from_ex_base_05_family():
+    from app.web_ma_payload import personal_fields_from_ex_base_05
+
+    mapped = personal_fields_from_ex_base_05({
+        "MaritalStatus": "ΕΓΓΑΜΟΣ/Η (1)",
+        "NumChildren": "2",
+        "Proipiresia": "5",
+    })
+    assert mapped["marital_status"] == "1"
+    assert mapped["arithmos_teknon"] == "2"
+    assert mapped["prior_service"] == "5"
+
+
+def test_personal_fields_from_ex_base_05_hire_date():
+    from app.web_ma_payload import personal_fields_from_ex_base_05
+
+    mapped = personal_fields_from_ex_base_05({
+        "DateProslipsis": "2024-09-01T00:00:00+03:00",
+    })
+    assert mapped["hire_date"] == "2024-09-01"
+    greek = personal_fields_from_ex_base_05({"DateProslipsis": "15/3/2020"})
+    assert greek["hire_date"] == "2020-03-15"
+    from_only = personal_fields_from_ex_base_05({"DateFrom": "2015-11-23T00:00:00+02:00"})
+    assert from_only["hire_date"] == "2015-11-23"
+
+
+def test_personal_fields_from_ex_base_05_amka_ama():
+    from app.web_ma_payload import personal_fields_from_ex_base_05
+
+    mapped = personal_fields_from_ex_base_05({
+        "amka": "150390-12345",
+        "AMIKA": "12 345 67890",
+        "dateproslipsis": "24/4/2026",
+    })
+    assert mapped["amka"] == "15039012345"
+    assert mapped["amika"] == "1234567890"
+    assert mapped["hire_date"] == "2026-04-24"

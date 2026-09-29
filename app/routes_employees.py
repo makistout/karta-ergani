@@ -29,10 +29,7 @@ from app.repo_apologistic import enrich_employee_month_days, list_employee_days
 from app.apologistic import build_weekly_report
 from app.date_util import iso_to_ergani_dates
 from app.repo_schedule import list_schedule_for_range
-from app.repo_employee_leave import (
-    load_current_year_normal_leave,
-    load_schedule_archive_latest_month,
-)
+from app.repo_employee_leave import load_current_year_normal_leave
 from app.repo_work_log import (
     count_incomplete_punches_by_employee_for_month,
     list_work_log_for_range,
@@ -40,6 +37,47 @@ from app.repo_work_log import (
 )
 
 employees_bp = Blueprint("employees", __name__, url_prefix="/api/employees")
+
+EMPLOYEES_STATS_MONTHS_BACK = 6
+NO_SPECIALTY_LABEL = "Χωρίς ειδικότητα"
+
+
+def _shift_month_start(value: date, delta: int) -> date:
+    idx = value.year * 12 + (value.month - 1) + int(delta)
+    year, month0 = divmod(idx, 12)
+    return date(year, month0 + 1, 1)
+
+
+def _resolve_employees_stats_month(
+    *,
+    year: Any = None,
+    month: Any = None,
+    today: date | None = None,
+) -> tuple[int, int, date]:
+    """Current month, or a past month up to EMPLOYEES_STATS_MONTHS_BACK months back."""
+    as_today = today or date.today()
+    current = date(as_today.year, as_today.month, 1)
+    oldest = _shift_month_start(current, -EMPLOYEES_STATS_MONTHS_BACK)
+    if year in (None, "") or month in (None, ""):
+        selected = current
+    else:
+        try:
+            selected = date(int(str(year).strip()), int(str(month).strip()), 1)
+        except (TypeError, ValueError):
+            selected = current
+    if selected > current:
+        selected = current
+    elif selected < oldest:
+        selected = oldest
+    last_day = calendar.monthrange(selected.year, selected.month)[1]
+    as_of = min(as_today, date(selected.year, selected.month, last_day))
+    return selected.year, selected.month, as_of
+
+
+def _specialty_label(contract: dict | None) -> str:
+    text = str((contract or {}).get("specialty") or "").strip()
+    return text or NO_SPECIALTY_LABEL
+
 
 # Πεδία που το EX_BASE_05 / τρέχουσα σύμβαση μπορούν να προσυμπληρώσουν στο WebMA.
 _WEB_MA_ENRICH_KEYS = (
@@ -326,23 +364,29 @@ def employees_list():
                 contracts_by_afm[afm] = contract
     except pyodbc.Error:
         contracts_by_afm = {}
-    open_punches = count_incomplete_punches_by_employee_for_month(employer_afm, branch_aa)
-    today = date.today()
+    stats_year, stats_month, stats_as_of = _resolve_employees_stats_month(
+        year=request.args.get("year"),
+        month=request.args.get("month"),
+    )
+    open_punches = count_incomplete_punches_by_employee_for_month(
+        employer_afm, branch_aa,
+        year=stats_year, month=stats_month, store_id=int(ctx["id"]),
+    )
     employee_afms = [
         norm_afm(str(row.get("afm") or "")) for row in rows
         if norm_afm(str(row.get("afm") or ""))
     ]
     try:
         normal_leave = load_current_year_normal_leave(
-            store_id=int(ctx["id"]), employee_afms=employee_afms, today=today,
+            store_id=int(ctx["id"]), employee_afms=employee_afms, today=stats_as_of,
         )
-        leave_latest_month = load_schedule_archive_latest_month(store_id=int(ctx["id"]))
     except pyodbc.Error:
         normal_leave = {}
-        leave_latest_month = None
+    month_label = f"{stats_month:02d}/{stats_year}"
     for row in rows:
         afm = norm_afm(str(row.get("afm") or ""))
         contract = contracts_by_afm.get(afm)
+        row["specialty"] = _specialty_label(contract)
         row["contract_label"] = _contract_summary(contract)
         row["open_punches_month"] = int(open_punches.get(afm) or 0)
         leave = normal_leave.get(afm)
@@ -363,10 +407,10 @@ def employees_list():
         "active_count": active_count,
         "inactive_count": len(rows) - active_count,
         "employees": rows,
-        "open_punches_month_label": f"{today.strftime('%m/%Y')}",
-        "normal_leave_latest_month": (
-            leave_latest_month.strftime("%m/%Y") if leave_latest_month else None
-        ),
+        "year": stats_year,
+        "month": stats_month,
+        "open_punches_month_label": month_label,
+        "normal_leave_latest_month": month_label,
         "hint": (
             "Οι εργαζόμενοι συνδέονται με εργοδότη μέσω karta_employment "
             "(όχι απευθείας στο karta_employee). Η λίστα φιλτράρεται από το ενεργό σημείο."
@@ -620,6 +664,28 @@ def employment_contract_history():
         employee_name = (
             f"{rows[0].get('eponymo') or ''} {rows[0].get('onoma') or ''}".strip()
         )
+    employment = next(
+        (
+            emp for emp in list_employees_for_employer(
+                str(ctx["employer_afm"]),
+                branch_aa=str(ctx.get("branch_aa") or "0"),
+                active_only=False,
+                limit=5000,
+            )
+            if norm_afm(str(emp.get("afm") or "")) == employee_afm
+        ),
+        None,
+    )
+    if employment:
+        hire = employment.get("hire_date")
+        departure = employment.get("departure_date")
+        if hasattr(hire, "isoformat"):
+            hire = hire.isoformat()
+        if hasattr(departure, "isoformat"):
+            departure = departure.isoformat()
+        for row in rows:
+            row["hire_date"] = hire
+            row["departure_date"] = departure
     return jsonify({
         "store": {
             "id": ctx["id"],

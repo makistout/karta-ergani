@@ -117,6 +117,23 @@ SUPPLEMENTARY_INSURANCE_FUNDS: list[dict[str, str]] = [
 ]
 _SUPPLEMENTARY_INSURANCE_CODES = {row["code"] for row in SUPPLEMENTARY_INSURANCE_FUNDS}
 DEFAULT_EPIKOURIKIKI = "001"
+SUPPLEMENTARY_FUND_SHORT_LABELS: dict[str, str] = {
+    "001": "ΕΤΕΑΕΠ",
+    "002": "ΤΕΚΑ",
+    "003": "ΕΤΕΑΠΕΠ",
+    "004": "ΤΕΑΥΦΕ",
+    "005": "ΤΕΑΥΕΤ",
+    "006": "ΤΕΑ-ΕΑΠΑΕ",
+    "007": "ΕΔΟΕΑΠ",
+    "008": "ΜΤΠΥ",
+    "009": "ΜΤΠΥ ΤτΕ",
+    "010": "ΚΕΑΝ",
+}
+MAIN_FUND_SHORT_LABELS: dict[str, str] = {
+    "001": "e-ΕΦΚΑ",
+    "002": "ΝΑΤ",
+    "003": "ΤτΕ",
+}
 
 # Σειρά στοιχείων AnaggeliaMA από XSD/Lookup Ergani (Documents/WebMA).
 # Η σειρά μετράει — διαφορετικά το Ergani επιστρέφει invalid child element.
@@ -514,6 +531,16 @@ def normalize_epikourikiki_kod(
     return default
 
 
+def supplementary_fund_short_label(code: str) -> str:
+    padded = normalize_epikourikiki_kod(code)
+    return SUPPLEMENTARY_FUND_SHORT_LABELS.get(padded) or padded
+
+
+def main_insurance_short_label(code: str) -> str:
+    padded = normalize_kyria_asfalish(code)
+    return MAIN_FUND_SHORT_LABELS.get(padded) or padded
+
+
 def epikourikiki_codes_from_data(data: dict[str, Any]) -> list[str]:
     """Λίστα κωδικών επικουρικής από draft/EX_BASE_05 (τουλάχιστον ένας)."""
     raw = (
@@ -574,8 +601,8 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         ("ekdousa_arxh", ("EkdousaArxi", "ekdousa_arxh")),
         ("date_ekdosis", ("DateEkdosis", "date_ekdosis")),
         ("date_ekdosis_lixi", ("DateEkdosisLixi", "DateLixis", "date_ekdosis_lixi")),
-        ("amka", ("Amka", "amka")),
-        ("amika", ("AmIka", "amika")),
+        ("amka", ("Amka", "AMKA", "amka")),
+        ("amika", ("AmIka", "AMIKA", "AmIKA", "amika")),
         ("code_anergias", ("CodeAnergias", "code_anergias")),
         ("ar_vivliou_anilikou", ("ArVivliouAnilikou", "ar_vivliou_anilikou")),
         ("marital_status", ("MaritalStatus", "marital_status")),
@@ -628,11 +655,26 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         ),
         ("trial_period", ("TrialPeriod", "trial_period")),
         ("responsible_position", ("ResponsiblePosition", "responsible_position")),
+        (
+            "hire_date",
+            (
+                "DateProslipsis",
+                "DateProslipsi",
+                "f_date_proslipsis",
+                "HireDate",
+                "employment_start_date",
+                "DateFrom",
+            ),
+        ),
     ]
+    lower = {str(key).lower(): value for key, value in item.items() if key is not None}
     for target, keys in mapping:
         for key in keys:
-            if key in item and item.get(key) is not None and str(item.get(key)).strip() != "":
-                out[target] = item.get(key)
+            value = item.get(key)
+            if value is None:
+                value = lower.get(str(key).lower())
+            if value is not None and str(value).strip() != "":
+                out[target] = value
                 break
     if "typos_taytothtas" in out:
         out["typos_taytothtas"] = normalize_identity_type(out["typos_taytothtas"])
@@ -646,6 +688,22 @@ def personal_fields_from_ex_base_05(item: dict[str, Any]) -> dict[str, Any]:
         out["date_ekdosis"] = _ergani_date(out["date_ekdosis"])
     if "date_ekdosis_lixi" in out:
         out["date_ekdosis_lixi"] = _ergani_date(out["date_ekdosis_lixi"])
+    if "amka" in out:
+        digits = _digits(out["amka"], max_len=11)
+        if digits:
+            out["amka"] = digits
+    if "amika" in out:
+        digits = _digits(out["amika"], max_len=20)
+        if digits:
+            out["amika"] = digits
+    if "hire_date" in out:
+        from app.ergani_parse import parse_ergani_calendar_date
+
+        hire = parse_ergani_calendar_date(out.get("hire_date"))
+        if hire:
+            out["hire_date"] = hire.isoformat()
+        else:
+            out.pop("hire_date", None)
     if "yphkoothta" in out:
         yph = _digits(out["yphkoothta"], max_len=3)
         if yph:

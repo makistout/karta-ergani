@@ -14,6 +14,15 @@ _LABEL_MAP = {
     "Ημέρες Εβδομαδιαίας απασχόλησης": "weekly_work_days",
     "Προϋπηρεσία(Έτη)": "prior_service",
     "Προϋπηρεσία": "prior_service",
+    "Οικογενειακή κατάσταση": "marital_status",
+    "Οικογενειακή Κατάσταση": "marital_status",
+    "Κύρια Ασφάλιση": "kyria_asfalish",
+    "Κύρια ασφάλιση": "kyria_asfalish",
+    "Επικουρική Ασφάλιση": "epikourikiki_kod",
+    "Επικουρική ασφάλιση": "epikourikiki_kod",
+    "Αριθμός τέκνων": "arithmos_teknon",
+    "Αριθμός Τέκνων": "arithmos_teknon",
+    "Αρ. Τέκνων": "arithmos_teknon",
     "Σχέση Απασχόλησης": "employment_relation",
     "Ορισμένου Χρόνου Ημ/νία Από": "fixed_term_from",
     "Ορισμένου Χρόνου Ημ/νία Έως": "fixed_term_to",
@@ -28,7 +37,19 @@ _LABEL_MAP = {
     "Διάλειμμα Εντός Ωραρίου": "break_in_work",
     "Ευέλικτη Προσέλευση (σε λεπτά)": "flex_arrival_minutes",
     "Ευέλικτη Προσέλευση": "flex_arrival_minutes",
+    "Ημ/νία πρόσληψης": "hire_date",
+    "Ημ/νία Πρόσληψης": "hire_date",
+    "Ημερομηνία πρόσληψης": "hire_date",
+    "Ημερομηνία Πρόσληψης": "hire_date",
     "Ημ/νία τελευταίας ενημέρωσης": "ergani_updated_at",
+    "ΑΜΚΑ": "amka",
+    "Α.Μ.Κ.Α.": "amka",
+    "Α.Μ.Κ.Α": "amka",
+    "ΑΜΑ": "amika",
+    "Α.Μ.Α.": "amika",
+    "Α.Μ.Α": "amika",
+    "ΑΜΑ (ΙΚΑ)": "amika",
+    "Αριθμός Μητρώου Ασφαλισμένου": "amika",
 }
 
 
@@ -71,6 +92,52 @@ def _parse_break_in_work(value: str) -> int | None:
     if s in ("ΟΧΙ", "NO", "FALSE", "0"):
         return 0
     return _parse_int_minutes(s)
+
+
+def map_marital_status(value: Any) -> str:
+    """Κωδικός Ergani: 0 άγαμος, 1 έγγαμος, 2 διαζευγμένος, 3 χήρος."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw in {"0", "1", "2", "3"}:
+        return raw
+    m = re.search(r"\((\d)\)\s*$", raw)
+    if m and m.group(1) in {"0", "1", "2", "3"}:
+        return m.group(1)
+    m = re.match(r"^([0-3])\s*[-–]", raw)
+    if m:
+        return m.group(1)
+    upper = raw.upper()
+    if "ΔΙΑΖΕΥΓ" in upper:
+        return "2"
+    if "ΧΗΡ" in upper:
+        return "3"
+    if "ΕΓΓΑΜ" in upper:
+        return "1"
+    if "ΑΓΑΜ" in upper:
+        return "0"
+    return ""
+
+
+def extract_personal_family_from_spans(html: str) -> tuple[str, str]:
+    """Οικογενειακή κατάσταση και τέκνα από τα unlabeled form-control spans του portal."""
+    text = unescape(html)
+    spans = re.findall(
+        r'<span[^>]*class="[^"]*form-control[^"]*"[^>]*>([^<]*)</span>',
+        text,
+        re.I,
+    )
+    for i, span in enumerate(spans):
+        mapped = map_marital_status(_clean_value(span))
+        if not mapped:
+            continue
+        children = ""
+        if i + 1 < len(spans):
+            nxt = _clean_value(spans[i + 1])
+            if re.fullmatch(r"\d{1,2}", nxt):
+                children = nxt
+        return mapped, children
+    return "", ""
 
 
 def extract_labeled_values(html: str) -> dict[str, str]:
@@ -153,6 +220,9 @@ def parse_employment_contract_html(
     fields = extract_labeled_values(html)
     eponymo, onoma, afm_from_page = extract_employee_name_afm(html)
     afm = (employee_afm or afm_from_page or "").strip()[:9]
+    span_marital, span_children = extract_personal_family_from_spans(html)
+    marital_status = map_marital_status(fields.get("marital_status") or "") or span_marital or None
+    arithmos_teknon = (fields.get("arithmos_teknon") or span_children or "").strip() or None
 
     break_minutes = _parse_int_minutes(fields.get("break_minutes") or "")
     # Αν λείπει «Διάλειμμα (σε λεπτά)» αλλά υπάρχει γενικό «Διάλειμμα» ως λεπτά
@@ -168,6 +238,10 @@ def parse_employment_contract_html(
         "step92": fields.get("step92") or None,
         "weekly_work_days": fields.get("weekly_work_days") or None,
         "prior_service": fields.get("prior_service") or None,
+        "arithmos_teknon": arithmos_teknon,
+        "marital_status": marital_status,
+        "kyria_asfalish": (fields.get("kyria_asfalish") or "").strip() or None,
+        "epikourikiki_kod": (fields.get("epikourikiki_kod") or "").strip() or None,
         "employment_relation": fields.get("employment_relation") or None,
         "fixed_term_from": fields.get("fixed_term_from") or None,
         "fixed_term_to": fields.get("fixed_term_to") or None,
@@ -184,6 +258,9 @@ def parse_employment_contract_html(
             fields.get("flex_arrival_minutes") or ""
         ),
         "ergani_updated_at": fields.get("ergani_updated_at") or None,
+        "hire_date": fields.get("hire_date") or None,
+        "amka": (fields.get("amka") or "").strip() or None,
+        "amika": (fields.get("amika") or "").strip() or None,
         "work_time_qr_src": extract_work_time_qr_src(html) or None,
         "source": "portal",
     }

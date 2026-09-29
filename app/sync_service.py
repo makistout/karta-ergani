@@ -8,6 +8,7 @@ from typing import Any
 from app.db import cursor
 from app.ergani_client import ErganiClient
 from app.ergani_parse import (
+    extract_raw_list,
     parse_branches,
     parse_employees,
     parse_employer_profile,
@@ -158,14 +159,22 @@ def iter_store_sync_events(
                         emp.get("eponymo"),
                         emp.get("onoma"),
                         flex_arrival_minutes=emp.get("flex_arrival_minutes"),
+                        amka=emp.get("amka"),
+                        amika=emp.get("amika"),
                     )
                     if emp_id:
-                        upsert_employment(cur, employer_id, emp_id, part_id)
+                        upsert_employment(
+                            cur, employer_id, emp_id, part_id,
+                            hire_date=emp.get("hire_date"),
+                        )
                         synced += 1
                 if active_afms:
                     deactivate_stale_employments(
                         cur, employer_id, active_afms, parartima_id=part_id
                     )
+            from app.repo_employment_contract import apply_ex_base_05_items
+
+            apply_ex_base_05_items(afm, aa, extract_raw_list(p05), log=log)
             results["employees"] = _step(True, f"{synced} εργαζόμενοι", count=synced)
             log.info(f"Αποθηκεύτηκαν {synced} εργαζόμενοι", count=synced)
         else:

@@ -83,6 +83,81 @@ class WorkLogCardMergeTests(unittest.TestCase):
         self.assertEqual(src, "card_event")
         self.assertNotIn("corrected_previous_time", meta)
 
+    def test_entry_empty_portal_uses_card_time(self):
+        card = {"time": "14:05", "protocol": "ΚΕ397441455", "previous_events": []}
+        display, meta, src = _merge_portal_and_card_punch_time(
+            portal_time="",
+            card_entry=card,
+            punch_kind="in",
+        )
+        self.assertEqual(display, "14:05")
+        self.assertEqual(src, "card_event")
+
+    def test_drop_same_day_leftover_exit_when_complete_pair_exists(self):
+        from app.repo_work_log import drop_same_day_leftover_exit_rows
+
+        rows = [
+            {
+                "employee_afm": "201980886",
+                "work_date": "26/09/2026",
+                "hour_from": "12:50",
+                "hour_to": "22:01",
+            },
+            {
+                "employee_afm": "201980886",
+                "work_date": "26/09/2026",
+                "hour_from": "",
+                "hour_to": "01:04",
+            },
+            {
+                "employee_afm": "201980886",
+                "work_date": "14/09/2026",
+                "hour_from": "",
+                "hour_to": "23:04",
+            },
+        ]
+        out = drop_same_day_leftover_exit_rows(rows)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["hour_from"], "12:50")
+        self.assertEqual(out[1]["work_date"], "14/09/2026")
+
+    def test_open_punches_count_skips_card_closed_gaps(self):
+        from app.repo_work_log import _pending_incomplete_counts
+
+        rows = [
+            {
+                "employee_afm": "201980886",
+                "work_date": "09/09/2026",
+                "hour_from": "",
+                "hour_to": "23:02",
+            },
+            {
+                "employee_afm": "201980886",
+                "work_date": "14/09/2026",
+                "hour_from": "",
+                "hour_to": "23:04",
+            },
+            {
+                "employee_afm": "201980886",
+                "work_date": "26/09/2026",
+                "hour_from": "",
+                "hour_to": "01:04",
+            },
+        ]
+        cards = {
+            ("201980886", "09/09/2026"): {
+                "types": {"0"},
+                "check_in": {"time": "12:58"},
+                "check_out": None,
+            },
+            ("201980886", "14/09/2026"): {
+                "types": {"0"},
+                "check_in": {"time": "14:05"},
+                "check_out": None,
+            },
+        }
+        self.assertEqual(_pending_incomplete_counts(rows, cards), {"201980886": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

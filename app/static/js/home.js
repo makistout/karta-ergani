@@ -1,7 +1,11 @@
+const HOME_REPORT_REFRESH_MS = 60000;
+
 let reportDatePicker = null;
 let leaveTypes = [];
 let leaveModalRow = null;
 let wtoDailyModalRow = null;
+let reportLoading = false;
+let reportRefreshTimer = null;
 let reportState = {
   rows: [],
   meta: {},
@@ -32,7 +36,25 @@ document.addEventListener("DOMContentLoaded", () => {
   initWtoDailyModal();
   loadLeaveTypes();
   loadCardReport();
+  startHomeReportAutoRefresh();
 });
+
+function homeReportModalOpen() {
+  const leave = document.getElementById("leaveModal");
+  const wto = document.getElementById("wtoDailyModal");
+  return Boolean(
+    (leave && !leave.classList.contains("hidden")) ||
+    (wto && !wto.classList.contains("hidden"))
+  );
+}
+
+function startHomeReportAutoRefresh() {
+  if (reportRefreshTimer) window.clearInterval(reportRefreshTimer);
+  reportRefreshTimer = window.setInterval(() => {
+    if (document.hidden || homeReportModalOpen() || reportLoading) return;
+    loadCardReport({ silent: true });
+  }, HOME_REPORT_REFRESH_MS);
+}
 
 function normalizedEmployeeSearch(value) {
   return String(value || "")
@@ -464,19 +486,23 @@ async function submitLeave() {
   }
 }
 
-async function loadCardReport() {
+async function loadCardReport(options = {}) {
+  const silent = Boolean(options.silent);
   const wrap = document.getElementById("cardReportWrap");
   const meta = document.getElementById("cardReportMeta");
   const sumEl = document.getElementById("cardReportSummary");
   const qs = reportQueryString();
-  if (!qs) {
+  if (!qs || reportLoading) {
     return;
   }
 
-  reportState.loaded = false;
-  Office.showTableLoading(wrap, "Φόρτωση αναφοράς…");
-  sumEl.innerHTML = "";
-  meta.textContent = "";
+  reportLoading = true;
+  if (!silent) {
+    reportState.loaded = false;
+    Office.showTableLoading(wrap, "Φόρτωση αναφοράς…");
+    sumEl.innerHTML = "";
+    meta.textContent = "";
+  }
 
   try {
     const activeRes = await fetch("/api/store/active");
@@ -504,11 +530,13 @@ async function loadCardReport() {
     try {
       data = await res.json();
     } catch {
-      wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα διακομιστή (HTTP ${res.status}).</p>`;
+      if (!silent) wrap.innerHTML = `<p style="color:var(--err);">Σφάλμα διακομιστή (HTTP ${res.status}).</p>`;
       return;
     }
     if (!res.ok) {
-      wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
+      if (!silent) {
+        wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(data.error || "Σφάλμα")}</p>`;
+      }
       return;
     }
 
@@ -519,7 +547,9 @@ async function loadCardReport() {
     renderSummary(sumEl, data.summary || {}, data.meta || {}, data.store, data.work_date, data.links || {});
     renderVisibleReport();
   } catch (e) {
-    wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
+    if (!silent) wrap.innerHTML = `<p style="color:var(--err);">${Office.formatMultilineHtml(String(e))}</p>`;
+  } finally {
+    reportLoading = false;
   }
 }
 

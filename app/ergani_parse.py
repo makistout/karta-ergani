@@ -3,8 +3,76 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
+
+_HIRE_DATE_KEYS = (
+    "DateProslipsis",
+    "DateProslipsi",
+    "f_date_proslipsis",
+    "HireDate",
+    "employment_start_date",
+)
+_HIRE_DATE_FALLBACK_KEYS = (
+    "DateFrom",
+    "date_from",
+)
+
+
+def parse_ergani_calendar_date(value: Any) -> date | None:
+    """Ημερομηνία από Ergani (ISO, ελληνική, ή datetime)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    elif " " in text:
+        text = text.split(" ", 1)[0]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        y, m, d = (int(part) for part in text.split("-"))
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
+    match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if not match:
+        return None
+    day, month, year = (int(part) for part in match.groups())
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _item_value_ci(item: dict[str, Any], *keys: str) -> Any:
+    lower_map = {
+        str(key).lower(): value
+        for key, value in item.items()
+        if key is not None
+    }
+    for key in keys:
+        raw = item.get(key)
+        if raw is None:
+            raw = lower_map.get(str(key).lower())
+        if raw is not None and str(raw).strip() != "":
+            return raw
+    return None
+
+
+def hire_date_from_ergani_item(item: dict[str, Any] | None) -> date | None:
+    """Ημ/νία πρόσληψης από EX_BASE_05: DateProslipsis, αλλιώς DateFrom (έναρξη σχέσης)."""
+    if not isinstance(item, dict):
+        return None
+    parsed = parse_ergani_calendar_date(_item_value_ci(item, *_HIRE_DATE_KEYS))
+    if parsed:
+        return parsed
+    return parse_ergani_calendar_date(_item_value_ci(item, *_HIRE_DATE_FALLBACK_KEYS))
 
 
 def extract_catalog_items(obj: Any) -> list[dict[str, str]]:
@@ -410,6 +478,14 @@ def parse_flex_arrival_minutes(item: dict[str, Any]) -> int | None:
     return max(0, min(value, 120))
 
 
+def parse_registry_digits(item: dict[str, Any], *keys: str, max_len: int) -> str | None:
+    raw = _item_value_ci(item, *keys)
+    if raw is None:
+        return None
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())[:max_len]
+    return digits or None
+
+
 def parse_employees(payload: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in extract_raw_list(payload):
@@ -423,6 +499,13 @@ def parse_employees(payload: Any) -> list[dict[str, Any]]:
             )[:200],
             "onoma": str(item.get("Onoma") or item.get("onoma") or "")[:200],
             "flex_arrival_minutes": parse_flex_arrival_minutes(item),
+            "hire_date": hire_date_from_ergani_item(item),
+            "amka": parse_registry_digits(
+                item, "Amka", "AMKA", "amka", max_len=11,
+            ),
+            "amika": parse_registry_digits(
+                item, "AmIka", "AMIKA", "AmIKA", "amika", max_len=20,
+            ),
         })
     return out
 

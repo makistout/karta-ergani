@@ -36,6 +36,7 @@ from app.routes_assistant import assistant_bp
 from app.routes_scanner import scanner_bp
 from app.routes_mobile import mobile_bp
 from app.routes_billing import billing_bp
+from app.routes_payroll import payroll_bp
 
 
 def create_app() -> Flask:
@@ -57,6 +58,7 @@ def create_app() -> Flask:
     app.register_blueprint(contact_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(billing_bp)
+    app.register_blueprint(payroll_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(work_card_bp)
     app.register_blueprint(leave_bp)

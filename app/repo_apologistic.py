@@ -176,7 +176,7 @@ def save_report(*, store: dict[str, Any], week_from: date, week_to: date,
                 "FROM dbo.karta_apologistic_day WHERE run_id=?",
                 (run_id,),
             )
-            saved = {(str(r[0]), r[1]): (r[2], str(r[3])) for r in cur.fetchall()}
+        saved = {(str(r[0]), r[1]): (r[2], str(r[3])) for r in cur.fetchall()}
         effective_days: list[dict[str, Any]] = []
         day_stage: list[tuple[Any, ...]] = []
         for day in report.get("days") or []:

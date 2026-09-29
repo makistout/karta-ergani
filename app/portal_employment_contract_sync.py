@@ -29,7 +29,9 @@ from app.portal_schedule_sync import (
     _portal_base,
 )
 from app.repo_employment_contract import insert_if_changed
+from app.ergani_parse import parse_ergani_calendar_date
 from app.repo_entities import (
+    fill_employment_hire_date_if_empty,
     link_employee_to_store,
     list_employees_for_employer,
     list_unlinked_activity_employees,
@@ -248,11 +250,33 @@ def iter_employment_contract_sync_events(
         "total": len(target_afms),
     }
 
+    yield {
+        "event": "progress",
+        "message": "Ενημέρωση πρόσληψης / ΑΜΚΑ / ΑΜΑ (EX_BASE_05)…",
+        "step": 0,
+        "total": max(len(target_afms), 1),
+    }
+    api_personal: dict[str, Any] = {}
+    try:
+        from app.repo_employment_contract import refresh_personal_from_ex_base_05
+
+        api_personal = refresh_personal_from_ex_base_05(
+            ctx, only_afms=target_afms if only_afms is not None else None, log=log
+        )
+    except Exception as ex:  # noqa: BLE001
+        api_personal = {"success": False, "detail": str(ex)}
+        log.error(f"Προσωπικά EX_BASE_05: {ex}")
+
     if not target_afms:
         msg = (
             "Δεν βρέθηκαν ενεργοί εργαζόμενοι στο ψηφιακό ωράριο — "
             "συγχρονίστε πρώτα προσωπικό/ωράριο."
         )
+        if api_personal.get("success"):
+            msg += (
+                f" Ενημερώθηκαν όμως {int(api_personal.get('scanned') or 0)} "
+                "εργαζόμενοι από EX_BASE_05 (πρόσληψη / ΑΜΚΑ / ΑΜΑ)."
+            )
         log.error(msg)
         yield {"event": "error", "message": msg, "logs": log.tail(100)}
         if finalize_run:
@@ -262,7 +286,7 @@ def iter_employment_contract_sync_events(
                 log.run_id,
                 status="error",
                 message=msg,
-                result={"success": False, "error": msg},
+                result={"success": False, "error": msg, "api_personal": api_personal},
             )
         return
 
@@ -283,15 +307,21 @@ def iter_employment_contract_sync_events(
         )
     except (requests.RequestException, ValueError, RuntimeError) as ex:
         log.error(f"Αποτυχία σύνδεσης/αναζήτησης: {ex}")
-        yield {"event": "error", "message": str(ex), "logs": log.tail(100)}
+        detail = str(ex)
+        if api_personal.get("success"):
+            detail += (
+                f" — EX_BASE_05: {int(api_personal.get('scanned') or 0)} εργαζόμενοι "
+                "(πρόσληψη / ΑΜΚΑ / ΑΜΑ)"
+            )
+        yield {"event": "error", "message": detail, "logs": log.tail(100)}
         if finalize_run:
             from app import repo_sync_log
 
             repo_sync_log.finish_run(
                 log.run_id,
                 status="error",
-                message=str(ex),
-                result={"success": False, "error": str(ex)},
+                message=detail,
+                result={"success": False, "error": str(ex), "api_personal": api_personal},
             )
         return
 
@@ -312,7 +342,7 @@ def iter_employment_contract_sync_events(
         "total": total,
     }
 
-    for i, (ergodoti_id, afm, _stamp) in enumerate(select_ids):
+    for i, (ergodoti_id, afm, stamp) in enumerate(select_ids):
         msg = f"Σύμβαση ΑΦΜ {afm} ({i + 1}/{total})…"
         log.info(msg, employee_afm=afm, step=i + 1, total=total)
         yield {
@@ -336,6 +366,8 @@ def iter_employment_contract_sync_events(
                 row.get("eponymo"),
                 row.get("onoma"),
                 flex_arrival_minutes=flex,
+                amka=row.get("amka"),
+                amika=row.get("amika"),
             )
             # Νέοι (χωρίς γραμμή) ή ανενεργοί με ωράριο: ενεργοποίηση σύνδεσης.
             # Το unlinked κοιτάει ύπαρξη γραμμής (όχι active)· χωρίς αυτό οι ανενεργοί
@@ -347,6 +379,8 @@ def iter_employment_contract_sync_events(
                 row.get("eponymo"),
                 row.get("onoma"),
                 flex_arrival_minutes=flex,
+                amka=row.get("amka"),
+                amika=row.get("amika"),
             ):
                 linked += 1
                 log.info(
@@ -360,6 +394,12 @@ def iter_employment_contract_sync_events(
                 qr_data_url=row.get("work_time_qr_data_url"),
             ):
                 qr_synced += 1
+            hire = parse_ergani_calendar_date(row.get("hire_date"))
+            stamp_text = str(stamp or "").strip()
+            if hire is None and stamp_text and ":" not in stamp_text:
+                hire = parse_ergani_calendar_date(stamp_text)
+            if hire:
+                fill_employment_hire_date_if_empty(employer_afm, branch_aa, afm, hire)
         except Exception as ex:  # noqa: BLE001 — συνέχεια με επόμενο εργαζόμενο
             err = f"{afm}: {ex}"
             errors.append(err)
@@ -375,6 +415,13 @@ def iter_employment_contract_sync_events(
         + (f" — {qr_synced} QR" if qr_synced else "")
         + (f" — {len(errors)} αποτυχίες" if errors else "")
     )
+    if api_personal.get("success"):
+        detail += (
+            f" — προσωπικά EX_BASE_05 {int(api_personal.get('inserted') or 0)} "
+            f"νέες εκδόσεις / {int(api_personal.get('scanned') or 0)} εργαζόμενοι"
+        )
+    elif api_personal.get("detail"):
+        detail += f" — προσωπικά EX_BASE_05: {api_personal.get('detail')}"
     result = {
         "success": ok,
         "detail": detail,
@@ -395,6 +442,7 @@ def iter_employment_contract_sync_events(
         "portal_base": portal_base,
         "employer_afm": employer_afm,
         "branch_aa": branch_aa,
+        "api_personal": api_personal,
     }
     log.info(
         "Ολοκλήρωση συγχρονισμού σύμβασης",

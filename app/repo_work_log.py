@@ -78,6 +78,28 @@ def normalize_overnight_work_log_rows(
     return result
 
 
+def drop_same_day_leftover_exit_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Κρύβει ορφανή έξοδο ίδιας ημέρας όταν υπάρχει ήδη ολοκληρωμένο ζεύγος."""
+    complete: set[tuple[str, str]] = set()
+    for row in rows:
+        afm = norm_afm(row.get("employee_afm") or "")
+        wd = str(row.get("work_date") or "").strip()
+        hf = str(row.get("hour_from") or "").strip()
+        ht = str(row.get("hour_to") or "").strip()
+        if afm and wd and hf and ht:
+            complete.add((afm, wd))
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        afm = norm_afm(row.get("employee_afm") or "")
+        wd = str(row.get("work_date") or "").strip()
+        hf = str(row.get("hour_from") or "").strip()
+        ht = str(row.get("hour_to") or "").strip()
+        if afm and wd and not hf and ht and (afm, wd) in complete:
+            continue
+        out.append(row)
+    return out
+
+
 def _pick_schedule_slot(
     slots: list[dict[str, Any]], row: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -862,16 +884,36 @@ def _merge_missing_card_rows(
     return _sort_missing_rows(merged)
 
 
+def _pending_incomplete_counts(
+    rows: list[dict[str, Any]],
+    card_details: dict[tuple[str, str], dict[str, Any]],
+    token_details: dict[tuple[str, str], dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    """Μετρά ελλιπή που μένουν εκκρεμή μετά κλείσιμο από δήλωση κάρτας / retro-hit."""
+    pending, _closed = _split_missing_rows_by_db_closure(
+        rows, card_details, token_details or {},
+    )
+    counts: dict[str, int] = {}
+    for row in pending:
+        e_afm = norm_afm(row.get("employee_afm") or "")
+        if not e_afm:
+            continue
+        counts[e_afm] = counts.get(e_afm, 0) + 1
+    return counts
+
+
 def count_incomplete_punches_by_employee_for_month(
     employer_afm: str,
     branch_aa: str,
     *,
     year: int | None = None,
     month: int | None = None,
+    store_id: int | None = None,
 ) -> dict[str, int]:
-    """Μετρά ελλιπή χτυπήματα (κενό Από ή Έως) ανά εργαζόμενο για τον τρέχοντα μήνα.
+    """Μετρά ελλιπή χτυπήματα (κενό Από ή Έως) ανά εργαζόμενο για τον μήνα.
 
     Δεν μετρά τη σημερινή ημέρα — τα ανοιχτά χτυπήματα σήμερα θεωρούνται σε εξέλιξη.
+    Γραμμές που έχουν κλείσει με δήλωση κάρτας / retro-hit δεν μετράνε.
     """
     today = date.today()
     y = int(year or today.year)
@@ -887,7 +929,8 @@ def count_incomplete_punches_by_employee_for_month(
     with cursor(commit=False) as cur:
         cur.execute(
             """
-            SELECT w.employee_afm, COUNT(*) AS cnt
+            SELECT
+                w.employee_afm, w.work_date, w.hour_from, w.hour_to, w.id
             FROM dbo.karta_work_log w
             WHERE w.employer_afm = ? AND w.branch_aa = ?
               AND TRY_CONVERT(date, w.work_date, 103) >= ?
@@ -896,15 +939,20 @@ def count_incomplete_punches_by_employee_for_month(
                 NULLIF(LTRIM(RTRIM(ISNULL(w.hour_from, N''))), N'') IS NULL
                 OR NULLIF(LTRIM(RTRIM(ISNULL(w.hour_to, N''))), N'') IS NULL
               )
-            GROUP BY w.employee_afm
             """,
             (afm, aa, month_start, month_end),
         )
-        return {
-            norm_afm(str(row[0] or "")): int(row[1] or 0)
-            for row in cur.fetchall()
-            if row and row[0]
-        }
+        rows = rows_to_dicts(cur)
+    if not rows:
+        return {}
+    dates = _unique_work_dates(rows)
+    card_details = _card_db_details_by_employee_work_date(afm, aa, dates)
+    token_details: dict[tuple[str, str], dict[str, Any]] = {}
+    if store_id:
+        from app.repo_telegram_punch import list_completed_punch_tokens_by_employee_date
+
+        token_details = list_completed_punch_tokens_by_employee_date(int(store_id), dates)
+    return _pending_incomplete_counts(rows, card_details, token_details)
 
 
 def list_work_log_missing_cards_paged(

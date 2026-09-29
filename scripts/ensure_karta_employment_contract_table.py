@@ -26,6 +26,10 @@ BEGIN
         step92 NVARCHAR(64) NULL,
         weekly_work_days NVARCHAR(64) NULL,
         prior_service NVARCHAR(64) NULL,
+        arithmos_teknon NVARCHAR(16) NULL,
+        marital_status NVARCHAR(32) NULL,
+        kyria_asfalish NVARCHAR(16) NULL,
+        epikourikiki_kod NVARCHAR(16) NULL,
         employment_relation NVARCHAR(200) NULL,
         fixed_term_from NVARCHAR(32) NULL,
         fixed_term_to NVARCHAR(32) NULL,
@@ -54,6 +58,26 @@ IF COL_LENGTH(N'dbo.karta_employment_contract', N'last_checked_at') IS NULL
 BEGIN
     ALTER TABLE dbo.karta_employment_contract
         ADD last_checked_at DATETIMEOFFSET(7) NULL;
+END
+IF COL_LENGTH(N'dbo.karta_employment_contract', N'arithmos_teknon') IS NULL
+BEGIN
+    ALTER TABLE dbo.karta_employment_contract
+        ADD arithmos_teknon NVARCHAR(16) NULL;
+END
+IF COL_LENGTH(N'dbo.karta_employment_contract', N'marital_status') IS NULL
+BEGIN
+    ALTER TABLE dbo.karta_employment_contract
+        ADD marital_status NVARCHAR(32) NULL;
+END
+IF COL_LENGTH(N'dbo.karta_employment_contract', N'kyria_asfalish') IS NULL
+BEGIN
+    ALTER TABLE dbo.karta_employment_contract
+        ADD kyria_asfalish NVARCHAR(16) NULL;
+END
+IF COL_LENGTH(N'dbo.karta_employment_contract', N'epikourikiki_kod') IS NULL
+BEGIN
+    ALTER TABLE dbo.karta_employment_contract
+        ADD epikourikiki_kod NVARCHAR(16) NULL;
 END
 """
 

@@ -1428,9 +1428,13 @@ table.data tbody tr.work-log-row--deficient td strong {
 .apologistic-restore-all-hint { margin:0; color:var(--muted); font-size:.78rem; }
 .apologistic-timekeeping-panel { width:min(1100px,calc(100vw - 2rem)); }
 .apologistic-timekeeping-body { overflow:auto; max-height:70vh; }
-.apologistic-timekeeping-table { width:100%; border-collapse:collapse; font-size:.9rem; }
-.apologistic-timekeeping-table th,.apologistic-timekeeping-table td { padding:.55rem .65rem; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
-.apologistic-timekeeping-table th { text-transform:none; }
+.apologistic-timekeeping-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+.apologistic-timekeeping-table th,.apologistic-timekeeping-table td { padding:.4rem .5rem; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+.apologistic-timekeeping-table th { text-transform:none; font-size:.7rem; color:var(--muted); }
+.apologistic-timekeeping-table th:first-child,.apologistic-timekeeping-table td:first-child { text-align:left; position:sticky; left:0; background:var(--surface); }
+.timekeeping-hours-scroll { overflow:auto; max-width:100%; }
+.timekeeping-hours-details { margin:0; }
+.timekeeping-hours-details summary { cursor:pointer; font-weight:650; padding:.15rem 0 .65rem; color:var(--text); }
 .apologistic-timekeeping-table th:first-child,.apologistic-timekeeping-table td:first-child { text-align:left; }
 .timekeeping-problem-box { padding:1rem 1.1rem; border:1px solid color-mix(in srgb,var(--err) 24%,var(--border)); border-radius:.75rem; background:color-mix(in srgb,var(--err) 5%,var(--surface)); }
 .timekeeping-problem-text { margin:0; color:var(--err); font-size:.95rem; }

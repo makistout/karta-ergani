@@ -2,7 +2,7 @@
 
 Κανόνες καμπάνας (resolve_today_notify_kind)
 -------------------------------------------
-Grace: 15/30/45 λεπτά ανά κατάστημα (notify_grace_minutes), default 15.
+Grace: 5/10/15/20/25/30 λεπτά ανά κατάστημα (notify_grace_minutes), default 15.
 
 1. exit_without_entry — υπάρχει έξοδος (κάρτα/πραγματική) χωρίς είσοδο.
 
@@ -40,7 +40,7 @@ from app.work_card_payload import tz_athens
 
 NOTIFY_GRACE_MINUTES = 15
 NOTIFY_GRACE_CHECKOUT_MINUTES = NOTIFY_GRACE_MINUTES
-ALLOWED_NOTIFY_GRACE_MINUTES = frozenset({15, 30, 45})
+ALLOWED_NOTIFY_GRACE_MINUTES = (5, 10, 15, 20, 25, 30)
 
 
 def normalize_notify_grace_minutes(value: Any) -> int:
@@ -48,7 +48,12 @@ def normalize_notify_grace_minutes(value: Any) -> int:
         n = int(value)
     except (TypeError, ValueError):
         return NOTIFY_GRACE_MINUTES
-    return n if n in ALLOWED_NOTIFY_GRACE_MINUTES else NOTIFY_GRACE_MINUTES
+    if n in ALLOWED_NOTIFY_GRACE_MINUTES:
+        return n
+    return min(
+        ALLOWED_NOTIFY_GRACE_MINUTES,
+        key=lambda allowed: (abs(allowed - n), allowed),
+    )
 
 
 def _grace_minutes(grace_minutes: int | None) -> int:

@@ -127,18 +127,21 @@
           <div class="settings-action-block">
             <div class="settings-action-row settings-action-row--field">
               <span>
-                <strong>Καθυστέρηση ειδοποιήσεων (λεπτά)</strong>
+                <strong>Βήμα μεταξύ ειδοποιήσεων (λεπτά)</strong>
                 <small>
                   Μετά την έναρξη ωραρίου ή την αναμενόμενη έξοδο, πόσα λεπτά περιμένουμε πριν στείλουμε
-                  ειδοποίηση (καθυστέρηση εισόδου, έλλειψη εξόδου, διόρθωση). Ο scheduled sync ελέγχει περίπου κάθε 15′.
+                  ειδοποίηση (καθυστέρηση εισόδου, έλλειψη εξόδου, διόρθωση). Επιλογή ανά 5′, από 5 έως 30.
                 </small>
               </span>
               <label class="settings-action-time" for="notifyGraceMinutes">
                 <span class="settings-action-time-label">Λεπτά</span>
                 <select id="notifyGraceMinutes" class="input-select settings-action-select">
+                  <option value="5">5 λεπτά</option>
+                  <option value="10">10 λεπτά</option>
                   <option value="15">15 λεπτά</option>
+                  <option value="20">20 λεπτά</option>
+                  <option value="25">25 λεπτά</option>
                   <option value="30">30 λεπτά</option>
-                  <option value="45">45 λεπτά</option>
                 </select>
               </label>
             </div>
@@ -318,11 +321,37 @@
           </p>
         </section>
         {% endif %}
+
+        {% if office_has_permission('payroll.view') %}
+        <section class="card settings-section" id="storeEfkaCard" aria-labelledby="storeEfkaTitle">
+          <div class="settings-section-head">
+            <div>
+              <h2 id="storeEfkaTitle"><i class="bi bi-shield-check" aria-hidden="true"></i> e-ΕΦΚΑ / ΑΠΔ</h2>
+              <p class="field-hint">Αριθμός Μητρώου Εργοδότη (ΑΜΕ) για την Αναλυτική Περιοδική Δήλωση. Δεν έρχεται από την Εργάνη.</p>
+            </div>
+          </div>
+          <div class="settings-action-block">
+            <label class="settings-action-row settings-action-row--field" for="storeAme">
+              <span>
+                <strong>ΑΜΕ εργοδότη</strong>
+                <small>Ψηφία μητρώου e-ΕΦΚΑ του εργοδότη. Χρησιμοποιείται στην προεπισκόπηση ΑΠΔ της μισθοδοσίας.</small>
+              </span>
+              <input id="storeAme" type="text" class="field-input" inputmode="numeric" maxlength="20" placeholder="π.χ. 1234567890" autocomplete="off">
+            </label>
+            <p class="field-hint" id="storeEfkaKadHint" hidden></p>
+          </div>
+          <div class="actions settings-section-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnSaveStoreAme" disabled>
+              <i class="bi bi-save" aria-hidden="true"></i><span>Αποθήκευση ΑΜΕ</span>
+            </button>
+          </div>
+        </section>
+        {% endif %}
       </div>
       <div id="stepMsg" class="msg"></div>
     
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-autocomplete.js?v=20260724storetip1"></script>
-  <script src="/static/js/store-notify.js?v=20260909accApol3"></script>
+  <script src="/static/js/store-notify.js?v=20260929apd1"></script>
 {% endblock %}
