@@ -145,14 +145,14 @@ def build_payroll_export_xlsx(
     lines_ws = wb.create_sheet("Γραμμές")
     line_headers = [
         "Εργαζόμενος", "ΑΦΜ", "Είδος", "Οικογένεια", "Ζώνη", "Ώρες",
-        "% οικογένειας", "% ζώνης", "Υπολογισμός", "Ποσό",
+        "% οικογένειας", "% ζώνης", "Υπολογισμός", "Ποσό", "Διάστημα σύμβασης",
     ]
     line_header = _style_sheet(
         lines_ws,
         title="Ανάλυση γραμμών μισθοδοσίας",
         meta=meta_line,
         headers=line_headers,
-        widths=[28, 12, 12, 22, 16, 10, 14, 12, 48, 12],
+        widths=[28, 12, 12, 22, 16, 10, 14, 12, 48, 12, 26],
     )
     kind_label = {"hour": "Ώρα", "allowance": "Επίδομα", "bonus": "Δώρο/άδεια"}
     for row in employees:
@@ -169,8 +169,20 @@ def build_payroll_export_xlsx(
                 _num(line.get("zone_percent")),
                 line.get("formula") or "",
                 _num(line.get("amount")),
+                line.get("contract_segment") or "",
             ])
     _finish_money(lines_ws, line_header, {6, 10}, {7, 8})
+    if any(r.get("contract_segments") for r in employees):
+        segments_ws = wb.create_sheet("Συμβάσεις")
+        segment_header = _style_sheet(segments_ws, title="Επιμερισμός συμβάσεων", meta=meta_line,
+            headers=["Εργαζόμενος", "ΑΦΜ", "Από", "Έως", "Μισθός σύμβασης", "Ώρες/εβδομάδα", "Μερίδιο", "Μισθός διαστήματος"],
+            widths=[28, 12, 14, 14, 20, 18, 14, 22])
+        for row in employees:
+            for segment in row.get("contract_segments") or []:
+                segments_ws.append([_name(row), str(row.get("employee_afm") or ""),
+                    _date_el(segment["from"]), _date_el(segment["to"]), str(segment.get("salary") or ""),
+                    str(segment.get("weekly_hours") or ""), segment["salary_share"], segment["period_salary"]])
+        _finish_money(segments_ws, segment_header, {8})
 
     efka_ws = wb.create_sheet("ΕΦΚΑ")
     efka_headers = [

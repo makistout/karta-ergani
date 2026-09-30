@@ -517,6 +517,7 @@ function applyFmy(row) {
   row.tax_age_group = ageGroup;
   if (row.fmy_manual) {
     row.net = round2(parseNum(row.after_efka) - parseNum(row.fmy));
+    row.tax_formula = `Χειροκίνητη παρακράτηση: ${money(row.fmy)} €`;
     return;
   }
   let salaries = taxParamNum("fmy_annual_salaries");
@@ -1014,6 +1015,7 @@ function openPayrollModal(index) {
 }
 
 function fillPayrollModal(row) {
+  const segments = row.contract_segments || [];
   document.getElementById("payrollInfoModalTitle").textContent = employeeName(row);
   document.getElementById("payrollInfoModalSub").textContent =
     `${row.characterization_label || ""} · ΑΦΜ ${row.employee_afm || ""}`;
@@ -1032,7 +1034,7 @@ function fillPayrollModal(row) {
   const lineRows = hourLines.length
     ? hourLines.map(({ line, lineIndex }) =>
         `<tr>` +
-        `<td>${esc(line.family)}</td><td>${esc(line.zone)}</td>` +
+        `<td>${esc(line.family)}<br><small>${esc(line.contract_segment || "")}</small></td><td>${esc(line.zone)}</td>` +
         `<td><input class="field-input payroll-modal-num" data-line="${lineIndex}" data-field="hours" value="${esc(String(line.hours ?? 0).replace(".", ","))}"></td>` +
         `<td><input class="field-input payroll-modal-num" data-line="${lineIndex}" data-field="family_percent" value="${esc(String(line.family_percent ?? 0).replace(".", ","))}"></td>` +
         `<td><input class="field-input payroll-modal-num" data-line="${lineIndex}" data-field="zone_percent" value="${esc(String(line.zone_percent ?? 0).replace(".", ","))}"></td>` +
@@ -1054,7 +1056,7 @@ function fillPayrollModal(row) {
   const allowanceRows = allowanceLines.length
     ? allowanceLines.map(({ line, lineIndex }) =>
         `<tr>` +
-        `<td>${esc(line.family)}</td>` +
+        `<td>${esc(line.family)}<br><small>${esc(line.contract_segment || "")}</small></td>` +
         `<td><input class="field-input payroll-modal-num" data-line="${lineIndex}" data-field="family_percent" value="${esc(String(line.family_percent ?? 0).replace(".", ","))}"></td>` +
         `<td class="payroll-formula" data-formula="${lineIndex}">${esc(line.formula || "")}</td>` +
         `<td class="payroll-money" data-amount="${lineIndex}">${money(line.amount)}</td>` +
@@ -1102,6 +1104,12 @@ function fillPayrollModal(row) {
   ).join("") || `<tr><td colspan="4" class="payroll-embed-note">Λείπει η κλίμακα ΦΜΥ από τις παραμέτρους.</td></tr>`;
   document.getElementById("payrollInfoModalBody").innerHTML =
     `<p class="payroll-modal-method">${esc(method)}</p>` +
+    (segments.length ? `<h3>Διαστήματα συμβάσεων</h3><p>Ο μισθός επιμερίζεται με τις δηλωμένες ώρες κάθε διαστήματος προς τις συμβατικές εβδομαδιαίες ώρες. Οι συντελεστές κάθε γραμμής διατηρούνται ανά σύμβαση.</p>` +
+      `<table class="data"><thead><tr><th>Από – έως</th><th>Μηνιαίος μισθός σύμβασης</th><th>Ώρες/εβδομάδα</th><th>Μερίδιο</th><th>Μισθός διαστήματος</th></tr></thead><tbody>` +
+      segments.map(s => `<tr><td>${esc(s.from)} – ${esc(s.to)}</td><td>${esc(s.salary ?? "")}</td><td>${esc(s.weekly_hours ?? "")}</td><td>${money(s.salary_share * 100)}%</td><td>${money(s.period_salary)} €</td></tr>`).join("") + `</tbody></table>` : "") +
+    (row.salary_payable_days != null ? `<p class="payroll-embed-note">${esc(row.salary_days_basis || "")} · Μονάδες μισθού /25, όχι ημέρες ασφάλισης. Οι ημέρες χωρίς αποδοχές αφαιρούνται μόνο με ρητή καταχώριση.</p>` +
+    `<div class="payroll-modal-meta"><label><span>Ημέρες μισθοδοσίας (έως 25)</span><input class="field-input payroll-modal-num" data-emp="salary_payable_days" value="${esc(row.salary_payable_days)}"></label>` +
+    `<label><span>Χωρίς αποδοχές (μονάδες /25)</span><input class="field-input payroll-modal-num" data-emp="salary_unpaid_days" value="${esc(row.salary_unpaid_days || 0)}"></label></div>` : "") +
     `<div class="payroll-modal-meta">` +
     `<label><span>Μισθός περιόδου (€)</span><input class="field-input payroll-modal-num" data-emp="period_salary" value="${esc(String(row.period_salary ?? 0).replace(".", ","))}"></label>` +
     `<label><span>Καταβαλλόμενο ωρομίσθιο (€)</span><input class="field-input payroll-modal-num" data-emp="hourly_wage" value="${esc(String(row.hourly_wage ?? 0).replace(".", ","))}"></label>` +
@@ -1157,6 +1165,12 @@ function fillPayrollModal(row) {
     `<div class="payroll-modal-total"><span>Μετά ΕΦΚΑ</span><strong id="payrollModalAfterEfka">${money(row.after_efka)} €</strong></div>` +
     `<div class="payroll-modal-total"><span>ΦΜΥ περιόδου</span><strong id="payrollModalFmy">${money(row.fmy)} €</strong></div>` +
     `<div class="payroll-modal-total"><span>Καθαρά πληρωτέα</span><strong id="payrollModalNet">${money(row.net)} €</strong></div>`;
+  if (segments.length) {
+    for (const field of ["period_salary", "hourly_wage", "legal_hourly", "allowance_base", "children_count", "marital_status", "prior_service_years"]) {
+      const input = document.querySelector(`[data-emp="${field}"]`);
+      if (input) input.disabled = true;
+    }
+  }
 }
 
 function onPayrollModalInput(event) {
@@ -1165,9 +1179,19 @@ function onPayrollModalInput(event) {
   const row = payrollData?.employees?.[payrollModalIndex];
   if (!row) return;
   const empField = input.getAttribute("data-emp");
+  if (row.contract_segments?.length && ["period_salary", "hourly_wage", "legal_hourly", "allowance_base", "children_count", "marital_status", "prior_service_years"].includes(empField)) return;
   const lineIndex = input.getAttribute("data-line");
   const value = parseNum(input.value);
-  if (empField === "period_salary") {
+  if (empField === "salary_payable_days" || empField === "salary_unpaid_days") {
+    row[empField] = Math.max(0, Math.min(25, value));
+    row.salary_unpaid_days = Math.min(row.salary_unpaid_days || 0, row.salary_payable_days);
+    row.period_salary = round2(parseNum(row.salary_full_period) * (row.salary_payable_days - row.salary_unpaid_days) / 25);
+    setAllowanceBase(row, row.period_salary);
+    const salaryInput = document.querySelector('[data-emp="period_salary"]');
+    if (salaryInput) salaryInput.value = String(row.period_salary).replace(".", ",");
+    const unpaidInput = document.querySelector('[data-emp="salary_unpaid_days"]');
+    if (unpaidInput) unpaidInput.value = String(row.salary_unpaid_days).replace(".", ",");
+  } else if (empField === "period_salary") {
     row.period_salary = value;
     if (!row.pay_base_hours) setAllowanceBase(row, value);
   } else if (empField === "hourly_wage") {
@@ -1208,6 +1232,7 @@ function onPayrollModalInput(event) {
     const field = input.getAttribute("data-field");
     if (line && field) {
       line[field] = value;
+      if (line.line_kind === "bonus") line.formula = `Χειροκίνητη διόρθωση: ${money(line.hourly)} €`;
     }
   }
   if (empField && empField !== "efka_insurable") {
@@ -1298,7 +1323,13 @@ function apdValue(value) {
   return text || "—";
 }
 
-function openApdModal(index) {
+async function openApdModal(index) {
+  try {
+    await refreshPayrollApd();
+  } catch (error) {
+    Office.showMsg("timekeepingMsg", error.message || String(error), false);
+    return;
+  }
   const row = payrollData?.employees?.[index];
   if (!row) return;
   const apd = row.apd || {};
@@ -1392,7 +1423,7 @@ async function downloadPayrollExcel() {
     const res = await fetch("/api/payroll/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(periodPayload()),
+      body: JSON.stringify(payrollExportPayload()),
     });
     if (!res.ok) {
       const data = await Office.parseJson(res);
@@ -1416,7 +1447,13 @@ async function downloadPayrollExcel() {
   }
 }
 
-function downloadPayrollApdXml() {
+async function downloadPayrollApdXml() {
+  try {
+    await refreshPayrollApd();
+  } catch (error) {
+    Office.showMsg("timekeepingMsg", error.message || String(error), false);
+    return;
+  }
   const xml = payrollData?.apd_xml || "";
   if (!xml) {
     Office.showMsg("timekeepingMsg", "Δεν υπάρχει XML ΑΠΔ. Ανανεώστε την ωρομέτρηση.", false);
@@ -1433,4 +1470,30 @@ function downloadPayrollApdXml() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+// Export the current edits; the server retains identity and recomputes totals.
+function payrollExportPayload() {
+  if (!payrollData || !payrollOriginal) throw new Error("Ανανεώστε πρώτα τη μισθοδοσία.");
+  return { ...periodPayload(), store_id: payrollData.store?.id, adjustments: payrollData.employees || [] };
+}
+
+async function refreshPayrollApd() {
+  const current = payrollData;
+  const payload = payrollExportPayload();
+  const edits = JSON.stringify(payload.adjustments);
+  const res = await fetch("/api/payroll/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, format: "apd-preview" }),
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (current !== payrollData || edits !== JSON.stringify(payrollData.employees)) {
+    throw new Error("Οι τιμές άλλαξαν κατά την εξαγωγή. Δοκιμάστε ξανά.");
+  }
+  for (const row of payrollData.employees) {
+    row.apd = data.employees.find((item) => item.employee_afm === row.employee_afm)?.apd;
+  }
+  payrollData.apd_xml = data.apd_xml;
 }

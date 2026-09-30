@@ -545,7 +545,7 @@ def test_build_payroll_report_sums_employees():
     assert report["grand_fmy"] == 25.33
     assert report["grand_net"] == 771.67
     assert report["grand_bonuses"] == 0.0
-    assert report["calculation_version"] == "payroll-v5-bonuses"
+    assert report["calculation_version"] == "payroll-v8-contract-segments"
 
 
 def test_annual_income_tax_matches_2026_example():
@@ -685,11 +685,20 @@ def test_december_pays_full_christmas_bonus_with_leave_coeff():
     assert row["fmy"] < 400
 
 
+def _declared_schedule(year, month, six_day=False):
+    from calendar import monthrange
+    return [{"work_date": date(year, month, day).isoformat(),
+             "hour_from": "09:00", "hour_to": "15:40" if six_day else "17:00"}
+            for day in range(1, monthrange(year, month)[1] + 1)
+            if date(year, month, day).weekday() < (6 if six_day else 5)]
+
+
 def test_christmas_prorates_for_short_employment():
     row = payroll_for_employee(
         employee=_salary_employee(),
         contract=_salary_contract(hire_date="2026-12-13"),
         params=default_parameter_map(),
+        schedule_rows=_declared_schedule(2026,12),
         period_type="month",
         period_from=date(2026, 12, 1),
         period_to=date(2026, 12, 31),
@@ -984,3 +993,48 @@ def test_apd_preview_ready_when_ids_present():
     assert 'AMKA="15039012345"' in apd["xml"]
     assert report["apd_xml"].startswith("<?xml")
     assert 'AME="1234567890"' in report["apd_xml"]
+
+
+def test_partial_month_salary_uses_pay_days_and_preserves_full_bonus_base():
+    contract = _salary_contract(hire_date="2026-12-21")
+    row = payroll_for_employee(employee=_salary_employee(), contract=contract,
+        params=default_parameter_map(), period_from=date(2026, 12, 1), period_to=date(2026, 12, 31),
+        schedule_rows=_declared_schedule(2026,12))
+    # Nine Mon-Fri days, including paid holidays: 9 * 6/5 = 10.8 twenty-fifths.
+    assert row["salary_payable_days"] == 10.8
+    assert row["period_salary"] == 432
+    assert row["salary_full_period"] == 1000
+    assert row["bonuses_total"] > 0
+    from app.payroll import seasonal_bonus_lines_for
+    bonus = seasonal_bonus_lines_for(contract=contract, params=default_parameter_map(),
+        period_type="month", period_from=date(2026,12,1), period_to=date(2026,12,31),
+        hourly=Decimal(str(row["hourly_wage"])), period_salary=Decimal(1000),
+        allowances=Decimal(0), warnings=[])
+    assert row["bonuses_total"] == sum(item["amount"] for item in bonus)
+
+
+def test_salary_departure_fixed_end_and_no_overlap():
+    from app.payroll import period_salary_amount
+    params = default_parameter_map()
+    def amount(**extra):
+        return period_salary_amount(_salary_contract(**extra), params, period_type="month",
+            period_from=date(2026,9,1), period_to=date(2026,9,30),
+            schedule_rows=_declared_schedule(2026,9,six_day=extra.get("weekly_work_days")=="6"))
+    assert amount(departure_date="2026-09-10") == Decimal("384.00")
+    assert amount(fixed_term_to="2026-09-10", departure_date="2026-09-20") == Decimal("384.00")
+    assert amount(hire_date="2026-10-01") == 0
+    assert amount(departure_date="2026-08-31") == 0
+    assert amount(hire_date="2026-09-20", weekly_work_days="6") == Decimal("360.00")
+    assert amount(hire_date="2026-09-01") == 1000
+
+
+def test_full_february_salary_not_reduced_and_worker_unchanged():
+    from app.payroll import period_salary_amount
+    for year in (2024, 2026):
+        import calendar
+        assert period_salary_amount(_salary_contract(hire_date=f"{year}-02-01"),
+            default_parameter_map(), period_type="month", period_from=date(year,2,1),
+            period_to=date(year,2,calendar.monthrange(year,2)[1])) == 1000
+    assert period_salary_amount(_salary_contract(characterization="0"),
+        default_parameter_map(), period_type="month", period_from=date(2026,9,1),
+        period_to=date(2026,9,30)) == 0

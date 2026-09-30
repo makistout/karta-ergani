@@ -19,8 +19,10 @@ from app.payroll import (
     payroll_afm_key,
 )
 from app.payroll_export import build_payroll_export_xlsx
-from app.repo_employment_contract import list_current_for_store
+from app.payroll_adjustments import apply_payroll_adjustments
+from app.repo_employment_contract import list_current_for_store, list_history_for_store
 from app.repo_entities import list_employees_for_employer
+from app.repo_schedule import list_schedule_for_range
 from app import repo_store
 from app.repo_payroll import (
     DB_SETUP,
@@ -165,6 +167,8 @@ def _contracts_by_afm(ctx: dict[str, Any]) -> dict[str, dict]:
 
 
 def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    if "adjustments" in body and body.get("store_id") != int(ctx["id"]):
+        raise ValueError("Το ενεργό κατάστημα άλλαξε. Ανανεώστε τη μισθοδοσία")
     if body.get("year") is not None or body.get("month") is not None:
         year = int(body.get("year") or 0)
         month = int(body.get("month") or 0)
@@ -197,10 +201,31 @@ def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[s
         period_to = week_from + timedelta(days=6)
         filename_tag = f"week_{week_from.isoformat().replace('-', '')}"
     params = load_resolved(store_id=int(ctx["id"]), as_of=as_of)
+    history = list_history_for_store(str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0"), limit=50000)
+    if len(history) >= 50000:
+        raise ValueError("Το ιστορικό συμβάσεων υπερβαίνει το όριο ανάγνωσης μισθοδοσίας")
+    schedule_rows = None
+    if period_type in ("month", "week"):
+        dates = [(period_from + timedelta(days=i)).strftime("%d/%m/%Y")
+                 for i in range((period_to - period_from).days + 1)]
+        employer, branch = str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0")
+        schedule_rows = list_schedule_for_range(employer, branch, dates, limit=20000)
+        if len(schedule_rows) >= 20000:
+            # Do not silently prorate using a truncated result.
+            schedule_rows = []
+            for work_date in dates:
+                rows = list_schedule_for_range(employer, branch, [work_date], limit=20000)
+                if len(rows) >= 20000:
+                    raise ValueError("Το δηλωμένο πρόγραμμα υπερβαίνει το όριο ανάγνωσης μισθοδοσίας")
+                schedule_rows.extend(rows)
     payroll = build_payroll_report(
         result, _contracts_by_afm(ctx), params, period_type=period_type,
         period_from=period_from, period_to=period_to,
+        schedule_rows=schedule_rows,
+        contract_history=history,
     )
+    if "adjustments" in body:
+        payroll = apply_payroll_adjustments(payroll, body["adjustments"])
     employees_by_afm = {
         payroll_afm_key(emp.get("afm")): emp
         for emp in list_employees_for_employer(
@@ -274,6 +299,8 @@ def payroll_export():
     period_from = built["period_from"]
     period_to = built["period_to"]
     payroll = built["payroll"]
+    if body.get("format") == "apd-preview":
+        return jsonify({"employees": payroll["employees"], "apd_xml": payroll["apd_xml"]})
     content = build_payroll_export_xlsx(
         report=payroll,
         store={

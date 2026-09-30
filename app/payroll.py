@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
 
 from app.employment_contract_parse import map_marital_status
+from app.payroll_schedule import scheduled_salary_units
 from app.web_ma_payload import (
     _eu_float,
     epikourikiki_codes_from_data,
@@ -1099,6 +1100,9 @@ def period_salary_amount(
     params: dict[str, str],
     *,
     period_type: str,
+    period_from: date | None = None,
+    period_to: date | None = None,
+    schedule_rows: list[dict[str, Any]] | None = None,
 ) -> Decimal:
     if _is_worker(contract):
         return money(0)
@@ -1106,11 +1110,40 @@ def period_salary_amount(
     if not salary or salary <= 0:
         return money(0)
     if period_type == "month":
-        return money(salary)
+        details = salary_period_details(contract, period_from, period_to, schedule_rows)
+        return money(Decimal(str(salary)) * Decimal(str(details["salary_payable_days"])) / Decimal(25))
     factor = param_number(params, "month_factor_employee")
     if factor <= 0:
         return money(0)
     return money(Decimal(str(salary)) / factor)
+
+
+def salary_period_details(contract, period_from, period_to, schedule_rows=None):
+    """25ths from declared hours, including weekends; never assume weekdays."""
+    result = {"salary_payable_days": 25.0, "salary_unpaid_days": 0.0,
+              "salary_prorated": False, "salary_days_basis": "Πλήρης μήνας: 25/25"}
+    if period_from is None or period_to is None:
+        return result
+    hire = _as_contract_date((contract or {}).get("hire_date"))
+    ends = [_as_contract_date((contract or {}).get(key)) for key in ("departure_date", "fixed_term_to")]
+    departure = min((value for value in ends if value is not None), default=None)
+    start = max(period_from, hire) if hire else period_from
+    end = min(period_to, departure) if departure else period_to
+    if start == period_from and end == period_to:
+        return result
+    if end < start:
+        result.update(salary_payable_days=0.0, salary_prorated=True,
+                      salary_days_basis="Εκτός σχέσης εργασίας: 0/25")
+        return result
+    try:
+        payable, minutes, dates = scheduled_salary_units(schedule_rows, start, end, _weekly_hours(contract))
+    except ValueError as exc:
+        name = " ".join(str((contract or {}).get(key) or "") for key in ("eponymo", "onoma")).strip()
+        raise ValueError(f"{name or 'Εργαζόμενος'}: {exc}") from exc
+    result.update(salary_payable_days=float(payable), salary_prorated=True,
+                  salary_schedule_dates=dates, salary_schedule_minutes=float(minutes),
+                  salary_days_basis=f"Δηλωμένο πρόγραμμα: {_fmt_hours(minutes / 60)} ώρες × 6/{_fmt_factor(_weekly_hours(contract))} = {_fmt_factor(payable)} μονάδες μισθού /25")
+    return result
 
 
 def _dec(value: Any) -> Decimal:
@@ -2154,6 +2187,9 @@ def payroll_for_employee(
     period_type: str = "month",
     period_from: date | None = None,
     period_to: date | None = None,
+    schedule_rows: list[dict[str, Any]] | None = None,
+    salary_override: Decimal | None = None,
+    include_bonuses: bool = True,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     hourly, wage_warnings = hourly_from_contract(contract, params)
@@ -2221,7 +2257,12 @@ def payroll_for_employee(
             pay_hour=True,
         ))
 
-    period_salary = period_salary_amount(contract, params, period_type=period_type)
+    full_period_salary = period_salary_amount(contract, params, period_type=period_type)
+    period_salary = salary_override if salary_override is not None else period_salary_amount(
+        contract, params, period_type=period_type, period_from=period_from, period_to=period_to,
+        schedule_rows=schedule_rows,
+    )
+    salary_details = salary_period_details(contract, period_from, period_to, schedule_rows) if salary_override is None and period_type == "month" and not pay_base_hours else {}
     base_pay = money(sum(
         (Decimal(str(line["amount"])) for line in lines if line["family"] == "Βάση"),
         Decimal("0"),
@@ -2229,7 +2270,7 @@ def payroll_for_employee(
     children = children_count_from_contract(contract)
     marital = marital_code_from_contract(contract)
     prior_years = prior_service_years_from_contract(contract)
-    allowance_base = period_salary if period_salary > 0 else base_pay
+    allowance_base = (period_salary if not pay_base_hours else base_pay)
     lines.extend(allowance_lines_for(
         base=allowance_base,
         children=children,
@@ -2248,10 +2289,13 @@ def payroll_for_employee(
         period_from=period_from,
         period_to=period_to,
         hourly=hourly,
-        period_salary=period_salary,
-        allowances=allowances_now,
+        period_salary=full_period_salary,
+        allowances=money(sum((Decimal(str(line["amount"])) for line in allowance_lines_for(
+            base=full_period_salary, children=children, marital_code=marital,
+            prior_years=prior_years, params=params,
+        )), Decimal(0))) if not pay_base_hours else allowances_now,
         warnings=warnings,
-    ))
+    ) if include_bonuses else [])
     if not contract:
         warnings.append("Δεν βρέθηκε τρέχουσα σύμβαση")
     return recalculate_employee_row({
@@ -2264,6 +2308,8 @@ def payroll_for_employee(
         "hourly_wage": float(hourly),
         "legal_hourly": float(zone_hourly),
         "period_salary": float(period_salary),
+        "salary_full_period": float(full_period_salary),
+        **salary_details,
         "zone_premiums": float(base_pay) if not pay_base_hours else float(
             money(sum(
                 (
@@ -2301,20 +2347,28 @@ def build_payroll_report(
     period_type: str = "month",
     period_from: date | None = None,
     period_to: date | None = None,
+    schedule_rows: list[dict[str, Any]] | None = None,
+    contract_history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    from app.payroll_contracts import contract_segments, segmented_payroll
+    histories, days = {}, {}
+    for row in contract_history or []:
+        histories.setdefault(payroll_afm_key(row.get("employee_afm")), []).append(row)
+    for row in timekeeping.get("days") or []:
+        days.setdefault(payroll_afm_key(row.get("employee_afm")), []).append(row)
+    schedules = {}
+    for row in schedule_rows or []:
+        schedules.setdefault(payroll_afm_key(row.get("employee_afm")), []).append(row)
     employees = []
     for item in timekeeping.get("employees") or []:
         afm = payroll_afm_key(item.get("employee_afm"))
-        employees.append(payroll_for_employee(
-            employee=item,
-            contract=contracts_by_afm.get(afm) or contracts_by_afm.get(
-                str(item.get("employee_afm") or "")
-            ),
-            params=params,
-            period_type=period_type,
-            period_from=period_from,
-            period_to=period_to,
-        ))
+        contract = contracts_by_afm.get(afm) or contracts_by_afm.get(str(item.get("employee_afm") or ""))
+        try:
+            segments = contract_segments(histories.get(afm), contract, period_from, period_to)
+            employees.append(segmented_payroll(item, segments, days.get(afm), schedules.get(afm),
+                params, period_type, period_from, period_to))
+        except ValueError as ex:
+            raise ValueError(f"{item.get('eponymo') or ''} {item.get('onoma') or ''} ({afm}): {ex}") from ex
     grand = money(sum((Decimal(str(row["total"])) for row in employees), Decimal("0")))
     grand_efka = money(sum((Decimal(str(row.get("efka_employee") or 0)) for row in employees), Decimal("0")))
     grand_after = money(sum((Decimal(str(row.get("after_efka") or 0)) for row in employees), Decimal("0")))
@@ -2323,7 +2377,7 @@ def build_payroll_report(
     grand_net = money(sum((Decimal(str(row.get("net") or 0)) for row in employees), Decimal("0")))
     grand_bonuses = money(sum((Decimal(str(row.get("bonuses_total") or 0)) for row in employees), Decimal("0")))
     return {
-        "calculation_version": "payroll-v5-bonuses",
+        "calculation_version": "payroll-v8-contract-segments",
         "period_type": period_type,
         "period_from": period_from.isoformat() if period_from else None,
         "period_to": period_to.isoformat() if period_to else None,

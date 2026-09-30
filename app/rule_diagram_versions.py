@@ -12,6 +12,10 @@ SOURCE_FILES = (
     'app/routes_apologistic.py', 'app/apologistic_submit.py',
     'app/apologistic_batch_submit.py', 'app/timekeeping_export.py',
     'app/repo_work_log.py',
+    'app/payroll.py', 'app/payroll_adjustments.py', 'app/routes_payroll.py',
+    'app/payroll_schedule.py', 'app/repo_schedule.py',
+    'app/payroll_contracts.py', 'app/repo_employment_contract.py',
+    'app/payroll_export.py', 'app/static/js/apologistic-timekeeping.js',
 )
 DOCUMENT_FILES = (
     'docs/APOLOGISTIKO_RULES_CATALOG.md', 'docs/APOLOGISTIKO_LOGIC.md',
