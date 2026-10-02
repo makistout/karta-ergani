@@ -924,11 +924,58 @@ def default_parameter_map() -> dict[str, str]:
     return {str(item["code"]): str(item["default"]) for item in PARAMETER_CATALOG}
 
 
+MISSING_CONTRACT_WAGE_WARNING = "Λείπει ωρομίσθιο ή μεικτές/εβδ. ώρες στη σύμβαση"
+
+
 def payroll_afm_key(value: Any) -> str:
     digits = "".join(ch for ch in str(value or "") if ch.isdigit())
     if not digits:
         return ""
     return digits[:9].zfill(9)
+
+
+def payroll_employee_display_name(row: dict[str, Any] | None) -> str:
+    data = row or {}
+    eponymo = str(data.get("eponymo") or "").strip()
+    onoma = str(data.get("onoma") or "").strip()
+    full = f"{eponymo} {onoma}".strip()
+    if full:
+        return full
+    named = str(data.get("name") or "").strip()
+    if named:
+        return named
+    afm = payroll_afm_key(data.get("employee_afm") or data.get("afm"))
+    return f"ΑΦΜ {afm}" if afm else "τον εργαζόμενο"
+
+
+def missing_wage_wait_message(name: str, *, step: int, total: int) -> str:
+    label = (name or "").strip() or "τον εργαζόμενο"
+    return (
+        f"Δεν έχουμε στοιχεία για {label}. "
+        f"Τα ενημερώνουμε από το Μητρώο Εργάνη… Παρακαλώ περιμένετε. "
+        f"({step}/{total})"
+    )
+
+
+def missing_contract_wage_employees(payroll: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Εργαζόμενοι μισθοδοσίας χωρίς ωρομίσθιο / μισθό / εβδ. ώρες στη σύμβαση."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in (payroll or {}).get("employees") or []:
+        warnings = row.get("warnings") or []
+        if MISSING_CONTRACT_WAGE_WARNING not in warnings:
+            continue
+        afm = payroll_afm_key(row.get("employee_afm"))
+        if not afm or afm in seen:
+            continue
+        seen.add(afm)
+        out.append({
+            "employee_afm": afm,
+            "eponymo": str(row.get("eponymo") or "").strip(),
+            "onoma": str(row.get("onoma") or "").strip(),
+            "name": payroll_employee_display_name(row),
+        })
+    return out
 
 
 def _as_date(value: Any) -> date | None:
@@ -1068,7 +1115,7 @@ def hourly_from_contract(
     salary = _eu_float((contract or {}).get("salary"))
     weekly = _weekly_hours(contract)
     if not salary or salary <= 0 or weekly is None:
-        warnings.append("Λείπει ωρομίσθιο ή μεικτές/εβδ. ώρες στη σύμβαση")
+        warnings.append(MISSING_CONTRACT_WAGE_WARNING)
         return None, warnings
     factor_code = "month_factor_worker" if _is_worker(contract) else "month_factor_employee"
     factor = param_number(params, factor_code)

@@ -77,6 +77,8 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
     (`scheduled_recent_work_log_sync`, προεπιλογή `03:00`)
   - νυχτερινό sync πρωτοκόλλων Ergani + 1-1 απαγωγή για χθες
     (`scheduled_nightly_protocol_sync`, προεπιλογή `03:00`, μετά το 30ήμερο πραγματικής)
+  - ημερήσιο sync δυναμικού ενεργών/ανενεργών (EX_BASE_05)
+    (`scheduled_employee_roster_sync`, προεπιλογή `04:00`)
   - ημερήσιο sync στοιχείων σύμβασης από Μητρώα
     (`scheduled_employment_contract_sync`, προεπιλογή `04:00`)
   - κυριακάτικο `90ήμερο` repair sync πραγματικής
@@ -92,6 +94,9 @@ Unit tests, όταν είναι εγκατεστημένο το `pytest`:
     `KARTA_SCHEDULED_ORPHAN_PUNCH_NOTIFY_TIME`· περιλαμβάνει εξόδους μετά
     τα μεσάνυχτα που ανήκουν στη χθεσινή βάρδια· reply «κλείσε» κλείνει
     με ώρα ωραρίου εκείνης της ημέρας)
+  - μηνιαίο digest ορφανών την **1η στις 10:00** για όσους έχουν 3+ εκκρεμή
+    στον μήνα που πέρασε (`scheduled_orphan_punch_monthly_notify`· env
+    `KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_*`)
 - Post-sync `late_check_in`: το skip σε αβέβαιο κενό Excel
   (`work_log_empty_uncertain`) είναι **απενεργοποιημένο** μέχρι νεωτέρας
   (`SKIP_LATE_CHECK_IN_ON_EMPTY_UNCERTAIN=OFF` στο

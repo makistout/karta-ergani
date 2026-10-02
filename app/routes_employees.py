@@ -14,10 +14,12 @@ from app.http_helpers import resolve_active_store
 from app.portal_employment_contract_sync import iter_employment_contract_sync_events
 from app.repo_employment_contract import (
     employment_contract_table_missing_message,
+    latest_for_employer_employee,
     list_current_for_store,
     list_history_for_employee,
 )
 from app.repo_entities import (
+    get_employee_row_by_afm,
     list_employees_for_employer, update_employment_dates,
     update_employment_catering_override,
     get_employment_work_time_qr,
@@ -72,6 +74,17 @@ def _resolve_employees_stats_month(
     last_day = calendar.monthrange(selected.year, selected.month)[1]
     as_of = min(as_today, date(selected.year, selected.month, last_day))
     return selected.year, selected.month, as_of
+
+
+def _resolve_leave_display_month(*, today: date | None = None) -> tuple[int, int, date]:
+    """Άδεια από το μηνιαίο αρχείο: τρέχων − 2. Ιαν/Φεβ → Οκτώβριος προηγούμενου."""
+    as_today = today or date.today()
+    if as_today.month <= 2:
+        selected = date(as_today.year - 1, 10, 1)
+    else:
+        selected = _shift_month_start(date(as_today.year, as_today.month, 1), -2)
+    last_day = calendar.monthrange(selected.year, selected.month)[1]
+    return selected.year, selected.month, date(selected.year, selected.month, last_day)
 
 
 def _specialty_label(contract: dict | None) -> str:
@@ -376,13 +389,15 @@ def employees_list():
         norm_afm(str(row.get("afm") or "")) for row in rows
         if norm_afm(str(row.get("afm") or ""))
     ]
+    leave_year, leave_month, leave_as_of = _resolve_leave_display_month()
     try:
         normal_leave = load_current_year_normal_leave(
-            store_id=int(ctx["id"]), employee_afms=employee_afms, today=stats_as_of,
+            store_id=int(ctx["id"]), employee_afms=employee_afms, today=leave_as_of,
         )
     except pyodbc.Error:
         normal_leave = {}
     month_label = f"{stats_month:02d}/{stats_year}"
+    leave_label = f"{leave_month:02d}/{leave_year}"
     for row in rows:
         afm = norm_afm(str(row.get("afm") or ""))
         contract = contracts_by_afm.get(afm)
@@ -410,7 +425,7 @@ def employees_list():
         "year": stats_year,
         "month": stats_month,
         "open_punches_month_label": month_label,
-        "normal_leave_latest_month": month_label,
+        "normal_leave_latest_month": leave_label,
         "hint": (
             "Οι εργαζόμενοι συνδέονται με εργοδότη μέσω karta_employment "
             "(όχι απευθείας στο karta_employee). Η λίστα φιλτράρεται από το ενεργό σημείο."
@@ -1040,6 +1055,73 @@ def employee_specialty_catalog():
     })
 
 
+def _load_local_hire_history(ctx: dict[str, Any], employee_afm: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    try:
+        contract = latest_for_employer_employee(str(ctx["employer_afm"]), employee_afm)
+    except pyodbc.Error:
+        contract = None
+    if contract:
+        out.update(contract)
+    emp = get_employee_row_by_afm(employee_afm)
+    if emp:
+        for key, src in (
+            ("eponymo", "eponymo"),
+            ("onoma", "onoma"),
+            ("amka", "amka"),
+            ("amika", "amika"),
+            ("flex_arrival_minutes", "flex_arrival_minutes"),
+        ):
+            if not str(out.get(key) or "").strip() and emp.get(src):
+                out[key] = emp.get(src)
+    return out
+
+
+def _fetch_portal_hire_personal(
+    ctx: dict[str, Any], employee_afm: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        from app.portal_employment_contract_sync import fetch_registry_detail_by_afm
+
+        row = fetch_registry_detail_by_afm(ctx, employee_afm)
+        return row, None
+    except Exception as ex:  # noqa: BLE001
+        return None, str(ex) or ex.__class__.__name__
+
+
+def _collect_hire_lookup(
+    ctx: dict[str, Any],
+    employee_afm: str,
+) -> tuple[dict[str, Any], list[str], str | None]:
+    """Τοπικό αρχείο + Μητρώο portal + EX_BASE_05. Το Εργάνη υπερισχύει."""
+    merged: dict[str, Any] = {"employee_afm": employee_afm}
+    sources: list[str] = []
+    errors: list[str] = []
+    local = _load_local_hire_history(ctx, employee_afm)
+    if local.get("eponymo") or local.get("onoma") or local.get("salary"):
+        merged = _merge_nonempty(merged, local)
+        sources.append("local")
+    portal, portal_err = _fetch_portal_hire_personal(ctx, employee_afm)
+    if portal:
+        for key, value in portal.items():
+            if value is None or str(value).strip() == "":
+                continue
+            merged[key] = value
+        sources.append("portal")
+    elif portal_err:
+        errors.append(portal_err)
+    personal, ex_err = _fetch_ex_base_05_personal(ctx, employee_afm)
+    if personal:
+        for key, value in personal.items():
+            if value is None or str(value).strip() == "":
+                continue
+            merged[key] = value
+        sources.append("ex_base_05")
+    elif ex_err and "δεν βρέθηκε" not in str(ex_err).lower():
+        errors.append(ex_err)
+    return merged, sources, ("; ".join(errors) if errors else None)
+
+
 @employees_bp.get("/hire/draft")
 def employee_hire_draft():
     """Κενή/προεπιλεγμένη φόρμα πρόσληψης (WebE3N) για το ενεργό κατάστημα."""
@@ -1062,6 +1144,49 @@ def employee_hire_draft():
         "available": True,
         "submission_code": draft.get("submission_code"),
     })
+
+
+@employees_bp.get("/hire/lookup")
+def employee_hire_lookup():
+    """Αυτόματη συμπλήρωση πρόσληψης από Εργάνη / προηγούμενη απασχόληση."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    employee_afm = norm_afm(
+        request.args.get("employee_afm") or request.args.get("afm") or ""
+    )
+    if len(employee_afm) != 9:
+        return jsonify({"error": "Συμπληρώστε έγκυρο ΑΦΜ (9 ψηφία)"}), 400
+
+    from app.web_e3n_payload import BASICS_ACCEPTANCE_HIRE, apply_lookup_to_hire_draft, empty_hire_draft
+
+    merged, sources, err = _collect_hire_lookup(ctx, employee_afm)
+    draft = apply_lookup_to_hire_draft(
+        empty_hire_draft(branch_aa=str(ctx.get("branch_aa") or "0")),
+        merged,
+    )
+    draft["employee_afm"] = employee_afm
+    found = any(
+        str(draft.get(key) or "").strip()
+        for key in ("eponymo", "onoma", "amka", "ar_taytothtas", "salary", "specialty")
+    )
+    ergani = "portal" in sources or "ex_base_05" in sources
+    if found and ergani:
+        message = "Συμπληρώθηκαν τα στοιχεία από το Εργάνη (προηγούμενη απασχόληση)."
+    elif found:
+        message = "Συμπληρώθηκαν από προηγούμενη απασχόληση στο αρχείο."
+    else:
+        message = "Δεν βρέθηκε προηγούμενη απασχόληση για αυτό το ΑΦΜ."
+    payload = {
+        "found": found,
+        "draft": draft,
+        "sources": sources,
+        "message": message,
+        "basics_acceptance_catalog": BASICS_ACCEPTANCE_HIRE,
+    }
+    if err and not found:
+        payload["error"] = err
+    return jsonify(payload)
 
 
 @employees_bp.post("/hire/submit")

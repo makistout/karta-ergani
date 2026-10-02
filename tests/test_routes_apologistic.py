@@ -190,9 +190,90 @@ def test_timekeeping_month_skips_current_incomplete_week(monkeypatch):
     assert result["counts"]["days"] >= 1
 
 
+def test_timekeeping_week_preview_scopes_review_to_employee(monkeypatch):
+    days = [
+        {
+            "employee_afm": "123456789", "work_date": "03/08/2026", "status": "ok",
+            "declared": "09:00–17:00", "punch_count": 2, "overtime_minutes": 60,
+        },
+        {
+            "employee_afm": "987654321", "work_date": "03/08/2026", "status": "review",
+            "declared": "09:00–17:00", "punch_count": 2,
+        },
+    ]
+    monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
+    monkeypatch.setattr(routes_apologistic, "load_report", lambda *_: (
+        {"days": days}, {"id": 7, "status": "draft"},
+    ))
+    blocked = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview", json={"week_from": "2026-08-03"},
+    )
+    assert blocked.status_code == 409
+    monkeypatch.setattr(routes_apologistic, "load_annual_overtime_context", lambda **_: {})
+    monkeypatch.setattr(routes_apologistic, "get_effective_holidays_for_store", lambda *_: set())
+    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
+    monkeypatch.setattr(routes_apologistic, "_next_week_rest_context", lambda *_: {})
+    response = _app().test_client().post(
+        "/api/apologistic/timekeeping/preview",
+        json={"week_from": "2026-08-03", "employee_afm": "123456789"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["employee_afm"] == "123456789"
+    assert {row["employee_afm"] for row in body.get("employees") or []} <= {"123456789"}
+    assert {row["employee_afm"] for row in body.get("days") or []} <= {"123456789"}
+
+
+def test_timekeeping_month_scopes_review_and_output_to_employee(monkeypatch):
+    target = "123456789"
+    other = "987654321"
+    month_days = [
+        {"week_from": "2026-08-03", "employee_afm": target, "work_date": "2026-08-03", "status": "ok"},
+        {"week_from": "2026-08-03", "employee_afm": other, "work_date": "2026-08-03", "status": "review"},
+    ]
+    captured = {}
+
+    def fake_build(rows, **_kwargs):
+        captured["afms"] = sorted({str(row.get("employee_afm") or "") for row in rows})
+        return {
+            "days": [{
+                "work_date": "03/08/2026",
+                "employee_afm": target,
+                "recognized_work_minutes": 480,
+            }],
+            "employees": [{"employee_afm": target, "annual_legal_overtime_minutes_after_period": 0}],
+        }
+
+    monkeypatch.setattr(routes_apologistic, "previous_week", lambda: (date(2026, 8, 3), date(2026, 8, 9)))
+    monkeypatch.setattr(routes_apologistic, "list_store_days", lambda **_kwargs: month_days)
+    monkeypatch.setattr(
+        routes_apologistic, "load_report",
+        lambda *_: ({"days": month_days}, {"id": 1, "status": "draft"}),
+    )
+    monkeypatch.setattr(routes_apologistic, "load_annual_overtime_context", lambda **_kwargs: {})
+    monkeypatch.setattr(routes_apologistic, "get_effective_holidays_for_store", lambda *_: set())
+    monkeypatch.setattr(routes_apologistic, "get_sunday_rest_transfer_enabled", lambda *_: False)
+    monkeypatch.setattr(routes_apologistic, "build_timekeeping_report", fake_build)
+    monkeypatch.setattr(routes_apologistic, "_next_week_rest_context", lambda *_args, **_kwargs: {})
+
+    try:
+        routes_apologistic._build_timekeeping_for_month(_store(), year=2026, month=8)
+    except routes_apologistic.TimekeepingPeriodError:
+        pass
+    else:
+        raise AssertionError("store-wide month timekeeping must block on other employee's review")
+
+    result, _, _ = routes_apologistic._build_timekeeping_for_month(
+        _store(), year=2026, month=8, employee_afm=target,
+    )
+    assert captured["afms"] == [target]
+    assert result["counts"]["employees"] == 1
+    assert result["employees"][0]["employee_afm"] == target
+
+
 def test_timekeeping_export_returns_xlsx(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
-    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_: ({
+    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_args, **_kwargs: ({
         "calculation_version": "timekeeping-v1", "employees": [], "days": [],
     }, {"id": 7}, {}))
     monkeypatch.setattr(routes_apologistic, "build_timekeeping_export_xlsx", lambda **kwargs: b"xlsx-bytes")
@@ -220,7 +301,7 @@ def test_timekeeping_month_export_returns_xlsx(monkeypatch):
 
 def test_timekeeping_detailed_export_returns_second_xlsx(monkeypatch):
     monkeypatch.setattr(routes_apologistic, "resolve_active_store", _store)
-    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_: ({
+    monkeypatch.setattr(routes_apologistic, "_build_timekeeping_for_week", lambda *_args, **_kwargs: ({
         "calculation_version": "timekeeping-v1", "employees": [], "days": [],
     }, {"id": 7}, {}))
     monkeypatch.setattr(routes_apologistic, "build_timekeeping_detailed_export_xlsx", lambda **kwargs: b"detail-bytes")

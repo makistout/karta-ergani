@@ -4,11 +4,15 @@ from decimal import Decimal
 from app.access_control import NAV_ITEMS, permission_for_path, permissions_for_role, has_permission
 from app.payroll import (
     PARAMETER_CATALOG,
+    MISSING_CONTRACT_WAGE_WARNING,
     annual_income_tax,
     build_payroll_report,
     default_parameter_map,
     hourly_from_contract,
     legal_hourly,
+    missing_contract_wage_employees,
+    missing_wage_wait_message,
+    payroll_employee_display_name,
     payroll_for_employee,
     recalculate_employee_row,
     resolve_parameters,
@@ -1038,3 +1042,56 @@ def test_full_february_salary_not_reduced_and_worker_unchanged():
     assert period_salary_amount(_salary_contract(characterization="0"),
         default_parameter_map(), period_type="month", period_from=date(2026,9,1),
         period_to=date(2026,9,30)) == 0
+
+
+def test_missing_contract_wage_employees_from_warnings():
+    payroll = {
+        "employees": [
+            {
+                "employee_afm": "185280545",
+                "eponymo": "MOHAMMAD",
+                "onoma": "AMIN",
+                "warnings": [MISSING_CONTRACT_WAGE_WARNING],
+            },
+            {
+                "employee_afm": "164096009",
+                "eponymo": "JAUPI",
+                "onoma": "ELVIRA",
+                "warnings": [],
+            },
+        ]
+    }
+    missing = missing_contract_wage_employees(payroll)
+    assert [row["employee_afm"] for row in missing] == ["185280545"]
+    assert missing[0]["name"] == "MOHAMMAD AMIN"
+    assert "MOHAMMAD AMIN" in missing_wage_wait_message(
+        payroll_employee_display_name(missing[0]), step=1, total=2
+    )
+
+
+def test_empty_contract_payroll_is_listed_for_registry_enrich():
+    employee = {
+        "employee_afm": "178756039",
+        "eponymo": "DJIBO",
+        "onoma": "DAOUDA",
+        "premium_minutes": _empty_breakdown(),
+        "overwork_breakdown": _empty_breakdown(),
+        "overtime_40_breakdown": _empty_breakdown(),
+        "overtime_60_breakdown": _empty_breakdown(),
+        "overtime_120_breakdown": _empty_breakdown(),
+        "partial_additional_12_breakdown": _empty_breakdown(),
+        "sixth_day_breakdown": _empty_breakdown(),
+        "sixth_day_above_48_breakdown": _empty_breakdown(),
+        "exception_sixth_day_above_48_breakdown": _empty_breakdown(),
+    }
+    row = payroll_for_employee(
+        employee=employee,
+        contract={"characterization": "ΥΠΑΛΛΗΛΟΣ"},
+        params=default_parameter_map(),
+        period_type="month",
+    )
+    assert MISSING_CONTRACT_WAGE_WARNING in row["warnings"]
+    assert row["total"] == 0
+    missing = missing_contract_wage_employees({"employees": [row]})
+    assert missing[0]["employee_afm"] == "178756039"
+    assert missing[0]["name"] == "DJIBO DAOUDA"

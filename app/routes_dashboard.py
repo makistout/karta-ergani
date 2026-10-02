@@ -126,7 +126,7 @@ def card_report():
             row.setdefault("today_notify_snoozed", False)
             row.setdefault("wto_notify_snoozed", False)
 
-    # Προειδοποιήσεις παραβάσεων σύμβασης: μόνο λογιστής / super admin.
+    # Προειδοποιήσεις παραβάσεων σύμβασης: λογιστής, super admin, office manager.
     show_contract_alerts = has_permission("alerts.contract.view")
     if show_contract_alerts:
         try:

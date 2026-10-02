@@ -18,9 +18,19 @@ function fillSelectOptions(selectEl, items) {
 }
 
 function greekDateToIso(text) {
-  const parts = String(text || "").trim().split("/");
+  const raw = String(text || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const parts = raw.split("/");
   if (parts.length !== 3) return "";
   return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+}
+
+function setHireField(id, value) {
+  const el = document.getElementById(id);
+  if (!el || value == null) return;
+  const text = String(value).trim();
+  if (!text) return;
+  el.value = text;
 }
 
 function readFileAsBase64(file) {
@@ -58,7 +68,7 @@ async function setupHireForm() {
   const desc = document.getElementById("hireDesc");
   if (!form) return;
 
-  Office.attachGreekDateField({
+  const birthPicker = Office.attachGreekDateField({
     inputEl: document.getElementById("hireBirthdate"),
     allowEmpty: false,
   });
@@ -66,11 +76,11 @@ async function setupHireForm() {
     inputEl: document.getElementById("hireDate"),
     allowEmpty: false,
   });
-  Office.attachGreekDateField({
+  const fixedFromPicker = Office.attachGreekDateField({
     inputEl: document.getElementById("hireFixedFrom"),
     allowEmpty: true,
   });
-  Office.attachGreekDateField({
+  const fixedToPicker = Office.attachGreekDateField({
     inputEl: document.getElementById("hireFixedTo"),
     allowEmpty: true,
   });
@@ -199,6 +209,129 @@ async function setupHireForm() {
         el.addEventListener("focus", clearHireSpecialtyFields);
       });
     }
+
+    function applyHireLookupDraft(draft) {
+      if (!draft) return;
+      setHireField("hireEponymo", draft.eponymo);
+      setHireField("hireOnoma", draft.onoma);
+      setHireField("hireFather", draft.onoma_patros);
+      setHireField("hireMother", draft.onoma_mitros);
+      const birthIso = greekDateToIso(draft.birthdate);
+      if (birthIso) birthPicker?.setIso(birthIso, true);
+      setHireField("hireSex", draft.sex);
+      setHireField("hireAmka", draft.amka);
+      setHireField("hireAmika", draft.amika);
+      setHireField("hireIdType", draft.typos_taytothtas);
+      setHireField("hireIdNo", draft.ar_taytothtas);
+      setHireField("hireSalary", draft.salary);
+      setHireField("hireHourly", draft.hourly_wage);
+      setHireField("hireWeeklyHours", draft.weekly_hours);
+      setHireField("hireFulltimeHours", draft.fulltime_contract_weekly_hours);
+      setHireField("hireWeekDays", draft.weekly_work_days);
+      setHireField("hireRegime", draft.regime);
+      setHireField("hireRelation", draft.employment_relation);
+      setHireField("hireCharacterization", draft.characterization);
+      const fixedFromIso = greekDateToIso(draft.fixed_term_from);
+      if (fixedFromIso) fixedFromPicker?.setIso(fixedFromIso, true);
+      const fixedToIso = greekDateToIso(draft.fixed_term_to);
+      if (fixedToIso) fixedToPicker?.setIso(fixedToIso, true);
+      setHireField("hireBreakMinutes", draft.break_minutes);
+      setHireField("hireBreakInWork", draft.break_in_work);
+      setHireField("hireFlexMinutes", draft.flex_arrival_minutes);
+      setHireField("hireDigitalOrg", draft.working_time_digital_organization);
+      setHireField("hireWorkingCard", draft.working_card);
+      setHireField("hireTrialPeriod", draft.trial_period);
+      const code = String(draft.specialty_code || "").trim();
+      const spec = String(draft.specialty || "").trim();
+      if (code || spec) {
+        const codeEl = document.getElementById("hireSpecialtyCode");
+        const specialtyEl = document.getElementById("hireSpecialty");
+        if (codeEl && code) codeEl.value = code;
+        if (specialtyEl && spec) specialtyEl.value = spec;
+        _hireSpecialtyAc?.setValue(code, spec || code);
+        _hireSpecialtyAnalAc?.setValue(spec || code, spec || code);
+      }
+    }
+
+    const afmEl = document.getElementById("hireAfm");
+    const lookupModal = document.getElementById("hireLookupModal");
+    const lookupTitle = document.getElementById("hireLookupTitle");
+    const lookupMsg = document.getElementById("hireLookupMsg");
+    const lookupClose = document.getElementById("hireLookupClose");
+    let lastLookupAfm = "";
+    let lookupBusy = false;
+
+    function setHireLookupModal(mode, text) {
+      if (!lookupModal || !lookupMsg) return;
+      if (mode === "hide") {
+        lookupModal.classList.add("hidden");
+        lookupClose?.classList.add("hidden");
+        return;
+      }
+      const loading = mode === "loading";
+      if (lookupTitle) {
+        lookupTitle.textContent = loading ? "Ανάκτηση στοιχείων" : "Αναζήτηση ΑΦΜ";
+      }
+      lookupMsg.innerHTML = loading
+        ? `<i class="bi bi-hourglass-split hire-lookup-spin" aria-hidden="true"></i><span>${text}</span>`
+        : `<span>${text}</span>`;
+      lookupClose?.classList.toggle("hidden", loading);
+      lookupModal.classList.remove("hidden");
+    }
+    lookupClose?.addEventListener("click", () => setHireLookupModal("hide"));
+
+    async function lookupHireByAfm() {
+      const afm = String(afmEl?.value || "").replace(/\D/g, "").slice(0, 9);
+      if (afm.length !== 9) {
+        status.textContent = "Συμπληρώστε έγκυρο ΑΦΜ (9 ψηφία)";
+        return;
+      }
+      if (lookupBusy) return;
+      lookupBusy = true;
+      lastLookupAfm = afm;
+      setHireLookupModal(
+        "loading",
+        "Ο εργαζόμενος υπάρχει ήδη. Ανακτούμε τα στοιχεία του…"
+      );
+      status.textContent = "";
+      try {
+        const res = await fetch(
+          `/api/employees/hire/lookup?employee_afm=${encodeURIComponent(afm)}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          lastLookupAfm = "";
+          setHireLookupModal("error", data.error || "Αποτυχία αναζήτησης ΑΦΜ");
+          status.textContent = data.error || "Αποτυχία αναζήτησης ΑΦΜ";
+          return;
+        }
+        if (data.found) {
+          applyHireLookupDraft(data.draft || {});
+          setHireLookupModal("hide");
+          status.textContent = data.message || "Συμπληρώθηκαν τα στοιχεία.";
+        } else {
+          setHireLookupModal(
+            "error",
+            data.message || "Δεν βρέθηκε προηγούμενη απασχόληση για αυτό το ΑΦΜ."
+          );
+          status.textContent = data.message || "";
+        }
+      } catch (e) {
+        lastLookupAfm = "";
+        setHireLookupModal("error", String(e));
+        status.textContent = String(e);
+      } finally {
+        lookupBusy = false;
+      }
+    }
+    afmEl?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopPropagation();
+      lookupHireByAfm();
+    });
+
     status.textContent = "";
   } catch (e) {
     status.textContent = String(e);

@@ -27,6 +27,7 @@ OPERATION_NIGHTLY_RECENT_WORK_LOG_SYNC = "scheduled_recent_work_log_sync"
 OPERATION_NIGHTLY_PROTOCOL_SYNC = "scheduled_nightly_protocol_sync"
 OPERATION_WEEKLY_REPAIR_WORK_LOG_SYNC = "scheduled_weekly_repair_work_log_sync"
 OPERATION_EMPLOYMENT_CONTRACT_SYNC = "scheduled_employment_contract_sync"
+OPERATION_EMPLOYEE_ROSTER_SYNC = "scheduled_employee_roster_sync"
 OPERATION_EMPLOYMENT_ENRICHMENT = "opportunistic_employment_enrichment"
 OPERATION_APOLOGISTIC_SNAPSHOT = "scheduled_apologistic_snapshot"
 FUTURE_SCHEDULE_LOOKAHEAD_DAYS = 2
@@ -199,6 +200,15 @@ def _run_configured_auto_actions(
             "reason": weekly_reason,
             "from_iso": weekly_from or None,
             "to_iso": weekly_to or None,
+        }
+
+    roster_should_run, roster_reason = should_run_employee_roster_sync(cfg)
+    if roster_should_run:
+        actions["employee_roster"] = run_employee_roster_sync_for_store(cfg)
+    else:
+        actions["employee_roster"] = {
+            "skipped": True,
+            "reason": roster_reason,
         }
 
     contract_should_run, contract_reason = should_run_employment_contract_sync(cfg)
@@ -602,6 +612,97 @@ def should_run_weekly_repair_work_log_sync(
     ):
         return False, from_iso, to_iso, "έχει ήδη εκτελεστεί αυτή την Κυριακή"
     return True, from_iso, to_iso, "έτοιμο"
+
+
+def should_run_employee_roster_sync(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
+    local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
+    if not Config.KARTA_SCHEDULED_EMPLOYEE_ROSTER_ENABLED:
+        return False, "απενεργοποιημένο από ρύθμιση"
+    base_date = local_now.date().isoformat()
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_EMPLOYEE_ROSTER_TIME,
+        default="04:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, "λείπουν πίνακες sync log για ημερήσιο guard"
+    if _operation_run_exists(
+        OPERATION_EMPLOYEE_ROSTER_SYNC,
+        int(cfg["id"]),
+        base_date,
+    ):
+        return False, "έχει ήδη εκτελεστεί σήμερα"
+    return True, "έτοιμο"
+
+
+def run_employee_roster_sync_for_store(cfg: dict[str, Any]) -> dict[str, Any]:
+    from app.employee_roster_sync import sync_employee_roster
+
+    ctx = store_api_context(cfg)
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    run_id = str(uuid.uuid4())
+    log = KartaLogger(
+        OPERATION_EMPLOYEE_ROSTER_SYNC,
+        store_id=sid,
+        store_name=name,
+        run_id=run_id,
+        extra={
+            "employer_afm": ctx.get("employer_afm"),
+            "branch_aa": ctx.get("branch_aa"),
+        },
+    )
+    log.info("Έναρξη ημερήσιου συγχρονισμού δυναμικού (EX_BASE_05)")
+    try:
+        result = sync_employee_roster(ctx, log=log)
+        ok = bool(result.get("success"))
+        detail = str(result.get("detail") or ("OK" if ok else "Αποτυχία"))
+        log.info(
+            f"Ολοκλήρωση δυναμικού: {detail}",
+            success=ok,
+            count=result.get("count"),
+            deactivated=result.get("deactivated"),
+        )
+        repo_sync_log.finish_run(
+            run_id,
+            status="done" if ok else "error",
+            message=f"{name}: {detail}",
+            result={"success": ok, "employee_roster": result},
+        )
+        return {"success": ok, "employee_roster": result}
+    except Exception as ex:
+        log.error(f"Σφάλμα συγχρονισμού δυναμικού: {ex}")
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=f"{name}: {ex}",
+            result={"success": False, "error": str(ex)},
+        )
+        return {"success": False, "error": str(ex)}
+
+
+def run_employee_roster_sync_all_stores() -> dict[str, Any]:
+    """Χειροκίνητο πέρασμα EX_BASE_05 για όλα τα syncable καταστήματα."""
+    stores = list_syncable_stores()
+    results: list[dict[str, Any]] = []
+    for cfg in stores:
+        item = run_employee_roster_sync_for_store(cfg)
+        roster = item.get("employee_roster") or {}
+        results.append({
+            "store_id": cfg.get("id"),
+            "name": cfg.get("name"),
+            "success": item.get("success"),
+            "detail": roster.get("detail") or item.get("error"),
+            "count": roster.get("count"),
+            "deactivated": roster.get("deactivated"),
+        })
+    ok = sum(1 for row in results if row.get("success"))
+    return {"stores": len(results), "ok": ok, "results": results}
 
 
 def should_run_employment_contract_sync(

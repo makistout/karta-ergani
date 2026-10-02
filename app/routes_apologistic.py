@@ -53,6 +53,22 @@ class TimekeepingPeriodError(ValueError):
         self.problem_weeks = problem_weeks or []
 
 
+def _normalized_timekeeping_afm(value) -> str:
+    afm = str(value or "").strip()
+    if len(afm) == 9 and afm.isdigit():
+        return afm
+    return ""
+
+
+def _timekeeping_rows_for_employee(rows, employee_afm: str):
+    if not employee_afm:
+        return list(rows)
+    return [
+        row for row in rows
+        if _normalized_timekeeping_afm(row.get("employee_afm")) == employee_afm
+    ]
+
+
 def _saved_range_response(ctx: dict, date_from: date, date_to: date):
     days = list_store_days(store_id=int(ctx["id"]), date_from=date_from, date_to=date_to)
     enrich_employee_month_days(
@@ -174,14 +190,17 @@ def apologistic_timekeeping_preview():
     if not ctx:
         return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
     body = request.get_json(silent=True) or {}
+    employee_afm = _normalized_timekeeping_afm(body.get("employee_afm"))
     try:
         if body.get("year") is not None or body.get("month") is not None:
             year = int(body.get("year") or 0)
             month = int(body.get("month") or 0)
-            result, snapshots, annual_context = _build_timekeeping_for_month(ctx, year=year, month=month)
+            result, snapshots, annual_context = _build_timekeeping_for_month(
+                ctx, year=year, month=month, employee_afm=employee_afm,
+            )
             month_from = date(year, month, 1)
             month_to = date(year, month, monthrange(year, month)[1])
-            return jsonify({
+            payload = {
                 **result,
                 "store": {"id": ctx["id"], "name": ctx["name"]},
                 "year": year,
@@ -192,11 +211,16 @@ def apologistic_timekeeping_preview():
                 "annual_context": annual_context,
                 "preview": True,
                 "period_type": "month",
-            })
+            }
+            if employee_afm:
+                payload["employee_afm"] = employee_afm
+            return jsonify(payload)
         week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
         if week_from.weekday() != 0:
             raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
-        result, snapshot, annual_context = _build_timekeeping_for_week(ctx, week_from)
+        result, snapshot, annual_context = _build_timekeeping_for_week(
+            ctx, week_from, employee_afm=employee_afm,
+        )
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
     except TimekeepingPeriodError as exc:
@@ -204,7 +228,7 @@ def apologistic_timekeeping_preview():
     except ValueError as exc:
         status = 409 if "Σ ή Μ" in str(exc) else 400
         return jsonify({"error": str(exc)}), status
-    return jsonify({
+    payload = {
         **result,
         "store": {"id": ctx["id"], "name": ctx["name"]},
         "week_from": week_from.isoformat(),
@@ -213,15 +237,21 @@ def apologistic_timekeeping_preview():
         "annual_context": annual_context,
         "preview": True,
         "period_type": "week",
-    })
+    }
+    if employee_afm:
+        payload["employee_afm"] = employee_afm
+    return jsonify(payload)
 
 
-def _build_timekeeping_for_week(ctx: dict, week_from: date):
+def _build_timekeeping_for_week(ctx: dict, week_from: date, employee_afm: str = ""):
     loaded = load_report(int(ctx["id"]), week_from)
     if loaded is None:
         raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτή την εβδομάδα")
     report, snapshot = loaded
-    rows = list(report.get("days") or [])
+    employee_afm = _normalized_timekeeping_afm(employee_afm)
+    rows = _timekeeping_rows_for_employee(report.get("days") or [], employee_afm)
+    if employee_afm and not rows:
+        raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον εργαζόμενο")
     payroll_rows = [row for row in rows if not is_timekeeping_leave_row(row)]
     if any(str(row.get("status") or "").lower() == "review" for row in payroll_rows):
         raise ValueError("Η ωρομέτρηση είναι διαθέσιμη μόνο όταν όλες οι εγγραφές είναι Σ ή Μ")
@@ -331,14 +361,22 @@ def _merge_timekeeping_days(
     }
 
 
-def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
+def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int, employee_afm: str = ""):
     if not (1 <= month <= 12):
         raise ValueError("Μη έγκυρος μήνας")
     month_from = date(year, month, 1)
     month_to = date(year, month, monthrange(year, month)[1])
-    month_rows = list_store_days(store_id=int(ctx["id"]), date_from=month_from, date_to=month_to)
+    employee_afm = _normalized_timekeeping_afm(employee_afm)
+    month_rows = _timekeeping_rows_for_employee(
+        list_store_days(store_id=int(ctx["id"]), date_from=month_from, date_to=month_to),
+        employee_afm,
+    )
     if not month_rows:
-        raise LookupError("Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον μήνα")
+        raise LookupError(
+            "Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον εργαζόμενο"
+            if employee_afm else
+            "Δεν υπάρχει αποθηκευμένο απολογιστικό για αυτόν τον μήνα"
+        )
     # Μόνο ολοκληρωμένες εβδομάδες (όπως στο /week)· η τρέχουσα/επόμενη
     # δεν μπλοκάρει τον μήνα και δεν εμφανίζεται ως «προβληματική».
     latest_closed_week_from, _ = previous_week()
@@ -360,7 +398,8 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
             raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
         report, _ = loaded
         payroll_rows = [
-            row for row in (report.get("days") or []) if not is_timekeeping_leave_row(row)
+            row for row in _timekeeping_rows_for_employee(report.get("days") or [], employee_afm)
+            if not is_timekeeping_leave_row(row)
         ]
         if any(str(row.get("status") or "").lower() == "review" for row in payroll_rows):
             problem_weeks.append({
@@ -392,7 +431,7 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
             raise LookupError(f"Λείπει αποθηκευμένο απολογιστικό για την εβδομάδα {week_from.isoformat()}")
         report, snapshot = loaded
         holidays = get_effective_holidays_for_store(int(ctx["id"]), week_from.year)
-        week_rows = list(report.get("days") or [])
+        week_rows = _timekeeping_rows_for_employee(report.get("days") or [], employee_afm)
         week_afms = sorted({str(row.get("employee_afm") or "") for row in week_rows if row.get("employee_afm")})
         week_result = build_timekeeping_report(
             week_rows,
@@ -425,18 +464,22 @@ def _build_timekeeping_for_month(ctx: dict, *, year: int, month: int):
 
 def _timekeeping_export_data(ctx: dict, body: dict):
     """Load the single canonical report used by every Excel projection."""
+    employee_afm = _normalized_timekeeping_afm(body.get("employee_afm"))
+    afm_tag = f"_{employee_afm}" if employee_afm else ""
     if body.get("year") is not None or body.get("month") is not None:
         year = int(body.get("year") or 0)
         month = int(body.get("month") or 0)
-        report, _, _ = _build_timekeeping_for_month(ctx, year=year, month=month)
+        report, _, _ = _build_timekeeping_for_month(
+            ctx, year=year, month=month, employee_afm=employee_afm,
+        )
         period_from = date(year, month, 1)
         period_to = date(year, month, monthrange(year, month)[1])
-        return report, period_from, period_to, f"month_{year}{month:02d}", True
+        return report, period_from, period_to, f"month_{year}{month:02d}{afm_tag}", True
     week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
     if week_from.weekday() != 0:
         raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
-    report, _, _ = _build_timekeeping_for_week(ctx, week_from)
-    return report, week_from, week_from + timedelta(days=6), f"{week_from:%Y%m%d}", False
+    report, _, _ = _build_timekeeping_for_week(ctx, week_from, employee_afm=employee_afm)
+    return report, week_from, week_from + timedelta(days=6), f"{week_from:%Y%m%d}{afm_tag}", False
 
 
 def _timekeeping_export_error(exc: Exception):

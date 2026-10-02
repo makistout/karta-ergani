@@ -122,82 +122,9 @@ def _sync_employees_api(
     aa: str,
     log: KartaLogger,
 ) -> dict[str, Any]:
-    synced = 0
-    try:
-        r01 = client.execute_service("EX_BASE_01", [], bearer)
-        p01 = json_or_text(r01)
-        if r01.ok:
-            prof = parse_employer_profile(p01)
-            with cursor() as cur:
-                upsert_employer(cur, afm, eponimia=prof.get("eponimia"))
-            log.info("Προσωπικό: εργοδότης ενημερώθηκε (EX_BASE_01)")
-        else:
-            log.error(f"Προσωπικό: αποτυχία EX_BASE_01 — HTTP {r01.status_code}")
+    from app.employee_roster_sync import sync_employee_roster_authenticated
 
-        r02 = client.execute_service("EX_BASE_02", [], bearer)
-        p02 = json_or_text(r02)
-        if r02.ok:
-            branches = parse_branches(p02)
-            with cursor() as cur:
-                employer_id = upsert_employer(cur, afm)
-                if employer_id:
-                    for b in branches:
-                        upsert_parartima(
-                            cur,
-                            employer_id,
-                            b["aa"],
-                            description=b.get("description"),
-                        )
-            log.info(f"Προσωπικό: παραρτήματα ενημερώθηκαν (EX_BASE_02) — {len(branches)}")
-        else:
-            log.error(f"Προσωπικό: αποτυχία EX_BASE_02 — HTTP {r02.status_code}")
-
-        r05 = client.execute_service("EX_BASE_05", [], bearer)
-        p05 = json_or_text(r05)
-        if not r05.ok:
-            detail = f"HTTP {r05.status_code}"
-            log.error(f"Προσωπικό: αποτυχία EX_BASE_05 — {detail}")
-            return {"success": False, "detail": detail, "count": 0}
-
-        employees = parse_employees(p05)
-        active_afms: set[str] = set()
-        with cursor() as cur:
-            employer_id = upsert_employer(cur, afm)
-            if not employer_id:
-                raise RuntimeError("Δεν δημιουργήθηκε employer_id")
-            part_id = upsert_parartima(cur, employer_id, aa)
-            for emp in employees:
-                e_afm = emp.get("afm")
-                if not e_afm:
-                    continue
-                active_afms.add(norm_afm(e_afm))
-                emp_id = upsert_employee(
-                    cur,
-                    e_afm,
-                    emp.get("eponymo"),
-                    emp.get("onoma"),
-                    flex_arrival_minutes=emp.get("flex_arrival_minutes"),
-                    amka=emp.get("amka"),
-                    amika=emp.get("amika"),
-                )
-                if emp_id:
-                    upsert_employment(
-                        cur, employer_id, emp_id, part_id,
-                        hire_date=emp.get("hire_date"),
-                    )
-                    synced += 1
-            if active_afms:
-                deactivate_stale_employments(
-                    cur, employer_id, active_afms, parartima_id=part_id
-                )
-        from app.repo_employment_contract import apply_ex_base_05_items
-
-        apply_ex_base_05_items(afm, aa, extract_raw_list(p05), log=log)
-        log.info(f"Προσωπικό: αποθηκεύτηκαν {synced} εργαζόμενοι (EX_BASE_05)", count=synced)
-        return {"success": True, "detail": f"{synced} εργαζόμενοι", "count": synced}
-    except Exception as ex:
-        log.error(str(ex))
-        return {"success": False, "detail": str(ex), "count": synced}
+    return sync_employee_roster_authenticated(client, bearer, afm, aa, log)
 
 
 def _forward_portal(

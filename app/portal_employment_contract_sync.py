@@ -41,6 +41,11 @@ from app.repo_entities import (
 from app.repo_schedule import list_schedule_employee_afms
 from app.work_card_payload import norm_afm
 
+
+def _norm_afm_or_empty(value: Any) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:9]
+    return digits if len(digits) == 9 else ""
+
 SEARCH_PATH = "Mitroa/ErgazomenosSearch.aspx"
 _SEARCH_CTRL = "ctl00$ctl00$ContentHolder$ContentHolder$ErgazomenosSearchControl"
 GRID_EVENT_TARGET = f"{_SEARCH_CTRL}$ErgazomenosGridControl$Grid$Grid"
@@ -65,20 +70,29 @@ def _open_search_page(session: requests.Session, portal_base: str) -> tuple[str,
     return r.text, r.url
 
 
-def _search_current_employees(
+def _search_employees(
     session: requests.Session,
     page_html: str,
     page_url: str,
     ctx: dict[str, Any],
+    *,
+    employee_afm: str = "",
+    current_only: bool = True,
+    branch_aa: str | None = None,
 ) -> tuple[str, str]:
+    """Αναζήτηση Μητρώου. Κενό branch_aa = όλα τα παραρτήματα."""
     form = _find_search_form(page_html)
     if not form:
         raise RuntimeError("Δεν βρέθηκε φόρμα αναζήτησης προσωπικού")
     data = _extract_aspnet_form_data(page_html, include_text=True)
-    branch_aa = str(ctx.get("branch_aa") or "0").strip()
-    data[f"{_SEARCH_CTRL}$PararthmaSelection$PararthmaListEdit"] = _pick_pararthma(
-        page_html, branch_aa
-    )
+    if branch_aa is None:
+        branch_aa = str(ctx.get("branch_aa") or "0").strip()
+    if str(branch_aa).strip() == "":
+        data[f"{_SEARCH_CTRL}$PararthmaSelection$PararthmaListEdit"] = ""
+    else:
+        data[f"{_SEARCH_CTRL}$PararthmaSelection$PararthmaListEdit"] = _pick_pararthma(
+            page_html, str(branch_aa)
+        )
     for key in (
         "AfmEdit",
         "EponimoBox",
@@ -87,13 +101,87 @@ def _search_current_employees(
         "ArTaytotitasBox",
     ):
         data[f"{_SEARCH_CTRL}${key}"] = ""
-    data[f"{_SEARCH_CTRL}$CurrentBox"] = "on"
+    data[f"{_SEARCH_CTRL}$AfmEdit"] = _norm_afm_or_empty(employee_afm)
+    if current_only:
+        data[f"{_SEARCH_CTRL}$CurrentBox"] = "on"
+    else:
+        data.pop(f"{_SEARCH_CTRL}$CurrentBox", None)
     data[f"{_SEARCH_CTRL}$SearchControlSearchButton"] = "Αναζήτηση"
     action = urljoin(page_url, form.get("action") or page_url)
     r = session.post(action, data=data, timeout=REQUEST_TIMEOUT, allow_redirects=True)
     if "error.aspx" in r.url.lower():
         raise RuntimeError("Σφάλμα portal κατά την αναζήτηση προσωπικού")
     return r.text, r.url
+
+
+def _search_current_employees(
+    session: requests.Session,
+    page_html: str,
+    page_url: str,
+    ctx: dict[str, Any],
+) -> tuple[str, str]:
+    return _search_employees(
+        session, page_html, page_url, ctx, current_only=True
+    )
+
+
+def leftover_target_afms(
+    target_afms: set[str],
+    found_afms: set[str],
+    afm_labels: dict[str, str] | None = None,
+) -> list[str]:
+    missing = {
+        key for a in target_afms
+        if (key := _norm_afm_or_empty(a)) and key not in found_afms
+    }
+    missing.discard("")
+    if not missing:
+        return []
+    ordered: list[str] = []
+    for afm in (afm_labels or {}):
+        key = _norm_afm_or_empty(afm)
+        if key in missing and key not in ordered:
+            ordered.append(key)
+    for afm in sorted(missing):
+        if afm not in ordered:
+            ordered.append(afm)
+    return ordered
+
+
+def lookup_registry_row_by_afm(
+    session: requests.Session,
+    ctx: dict[str, Any],
+    employee_afm: str,
+) -> tuple[str, str, str, str] | None:
+    """Καρτέλα Μητρώου ανά ΑΦΜ σε όλα τα παραρτήματα, και μη τρέχοντες."""
+    afm = norm_afm(employee_afm)
+    if not afm:
+        return None
+    portal_base = _portal_base(ctx)
+    page_html, page_url = _open_search_page(session, portal_base)
+    page_html, page_url = _search_employees(
+        session,
+        page_html,
+        page_url,
+        ctx,
+        employee_afm=afm,
+        current_only=False,
+        branch_aa="",
+    )
+    match = next((row for row in parse_search_select_ids(page_html) if row[1] == afm), None)
+    if not match:
+        return None
+    return match[0], match[1], match[2], page_url
+
+
+def fetch_registry_detail_by_afm(ctx: dict[str, Any], employee_afm: str) -> dict[str, Any] | None:
+    """Καρτέλα Μητρώου (και πρώην) για αυτόματο γέμισμα πρόσληψης."""
+    session = _login_session(ctx)
+    match = lookup_registry_row_by_afm(session, ctx, employee_afm)
+    if not match:
+        return None
+    ergodoti_id, afm, _stamp, page_url = match
+    return _fetch_contract_detail(session, page_url, ergodoti_id, afm)
 
 
 def _collect_select_ids(
@@ -175,6 +263,61 @@ def _fetch_contract_detail(
     return row
 
 
+def _persist_contract_from_portal_row(
+    *,
+    employer_afm: str,
+    branch_aa: str,
+    afm: str,
+    stamp: str,
+    row: dict[str, Any],
+    unlinked_afms: set[str],
+    active_afms: set[str],
+) -> dict[str, bool]:
+    if not row.get("employee_afm"):
+        row["employee_afm"] = afm
+    result = insert_if_changed(employer_afm, branch_aa, row)
+    flex = row.get("flex_arrival_minutes")
+    upsert_employee_by_afm(
+        afm,
+        row.get("eponymo"),
+        row.get("onoma"),
+        flex_arrival_minutes=flex,
+        amka=row.get("amka"),
+        amika=row.get("amika"),
+    )
+    linked = False
+    if (afm in unlinked_afms or afm not in active_afms) and link_employee_to_store(
+        employer_afm,
+        branch_aa,
+        afm,
+        row.get("eponymo"),
+        row.get("onoma"),
+        flex_arrival_minutes=flex,
+        amka=row.get("amka"),
+        amika=row.get("amika"),
+    ):
+        linked = True
+    qr = False
+    if update_employment_work_time_qr(
+        employer_afm,
+        branch_aa,
+        afm,
+        qr_data_url=row.get("work_time_qr_data_url"),
+    ):
+        qr = True
+    hire = parse_ergani_calendar_date(row.get("hire_date"))
+    stamp_text = str(stamp or "").strip()
+    if hire is None and stamp_text and ":" not in stamp_text:
+        hire = parse_ergani_calendar_date(stamp_text)
+    if hire:
+        fill_employment_hire_date_if_empty(employer_afm, branch_aa, afm, hire)
+    return {
+        "inserted": bool(result.get("inserted")),
+        "linked": linked,
+        "qr": qr,
+    }
+
+
 def _qr_src_to_data_url(
     session: requests.Session,
     page_url: str,
@@ -203,6 +346,7 @@ def iter_employment_contract_sync_events(
     *,
     run_id: str | None = None,
     only_afms: set[str] | list[str] | None = None,
+    afm_labels: dict[str, str] | None = None,
 ) -> Iterator[dict[str, Any]]:
     log = logger_for_store("employment_contract_sync", ctx, run_id=run_id)
     finalize_run = run_id is None
@@ -239,23 +383,40 @@ def iter_employment_contract_sync_events(
         unlinked_activity_employees=len(unlinked_afms),
         only_afms=bool(only_afms is not None),
     )
-    yield {
-        "event": "progress",
-        "message": (
-            f"Σύμβαση για ενεργούς στο ψηφιακό ωράριο ({len(target_afms)})…"
-            if only_afms is None
-            else f"Σύμβαση/QR για {len(target_afms)} εργαζομένους…"
-        ),
-        "step": 0,
-        "total": len(target_afms),
-    }
-
-    yield {
-        "event": "progress",
-        "message": "Ενημέρωση πρόσληψης / ΑΜΚΑ / ΑΜΑ (EX_BASE_05)…",
-        "step": 0,
-        "total": max(len(target_afms), 1),
-    }
+    labeled = bool(afm_labels)
+    if labeled:
+        yield {
+            "event": "progress",
+            "message": (
+                f"Λείπουν στοιχεία για {len(target_afms)} εργαζομένους. "
+                "Ενημέρωση από το Μητρώο Εργάνη… Παρακαλώ περιμένετε."
+            ),
+            "step": 0,
+            "total": max(len(target_afms), 1),
+        }
+        yield {
+            "event": "progress",
+            "message": "Ενημέρωση προσωπικών στοιχείων από Μητρώο (EX_BASE_05)… Παρακαλώ περιμένετε.",
+            "step": 0,
+            "total": max(len(target_afms), 1),
+        }
+    else:
+        yield {
+            "event": "progress",
+            "message": (
+                f"Σύμβαση για ενεργούς στο ψηφιακό ωράριο ({len(target_afms)})…"
+                if only_afms is None
+                else f"Σύμβαση/QR για {len(target_afms)} εργαζομένους…"
+            ),
+            "step": 0,
+            "total": len(target_afms),
+        }
+        yield {
+            "event": "progress",
+            "message": "Ενημέρωση πρόσληψης / ΑΜΚΑ / ΑΜΑ (EX_BASE_05)…",
+            "step": 0,
+            "total": max(len(target_afms), 1),
+        }
     api_personal: dict[str, Any] = {}
     try:
         from app.repo_employment_contract import refresh_personal_from_ex_base_05
@@ -332,85 +493,127 @@ def iter_employment_contract_sync_events(
     linked = 0
     qr_synced = 0
 
-    yield {
-        "event": "progress",
-        "message": (
-            f"Στο ωράριο ∩ Μητρώο: {total} "
-            f"(αγνοήθηκαν {len(all_ids) - total} εκτός ωραρίου)…"
-        ),
-        "step": 0,
-        "total": total,
-    }
+    if not labeled:
+        yield {
+            "event": "progress",
+            "message": (
+                f"Στο ωράριο ∩ Μητρώο: {total} "
+                f"(αγνοήθηκαν {len(all_ids) - total} εκτός ωραρίου)…"
+            ),
+            "step": 0,
+            "total": total,
+        }
+
+    found_afms = {row[1] for row in select_ids}
+    leftovers = leftover_target_afms(target_afms, found_afms, afm_labels)
+    wait_total = total + len(leftovers)
+    if labeled:
+        from app.payroll import missing_wage_wait_message
 
     for i, (ergodoti_id, afm, stamp) in enumerate(select_ids):
-        msg = f"Σύμβαση ΑΦΜ {afm} ({i + 1}/{total})…"
-        log.info(msg, employee_afm=afm, step=i + 1, total=total)
+        if labeled:
+            name = str((afm_labels or {}).get(afm) or "").strip() or f"ΑΦΜ {afm}"
+            msg = missing_wage_wait_message(name, step=i + 1, total=wait_total or 1)
+        else:
+            msg = f"Σύμβαση ΑΦΜ {afm} ({i + 1}/{wait_total or total})…"
+        log.info(msg, employee_afm=afm, step=i + 1, total=wait_total or total)
         yield {
             "event": "progress",
             "message": msg,
             "step": i + 1,
-            "total": total,
+            "total": wait_total or total,
         }
         try:
             row = _fetch_contract_detail(session, page_url, ergodoti_id, afm)
-            if not row.get("employee_afm"):
-                row["employee_afm"] = afm
-            result = insert_if_changed(employer_afm, branch_aa, row)
-            if result.get("inserted"):
+            stats = _persist_contract_from_portal_row(
+                employer_afm=employer_afm,
+                branch_aa=branch_aa,
+                afm=afm,
+                stamp=stamp,
+                row=row,
+                unlinked_afms=unlinked_afms,
+                active_afms=active_afms,
+            )
+            if stats["inserted"]:
                 inserted += 1
             else:
                 unchanged += 1
-            flex = row.get("flex_arrival_minutes")
-            upsert_employee_by_afm(
-                afm,
-                row.get("eponymo"),
-                row.get("onoma"),
-                flex_arrival_minutes=flex,
-                amka=row.get("amka"),
-                amika=row.get("amika"),
-            )
-            # Νέοι (χωρίς γραμμή) ή ανενεργοί με ωράριο: ενεργοποίηση σύνδεσης.
-            # Το unlinked κοιτάει ύπαρξη γραμμής (όχι active)· χωρίς αυτό οι ανενεργοί
-            # παίρνουν QR αλλά μένουν active=0 και ξαναμπαίνουν στο enrichment.
-            if (afm in unlinked_afms or afm not in active_afms) and link_employee_to_store(
-                employer_afm,
-                branch_aa,
-                afm,
-                row.get("eponymo"),
-                row.get("onoma"),
-                flex_arrival_minutes=flex,
-                amka=row.get("amka"),
-                amika=row.get("amika"),
-            ):
+            if stats["linked"]:
                 linked += 1
                 log.info(
                     "Συνδέθηκε/ενεργοποιήθηκε εργαζόμενος στο κατάστημα",
                     employee_afm=afm,
                 )
-            if update_employment_work_time_qr(
-                employer_afm,
-                branch_aa,
-                afm,
-                qr_data_url=row.get("work_time_qr_data_url"),
-            ):
+            if stats["qr"]:
                 qr_synced += 1
-            hire = parse_ergani_calendar_date(row.get("hire_date"))
-            stamp_text = str(stamp or "").strip()
-            if hire is None and stamp_text and ":" not in stamp_text:
-                hire = parse_ergani_calendar_date(stamp_text)
-            if hire:
-                fill_employment_hire_date_if_empty(employer_afm, branch_aa, afm, hire)
         except Exception as ex:  # noqa: BLE001 — συνέχεια με επόμενο εργαζόμενο
             err = f"{afm}: {ex}"
             errors.append(err)
             log.error(err)
 
-    ok = total > 0 and len(errors) < total
+    for j, afm in enumerate(leftovers):
+        step = total + j + 1
+        name = str((afm_labels or {}).get(afm) or "").strip() or f"ΑΦΜ {afm}"
+        if labeled:
+            msg = missing_wage_wait_message(name, step=step, total=wait_total or 1)
+        else:
+            msg = (
+                f"Αναζήτηση καρτέλας Μητρώου ΑΦΜ {afm} σε όλα τα παραρτήματα "
+                f"({step}/{wait_total or 1})…"
+            )
+        log.info(msg, employee_afm=afm, step=step, total=wait_total)
+        yield {
+            "event": "progress",
+            "message": msg,
+            "step": step,
+            "total": wait_total or 1,
+        }
+        try:
+            found = lookup_registry_row_by_afm(session, ctx, afm)
+            if not found:
+                log.info("Δεν βρέθηκε καρτέλα Μητρώου", employee_afm=afm)
+                yield {
+                    "event": "progress",
+                    "message": (
+                        f"Δεν βρέθηκε καρτέλα στο Μητρώο για {name}. "
+                        "Συνεχίζουμε με τον επόμενο…"
+                    ),
+                    "step": step,
+                    "total": wait_total or 1,
+                }
+                continue
+            ergodoti_id, found_afm, stamp, found_url = found
+            row = _fetch_contract_detail(session, found_url, ergodoti_id, found_afm)
+            stats = _persist_contract_from_portal_row(
+                employer_afm=employer_afm,
+                branch_aa=branch_aa,
+                afm=found_afm,
+                stamp=stamp,
+                row=row,
+                unlinked_afms=unlinked_afms,
+                active_afms=active_afms,
+            )
+            if stats["inserted"]:
+                inserted += 1
+            else:
+                unchanged += 1
+            if stats["linked"]:
+                linked += 1
+            if stats["qr"]:
+                qr_synced += 1
+        except Exception as ex:  # noqa: BLE001
+            err = f"{afm}: {ex}"
+            errors.append(err)
+            log.error(err)
+
+    touched = inserted + unchanged
+    ok = touched > 0 and len(errors) < max(touched, 1)
     detail = (
         f"{inserted} νέες εκδόσεις, {unchanged} χωρίς αλλαγή"
         f" ({total} ενεργοί ∩ ωράριο ∩ Μητρώο"
         f", {len(target_afms)} στόχος"
         f", {len(all_ids)} στο Μητρώο)"
+        + (f" — {len(leftovers)} εκτός τρέχοντος παραρτήματος" if leftovers else "")
         + (f" — {linked} νέες συνδέσεις" if linked else "")
         + (f" — {qr_synced} QR" if qr_synced else "")
         + (f" — {len(errors)} αποτυχίες" if errors else "")

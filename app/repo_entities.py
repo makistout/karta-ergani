@@ -325,6 +325,24 @@ def deactivate_stale_employments(
     return n
 
 
+def get_employee_row_by_afm(employee_afm: str) -> dict[str, Any] | None:
+    afm = norm_afm(employee_afm)
+    if not afm:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT emp.afm, emp.eponymo, emp.onoma, emp.flex_arrival_minutes
+                {_employee_identity_select()}
+            FROM dbo.karta_employee emp
+            WHERE emp.afm = ?
+            """,
+            (afm,),
+        )
+        rows = rows_to_dicts(cur)
+        return rows[0] if rows else None
+
+
 def upsert_employee_by_afm(
     afm: str,
     eponymo: str | None,

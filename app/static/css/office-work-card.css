@@ -1465,6 +1465,19 @@ tr.notify-recipient-row--paused td:not(.col-notify-actions) {
   font-size: 0.8rem;
   line-height: 1.4;
 }
+.payroll-enrich-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  max-width: 42rem;
+}
+.payroll-enrich-wait p {
+  margin: 0;
+}
+.payroll-enrich-wait .sync-progress {
+  margin-top: 0;
+}
 .payroll-embed-total {
   font-size: 1.15rem;
   white-space: nowrap;

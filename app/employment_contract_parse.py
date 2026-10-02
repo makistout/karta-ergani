@@ -159,19 +159,40 @@ def extract_labeled_values(html: str) -> dict[str, str]:
     return out
 
 
-def extract_employee_name_afm(html: str) -> tuple[str, str, str]:
-    """Επώνυμο, όνομα, ΑΦΜ από προσωπικά στοιχεία (πρώτες form-control spans)."""
+def _map_sex_label(value: str) -> str:
+    upper = _clean_value(value).upper()
+    if not upper:
+        return ""
+    if upper in {"1", "Θ", "F"} or "ΓΥΝ" in upper:
+        return "1"
+    if upper in {"0", "Α", "A", "M"} or "ΑΝΤΡ" in upper or "ΑΝΔΡ" in upper:
+        return "0"
+    return ""
+
+
+def extract_personal_identity_from_spans(html: str) -> dict[str, str]:
+    """Ταυτότητα από τα unlabeled form-control spans της καρτέλας Μητρώου."""
     text = unescape(html)
-    spans = re.findall(
-        r'<span[^>]*class="[^"]*form-control[^"]*"[^>]*>([^<]*)</span>',
-        text,
-        re.I,
-    )
-    eponymo = _clean_value(spans[0]) if len(spans) > 0 else ""
-    onoma = _clean_value(spans[1]) if len(spans) > 1 else ""
+    spans = [
+        _clean_value(item)
+        for item in re.findall(
+            r'<span[^>]*class="[^"]*form-control[^"]*"[^>]*>([^<]*)</span>',
+            text,
+            re.I,
+        )
+    ]
+    eponymo = spans[0] if len(spans) > 0 else ""
+    onoma = spans[1] if len(spans) > 1 else ""
+    father = spans[2] if len(spans) > 2 else ""
+    mother = spans[3] if len(spans) > 3 else ""
+    birth = spans[4] if len(spans) > 4 else ""
+    sex = _map_sex_label(spans[5]) if len(spans) > 5 else ""
+    if re.fullmatch(r"\d{9}", father or ""):
+        father = ""
+    if not re.search(r"\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}", birth or ""):
+        birth = ""
     afm = ""
-    for s in spans:
-        val = _clean_value(s)
+    for val in spans:
         if re.fullmatch(r"\d{9}", val):
             afm = val
             break
@@ -179,7 +200,21 @@ def extract_employee_name_afm(html: str) -> tuple[str, str, str]:
         m = re.search(r"[?&]afm=(\d{8,11})", text, re.I)
         if m:
             afm = m.group(1)[:9]
-    return eponymo, onoma, afm
+    return {
+        "eponymo": eponymo,
+        "onoma": onoma,
+        "onoma_patros": father,
+        "onoma_mitros": mother,
+        "birthdate": birth,
+        "sex": sex,
+        "employee_afm": afm,
+    }
+
+
+def extract_employee_name_afm(html: str) -> tuple[str, str, str]:
+    """Επώνυμο, όνομα, ΑΦΜ από προσωπικά στοιχεία (πρώτες form-control spans)."""
+    ident = extract_personal_identity_from_spans(html)
+    return ident["eponymo"], ident["onoma"], ident["employee_afm"]
 
 
 def extract_work_time_qr_src(html: str) -> str:
@@ -218,7 +253,10 @@ def parse_employment_contract_html(
     employee_afm: str | None = None,
 ) -> dict[str, Any]:
     fields = extract_labeled_values(html)
-    eponymo, onoma, afm_from_page = extract_employee_name_afm(html)
+    ident = extract_personal_identity_from_spans(html)
+    eponymo = ident.get("eponymo") or ""
+    onoma = ident.get("onoma") or ""
+    afm_from_page = ident.get("employee_afm") or ""
     afm = (employee_afm or afm_from_page or "").strip()[:9]
     span_marital, span_children = extract_personal_family_from_spans(html)
     marital_status = map_marital_status(fields.get("marital_status") or "") or span_marital or None
@@ -233,6 +271,10 @@ def parse_employment_contract_html(
         "employee_afm": afm,
         "eponymo": eponymo or None,
         "onoma": onoma or None,
+        "onoma_patros": ident.get("onoma_patros") or None,
+        "onoma_mitros": ident.get("onoma_mitros") or None,
+        "birthdate": ident.get("birthdate") or None,
+        "sex": ident.get("sex") or None,
         "specialty": fields.get("specialty") or None,
         "characterization": fields.get("characterization") or None,
         "step92": fields.get("step92") or None,

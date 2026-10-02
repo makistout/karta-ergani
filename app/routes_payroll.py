@@ -16,6 +16,7 @@ from app.payroll import (
     PARAMETER_CATALOG,
     attach_apd_identity,
     build_payroll_report,
+    missing_contract_wage_employees,
     payroll_afm_key,
 )
 from app.payroll_export import build_payroll_export_xlsx
@@ -37,7 +38,10 @@ from app.routes_apologistic import (
     TimekeepingPeriodError,
     _build_timekeeping_for_month,
     _build_timekeeping_for_week,
+    _normalized_timekeeping_afm,
 )
+from app.sync_jobs import get_sync_job
+from app.sync_route_util import start_async_portal_sync
 
 payroll_bp = Blueprint("payroll", __name__, url_prefix="/api/payroll")
 
@@ -169,10 +173,14 @@ def _contracts_by_afm(ctx: dict[str, Any]) -> dict[str, dict]:
 def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
     if "adjustments" in body and body.get("store_id") != int(ctx["id"]):
         raise ValueError("Το ενεργό κατάστημα άλλαξε. Ανανεώστε τη μισθοδοσία")
+    employee_afm = _normalized_timekeeping_afm(body.get("employee_afm"))
+    afm_tag = f"_{employee_afm}" if employee_afm else ""
     if body.get("year") is not None or body.get("month") is not None:
         year = int(body.get("year") or 0)
         month = int(body.get("month") or 0)
-        result, snapshots, _annual = _build_timekeeping_for_month(ctx, year=year, month=month)
+        result, snapshots, _annual = _build_timekeeping_for_month(
+            ctx, year=year, month=month, employee_afm=employee_afm,
+        )
         period_type = "month"
         period_from = date(year, month, 1)
         period_to = date(year, month, monthrange(year, month)[1])
@@ -184,12 +192,14 @@ def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[s
             "source_runs": snapshots,
         }
         as_of = period_to
-        filename_tag = f"month_{year}{month:02d}"
+        filename_tag = f"month_{year}{month:02d}{afm_tag}"
     else:
         week_from = datetime.strptime(str(body.get("week_from") or "")[:10], "%Y-%m-%d").date()
         if week_from.weekday() != 0:
             raise ValueError("Η εβδομάδα πρέπει να ξεκινά Δευτέρα")
-        result, snapshot, _annual = _build_timekeeping_for_week(ctx, week_from)
+        result, snapshot, _annual = _build_timekeeping_for_week(
+            ctx, week_from, employee_afm=employee_afm,
+        )
         period_type = "week"
         extra = {
             "week_from": week_from.isoformat(),
@@ -199,7 +209,9 @@ def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[s
         as_of = week_from
         period_from = week_from
         period_to = week_from + timedelta(days=6)
-        filename_tag = f"week_{week_from.isoformat().replace('-', '')}"
+        filename_tag = f"week_{week_from.isoformat().replace('-', '')}{afm_tag}"
+    if employee_afm:
+        extra["employee_afm"] = employee_afm
     params = load_resolved(store_id=int(ctx["id"]), as_of=as_of)
     history = list_history_for_store(str(ctx["employer_afm"]), str(ctx.get("branch_aa") or "0"), limit=50000)
     if len(history) >= 50000:
@@ -218,6 +230,11 @@ def _build_payroll_for_body(ctx: dict[str, Any], body: dict[str, Any]) -> dict[s
                 if len(rows) >= 20000:
                     raise ValueError("Το δηλωμένο πρόγραμμα υπερβαίνει το όριο ανάγνωσης μισθοδοσίας")
                 schedule_rows.extend(rows)
+        if employee_afm:
+            schedule_rows = [
+                row for row in schedule_rows
+                if payroll_afm_key(row.get("employee_afm")) == employee_afm
+            ]
     payroll = build_payroll_report(
         result, _contracts_by_afm(ctx), params, period_type=period_type,
         period_from=period_from, period_to=period_to,
@@ -275,8 +292,39 @@ def payroll_calculate():
         "store": {"id": ctx["id"], "name": ctx["name"]},
         "timekeeping_version": result.get("calculation_version"),
         "timekeeping_counts": result.get("counts"),
+        "missing_contract_wage": missing_contract_wage_employees(payroll),
         **built["extra"],
     })
+
+
+@payroll_bp.post("/enrich-contracts")
+def payroll_enrich_contracts():
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    from app.payroll_wage_enrich import iter_payroll_wage_enrich_events, parse_enrich_employees
+
+    employees = parse_enrich_employees(request.get_json(silent=True) or {})
+    if not employees:
+        return jsonify({"error": "Λείπουν εργαζόμενοι για ενημέρωση από το Μητρώο"}), 400
+    store_ctx = dict(ctx)
+    return start_async_portal_sync(
+        lambda job_id: iter_payroll_wage_enrich_events(
+            store_ctx,
+            employees,
+            run_id=job_id,
+        ),
+        label="payroll_wage_enrich",
+        store_id=int(ctx["id"]),
+    )
+
+
+@payroll_bp.get("/enrich-contracts/status/<job_id>")
+def payroll_enrich_contracts_status(job_id: str):
+    job = get_sync_job(job_id)
+    if not job:
+        return jsonify({"error": "Άγνωστο ή ολοκληρωμένο job"}), 404
+    return jsonify(job)
 
 
 @payroll_bp.post("/export")

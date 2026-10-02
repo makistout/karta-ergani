@@ -54,8 +54,15 @@ function canViewPayroll() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  Office.setActiveNav("apologistic");
-  document.getElementById("timekeepingBack").href = buildBackHref();
+  Office.setActiveNav(isEmployeeOrigin() ? "employees" : "apologistic");
+  const back = document.getElementById("timekeepingBack");
+  back.href = buildBackHref();
+  if (isEmployeeOrigin()) {
+    back.replaceChildren();
+    const icon = document.createElement("i");
+    icon.className = "bi bi-arrow-left";
+    back.append(icon, document.createTextNode(" Μηνιαία εικόνα"));
+  }
   document.getElementById("timekeepingExport").addEventListener("click", () => downloadExcel("summary"));
   document.getElementById("timekeepingDetailedExport").addEventListener("click", () => downloadExcel("detailed"));
   bindPayrollModal();
@@ -85,12 +92,43 @@ function isMonthMode() {
   return Number.isInteger(y) && y >= 2000 && Number.isInteger(m) && m >= 1 && m <= 12;
 }
 
+function employeeAfm() {
+  const afm = String(qs.get("employee_afm") || "").replace(/\D/g, "");
+  return afm.length === 9 ? afm : "";
+}
+
+function isEmployeeOrigin() {
+  return String(qs.get("origin_mode") || "").trim() === "employee-month" || Boolean(employeeAfm());
+}
+
 function periodPayload() {
-  if (isMonthMode()) return { year: Number(year), month: Number(month) };
-  return { week_from: weekFrom };
+  const payload = isMonthMode()
+    ? { year: Number(year), month: Number(month) }
+    : { week_from: weekFrom };
+  const afm = employeeAfm();
+  if (afm) payload.employee_afm = afm;
+  return payload;
+}
+
+function periodFileTag() {
+  const afm = employeeAfm();
+  const suffix = afm ? `_${afm}` : "";
+  return isMonthMode()
+    ? `month_${String(year)}${String(month).padStart(2, "0")}${suffix}`
+    : `${String(weekFrom).replaceAll("-", "")}${suffix}`;
 }
 
 function buildBackHref() {
+  const afm = employeeAfm();
+  if (String(qs.get("origin_mode") || "").trim() === "employee-month" || (afm && !qs.get("origin_mode"))) {
+    const params = new URLSearchParams();
+    params.set("afm", afm);
+    const originYear = String(qs.get("origin_year") || year || "").trim();
+    const originMonth = String(qs.get("origin_month") || month || "").trim();
+    if (originYear) params.set("year", originYear);
+    if (originMonth) params.set("month", originMonth);
+    return `/ui/employees/monthly-overview?${params.toString()}`;
+  }
   const params = new URLSearchParams();
   const mode = String(qs.get("origin_mode") || "").trim();
   if (mode) params.set("mode", mode);
@@ -151,12 +189,16 @@ async function loadTimekeeping() {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   timekeepingData = data;
+  const person = (data.employees || [])[0];
+  const personLabel = employeeAfm() && person
+    ? `${employeeName(person)} · ΑΦΜ ${employeeAfm()} · `
+    : "";
   if (data.period_type === "month") {
     document.getElementById("timekeepingMeta").textContent =
-      `${data.store?.name || "Κατάστημα"} · ${displayDate(data.period_from)} – ${displayDate(data.period_to)} · ${data.calculation_version}`;
+      `${personLabel}${data.store?.name || "Κατάστημα"} · ${displayDate(data.period_from)} – ${displayDate(data.period_to)} · ${data.calculation_version}`;
   } else {
     document.getElementById("timekeepingMeta").textContent =
-      `${data.store?.name || "Κατάστημα"} · ${displayDate(data.week_from)} – ${displayDate(data.week_to)} · ${data.calculation_version}`;
+      `${personLabel}${data.store?.name || "Κατάστημα"} · ${displayDate(data.week_from)} – ${displayDate(data.week_to)} · ${data.calculation_version}`;
   }
   document.getElementById("timekeepingSummary").innerHTML =
     `<div class="card apologistic-kpi"><span>Εργαζόμενοι</span><strong>${data.counts?.employees || 0}</strong></div>` +
@@ -644,6 +686,76 @@ function payrollGrandEfka() {
   return round2(rows.reduce((sum, row) => sum + Number(row.efka_employee || 0), 0));
 }
 
+function payrollWaitHtml(text, step, total) {
+  const tot = Number(total) || 0;
+  const stp = Number(step) || 0;
+  let bar = "";
+  if (tot > 0) {
+    const pct = Math.min(100, Math.max(0, Math.round((stp / tot) * 100)));
+    bar =
+      `<div class="sync-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">` +
+      `<div class="sync-progress-bar" style="width:${pct}%"></div></div>`;
+  }
+  return (
+    `<div class="payroll-embed-loading payroll-enrich-wait" role="status" aria-live="polite">` +
+    `<p><i class="bi bi-hourglass-split"></i> ${esc(text)}</p>${bar}</div>`
+  );
+}
+
+async function fetchPayrollCalculate() {
+  const res = await fetch("/api/payroll/calculate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(periodPayload()),
+  });
+  const data = await Office.parseJson(res);
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.payrollHttp = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function enrichMissingPayrollContracts(missing, wrap) {
+  if (!missing.length) return;
+  wrap.innerHTML = payrollWaitHtml(
+    `Λείπουν στοιχεία για ${missing.length} εργαζομένους. Ενημέρωση από το Μητρώο Εργάνη… Παρακαλώ περιμένετε.`,
+    0,
+    missing.length
+  );
+  const startRes = await fetch("/api/payroll/enrich-contracts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ employees: missing }),
+  });
+  const start = await Office.parseJson(startRes);
+  if (!startRes.ok || !start.job_id) {
+    throw new Error(start.error || "Δεν ξεκίνησε η ενημέρωση από το Μητρώο");
+  }
+  const statusUrl = `/api/payroll/enrich-contracts/status/${encodeURIComponent(start.job_id)}`;
+  const deadline = Date.now() + 45 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await sleepMs(400);
+    const stRes = await fetch(statusUrl);
+    const st = await stRes.json();
+    if (!stRes.ok) {
+      throw new Error(st.error || `Σφάλμα κατάστασης (HTTP ${stRes.status})`);
+    }
+    if (st.message) {
+      wrap.innerHTML = payrollWaitHtml(st.message, st.step, st.total);
+    }
+    if (st.status === "done" || st.status === "error") {
+      return st;
+    }
+  }
+  throw new Error("Λήξη χρόνου αναμονής ενημέρωσης Μητρώου");
+}
+
 async function loadPayroll() {
   const embed = document.getElementById("payrollEmbed");
   const wrap = document.getElementById("payrollWrap");
@@ -651,15 +763,21 @@ async function loadPayroll() {
   wrap.innerHTML = `<p class="payroll-embed-loading"><i class="bi bi-hourglass-split"></i> Υπολογισμός μεικτών…</p>`;
   embed.classList.remove("hidden");
   try {
-    const res = await fetch("/api/payroll/calculate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(periodPayload()),
-    });
-    const data = await Office.parseJson(res);
-    if (!res.ok) {
-      wrap.innerHTML = `<p class="payroll-warn">${esc(data.error || `HTTP ${res.status}`)}</p>`;
-      return;
+    let data = await fetchPayrollCalculate();
+    const missing = data.missing_contract_wage || [];
+    if (missing.length) {
+      try {
+        await enrichMissingPayrollContracts(missing, wrap);
+      } catch (enrichError) {
+        wrap.innerHTML = payrollWaitHtml(
+          `${enrichError.message || enrichError} — επανυπολογισμός με τα υπάρχοντα στοιχεία.`,
+          0,
+          0
+        );
+        await sleepMs(1200);
+      }
+      wrap.innerHTML = `<p class="payroll-embed-loading"><i class="bi bi-hourglass-split"></i> Επανυπολογισμός μεικτών…</p>`;
+      data = await fetchPayrollCalculate();
     }
     payrollData = data;
     payrollOriginal = JSON.parse(JSON.stringify(data));
@@ -1402,9 +1520,7 @@ async function downloadExcel(kind) {
     const link = document.createElement("a");
     link.href = url;
     const prefix = detailed ? "orometrisi_analysis" : "orometrisi";
-    link.download = isMonthMode()
-      ? `${prefix}_month_${String(year)}${String(month).padStart(2, "0")}.xlsx`
-      : `${prefix}_${weekFrom.replaceAll("-", "")}.xlsx`;
+    link.download = `${prefix}_${periodFileTag()}.xlsx`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1433,9 +1549,7 @@ async function downloadPayrollExcel() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = isMonthMode()
-      ? `misthodosia_month_${String(year)}${String(month).padStart(2, "0")}.xlsx`
-      : `misthodosia_${weekFrom.replaceAll("-", "")}.xlsx`;
+    link.download = `misthodosia_${periodFileTag()}.xlsx`;
     document.body.appendChild(link);
     link.click();
     link.remove();

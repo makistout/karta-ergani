@@ -285,9 +285,9 @@ def test_contract_alerts_permission_follows_role():
     app.secret_key = "test-secret"
     register_access_context(app)
     with app.test_request_context("/"):
-        for role in ("accountant", "super_admin"):
+        for role in ("accountant", "super_admin", "office_manager", "admin", "backoffice_admin"):
             assert has_permission("alerts.contract.view", role=role)
-        for role in ("office_manager", "office", "admin", "backoffice_admin", "viewer"):
+        for role in ("office", "viewer"):
             assert not has_permission("alerts.contract.view", role=role)
 
 

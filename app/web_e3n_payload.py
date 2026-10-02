@@ -86,6 +86,75 @@ def empty_hire_draft(*, branch_aa: str = "0") -> dict[str, Any]:
     }
 
 
+_HIRE_LOOKUP_KEYS = (
+    "eponymo",
+    "onoma",
+    "onoma_patros",
+    "onoma_mitros",
+    "birthdate",
+    "sex",
+    "amka",
+    "amika",
+    "typos_taytothtas",
+    "ar_taytothtas",
+    "specialty",
+    "specialty_code",
+    "salary",
+    "hourly_wage",
+    "weekly_hours",
+    "fulltime_contract_weekly_hours",
+    "weekly_work_days",
+    "employment_relation",
+    "regime",
+    "characterization",
+    "fixed_term_from",
+    "fixed_term_to",
+    "prior_service",
+    "break_minutes",
+    "break_in_work",
+    "flex_arrival_minutes",
+    "working_time_digital_organization",
+    "working_card",
+    "trial_period",
+)
+
+
+def apply_lookup_to_hire_draft(
+    draft: dict[str, Any],
+    found: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Γεμίζει τη φόρμα πρόσληψης από προηγούμενη απασχόληση. Όχι παλιά ημ. πρόσληψης."""
+    out = dict(draft)
+    row = found or {}
+    mapped = {
+        "characterization": map_characterization(row.get("characterization")),
+        "employment_relation": map_employment_relation(row.get("employment_relation")),
+        "regime": map_regime(row.get("regime")),
+        "weekly_work_days": map_week_days(row.get("weekly_work_days")),
+        "break_in_work": map_yes_no(row.get("break_in_work")),
+        "specialty_code": specialty_code(row.get("specialty_code"), row.get("step92")),
+    }
+    for key in _HIRE_LOOKUP_KEYS:
+        value = mapped.get(key)
+        if value is None or value == "":
+            value = row.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text == "":
+            continue
+        if key == "birthdate":
+            out[key] = _ergani_date(text)
+            continue
+        if key in ("fixed_term_from", "fixed_term_to") and text:
+            out[key] = _ergani_date(text)
+            continue
+        out[key] = value
+    if row.get("employee_afm"):
+        out["employee_afm"] = norm_afm(str(row.get("employee_afm")))
+    return out
+
+
 def build_web_e3n_payload(
     data: dict[str, Any],
     *,

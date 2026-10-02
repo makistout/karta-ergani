@@ -3,6 +3,41 @@
 {% set shell = "office" %}
 {% set active_nav = 'employees' %}
 {% set body_class = "" %}
+{% block extra_head %}
+<style>
+.hire-lookup-modal-panel { width: min(92vw, 440px); text-align: left; }
+.hire-lookup-msg { display: flex; align-items: flex-start; gap: 0.65rem; margin: 0.35rem 0 0; line-height: 1.45; }
+.hire-lookup-spin { display: inline-block; animation: hire-lookup-spin 1s linear infinite; }
+@keyframes hire-lookup-spin { to { transform: rotate(360deg); } }
+.hire-afm-guide {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  max-width: 100%;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #334155;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.hire-afm-guide i { color: #2563eb; margin-top: 0.1rem; }
+.hire-afm-guide kbd {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 0.78em;
+  font-family: inherit;
+  font-weight: 600;
+  color: #0f172a;
+}
+</style>
+{% endblock %}
 {% block content %}
       <h1 class="page-title"><i class="bi bi-person-plus-fill" aria-hidden="true"></i> Πρόσληψη εργαζομένου</h1>
       <p id="hireDesc" class="page-desc">
@@ -18,10 +53,14 @@
 
       <section class="card employee-detail-card">
         <h2 class="employee-detail-section-title">Στοιχεία αναγγελίας (WebE3N)</h2>
+        <p class="hire-afm-guide">
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          <span>Αν ο εργαζόμενος έχει εργαστεί ξανά, συμπληρώστε το ΑΦΜ και πατήστε <kbd>Enter</kbd> για ανάκτηση των στοιχείων από το Εργάνη.</span>
+        </p>
         <form id="employeeHireForm" class="employee-contract-change-form">
           <div class="employee-contract-change-grid">
             <label class="dp-field"><span class="dp-field-label">ΑΦΜ</span>
-              <input id="hireAfm" type="text" class="field-input" inputmode="numeric" maxlength="9" required>
+              <input id="hireAfm" type="text" class="field-input" inputmode="numeric" maxlength="9" required autocomplete="off">
             </label>
             <label class="dp-field"><span class="dp-field-label">Φύλο</span>
               <select id="hireSex" class="field-input" required>
@@ -194,9 +233,23 @@
           </div>
         </form>
       </section>
+
+      <div id="hireLookupModal" class="office-modal hidden" role="dialog" aria-modal="true" aria-labelledby="hireLookupTitle">
+        <div class="office-modal-backdrop"></div>
+        <div class="office-modal-panel hire-lookup-modal-panel">
+          <h2 id="hireLookupTitle" class="office-modal-title">Ανάκτηση στοιχείων</h2>
+          <p id="hireLookupMsg" class="office-modal-sub hire-lookup-msg">
+            <i class="bi bi-hourglass-split hire-lookup-spin" aria-hidden="true"></i>
+            <span>Ο εργαζόμενος υπάρχει ήδη. Ανακτούμε τα στοιχεία του…</span>
+          </p>
+          <div class="office-modal-actions">
+            <button type="button" class="btn btn-secondary hidden" id="hireLookupClose">Κλείσιμο</button>
+          </div>
+        </div>
+      </div>
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
   <script src="/static/js/office-autocomplete.js?v=20260915acopen1"></script>
-  <script src="/static/js/employee-hire.js?v=20260915idtypes1"></script>
+  <script src="/static/js/employee-hire.js?v=20261002hirelookup2"></script>
 {% endblock %}

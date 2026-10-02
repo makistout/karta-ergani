@@ -6,6 +6,7 @@ import pytest
 
 from app.web_e3n_payload import (
     SUBMISSION_CODE_WEB_E3N,
+    apply_lookup_to_hire_draft,
     build_web_e3n_payload,
     empty_hire_draft,
 )
@@ -18,6 +19,69 @@ def test_empty_hire_draft_defaults():
     assert draft["branch_aa"] == "2"
     assert draft["basics_acceptance"] == "1"
     assert draft["basics_acceptance_catalog"]
+
+
+def test_apply_lookup_fills_identity_keeps_today_hire_date():
+    draft = empty_hire_draft(branch_aa="0")
+    today = draft["hire_date"]
+    filled = apply_lookup_to_hire_draft(
+        draft,
+        {
+            "eponymo": "ΣΤΑΥΡΟΠΟΥΛΟΣ",
+            "onoma": "ΓΕΩΡΓΙΟΣ",
+            "onoma_patros": "ΝΙΚΟΣ",
+            "onoma_mitros": "ΜΑΡΙΑ",
+            "birthdate": "1984-09-10",
+            "sex": "0",
+            "amka": "10098401234",
+            "characterization": "ΕΡΓΑΤΗΣ",
+            "step92": "413101-ΑΠΟΘΗΚΑΡΙΟΙ",
+            "specialty": "ΑΠΟΘΗΚΑΡΙΟΣ",
+            "salary": "534,17",
+            "weekly_hours": "20,0",
+            "hire_date": "15/03/2020",
+        },
+    )
+    assert filled["eponymo"] == "ΣΤΑΥΡΟΠΟΥΛΟΣ"
+    assert filled["birthdate"] == "10/09/1984"
+    assert filled["characterization"] == "0"
+    assert filled["specialty_code"] == "413101"
+    assert filled["hire_date"] == today
+
+
+def test_collect_hire_lookup_prefers_ergani(monkeypatch):
+    from app import routes_employees as routes
+
+    monkeypatch.setattr(
+        routes,
+        "_load_local_hire_history",
+        lambda *_a, **_k: {"eponymo": "ΤΟΠΙΚΟΣ", "onoma": "Α"},
+    )
+    monkeypatch.setattr(
+        routes,
+        "_fetch_portal_hire_personal",
+        lambda *_a, **_k: (
+            {
+                "eponymo": "ΠΟΡΤΑΛ",
+                "onoma": "Β",
+                "onoma_patros": "ΠΑΤΗΡ",
+                "birthdate": "10/09/1984",
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        routes,
+        "_fetch_ex_base_05_personal",
+        lambda *_a, **_k: (None, "Ο εργαζόμενος δεν βρέθηκε στην τρέχουσα κατάσταση Ergani (EX_BASE_05)"),
+    )
+    merged, sources, err = routes._collect_hire_lookup(
+        {"employer_afm": "082136041"}, "143980812"
+    )
+    assert merged["eponymo"] == "ΠΟΡΤΑΛ"
+    assert merged["onoma_patros"] == "ΠΑΤΗΡ"
+    assert "portal" in sources
+    assert err is None
 
 
 def test_build_web_e3n_payload_minimal():

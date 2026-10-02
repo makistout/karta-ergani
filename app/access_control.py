@@ -20,16 +20,16 @@ ACCOUNTANT_ALLOWED_ADMIN_NAVS = {"settings", "missingcards"}
 # Office manager βλέπει Ορφανά Χτυπήματα χωρίς Sync/Logs/Ρυθμίσεις.
 OFFICE_MANAGER_ALLOWED_ADMIN_NAVS = {"missingcards"}
 
-# Συμμόρφωση (πραγματική, πρωτόκολλα, απολογιστικό, προειδοποιήσεις
-# σύμβασης στην αρχική): μόνο λογιστής και super admin. Ούτε office manager
-# ούτε backoffice admin. Το Ψηφιακό ωράριο μένει κοινό (`schedule.view`).
+# Συμμόρφωση (πραγματική, πρωτόκολλα, απολογιστικό): μόνο λογιστής και
+# super admin. Ούτε office manager ούτε backoffice admin. Το Ψηφιακό
+# ωράριο μένει κοινό (`schedule.view`). Οι προειδοποιήσεις σύμβασης στην
+# αρχική πάνε και στον office manager (`alerts.contract.view`).
 COMPLIANCE_ROLES = {"super_admin", "accountant"}
 COMPLIANCE_NAVS = {"worklog", "protocols", "apologistic", "rule-diagrams"}
 COMPLIANCE_PERMISSIONS: set[str] = {
     "work_log.page.view",
     "protocols.view",
     "apologistic.view",
-    "alerts.contract.view",
 }
 
 # Μισθοδοσία: μόνο super_admin. Ούτε λογιστής, ούτε stale session permissions.
@@ -95,10 +95,13 @@ OFFICE_OPERATOR_PERMISSIONS: set[str] = VIEWER_PERMISSIONS | {
     "schedule.submit_weekly",
 }
 
-STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS)
+STORE_MANAGER_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS) | {
+    "alerts.contract.view",
+}
 
 # Λογιστής: λειτουργικές οθόνες χωρίς Sync/Logs/Users· επιλογή καταστήματος· Ρυθμίσεις = αργίες + απολογιστικό.
 ACCOUNTANT_PERMISSIONS: set[str] = set(OFFICE_OPERATOR_PERMISSIONS) | COMPLIANCE_PERMISSIONS | {
+    "alerts.contract.view",
     "settings.holidays.view",
     "settings.holidays.edit",
 }
@@ -401,7 +404,7 @@ def is_admin_role(role: str | None = None) -> bool:
 
 
 def is_compliance_role(role: str | None = None) -> bool:
-    """Πραγματική/πρωτόκολλα/απολογιστικό/προειδοποιήσεις: λογιστής + super admin."""
+    """Πραγματική/πρωτόκολλα/απολογιστικό: λογιστής + super admin."""
     return normalize_role(role if role is not None else current_role()) in COMPLIANCE_ROLES
 
 

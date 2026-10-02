@@ -620,6 +620,9 @@ body.login-page {
   align-items: center;
   gap: 0.45rem;
   margin: 0 0 0.45rem;
+  padding: 0.42rem 0.75rem;
+  border-radius: 8px;
+  background: #e8edf2;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);

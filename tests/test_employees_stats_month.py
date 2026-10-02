@@ -6,6 +6,7 @@ from flask import Flask
 from app.routes_employees import (
     NO_SPECIALTY_LABEL,
     _resolve_employees_stats_month,
+    _resolve_leave_display_month,
     _specialty_label,
     employees_list,
 )
@@ -65,6 +66,21 @@ def test_too_old_cross_year_clamps_to_july():
     assert as_of == date(2025, 7, 31)
 
 
+def test_leave_display_is_current_minus_two_except_jan_feb():
+    assert _resolve_leave_display_month(today=date(2026, 10, 2)) == (
+        2026, 8, date(2026, 8, 31),
+    )
+    assert _resolve_leave_display_month(today=date(2026, 3, 1)) == (
+        2026, 1, date(2026, 1, 31),
+    )
+    assert _resolve_leave_display_month(today=date(2027, 1, 15)) == (
+        2026, 10, date(2026, 10, 31),
+    )
+    assert _resolve_leave_display_month(today=date(2026, 2, 10)) == (
+        2025, 10, date(2025, 10, 31),
+    )
+
+
 def test_specialty_label_fallback():
     assert _specialty_label(None) == NO_SPECIALTY_LABEL
     assert _specialty_label({}) == NO_SPECIALTY_LABEL
@@ -110,7 +126,7 @@ def test_employees_list_uses_selected_month_for_open_and_leave():
     data = response.get_json()
     assert captured["punches"] == (2026, 6)
     assert captured["store_id"] == 7
-    assert captured["leave_today"] == date(2026, 6, 30)
+    assert captured["leave_today"] == date(2026, 7, 31)
     emp = data["employees"][0]
     assert emp["specialty"] == "ΣΕΡΒΙΤΟΡΟΣ"
     assert emp["open_punches_month"] == 2
@@ -119,4 +135,4 @@ def test_employees_list_uses_selected_month_for_open_and_leave():
     assert data["year"] == 2026
     assert data["month"] == 6
     assert data["open_punches_month_label"] == "06/2026"
-    assert data["normal_leave_latest_month"] == "06/2026"
+    assert data["normal_leave_latest_month"] == "07/2026"

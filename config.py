@@ -147,6 +147,13 @@ class Config:
     KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME = (
         os.environ.get("KARTA_SCHEDULED_EMPLOYMENT_CONTRACT_TIME") or "04:00"
     ).strip() or "04:00"
+    KARTA_SCHEDULED_EMPLOYEE_ROSTER_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_EMPLOYEE_ROSTER_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_EMPLOYEE_ROSTER_TIME = (
+        os.environ.get("KARTA_SCHEDULED_EMPLOYEE_ROSTER_TIME") or "04:00"
+    ).strip() or "04:00"
     KARTA_SCHEDULED_APOLOGISTIC_ENABLED = _env_flag(
         "KARTA_SCHEDULED_APOLOGISTIC_ENABLED",
         default=True,

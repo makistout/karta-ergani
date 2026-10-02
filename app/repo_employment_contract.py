@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import pyodbc
@@ -11,7 +12,14 @@ import pyodbc
 from app.db import cursor
 from app.row_util import rows_to_dicts
 from app.employment_contract_parse import map_marital_status
-from app.web_ma_payload import normalize_epikourikiki_kod, normalize_kyria_asfalish
+from app.web_ma_payload import (
+    map_characterization,
+    map_employment_relation,
+    map_regime,
+    map_week_days,
+    normalize_epikourikiki_kod,
+    normalize_kyria_asfalish,
+)
 from app.work_card_payload import norm_afm
 
 _KEEP_IF_EMPTY = (
@@ -21,6 +29,13 @@ _KEEP_IF_EMPTY = (
     "kyria_asfalish",
     "epikourikiki_kod",
 )
+_FILL_IF_EMPTY = _KEEP_IF_EMPTY + (
+    "total_weekly_hours",
+    "break_minutes",
+    "break_in_work",
+    "flex_arrival_minutes",
+)
+_TERMS_EXCLUDE = _KEEP_IF_EMPTY + ("ergani_updated_at",)
 _TRACKED_FIELDS = (
     "specialty",
     "characterization",
@@ -44,6 +59,13 @@ _TRACKED_FIELDS = (
     "break_in_work",
     "flex_arrival_minutes",
     "ergani_updated_at",
+)
+_DECIMAL_FIELDS = (
+    "weekly_hours",
+    "salary",
+    "hourly_wage",
+    "total_weekly_hours",
+    "fulltime_contract_weekly_hours",
 )
 
 
@@ -74,14 +96,74 @@ def _norm_int(value: Any) -> int | None:
         return None
 
 
+def _norm_decimal(value: Any) -> str:
+    text = _norm_str(value).replace(" ", "").replace(",", ".")
+    if not text:
+        return ""
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return text
+    rendered = format(number, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered
+
+
+def _norm_step92(value: Any) -> str:
+    text = _norm_str(value)
+    if "-" in text:
+        code, rest = text.split("-", 1)
+        if code.isdigit() and rest.strip():
+            return rest.strip()
+    return text
+
+
+def _norm_optional_zero(value: Any) -> str:
+    text = _norm_str(value)
+    if text in ("", "0", "00", "000"):
+        return ""
+    return text
+
+
+def _canonical_hash_value(key: str, value: Any, row: dict[str, Any] | None = None) -> Any:
+    """Portal λεκτικά και EX_BASE_05 κωδικοί/τελείες να δίνουν το ίδιο hash."""
+    if key in ("break_minutes", "break_in_work", "flex_arrival_minutes"):
+        return _norm_int(value) or 0
+    if key == "total_weekly_hours":
+        tot = _norm_decimal(value)
+        if tot in ("", "0"):
+            return _norm_decimal((row or {}).get("weekly_hours"))
+        return tot
+    if key in _DECIMAL_FIELDS:
+        return _norm_decimal(value)
+    if key in _KEEP_IF_EMPTY:
+        return _norm_optional_zero(value)
+    if key == "characterization":
+        return map_characterization(value) or _norm_str(value)
+    if key == "employment_relation":
+        return map_employment_relation(value) or _norm_str(value)
+    if key == "regime":
+        return map_regime(value) or _norm_str(value)
+    if key == "weekly_work_days":
+        return map_week_days(value) or _norm_str(value)
+    if key == "step92":
+        return _norm_step92(value)
+    return _norm_str(value)
+
+
 def content_hash_for_contract(row: dict[str, Any]) -> str:
+    payload = {key: _canonical_hash_value(key, row.get(key), row) for key in _TRACKED_FIELDS}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def contract_terms_hash(row: dict[str, Any]) -> str:
+    """Hash όρων σύμβασης — χωρίς προσωπικά, κενά/0 και μόνο ημερομηνία Εργάνη."""
     payload = {
-        key: (
-            _norm_int(row.get(key))
-            if key in ("break_minutes", "break_in_work", "flex_arrival_minutes")
-            else _norm_str(row.get(key))
-        )
+        key: _canonical_hash_value(key, row.get(key), row)
         for key in _TRACKED_FIELDS
+        if key not in _TERMS_EXCLUDE
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -205,16 +287,27 @@ def insert_if_changed(
     )
     if previous:
         data = _merge_kept_personal(data, previous)
-        prev_hash = _norm_str(previous.get("content_hash"))
-        if prev_hash and prev_hash == data["content_hash"]:
+        same = contract_terms_hash(previous) == contract_terms_hash(data)
+        stored = _norm_str(previous.get("content_hash"))
+        if stored and stored == data["content_hash"]:
+            same = True
+        if same:
+            personal_sets: list[str] = []
+            personal_params: list[Any] = []
+            for key in _FILL_IF_EMPTY:
+                new_val = data.get(key)
+                if new_val and new_val != previous.get(key):
+                    personal_sets.append(f"{key} = ?")
+                    personal_params.append(new_val)
             with cursor() as cur:
                 cur.execute(
-                    """
+                    f"""
                     UPDATE dbo.karta_employment_contract
                     SET last_checked_at = SYSDATETIMEOFFSET()
+                    {(", " + ", ".join(personal_sets)) if personal_sets else ""}
                     WHERE id = ? AND is_current = 1
                     """,
-                    (previous["id"],),
+                    (*personal_params, previous["id"]),
                 )
             return {"inserted": False, "reason": "unchanged", "id": previous.get("id")}
 
@@ -309,6 +402,49 @@ def delete_all_for_store(employer_afm: str, branch_aa: str | None = None) -> int
         return int(cur.rowcount or 0)
 
 
+def _keeper_id_for_equivalent_rows(rows: list[dict[str, Any]]) -> int:
+    currents = [row for row in rows if row.get("is_current") in (True, 1, "1")]
+    pool = currents or rows
+    return int(max(pool, key=lambda row: int(row["id"]))["id"])
+
+
+def prune_equivalent_contract_snapshots() -> dict[str, int]:
+    """Σβήνει εκδόσεις με ίδιο κανονικοποιημένο περιεχόμενο· κρατά μία ανά hash."""
+    with cursor(commit=False) as cur:
+        cur.execute(f"SELECT {_CONTRACT_COLUMNS} FROM dbo.karta_employment_contract")
+        rows = rows_to_dicts(cur)
+    grouped: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        key = (
+            norm_afm(row.get("employer_afm") or ""),
+            str(row.get("branch_aa") or "0").strip() or "0",
+            norm_afm(row.get("employee_afm") or ""),
+            contract_terms_hash(row),
+        )
+        grouped.setdefault(key, []).append(row)
+    delete_ids: list[int] = []
+    for dupes in grouped.values():
+        if len(dupes) < 2:
+            continue
+        keeper = _keeper_id_for_equivalent_rows(dupes)
+        for row in dupes:
+            rid = int(row["id"])
+            if rid != keeper:
+                delete_ids.append(rid)
+    deleted = 0
+    if delete_ids:
+        with cursor() as cur:
+            for i in range(0, len(delete_ids), 400):
+                chunk = delete_ids[i : i + 400]
+                marks = ",".join("?" for _ in chunk)
+                cur.execute(
+                    f"DELETE FROM dbo.karta_employment_contract WHERE id IN ({marks})",
+                    chunk,
+                )
+                deleted += int(cur.rowcount or 0)
+    return {"scanned": len(rows), "deleted": deleted, "groups": len(grouped)}
+
+
 def list_current_for_store(
     employer_afm: str,
     branch_aa: str,
@@ -400,6 +536,31 @@ def list_history_for_employee(
             (afm, aa, e_afm),
         )
         return rows_to_dicts(cur)
+
+
+def latest_for_employer_employee(
+    employer_afm: str,
+    employee_afm: str,
+) -> dict[str, Any] | None:
+    """Τελευταία σύμβαση του ΑΦΜ σε οποιοδήποτε παράρτημα του εργοδότη."""
+    afm = norm_afm(employer_afm)
+    e_afm = norm_afm(employee_afm)
+    if not afm or not e_afm:
+        return None
+    with cursor(commit=False) as cur:
+        cur.execute(
+            f"""
+            SELECT TOP (1)
+                {_CONTRACT_COLUMNS}
+            FROM dbo.karta_employment_contract
+            WHERE employer_afm = ? AND employee_afm = ?
+            ORDER BY CASE WHEN is_current IN (1, '1') THEN 0 ELSE 1 END,
+                     synced_at DESC, id DESC
+            """,
+            (afm, e_afm),
+        )
+        rows = rows_to_dicts(cur)
+        return rows[0] if rows else None
 
 
 def _pick_personal(pers: dict[str, Any], latest: dict[str, Any], key: str) -> Any:

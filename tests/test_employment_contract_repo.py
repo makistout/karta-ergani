@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.repo_employment_contract import content_hash_for_contract, _normalize_row
+from app.repo_employment_contract import (
+    _normalize_row,
+    content_hash_for_contract,
+    contract_terms_hash,
+)
 
 
 def test_content_hash_stable_for_same_fields():
@@ -32,6 +36,102 @@ def test_content_hash_stable_for_same_fields():
     h2 = content_hash_for_contract({**row, "specialty": " ΣΕΡΒΙΤΟΡΟΣ "})
     assert h1 == h2
     assert len(h1) == 64
+
+
+def test_keeper_prefers_current_then_newest_id():
+    from app.repo_employment_contract import _keeper_id_for_equivalent_rows
+
+    assert _keeper_id_for_equivalent_rows([
+        {"id": 10, "is_current": 0},
+        {"id": 20, "is_current": 1},
+        {"id": 30, "is_current": 0},
+    ]) == 20
+    assert _keeper_id_for_equivalent_rows([
+        {"id": 10, "is_current": 0},
+        {"id": 30, "is_current": 0},
+    ]) == 30
+
+
+def test_content_hash_treats_portal_labels_and_api_codes_as_same():
+    portal = {
+        "specialty": "ΑΠΟΘΗΚΑΡΙΟΣ",
+        "characterization": "ΕΡΓΑΤΗΣ",
+        "step92": "ΑΠΟΘΗΚΑΡΙΟΙ",
+        "weekly_work_days": "5-ήμερη",
+        "employment_relation": "ΑΟΡΙΣΤΟΥ ΧΡΟΝΟΥ",
+        "regime": "ΜΕΡΙΚΗ",
+        "weekly_hours": "20,0",
+        "salary": "534,17",
+        "hourly_wage": "6,16",
+        "fulltime_contract_weekly_hours": "40,0",
+        "ergani_updated_at": "10/09/2026 00:00",
+    }
+    api = {
+        **portal,
+        "characterization": "0",
+        "step92": "413101-ΑΠΟΘΗΚΑΡΙΟΙ",
+        "weekly_work_days": "5",
+        "employment_relation": "0",
+        "regime": "1",
+        "weekly_hours": "20.0",
+        "salary": "534.17",
+        "hourly_wage": "6.16",
+        "fulltime_contract_weekly_hours": "40.0",
+    }
+    assert content_hash_for_contract(portal) == content_hash_for_contract(api)
+    assert contract_terms_hash(portal) == contract_terms_hash(api)
+    assert contract_terms_hash({**portal, "arithmos_teknon": None}) == contract_terms_hash(
+        {**portal, "arithmos_teknon": "0", "marital_status": "0"}
+    )
+    assert contract_terms_hash(portal) == contract_terms_hash(
+        {**portal, "kyria_asfalish": "001"}
+    )
+    assert contract_terms_hash({**portal, "break_in_work": None}) == contract_terms_hash(
+        {**portal, "break_in_work": 0}
+    )
+    assert contract_terms_hash({**portal, "total_weekly_hours": None}) == contract_terms_hash(
+        {**portal, "total_weekly_hours": "20,0"}
+    )
+    assert contract_terms_hash(
+        {**portal, "ergani_updated_at": "10/09/2026 00:00"}
+    ) == contract_terms_hash(
+        {**portal, "ergani_updated_at": "23/09/2026 00:00"}
+    )
+
+
+def test_insert_skips_when_only_encoding_differs(monkeypatch):
+    portal = {
+        "employee_afm": "143980812",
+        "characterization": "ΕΡΓΑΤΗΣ",
+        "step92": "ΑΠΟΘΗΚΑΡΙΟΙ",
+        "weekly_work_days": "5-ήμερη",
+        "employment_relation": "ΑΟΡΙΣΤΟΥ ΧΡΟΝΟΥ",
+        "regime": "ΜΕΡΙΚΗ",
+        "weekly_hours": "20,0",
+        "salary": "534,17",
+        "hourly_wage": "6,16",
+        "fulltime_contract_weekly_hours": "40,0",
+    }
+    previous = {"id": 17, **_normalize_row("082136041", "0", portal)}
+    repo, cur = _mock_contract_db(monkeypatch, previous)
+    result = repo.insert_if_changed(
+        "082136041",
+        "0",
+        {
+            "employee_afm": "143980812",
+            "characterization": "0",
+            "step92": "413101-ΑΠΟΘΗΚΑΡΙΟΙ",
+            "weekly_work_days": "5",
+            "employment_relation": "0",
+            "regime": "1",
+            "weekly_hours": "20.0",
+            "salary": "534.17",
+            "hourly_wage": "6.16",
+            "fulltime_contract_weekly_hours": "40.0",
+        },
+    )
+    assert result == {"inserted": False, "reason": "unchanged", "id": 17}
+    cur.execute.assert_called_once()
 
 
 def test_content_hash_changes_on_field_or_ergani_date():
@@ -105,7 +205,10 @@ def test_insert_records_family_change_from_ergani(monkeypatch):
         "0",
         {"employee_afm": "141320107", "salary": "1000", "arithmos_teknon": "3"},
     )
-    assert result["inserted"] is True
+    assert result == {"inserted": False, "reason": "unchanged", "id": 17}
+    sql, params = cur.execute.call_args.args
+    assert "arithmos_teknon = ?" in sql
+    assert params[0] == "3"
 
 
 def _mock_contract_db(monkeypatch, previous):

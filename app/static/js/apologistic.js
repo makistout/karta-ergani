@@ -173,6 +173,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function applyInitialStoreViewFromQuery() {
+  const year = Number(monthPageQuery.get("year") || 0);
+  const month = Number(monthPageQuery.get("month") || 0);
+  if (Number.isInteger(year) && year >= 2000 && Number.isInteger(month) && month >= 1 && month <= 12) {
+    monthStart = new Date(year, month - 1, 1);
+  }
   if (isEmployeeMonthView()) return;
   const mode = String(monthPageQuery.get("mode") || "").trim();
   if (mode === "month" || mode === "range" || mode === "week") {
@@ -181,11 +186,6 @@ function applyInitialStoreViewFromQuery() {
   const weekFrom = String(monthPageQuery.get("week_from") || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(weekFrom)) {
     weekStart = new Date(`${weekFrom}T12:00:00`);
-  }
-  const year = Number(monthPageQuery.get("year") || 0);
-  const month = Number(monthPageQuery.get("month") || 0);
-  if (Number.isInteger(year) && year >= 2000 && Number.isInteger(month) && month >= 1 && month <= 12) {
-    monthStart = new Date(year, month - 1, 1);
   }
   const from = String(monthPageQuery.get("from") || "").trim();
   const to = String(monthPageQuery.get("to") || "").trim();
@@ -821,12 +821,15 @@ function refreshSummaryCounts() {
 function initTimekeeping() {
   document.getElementById("apologisticTimekeepingBtn")?.addEventListener("click", () => {
     const params = new URLSearchParams();
-    if (isStoreMonthView()) {
+    if (isEmployeeMonthView() || isStoreMonthView()) {
       params.set("year", String(monthStart.getFullYear()));
       params.set("month", String(monthStart.getMonth() + 1));
-      params.set("origin_mode", "month");
       params.set("origin_year", String(monthStart.getFullYear()));
       params.set("origin_month", String(monthStart.getMonth() + 1));
+      params.set("origin_mode", isEmployeeMonthView() ? "employee-month" : "month");
+      if (isEmployeeMonthView()) {
+        params.set("employee_afm", employeeMonthAfm());
+      }
     } else {
       const currentWeek = iso(weekStart);
       params.set("week_from", currentWeek);
@@ -839,10 +842,6 @@ function initTimekeeping() {
     if (reportState.selectedDate) {
       params.set("origin_selected_date", reportState.selectedDate);
     }
-    if (isStoreMonthView()) {
-      location.href = `/ui/apologistic/timekeeping?${params.toString()}`;
-      return;
-    }
     location.href = `/ui/apologistic/timekeeping?${params.toString()}`;
   });
 }
@@ -851,12 +850,12 @@ function updateTimekeepingBar() {
   const bar = document.querySelector(".apologistic-timekeeping-bar");
   if (!bar) return;
   const counts = computeReportCounts(reportState.rows || []);
-  const isSupportedPeriod = !isEmployeeMonthView() && !isStoreRangeView();
+  const isSupportedPeriod = !isStoreRangeView();
   const visible = isSupportedPeriod && (counts.all || 0) > 0 && (counts.review || 0) === 0;
   bar.classList.toggle("hidden", !visible);
   const hint = document.getElementById("apologisticTimekeepingHint");
   const btn = document.getElementById("apologisticTimekeepingBtn");
-  const label = isStoreMonthView() ? "Ωρομέτρηση μήνα" : "Ωρομέτρηση";
+  const label = (isStoreMonthView() || isEmployeeMonthView()) ? "Ωρομέτρηση μήνα" : "Ωρομέτρηση";
   btn?.querySelector("span")?.replaceChildren(document.createTextNode(label));
   if (hint) hint.textContent = visible
     ? `${counts.ok || 0} Σύμφωνα · ${counts.change || 0} Μεταβολές · χωρίς εκκρεμότητες Ελέγχου`
