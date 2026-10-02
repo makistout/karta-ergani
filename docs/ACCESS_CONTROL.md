@@ -104,8 +104,9 @@ super_admin** (`SUPER_ADMIN_ONLY_PERMISSIONS`).
 - Αρχική: `dashboard.view`
 - Εργαζόμενοι: `employees.view`, `employees.sync`, `employees.export`
   - `employees.view` καλύπτει `/ui/employees`, `/ui/employees/detail`, `/ui/employees/contracts`
-    και `GET /api/employees/*` (λίστα/ιστορικό σύμβασης) — διαθέσιμο και σε `viewer`.
-  - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`) — admin.
+    και `GET /api/employees/*` (λίστα/ιστορικό σύμβασης, draft αποχώρησης) — διαθέσιμο και σε `viewer`.
+  - `employees.sync` καλύπτει portal sync συμβάσεων (`POST /api/employees/contract/sync`)
+    και υποβολή αποχώρησης (`POST /api/employees/departure/submit`) — admin.
   - **Μεταβολή σύμβασης WebMA** (`/api/employees/contract/change/*` + UI στο detail):
     **μόνο `super_admin`** (επιπλέον του permission).
 - Ψηφιακό ωράριο: `schedule.view` (σελίδα + `GET /api/schedule/*` + εβδομαδιαίο

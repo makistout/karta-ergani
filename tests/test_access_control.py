@@ -355,6 +355,8 @@ def test_accountant_permissions_and_holiday_api_rules():
     assert permission_for_path("/api/apologistic/submit-schedule", "POST") == "apologistic.view"
     assert permission_for_path("/api/apologistic/submit-bulk", "POST") == "apologistic.view"
     assert permission_for_path("/api/apologistic/submit-overtime", "POST") == "apologistic.view"
+    assert permission_for_path("/api/employees/departure/draft", "GET") == "employees.view"
+    assert permission_for_path("/api/employees/departure/submit", "POST") == "employees.sync"
     assert permission_for_path("/api/store/1/action-settings", "GET") == "work_log.view"
     assert permission_for_path("/api/store/1/apologistic-settings", "PUT") == "work_log.view"
     assert COMPLIANCE_PERMISSIONS <= perms

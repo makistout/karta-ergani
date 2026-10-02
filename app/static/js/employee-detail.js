@@ -812,6 +812,7 @@ async function loadEmployeeDetail() {
   setupEmploymentDates(afm);
   setupCateringOverride(afm);
   setupContractChange(afm);
+  setupDeparture(afm);
 
   try {
     await Office.loadActiveStore();
@@ -886,5 +887,226 @@ async function setupEmploymentDates(afm) {
     });
     const data = await res.json();
     status.textContent = res.ok ? "Αποθηκεύτηκε" : data.error || "Αποτυχία αποθήκευσης";
+  });
+}
+
+function currentDepartureType(types) {
+  const code = document.getElementById("depType")?.value;
+  return (types || []).find((row) => row.code === code) || types?.[0] || null;
+}
+
+function syncDepartureTypeFields(types, draft) {
+  const spec = currentDepartureType(types);
+  const hint = document.getElementById("depTypeHint");
+  const eventLabel = document.getElementById("depEventDateLabel");
+  if (hint) {
+    const extra = spec?.needs_file
+      ? ""
+      : [spec?.file_hint, spec?.deadline_note].filter(Boolean).join(" ");
+    hint.textContent = extra;
+    hint.classList.toggle("hidden", !extra);
+  }
+  if (eventLabel && spec?.event_date_label) eventLabel.textContent = spec.event_date_label;
+  const show = (id, on) => document.getElementById(id)?.classList.toggle("hidden", !on);
+  const code = spec?.code || "";
+  const salaryMissing = !(draft?.salary || "").toString().trim();
+  show("depSalaryWrap", salaryMissing && code !== "WebE5O");
+  show("depFileWrap", Boolean(spec?.needs_file));
+  show("depNoticeWrap", code === "WebE6NMP" || code === "WebE6NXP");
+  show("depNoticeMonthsWrap", code === "WebE6NMP");
+  show("depCompensationWrap", code === "WebE6NXP" || code === "WebE6NMP");
+  show("depEndReasonWrap", code === "WebE7N");
+  const fileHint = document.getElementById("depFileHint");
+  if (fileHint) {
+    fileHint.textContent = spec?.needs_file ? (spec.file_hint || "") : "";
+    fileHint.classList.toggle("hidden", !fileHint.textContent);
+  }
+  const salary = document.getElementById("depSalary");
+  if (salary) salary.required = salaryMissing && code !== "WebE5O";
+}
+
+function setupDeparture(afm) {
+  const btn = document.getElementById("employeeDepartureBtn");
+  const modal = document.getElementById("employeeDepartureModal");
+  const form = document.getElementById("employeeDepartureForm");
+  if (!btn || !modal || !form) return;
+
+  let draft = null;
+  Office.attachGreekDateField({ inputEl: document.getElementById("depEventDate") });
+  Office.attachGreekDateField({
+    inputEl: document.getElementById("depNoticeDate"),
+    allowEmpty: true,
+  });
+
+  function knownHireDate() {
+    return String(
+      draft?.hire_date || document.getElementById("employeeHireDate")?.value || ""
+    ).trim();
+  }
+
+  function knownSummary() {
+    const hire = knownHireDate();
+    const salary = String(draft?.salary || "").trim();
+    const bits = [];
+    if (hire) bits.push(`πρόσληψη ${hire}`);
+    if (salary) bits.push(`μεικτά ${salary}`);
+    const regime = { "0": "πλήρης", "1": "μερική", "2": "εκ περιτροπής" }[
+      String(draft?.regime || "")
+    ];
+    if (regime) bits.push(regime);
+    return bits.length ? `Από τη σύμβαση: ${bits.join(" · ")}.` : "";
+  }
+
+  function depMsg(text, ok) {
+    const el = document.getElementById("employeeDepartureMsg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = text ? `msg ${ok ? "ok" : "err"}` : "msg";
+  }
+
+  function fillSelect(el, items, valueKey = "code", labelKey = "label") {
+    if (!el) return;
+    el.innerHTML = "";
+    (items || []).forEach((item) => {
+      const opt = document.createElement("option");
+      opt.value = item[valueKey];
+      opt.textContent = item[labelKey];
+      el.appendChild(opt);
+    });
+  }
+
+  function openModal() {
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeModal() {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+  }
+  modal.querySelectorAll("[data-departure-close]").forEach((el) => {
+    el.addEventListener("click", closeModal);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (modal.classList.contains("hidden")) return;
+    if (document.querySelector(".office-confirm-modal:not(.hidden)")) return;
+    closeModal();
+  });
+
+  btn.addEventListener("click", async () => {
+    depMsg("");
+    btn.disabled = true;
+    try {
+      const res = await fetch(
+        `/api/employees/departure/draft?employee_afm=${encodeURIComponent(afm)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Αποτυχία φόρτωσης");
+      draft = data.draft || {};
+      fillSelect(document.getElementById("depType"), draft.types);
+      fillSelect(document.getElementById("depNoticeMonths"), draft.notice_months_catalog);
+      fillSelect(document.getElementById("depEndReason"), draft.end_reasons);
+      const relation = String(draft.employment_relation || "0");
+      document.getElementById("depType").value =
+        relation === "1" || relation === "2" ? "WebE7N" : "WebE5N";
+      const salaryEl = document.getElementById("depSalary");
+      if (salaryEl) salaryEl.value = draft.salary || "";
+      document.getElementById("depCompensation").value = draft.compensation || "0,00";
+      document.getElementById("depNoticeMonths").value = draft.notice_months || "1";
+      document.getElementById("depEndReason").value = draft.end_reason || "0";
+      document.getElementById("depComments").value = "";
+      if (draft.event_date) document.getElementById("depEventDate").value = draft.event_date;
+      if (draft.notice_date) document.getElementById("depNoticeDate").value = draft.notice_date;
+      const summary = document.getElementById("depKnownSummary");
+      if (summary) summary.textContent = knownSummary();
+      syncDepartureTypeFields(draft.types, draft);
+      openModal();
+    } catch (e) {
+      depMsg(String(e.message || e), false);
+      openModal();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("depType")?.addEventListener("change", () => {
+    syncDepartureTypeFields(draft?.types, draft);
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!draft) {
+      depMsg("Δεν φορτώθηκαν τα στοιχεία αποχώρησης", false);
+      return;
+    }
+    const spec = currentDepartureType(draft.types);
+    const eventDate = document.getElementById("depEventDate").value.trim();
+    const hireDate = knownHireDate();
+    if (!eventDate) {
+      depMsg("Συμπληρώστε την ημερομηνία λήξης", false);
+      return;
+    }
+    if (!hireDate) {
+      depMsg("Δεν βρέθηκε ημερομηνία πρόσληψης στη σύμβαση", false);
+      return;
+    }
+    const fileInput = document.getElementById("depFile");
+    const upload = fileInput?.files?.[0] || null;
+    if (spec?.needs_file) {
+      if (!upload) {
+        depMsg("Επιλέξτε το PDF της υπογεγραμμένης δήλωσης", false);
+        return;
+      }
+      if (!/\.pdf$/i.test(upload.name) && upload.type !== "application/pdf") {
+        depMsg("Το αρχείο πρέπει να είναι PDF", false);
+        return;
+      }
+    }
+    const name = `${draft.eponymo || ""} ${draft.onoma || ""}`.trim() || afm;
+    const ok = await Office.confirm(
+      `Να υποβληθεί στο Εργάνη «${spec?.label || "λήξη εργασίας"}» για ${name} στις ${eventDate};`,
+      { title: "Επιβεβαίωση αποχώρησης", confirmText: "Υποβολή", danger: true }
+    );
+    if (!ok) return;
+
+    const payload = {
+      ...draft,
+      submission_code: spec?.code,
+      event_date: eventDate,
+      hire_date: hireDate,
+      salary: document.getElementById("depSalary")?.value.trim() || draft.salary,
+      notice_date: document.getElementById("depNoticeDate").value.trim(),
+      notice_months: document.getElementById("depNoticeMonths").value,
+      compensation: document.getElementById("depCompensation").value.trim(),
+      end_reason: document.getElementById("depEndReason").value,
+      comments: document.getElementById("depComments").value.trim(),
+      employee_afm: afm,
+    };
+    const body = new FormData();
+    body.append("payload", JSON.stringify(payload));
+    if (upload) body.append("file", upload);
+
+    const submitBtn = document.getElementById("depSubmitBtn");
+    submitBtn.disabled = true;
+    depMsg("Υποβολή στο Εργάνη…", true);
+    try {
+      const res = await fetch("/api/employees/departure/submit", {
+        method: "POST",
+        body,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Αποτυχία υποβολής");
+      depMsg(data.message || "Υποβλήθηκε", true);
+      const departureEl = document.getElementById("employeeDepartureDate");
+      if (data.departure_date && departureEl) {
+        departureEl.value = String(data.departure_date).split("-").reverse().join("/");
+      }
+      setTimeout(closeModal, 1600);
+    } catch (e) {
+      depMsg(String(e.message || e), false);
+    } finally {
+      submitBtn.disabled = false;
+    }
   });
 }

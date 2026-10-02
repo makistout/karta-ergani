@@ -8,10 +8,15 @@
       <p id="employeeDetailDesc" class="page-desc">Στοιχεία σύμβασης από Ergani Μητρώα ανά εργαζόμενο.</p>
       <div id="eccMsg" class="msg"></div>
 
-      <div class="actions" style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <div class="actions employee-detail-toolbar">
         <a class="btn btn-secondary" href="/ui/employees">
           <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Εργαζόμενοι</span>
         </a>
+        {% if office_has_permission('employees.sync') %}
+        <button type="button" id="employeeDepartureBtn" class="btn btn-danger">
+          <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Αποχώρηση</span>
+        </button>
+        {% endif %}
       </div>
 
       <section class="card employee-detail-card">
@@ -215,9 +220,81 @@
         <h2 class="employee-detail-section-title">Προηγούμενες εκδόσεις</h2>
         <div id="employeeContractHistoryWrap"></div>
       </section>
+
+      <div id="employeeDepartureModal" class="office-modal hidden" aria-hidden="true">
+        <div class="office-modal-backdrop" data-departure-close></div>
+        <div class="office-modal-panel employee-departure-modal-panel" role="dialog" aria-labelledby="employeeDepartureTitle">
+          <h2 id="employeeDepartureTitle" class="office-modal-title">Αποχώρηση εργαζομένου</h2>
+          <p class="office-modal-sub">Ψηφιακή Αναγγελία Λήξης Εργασίας στο Εργάνη. Η προθεσμία είναι 4 εργάσιμες ημέρες από το γεγονός.</p>
+          <div id="employeeDepartureMsg" class="msg"></div>
+          <form id="employeeDepartureForm" class="employee-contract-change-form">
+            <div class="employee-contract-change-grid">
+              <label class="dp-field employee-contract-change-span2"><span class="dp-field-label">Είδος λήξης</span>
+                <select id="depType" class="field-input" required></select>
+              </label>
+              <p id="depTypeHint" class="page-desc employee-contract-change-span2" style="margin:0;"></p>
+              <p id="depKnownSummary" class="page-desc employee-contract-change-span2" style="margin:0;"></p>
+              <label class="dp-field"><span class="dp-field-label" id="depEventDateLabel">Ημερομηνία αποχώρησης</span>
+                <input id="depEventDate" type="text" placeholder="ηη/μμ/εεεε" required>
+              </label>
+              <label id="depSalaryWrap" class="dp-field hidden"><span class="dp-field-label">Μεικτές αποδοχές</span>
+                <input id="depSalary" type="text" class="field-input" placeholder="π.χ. 850,00">
+              </label>
+              <div id="depNoticeWrap" class="dp-field hidden">
+                <span class="dp-field-label">Προειδοποίηση</span>
+                <input id="depNoticeDate" type="text" placeholder="ηη/μμ/εεεε">
+              </div>
+              <label id="depNoticeMonthsWrap" class="dp-field hidden"><span class="dp-field-label">Μήνες προειδοποίησης</span>
+                <select id="depNoticeMonths" class="field-input"></select>
+              </label>
+              <label id="depCompensationWrap" class="dp-field hidden"><span class="dp-field-label">Ποσό αποζημίωσης</span>
+                <input id="depCompensation" type="text" class="field-input" placeholder="0,00">
+              </label>
+              <label id="depEndReasonWrap" class="dp-field hidden"><span class="dp-field-label">Λόγος περάτωσης</span>
+                <select id="depEndReason" class="field-input"></select>
+              </label>
+              <label id="depFileWrap" class="dp-field employee-contract-change-span2 hidden">
+                <span class="dp-field-label">Αρχείο δήλωσης (PDF)</span>
+                <input id="depFile" type="file" class="field-input" accept="application/pdf,.pdf">
+                <span id="depFileHint" class="employee-departure-file-note hidden"></span>
+              </label>
+              <label class="dp-field employee-contract-change-span2"><span class="dp-field-label">Παρατηρήσεις</span>
+                <input id="depComments" type="text" class="field-input" maxlength="100">
+              </label>
+            </div>
+            <div class="office-modal-actions">
+              <button type="button" class="btn btn-secondary" data-departure-close>Άκυρο</button>
+              <button type="submit" class="btn btn-danger" id="depSubmitBtn">Υποβολή στο Εργάνη</button>
+            </div>
+          </form>
+        </div>
+      </div>
+{% endblock %}
+{% block extra_head %}
+<style>
+.employee-detail-toolbar { margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+.employee-departure-modal-panel { width: min(46rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow: auto; }
+.employee-departure-modal-panel .employee-contract-change-grid { margin-top: 0.75rem; }
+.employee-departure-file-note {
+  display: block;
+  margin: 0.45rem 0 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-transform: none;
+  text-wrap: pretty;
+}
+.employee-departure-file-note.hidden { display: none; }
+</style>
 {% endblock %}
 {% block scripts %}
   <script src="/static/js/office-date-picker.js?v=20260826optional1"></script>
   <script src="/static/js/office-autocomplete.js?v=20260915acopen1"></script>
-  <script src="/static/js/employee-detail.js?v=20260929pay15"></script>
+  <script src="/static/js/employee-detail.js?v=20261002dep3"></script>
 {% endblock %}

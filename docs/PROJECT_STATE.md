@@ -14,6 +14,9 @@
 - **Αρχική:** προειδοποιήσεις υπέρβασης ωρών/6ης ημέρας/άδειας και στον
   office manager.
 - **Ωρομέτρηση ανά εργαζόμενο** από `/ui/employees/monthly-overview?afm=`.
+- **Αποχώρηση** από `/ui/employees/detail?afm=`: WebE5N / WebE6NXP / WebE6NMP /
+  WebE7N / WebE5O. Πρόσληψη και όροι από τη σύμβαση· PDF όπου το απαιτεί το
+  είδος. GET `employees.view`, υποβολή `employees.sync`.
 
 ## Πρόσφατα (2026-09-30)
 
@@ -195,6 +198,10 @@
   στήλη ημέρας έχει αφαιρεθεί και η ημερομηνία εμφανίζεται σύντομα ως `ηη/μμ`.
 - `/ui/employees/detail`: πίνακας Πεδίο/Τιμή τρέχουσας σύμβασης + προηγούμενες εκδόσεις.
   **Μεταβολή σύμβασης (WebMA):** μόνο `super_admin` (UI + API).
+  **Αποχώρηση:** κουμπί + modal· `GET /api/employees/departure/draft`,
+  `POST /api/employees/departure/submit` (`app/web_el_payload.py`). Μετά
+  επιτυχή υποβολή ενημερώνεται `karta_employment.departure_date` (εκτός όχλησης
+  WebE5O).
 - `/ui/employees/weekly-schedule`: σταθερό εβδομαδιαίο (WTOWeek) με Greek date picker·
   μετά επιτυχή υποβολή γράφει τοπικά `karta_schedule`.
 - `/ui/employees/contracts`: λίστα τρεχουσών συμβάσεων καταστήματος + sync από Μητρώα

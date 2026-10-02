@@ -1296,3 +1296,258 @@ def employee_hire_submit():
             + (f" · πρωτόκολλο {protocol}" if protocol else "")
         ),
     })
+
+
+def _departure_form_data() -> dict[str, Any]:
+    import base64
+    import json as json_lib
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raw_payload = request.form.get("payload") or request.form.get("data")
+        if raw_payload:
+            try:
+                parsed = json_lib.loads(raw_payload)
+            except (TypeError, ValueError, json_lib.JSONDecodeError):
+                parsed = None
+            data = parsed if isinstance(parsed, dict) else {}
+        else:
+            data = {}
+    else:
+        data = dict(data)
+    upload = request.files.get("file") or request.files.get("f_file")
+    if upload and upload.filename:
+        raw = upload.read()
+        if not raw:
+            raise ValueError("Το επισυναπτόμενο αρχείο είναι κενό")
+        name = str(upload.filename or "").lower()
+        if not name.endswith(".pdf"):
+            raise ValueError("Το αρχείο πρέπει να είναι PDF")
+        data["f_file"] = base64.b64encode(raw).decode("ascii")
+    return data
+
+
+@employees_bp.get("/departure/draft")
+def employee_departure_draft():
+    """Προσυμπληρωμένη φόρμα ψηφιακής αναγγελίας λήξης εργασίας."""
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    employee_afm = norm_afm(request.args.get("employee_afm") or request.args.get("afm") or "")
+    if len(employee_afm) != 9:
+        return jsonify({"error": "Λείπει έγκυρο ΑΦΜ"}), 400
+
+    from app.web_el_payload import apply_contract_to_departure_draft, empty_departure_draft
+
+    draft = empty_departure_draft(branch_aa=str(ctx.get("branch_aa") or "0"))
+    draft["employee_afm"] = employee_afm
+    merged, enriched, enrich_err = _enrich_web_ma_form_data(
+        {"employee_afm": employee_afm},
+        ctx=ctx,
+        employee_afm=employee_afm,
+    )
+    merged.setdefault("sepe_code", ctx.get("sepe_code"))
+    merged.setdefault("oaed_code", ctx.get("oaed_code"))
+    merged.setdefault("kad_code", ctx.get("kad_code"))
+    merged.setdefault("kallikratis_code", ctx.get("kallikratis_code"))
+    employment = next(
+        (
+            emp for emp in list_employees_for_employer(
+                str(ctx["employer_afm"]),
+                branch_aa=str(ctx.get("branch_aa") or "0"),
+                active_only=False,
+                limit=5000,
+            )
+            if norm_afm(str(emp.get("afm") or "")) == employee_afm
+        ),
+        None,
+    )
+    if employment:
+        if employment.get("hire_date"):
+            merged["hire_date"] = employment.get("hire_date")
+        if employment.get("departure_date") and not merged.get("fixed_term_to"):
+            merged["fixed_term_to"] = employment.get("departure_date")
+    draft = apply_contract_to_departure_draft(draft, merged)
+    return jsonify({
+        "store": {
+            "id": ctx["id"],
+            "name": ctx["name"],
+            "employer_afm": ctx["employer_afm"],
+            "branch_aa": ctx.get("branch_aa"),
+        },
+        "draft": draft,
+        "ergani_enriched": enriched,
+        "ergani_enrich_error": enrich_err,
+    })
+
+
+@employees_bp.post("/departure/submit")
+def employee_departure_submit():
+    """Υποβολή Ψηφιακής Αναγγελίας Λήξης Εργασίας στο Ergani API."""
+    from app.ergani_client import ErganiClient
+    from app.ergani_env import client_for_store
+    from app.http_helpers import (
+        ensure_ergani_bearer,
+        json_or_text,
+        persist_safe,
+        response_body_text,
+    )
+    from app.web_el_payload import build_departure_payload, event_date_iso
+    from app.work_card_payload import WorkCardPayloadError
+    from app.wto_submit import (
+        ergani_error_message,
+        parse_submit_response,
+        persist_wto_submit,
+        submit_wto_with_auth_retry,
+    )
+
+    ctx = resolve_active_store()
+    if not ctx:
+        return jsonify({"error": "Επιλέξτε πρώτα κατάστημα"}), 400
+    try:
+        data = _departure_form_data()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    employee_afm = norm_afm(str(data.get("employee_afm") or data.get("f_afm") or ""))
+    if len(employee_afm) != 9:
+        return jsonify({"error": "Λείπει έγκυρο ΑΦΜ εργαζομένου"}), 400
+    data, _enriched, _enrich_err = _enrich_web_ma_form_data(
+        data, ctx=ctx, employee_afm=employee_afm,
+    )
+    data.setdefault("sepe_code", ctx.get("sepe_code"))
+    data.setdefault("oaed_code", ctx.get("oaed_code"))
+    data.setdefault("kad_code", ctx.get("kad_code"))
+    data.setdefault("kallikratis_code", ctx.get("kallikratis_code"))
+
+    try:
+        submission_code, payload = build_departure_payload(
+            data,
+            branch_aa=str(ctx.get("branch_aa") or "0"),
+        )
+    except WorkCardPayloadError as ex:
+        return jsonify({"error": str(ex)}), 400
+
+    client: ErganiClient = client_for_store(ctx)
+    bearer = ensure_ergani_bearer(ctx)
+    if not bearer:
+        return jsonify({"error": "Αποτυχία σύνδεσης Ergani API"}), 401
+
+    codes_resp = client.submissions_list(bearer)
+    codes_parsed = json_or_text(codes_resp)
+    codes: list[str] = []
+    if isinstance(codes_parsed, list):
+        codes = [
+            str(item.get("code") or item.get("Code") or "").strip()
+            for item in codes_parsed
+            if isinstance(item, dict)
+        ]
+    if codes_resp.ok and codes and submission_code not in codes:
+        return jsonify({
+            "error": f"Το Ergani API δεν διαθέτει {submission_code} για αυτόν τον λογαριασμό",
+            "submission_code": submission_code,
+        }), 400
+
+    resp, parsed, retried = submit_wto_with_auth_retry(
+        ctx,
+        client,
+        submission_code,
+        payload,
+        bearer,
+        refresh_bearer=ensure_ergani_bearer,
+    )
+    body_text = response_body_text(resp)
+    protocol, submit_date, ergani_id = parse_submit_response(parsed)
+    success = bool(resp.ok)
+    persist_safe(
+        lambda: persist_wto_submit(
+            submission_code,
+            str(ctx["employer_afm"]),
+            int(resp.status_code),
+            success,
+            {
+                "employee_afm": employee_afm,
+                "event_date": data.get("event_date"),
+                "eponymo": data.get("eponymo"),
+                "onoma": data.get("onoma"),
+                "payload": _departure_payload_for_log(payload),
+            },
+            body_text,
+            protocol,
+            submit_date,
+            ergani_id,
+        )
+    )
+    if not success:
+        err = ergani_error_message(parsed) or body_text or "Αποτυχία υποβολής λήξης εργασίας"
+        return jsonify({
+            "success": False,
+            "error": err,
+            "status": resp.status_code,
+            "submission_code": submission_code,
+            "response": parsed,
+            "retried_auth": retried,
+        }), 400
+
+    departure_iso = event_date_iso(data, submission_code)
+    hire_iso = _hire_iso_from_form(data.get("hire_date"))
+    if departure_iso and hire_iso:
+        try:
+            update_employment_dates(
+                str(ctx["employer_afm"]),
+                str(ctx.get("branch_aa") or "0"),
+                employee_afm,
+                hire_date=_optional_iso_date(hire_iso),
+                departure_date=_optional_iso_date(departure_iso),
+            )
+        except Exception:
+            pass
+    return jsonify({
+        "success": True,
+        "submission_code": submission_code,
+        "protocol": protocol,
+        "submit_date": submit_date,
+        "ergani_submission_id": ergani_id,
+        "employee_afm": employee_afm,
+        "departure_date": departure_iso,
+        "retried_auth": retried,
+        "message": (
+            f"Υποβλήθηκε αναγγελία λήξης εργασίας"
+            + (f" · πρωτόκολλο {protocol}" if protocol else "")
+        ),
+    })
+
+
+def _departure_payload_for_log(payload: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for wrapper, body in payload.items():
+        if not isinstance(body, dict):
+            out[wrapper] = body
+            continue
+        cloned: dict[str, Any] = {}
+        for key, rows in body.items():
+            if not isinstance(rows, list):
+                cloned[key] = rows
+                continue
+            cloned[key] = [
+                {name: ("[pdf]" if name.endswith("_file") or name == "f_file" else value)
+                 for name, value in row.items()}
+                if isinstance(row, dict) else row
+                for row in rows
+            ]
+        out[wrapper] = cloned
+    return out
+
+
+def _hire_iso_from_form(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) >= 10 and text[4] == "-":
+        return text[:10]
+    if "/" in text:
+        parts = text.replace(".", "/").split("/")
+        if len(parts) == 3:
+            day, month, year = parts
+            return f"{year.zfill(4)}-{month.zfill(2)}-{day.zfill(2)}"
+    return ""
