@@ -160,15 +160,18 @@ def _run_configured_auto_actions(
             "protocol_to": proto_to or None,
         }
 
-    apologistic_should_run, apologistic_reason = should_run_apologistic_snapshot(cfg)
-    if apologistic_should_run:
-        from app.apologistic import previous_week
-        from app.apologistic_snapshot import generate_store_week
+    try:
+        apologistic_should_run, apologistic_reason = should_run_apologistic_snapshot(cfg)
+        if apologistic_should_run:
+            from app.apologistic import previous_week
+            from app.apologistic_snapshot import generate_store_week
 
-        week_from, week_to = previous_week()
-        actions["apologistic_snapshot"] = generate_store_week(cfg, week_from, week_to)
-    else:
-        actions["apologistic_snapshot"] = {"skipped": True, "reason": apologistic_reason}
+            week_from, week_to = previous_week()
+            actions["apologistic_snapshot"] = generate_store_week(cfg, week_from, week_to)
+        else:
+            actions["apologistic_snapshot"] = {"skipped": True, "reason": apologistic_reason}
+    except Exception as ex:
+        actions["apologistic_snapshot"] = {"success": False, "error": str(ex)[:350]}
 
     archive_should_run, archive_reason = _should_run_schedule_archive(cfg)
     if archive_should_run:
@@ -212,7 +215,9 @@ def _run_configured_auto_actions(
         should_run_contract_overage_notify,
     )
     from app.orphan_punch_notifications import (
+        run_orphan_punch_monthly_notify_for_store,
         run_orphan_punch_notify_for_store,
+        should_run_orphan_punch_monthly_notify,
         should_run_orphan_punch_notify,
     )
 
@@ -246,6 +251,24 @@ def _run_configured_auto_actions(
             "skipped": True,
             "reason": orphan_reason,
             "target_date": orphan_target or None,
+        }
+
+    monthly_should_run, monthly_period, monthly_reason = (
+        should_run_orphan_punch_monthly_notify(cfg)
+    )
+    if monthly_should_run:
+        actions["orphan_punch_monthly_notify"] = (
+            run_orphan_punch_monthly_notify_for_store(
+                cfg,
+                period=monthly_period,
+                parent_run_id=parent_run_id,
+            )
+        )
+    else:
+        actions["orphan_punch_monthly_notify"] = {
+            "skipped": True,
+            "reason": monthly_reason,
+            "period": monthly_period or None,
         }
 
     should_run, previous_day, reason = should_run_auto_close_prev_day(cfg)
@@ -611,8 +634,14 @@ def should_run_apologistic_snapshot(
     cfg: dict[str, Any], *, now: datetime | None = None,
 ) -> tuple[bool, str]:
     """Monday 03:00 guard; missing/failed stores retry on subsequent scheduler passes."""
-    from app.apologistic import previous_week
-    from app import repo_apologistic
+    try:
+        from app.apologistic import previous_week
+        from app import repo_apologistic
+    except (SyntaxError, IndentationError, ImportError) as exc:
+        line = getattr(exc, "lineno", None)
+        detail = getattr(exc, "msg", None) or str(exc)
+        suffix = f" (γραμμή {line})" if line else ""
+        return False, f"σφάλμα κώδικα απολογιστικού: {detail}{suffix}"
 
     local_now = (now or datetime.now(tz_athens())).astimezone(tz_athens())
     if not Config.KARTA_SCHEDULED_APOLOGISTIC_ENABLED:

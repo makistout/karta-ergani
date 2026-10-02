@@ -6,8 +6,12 @@ from datetime import datetime
 from unittest.mock import patch
 
 from app.orphan_punch_notifications import (
+    collect_monthly_orphan_repeaters,
     collect_orphan_punches_for_date,
+    format_monthly_orphan_digest,
     format_orphan_punch_digest,
+    previous_calendar_month,
+    should_run_orphan_punch_monthly_notify,
     should_run_orphan_punch_notify,
 )
 
@@ -193,3 +197,135 @@ def test_digest_lists_orphan_labels():
     assert "BAGUNAS ATOLIN" in text
     assert "01:04" in text
     assert "μετά τα μεσάνυχτα" in text
+
+
+def test_previous_month_from_first_and_january():
+    assert previous_calendar_month(now=datetime(2026, 10, 1, 10, 0)) == (2026, 9)
+    assert previous_calendar_month(now=datetime(2026, 1, 1, 10, 0)) == (2025, 12)
+
+
+def test_monthly_should_run_on_first_after_1000():
+    cfg = {"id": 7, "name": "Demo"}
+    with (
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED",
+            True,
+        ),
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME",
+            "10:00",
+        ),
+        patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
+        patch("app.scheduled_sync._operation_run_exists", return_value=False),
+    ):
+        ok, period, reason = should_run_orphan_punch_monthly_notify(
+            cfg,
+            now=datetime(2026, 10, 1, 10, 5),
+        )
+    assert ok is True
+    assert period == "2026-09"
+    assert reason == "έτοιμο"
+
+
+def test_monthly_should_not_run_before_1000_or_other_day():
+    cfg = {"id": 7, "name": "Demo"}
+    with (
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED",
+            True,
+        ),
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME",
+            "10:00",
+        ),
+    ):
+        ok, period, reason = should_run_orphan_punch_monthly_notify(
+            cfg,
+            now=datetime(2026, 10, 1, 9, 45),
+        )
+        later_ok, later_period, later_reason = should_run_orphan_punch_monthly_notify(
+            cfg,
+            now=datetime(2026, 10, 2, 10, 30),
+        )
+    assert ok is False
+    assert period == "2026-09"
+    assert "10:00" in reason
+    assert later_ok is False
+    assert later_period == "2026-09"
+    assert "1η" in later_reason
+
+
+def test_monthly_should_skip_when_already_run():
+    cfg = {"id": 7, "name": "Demo"}
+    with (
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED",
+            True,
+        ),
+        patch(
+            "app.orphan_punch_notifications.Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME",
+            "10:00",
+        ),
+        patch("app.scheduled_sync.repo_sync_log.tables_available", return_value=True),
+        patch("app.scheduled_sync._operation_run_exists", return_value=True),
+    ):
+        ok, period, reason = should_run_orphan_punch_monthly_notify(
+            cfg,
+            now=datetime(2026, 10, 1, 10, 30),
+        )
+    assert ok is False
+    assert period == "2026-09"
+    assert "ήδη" in reason
+
+
+def test_collect_monthly_repeaters_keeps_three_or_more():
+    cfg = {"id": 3, "name": "EKIBEN II"}
+    with (
+        patch(
+            "app.orphan_punch_notifications.store_api_context",
+            return_value={"employer_afm": "802788173", "branch_aa": "3"},
+        ),
+        patch(
+            "app.repo_work_log.count_incomplete_punches_by_employee_for_month",
+            return_value={
+                "201980886": 5,
+                "111111111": 3,
+                "222222222": 2,
+            },
+        ),
+        patch(
+            "app.repo_entities.list_employees_for_employer",
+            return_value=[
+                {"afm": "201980886", "eponymo": "BAGUNAS", "onoma": "ATOLIN"},
+                {"afm": "111111111", "eponymo": "ΜΟΝΗ", "onoma": "ΕΞΟΔΟΣ"},
+                {"afm": "222222222", "eponymo": "ΟΛΟΚΛΗΡΗ", "onoma": "ΜΕΡΑ"},
+            ],
+        ),
+    ):
+        hits = collect_monthly_orphan_repeaters(
+            cfg, year=2026, month=9, min_count=3
+        )
+    afms = [hit["employee_afm"] for hit in hits]
+    assert afms == ["201980886", "111111111"]
+    assert hits[0]["count"] == 5
+    assert hits[0]["name"] == "BAGUNAS ATOLIN"
+
+
+def test_monthly_digest_lists_counts():
+    text = format_monthly_orphan_digest(
+        store_name="ΕΚΙΒΕΝ",
+        period_label="Σεπτεμβρίου 2026",
+        min_count=3,
+        hits=[
+            {
+                "employee_afm": "201980886",
+                "name": "BAGUNAS ATOLIN",
+                "count": 5,
+            },
+        ],
+    )
+    assert "ΕΚΙΒΕΝ" in text
+    assert "3+" in text
+    assert "Σεπτεμβρίου 2026" in text
+    assert "BAGUNAS ATOLIN" in text
+    assert "5 ορφανά" in text

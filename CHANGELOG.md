@@ -8,6 +8,31 @@
 
 ---
 
+## 2026-10-02 — Ορφανά χτυπήματα: μενού + μηνιαίο digest
+
+- Το μενού/σελίδα μετονομάστηκε σε **Ορφανά Χτυπήματα**. Ο office manager
+  βλέπει το λινκ (χωρίς Sync, Logs, Ρυθμίσεις).
+- Την **1η κάθε μήνα στις 10:00** στέλνεται digest στους λήπτες με όσους
+  έχουν **3 ή περισσότερα εκκρεμή ορφανά** στον μήνα που πέρασε (ίδιος
+  ορισμός με τη σελίδα: ανοιχτό Από/Έως, χωρίς κλείσιμο από δήλωση κάρτας
+  / Telegram).
+- Env: `KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED`,
+  `KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME` (προεπιλογή `10:00`),
+  `KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN` (προεπιλογή `3`).
+- Μία φορά ανά κατάστημα την 1η, μέσω sync log
+  (`scheduled_orphan_punch_monthly_notify`).
+
+## 2026-10-02 — Ο 15λεπτος sync δεν σκάει από SyntaxError απολογιστικού
+
+- Τα blueprints φορτώνονται μόνο μέσα στο `create_app()`, ώστε
+  `from app.scheduled_sync` να μην τραβάει `apologistic.py`.
+- Το snapshot απολογιστικού πιάνεται με try/except· SyntaxError στο
+  απολογιστικό δεν σταματά τις ειδοποιήσεις χτυπημάτων.
+- Ο Task `run_scheduled_sync.py` κάνει compile των `app/*.py` πριν το
+  import και γράφει `scheduled_sync_source_guard` αν βρει σφάλμα.
+
+---
+
 ## 2026-09-30 — Μισθοδοσία: ιστορικές συμβάσεις ανά διάστημα
 
 - `payroll-v8-contract-segments`: ανά εργαζόμενο έλεγχος ιστορικού και διαχωρισμός μήνα/εβδομάδας στις ημερομηνίες ισχύος. Απλές διαφορές μορφοποίησης δεν δημιουργούν διάστημα. Μελλοντική σύμβαση δεν εφαρμόζεται αναδρομικά.

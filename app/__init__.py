@@ -1,45 +1,46 @@
 from flask import Flask, jsonify
 
 from config import Config
-from app.routes_employees import employees_bp
-from app.routes_schedule import schedule_bp
-from app.routes_schedule_import import schedule_import_bp
-from app.routes_schedule_day_form import schedule_day_form_bp
-from app.routes_work_log import work_log_bp
-from app.routes_protocols import protocols_bp
-from app.routes_dashboard import dashboard_bp
-from app.routes_ergani import ergani_bp
-from app.routes_local import local_bp
-from app.routes_store import store_bp
-from app.routes_sync import sync_bp
-from app.routes_period_sync import period_sync_bp
-from app.routes_schedule_archive import schedule_archive_bp
-from app.routes_sync_log import sync_log_bp
-from app.routes_ui import register_ui_redirects, ui_bp
-from app.landing_seo import register_landing_seo_routes
-from app.routes_leave import leave_bp
-from app.routes_wto_daily import wto_daily_bp
-from app.routes_wto_week import wto_week_bp
-from app.routes_monthly_status import monthly_status_bp
-from app.routes_telegram import telegram_bp
-from app.routes_auth import auth_bp
-from app.routes_work_card import work_card_bp
-from app.routes_audit import audit_bp
-from app.routes_contact import contact_bp
-from app.access_control import register_access_context
-from app.routes_users import users_bp
-from app.routes_apologistic import apologistic_bp
-from app.routes_rule_diagrams import rule_diagrams_bp
-from app.routes_wto_apologistic import wto_apologistic_bp
-from app.routes_card_listener import card_listener_bp, listener_download_bp
-from app.routes_assistant import assistant_bp
-from app.routes_scanner import scanner_bp
-from app.routes_mobile import mobile_bp
-from app.routes_billing import billing_bp
-from app.routes_payroll import payroll_bp
 
 
 def create_app() -> Flask:
+    from app.access_control import register_access_context
+    from app.landing_seo import register_landing_seo_routes
+    from app.routes_apologistic import apologistic_bp
+    from app.routes_assistant import assistant_bp
+    from app.routes_audit import audit_bp
+    from app.routes_auth import auth_bp
+    from app.routes_billing import billing_bp
+    from app.routes_card_listener import card_listener_bp, listener_download_bp
+    from app.routes_contact import contact_bp
+    from app.routes_dashboard import dashboard_bp
+    from app.routes_employees import employees_bp
+    from app.routes_ergani import ergani_bp
+    from app.routes_leave import leave_bp
+    from app.routes_local import local_bp
+    from app.routes_mobile import mobile_bp
+    from app.routes_monthly_status import monthly_status_bp
+    from app.routes_payroll import payroll_bp
+    from app.routes_period_sync import period_sync_bp
+    from app.routes_protocols import protocols_bp
+    from app.routes_rule_diagrams import rule_diagrams_bp
+    from app.routes_scanner import scanner_bp
+    from app.routes_schedule import schedule_bp
+    from app.routes_schedule_archive import schedule_archive_bp
+    from app.routes_schedule_day_form import schedule_day_form_bp
+    from app.routes_schedule_import import schedule_import_bp
+    from app.routes_store import store_bp
+    from app.routes_sync import sync_bp
+    from app.routes_sync_log import sync_log_bp
+    from app.routes_telegram import telegram_bp
+    from app.routes_ui import register_ui_redirects, ui_bp
+    from app.routes_users import users_bp
+    from app.routes_work_card import work_card_bp
+    from app.routes_work_log import work_log_bp
+    from app.routes_wto_apologistic import wto_apologistic_bp
+    from app.routes_wto_daily import wto_daily_bp
+    from app.routes_wto_week import wto_week_bp
+
     Config.validate_for_startup()
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -47,8 +48,8 @@ def create_app() -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # PDF ουσιωδών όρων
     app.url_map.strict_slashes = False
 
-    from app.security import register_security
     from app.audit_log import register_audit_log
+    from app.security import register_security
 
     register_security(app)
     register_access_context(app)

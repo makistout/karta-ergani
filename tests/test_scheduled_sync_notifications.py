@@ -206,6 +206,10 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
                 "app.orphan_punch_notifications.should_run_orphan_punch_notify",
                 return_value=(False, "2026-07-01", "skip"),
             ),
+            patch(
+                "app.orphan_punch_notifications.should_run_orphan_punch_monthly_notify",
+                return_value=(False, "2026-06", "skip"),
+            ),
         ):
             actions = scheduled_sync._run_configured_auto_actions(
                 cfg,
@@ -255,6 +259,10 @@ class ScheduledSyncNotificationTests(unittest.TestCase):
             patch(
                 "app.orphan_punch_notifications.should_run_orphan_punch_notify",
                 return_value=(False, "2026-07-01", "skip"),
+            ),
+            patch(
+                "app.orphan_punch_notifications.should_run_orphan_punch_monthly_notify",
+                return_value=(False, "2026-06", "skip"),
             ),
         ):
             actions = scheduled_sync._run_configured_auto_actions(

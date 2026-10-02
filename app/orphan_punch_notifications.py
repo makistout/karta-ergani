@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.date_util import format_date_for_ergani
@@ -20,7 +20,22 @@ from app import repo_sync_log
 from config import Config
 
 OPERATION_ORPHAN_PUNCH_NOTIFY = "scheduled_orphan_punch_notify"
+OPERATION_ORPHAN_PUNCH_MONTHLY_NOTIFY = "scheduled_orphan_punch_monthly_notify"
 _OVERNIGHT_EXIT_BEFORE_MINUTES = 6 * 60
+_GREEK_MONTH_GENITIVE = {
+    1: "Ιανουαρίου",
+    2: "Φεβρουαρίου",
+    3: "Μαρτίου",
+    4: "Απριλίου",
+    5: "Μαΐου",
+    6: "Ιουνίου",
+    7: "Ιουλίου",
+    8: "Αυγούστου",
+    9: "Σεπτεμβρίου",
+    10: "Οκτωβρίου",
+    11: "Νοεμβρίου",
+    12: "Δεκεμβρίου",
+}
 
 
 def should_run_orphan_punch_notify(
@@ -62,9 +77,59 @@ def should_run_orphan_punch_notify(
     return True, target_iso, "έτοιμο"
 
 
+def _local_now(now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(tz_athens())
+    if now.tzinfo is None:
+        return now.replace(tzinfo=tz_athens())
+    return now.astimezone(tz_athens())
+
+
+def previous_calendar_month(*, now: datetime | None = None) -> tuple[int, int]:
+    first = _local_now(now).date().replace(day=1)
+    prev = first - timedelta(days=1)
+    return prev.year, prev.month
+
+
+def greek_month_period_label(year: int, month: int) -> str:
+    return f"{_GREEK_MONTH_GENITIVE.get(int(month), str(month))} {int(year)}"
+
+
+def should_run_orphan_punch_monthly_notify(
+    cfg: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str, str]:
+    """Επιστρέφει (τρέχει, YYYY-MM προηγούμενου μήνα, λόγος). Μόνο την 1η."""
+    from app.scheduled_sync import _normalized_sync_time, _operation_run_exists
+
+    local_now = _local_now(now)
+    year, month = previous_calendar_month(now=local_now)
+    period = f"{year:04d}-{month:02d}"
+    if not Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED:
+        return False, period, "απενεργοποιημένο από ρύθμιση"
+    if local_now.day != 1:
+        return False, period, "μόνο την 1η του μήνα"
+    run_time = _normalized_sync_time(
+        Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME,
+        default="10:00",
+    )
+    if local_now.strftime("%H:%M") < run_time:
+        return False, period, f"αναμονή μέχρι {run_time}"
+    if not repo_sync_log.tables_available():
+        return False, period, "λείπουν πίνακες sync log"
+    if _operation_run_exists(
+        OPERATION_ORPHAN_PUNCH_MONTHLY_NOTIFY,
+        int(cfg["id"]),
+        local_now.date().isoformat(),
+    ):
+        return False, period, "έχει ήδη εκτελεστεί σήμερα"
+    return True, period, "έτοιμο"
+
+
 def _employee_display_name(row: dict[str, Any]) -> str:
     name = f"{(row.get('eponymo') or '').strip()} {(row.get('onoma') or '').strip()}".strip()
-    return name or str(row.get("employee_afm") or "—")
+    return name or str(row.get("employee_afm") or row.get("afm") or "—")
 
 
 def _hm(value: Any) -> str:
@@ -182,6 +247,81 @@ def format_orphan_punch_digest(
     return "\n".join(lines)
 
 
+def collect_monthly_orphan_repeaters(
+    cfg: dict[str, Any],
+    *,
+    year: int,
+    month: int,
+    min_count: int | None = None,
+) -> list[dict[str, Any]]:
+    """Εργαζόμενοι με τουλάχιστον min_count εκκρεμή ορφανά στον μήνα."""
+    from app.repo_entities import list_employees_for_employer
+    from app.repo_work_log import count_incomplete_punches_by_employee_for_month
+
+    threshold = int(
+        min_count
+        if min_count is not None
+        else Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN
+    )
+    ctx = store_api_context(cfg)
+    employer_afm = str(ctx.get("employer_afm") or "")
+    branch_aa = str(ctx.get("branch_aa") or "0")
+    counts = count_incomplete_punches_by_employee_for_month(
+        employer_afm,
+        branch_aa,
+        year=int(year),
+        month=int(month),
+        store_id=int(cfg["id"]),
+    )
+    names: dict[str, str] = {}
+    try:
+        for row in list_employees_for_employer(
+            employer_afm, branch_aa=branch_aa, active_only=False, limit=5000
+        ):
+            afm = norm_afm(str(row.get("afm") or ""))
+            if afm:
+                names[afm] = _employee_display_name(row)
+    except Exception:
+        names = {}
+
+    hits: list[dict[str, Any]] = []
+    for raw_afm, count in (counts or {}).items():
+        afm = norm_afm(str(raw_afm or ""))
+        total = int(count or 0)
+        if not afm or total < threshold:
+            continue
+        name = names.get(afm) or afm
+        hits.append({
+            "employee_afm": afm,
+            "name": name,
+            "count": total,
+            "label": f"{total} ορφανά χτυπήματα",
+        })
+    hits.sort(key=lambda item: (-int(item["count"]), str(item["name"] or "").upper()))
+    return hits
+
+
+def format_monthly_orphan_digest(
+    *,
+    store_name: str,
+    period_label: str,
+    min_count: int,
+    hits: list[dict[str, Any]],
+) -> str:
+    store = (store_name or "").strip() or "κατάστημα"
+    lines = [
+        f"erganiOS — {store}",
+        f"Εργαζόμενοι με {min_count}+ ορφανά χτυπήματα τον {period_label}:",
+        "",
+    ]
+    for hit in hits:
+        name = hit.get("name") or hit.get("employee_afm")
+        afm = hit.get("employee_afm") or "—"
+        count = int(hit.get("count") or 0)
+        lines.append(f"• {name} (ΑΦΜ {afm}): {count} ορφανά")
+    return "\n".join(lines)
+
+
 def _send_digest_to_recipients(
     *,
     store_id: int,
@@ -189,6 +329,11 @@ def _send_digest_to_recipients(
     work_date_ergani: str,
     text: str,
     hits: list[dict[str, Any]],
+    email_subject: str = "erganiOS — Ορφανά χτυπήματα χθες",
+    email_title: str = "Ορφανά χτυπήματα χθες",
+    problem: str | None = None,
+    footer_note: str | None = None,
+    preheader: str | None = None,
 ) -> dict[str, Any]:
     from app.email_notify import EmailNotConfigured, send_notification_email
     from app.repo_notify_recipients import (
@@ -237,19 +382,19 @@ def _send_digest_to_recipients(
         try:
             send_notification_email(
                 email,
-                "erganiOS — Ορφανά χτυπήματα χθες",
-                title="Ορφανά χτυπήματα χθες",
-                preheader=f"{store_name} · {work_date_ergani}",
+                email_subject,
+                title=email_title,
+                preheader=preheader or f"{store_name} · {work_date_ergani}",
                 store_name=store_name,
                 employee_name="—",
                 employee_afm=None,
                 work_date=work_date_ergani,
-                problem=(
+                problem=problem or (
                     f"Βρέθηκαν {len(hits)} ορφανά χτυπήματα "
                     f"για χθες ({work_date_ergani})."
                 ),
                 details=detail_rows[:40],
-                footer_note=(
+                footer_note=footer_note or (
                     "Η ειδοποίηση στέλνεται αυτόματα στις 10:00 για την προηγούμενη ημέρα, "
                     "μαζί με εξόδους μετά τα μεσάνυχτα που ανήκουν σε εκείνη τη βάρδια."
                 ),
@@ -369,3 +514,128 @@ def run_orphan_punch_notify_for_store(
             result={"success": False, "target_date": target, "error": err},
         )
         return {"success": False, "target_date": target, "error": err}
+
+
+def run_orphan_punch_monthly_notify_for_store(
+    cfg: dict[str, Any],
+    *,
+    period: str,
+    parent_run_id: str | None = None,
+) -> dict[str, Any]:
+    sid = int(cfg["id"])
+    name = str(cfg.get("name") or sid)
+    raw = str(period or "").strip()
+    try:
+        year_s, month_s = raw.split("-", 1)
+        year, month = int(year_s), int(month_s)
+    except ValueError:
+        year, month = previous_calendar_month()
+        raw = f"{year:04d}-{month:02d}"
+    period_label = greek_month_period_label(year, month)
+    min_count = int(Config.KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN)
+    _ = parent_run_id
+    log = KartaLogger(
+        OPERATION_ORPHAN_PUNCH_MONTHLY_NOTIFY,
+        store_id=sid,
+        store_name=name,
+        run_id=str(uuid.uuid4()),
+        extra={"period": raw, "min_count": min_count},
+    )
+    try:
+        hits = collect_monthly_orphan_repeaters(
+            cfg, year=year, month=month, min_count=min_count
+        )
+        if not hits:
+            detail = (
+                f"Κανένας με {min_count}+ ορφανά τον {period_label}"
+            )
+            log.info(detail, period=raw, hits=0)
+            repo_sync_log.finish_run(
+                log.run_id,
+                status="done",
+                message=detail,
+                result={
+                    "success": True,
+                    "skipped": True,
+                    "reason": "no_repeaters",
+                    "period": raw,
+                    "hits": 0,
+                    "sent": 0,
+                },
+            )
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "no_repeaters",
+                "period": raw,
+                "hits": 0,
+                "sent": 0,
+            }
+
+        text = format_monthly_orphan_digest(
+            store_name=name,
+            period_label=period_label,
+            min_count=min_count,
+            hits=hits,
+        )
+        delivery = _send_digest_to_recipients(
+            store_id=sid,
+            store_name=name,
+            work_date_ergani=period_label,
+            text=text,
+            hits=hits,
+            email_subject=f"erganiOS — Ορφανά χτυπήματα {period_label}",
+            email_title=f"Ορφανά χτυπήματα {period_label}",
+            preheader=f"{name} · {min_count}+ ορφανά",
+            problem=(
+                f"{len(hits)} εργαζόμενοι έχουν από {min_count} ορφανά χτυπήματα "
+                f"και πάνω τον {period_label}."
+            ),
+            footer_note=(
+                "Η ειδοποίηση στέλνεται αυτόματα την 1η του μήνα για τον μήνα "
+                "που πέρασε. Μετρά εκκρεμή ορφανά (χωρίς κλείσιμο από δήλωση "
+                "κάρτας / Telegram)."
+            ),
+        )
+        detail = (
+            f"Ορφανά {period_label}: {len(hits)} εργαζόμενοι με {min_count}+, "
+            f"αποστολές {delivery.get('sent', 0)}"
+        )
+        log.info(
+            detail,
+            period=raw,
+            hits=len(hits),
+            telegram_sent=delivery.get("telegram_sent"),
+            email_sent=delivery.get("email_sent"),
+        )
+        if delivery.get("errors"):
+            for err in delivery["errors"][:10]:
+                log.error(str(err))
+        repo_sync_log.finish_run(
+            log.run_id,
+            status="done",
+            message=detail,
+            result={
+                "success": True,
+                "period": raw,
+                "hits": len(hits),
+                "delivery": delivery,
+            },
+        )
+        return {
+            "success": True,
+            "period": raw,
+            "hits": len(hits),
+            "sent": int(delivery.get("sent") or 0),
+            "delivery": delivery,
+        }
+    except Exception as ex:
+        err = str(ex)
+        log.error(f"Σφάλμα μηνιαίας αποστολής ορφανών χτυπημάτων: {err}")
+        repo_sync_log.finish_run(
+            log.run_id,
+            status="error",
+            message=err,
+            result={"success": False, "period": raw, "error": err},
+        )
+        return {"success": False, "period": raw, "error": err}

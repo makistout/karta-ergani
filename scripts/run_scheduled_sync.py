@@ -12,6 +12,44 @@ sys.path.insert(0, str(ROOT))
 from config import Config  # noqa: E402
 
 
+def compile_app_sources(app_dir: Path | None = None) -> list[str]:
+    """Συλλέγει SyntaxError/IndentationError στα app/*.py χωρίς να φορτώσει routes."""
+    errors: list[str] = []
+    folder = app_dir or (ROOT / "app")
+    for path in sorted(folder.glob("*.py")):
+        try:
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
+        except SyntaxError as exc:
+            errors.append(f"{path.name}:{exc.lineno}: {exc.msg}")
+    return errors
+
+
+def _record_source_guard(message: str) -> None:
+    try:
+        import uuid
+
+        from app import repo_sync_log
+
+        if not repo_sync_log.tables_available():
+            return
+        run_id = str(uuid.uuid4())
+        repo_sync_log.create_run(run_id, operation="scheduled_sync_source_guard", store_id=None)
+        repo_sync_log.finish_run(
+            run_id,
+            status="error",
+            message=message[:500],
+            result={"success": False, "error": message},
+        )
+    except Exception:
+        pass
+
+
+def _import_scheduled_sync():
+    from app.scheduled_sync import run_scheduled_sync
+
+    return run_scheduled_sync
+
+
 def _env_flag(name: str, *, default: bool = True) -> bool:
     import os
 
@@ -66,7 +104,19 @@ def main() -> int:
         print(f"ΣΦΑΛΜΑ ρυθμίσεων: {ex}", file=sys.stderr)
         return 1
 
-    from app.scheduled_sync import run_scheduled_sync
+    syntax_errors = compile_app_sources()
+    if syntax_errors:
+        guard_msg = "SyntaxError σε app/: " + "; ".join(syntax_errors[:8])
+        print(guard_msg, file=sys.stderr)
+        _record_source_guard(guard_msg)
+
+    try:
+        run_scheduled_sync = _import_scheduled_sync()
+    except Exception as ex:
+        fail = f"Αποτυχία φόρτωσης scheduled sync: {ex}"
+        print(fail, file=sys.stderr)
+        _record_source_guard(fail)
+        return 1
 
     result = run_scheduled_sync(
         store_ids=args.store_ids,

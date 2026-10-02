@@ -171,6 +171,26 @@ class Config:
     KARTA_SCHEDULED_ORPHAN_PUNCH_NOTIFY_TIME = (
         os.environ.get("KARTA_SCHEDULED_ORPHAN_PUNCH_NOTIFY_TIME") or "10:00"
     ).strip() or "10:00"
+    KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED = _env_flag(
+        "KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_ENABLED",
+        default=True,
+    )
+    KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME = (
+        os.environ.get("KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_TIME") or "10:00"
+    ).strip() or "10:00"
+    try:
+        KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN = max(
+            1,
+            int(
+                (
+                    os.environ.get("KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN")
+                    or "3"
+                ).strip()
+                or "3"
+            ),
+        )
+    except ValueError:
+        KARTA_SCHEDULED_ORPHAN_PUNCH_MONTHLY_NOTIFY_MIN = 3
     KARTA_SCHEDULED_SPECIALTY_CATALOG_ENABLED = _env_flag(
         "KARTA_SCHEDULED_SPECIALTY_CATALOG_ENABLED",
         default=True,

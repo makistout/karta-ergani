@@ -174,7 +174,7 @@ def test_office_manager_menu_hides_admin_only_items_even_with_permissions():
     assert "Συγχρονισμός" not in html
     assert "Ειδοποιήσεις" not in html
     assert "Καταγραφές" not in html
-    assert "Ελλειπή Χτυπήματα" not in html
+    assert "Ορφανά Χτυπήματα" in html
 
 
 def _compliance_menu_html(role, permissions=None):
@@ -322,7 +322,7 @@ def test_accountant_menu_shows_ops_hides_admin_and_stores():
         "Πραγματική απασχόληση",
         "Πρωτόκολλα",
         "Απολογιστικό",
-        "Ελλειπή Χτυπήματα",
+        "Ορφανά Χτυπήματα",
         "Ψηφιακή κάρτα",
         "Εργαζόμενοι",
         "Ρυθμίσεις",

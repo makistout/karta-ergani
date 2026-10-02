@@ -15,8 +15,10 @@ SESSION_SUPER_ADMIN = "office_super_admin"
 
 ADMIN_NAV_ROLES = {"super_admin", "admin", "backoffice_admin"}
 ADMIN_ONLY_NAVS = {"sync", "settings", "synclog", "missingcards"}
-# Accountant βλέπει Ελλειπή + Ρυθμίσεις (μόνο αργίες) χωρίς πλήρη admin.
+# Accountant βλέπει Ορφανά + Ρυθμίσεις (μόνο αργίες) χωρίς πλήρη admin.
 ACCOUNTANT_ALLOWED_ADMIN_NAVS = {"settings", "missingcards"}
+# Office manager βλέπει Ορφανά Χτυπήματα χωρίς Sync/Logs/Ρυθμίσεις.
+OFFICE_MANAGER_ALLOWED_ADMIN_NAVS = {"missingcards"}
 
 # Συμμόρφωση (πραγματική, πρωτόκολλα, απολογιστικό, προειδοποιήσεις
 # σύμβασης στην αρχική): μόνο λογιστής και super admin. Ούτε office manager
@@ -199,7 +201,7 @@ NAV_ITEMS: tuple[dict[str, str], ...] = (
     {"href": "/ui/protocols", "nav": "protocols", "label": "Πρωτόκολλα", "icon": "file-earmark-text", "permission": "protocols.view"},
     {"href": "/ui/apologistic", "nav": "apologistic", "label": "Απολογιστικό", "icon": "clipboard-data", "permission": "apologistic.view"},
     {"href": "/ui/apologistic/rules", "nav": "rule-diagrams", "label": "Κανόνες & διαγράμματα", "icon": "diagram-3", "permission": "apologistic.view", "role": "super_admin"},
-    {"href": "/ui/missing-cards", "nav": "missingcards", "label": "Ελλειπή Χτυπήματα", "permission": "missing_cards.view"},
+    {"href": "/ui/missing-cards", "nav": "missingcards", "label": "Ορφανά Χτυπήματα", "permission": "missing_cards.view"},
     {"href": "/ui/work-card", "nav": "workcard", "label": "Ψηφιακή κάρτα", "permission": "work_card.view"},
     {"href": "/ui/sync", "nav": "sync", "label": "Συγχρονισμός", "permission": "sync.view"},
     {"href": "/ui/employees", "nav": "employees", "label": "Εργαζόμενοι", "permission": "employees.view"},
@@ -411,7 +413,11 @@ def nav_item_allowed(item: dict[str, str]) -> bool:
         return False
     if nav in ADMIN_ONLY_NAVS and not is_admin_role():
         role = normalize_role(current_role())
-        if not (role == "accountant" and nav in ACCOUNTANT_ALLOWED_ADMIN_NAVS):
+        extra_ok = (
+            (role == "accountant" and nav in ACCOUNTANT_ALLOWED_ADMIN_NAVS)
+            or (role == "office_manager" and nav in OFFICE_MANAGER_ALLOWED_ADMIN_NAVS)
+        )
+        if not extra_ok:
             return False
     return has_permission(item.get("permission"))
 
