@@ -259,10 +259,27 @@ def _leave_code(value: str) -> str:
     raise RuntimeError(f"Μη αναγνωρισμένος τύπος άδειας: {raw or '—'}")
 
 
-def _submit_leave(store: dict[str, Any], bearer: str, client: Any, employee: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+def _submit_leave(
+    store: dict[str, Any], bearer: str, client: Any, employee: dict[str, Any], parsed: dict[str, Any],
+    *, extra_pending_days: int = 0,
+) -> dict[str, Any]:
     from app.http_helpers import json_or_text, persist_safe, response_body_text
+    from app.leave_balance import normal_leave_block_reason
     from app.leave_payload import SUBMISSION_CODE_WTO_LEAVE, build_wto_leave_payload
     from app.routes_leave import _persist_leave_submit
+
+    blocked = normal_leave_block_reason(
+        store_id=int(store.get("id") or parsed.get("store_id") or 0),
+        employer_afm=str(store.get("employer_afm") or ""),
+        branch_aa=str(store.get("branch_aa") or "0"),
+        employee_afm=str(employee.get("afm") or ""),
+        employee_name=_display_name(employee),
+        leave_type=str(parsed.get("leave_type") or ""),
+        leave_date=parsed.get("date"),
+        extra_pending_days=extra_pending_days,
+    )
+    if blocked:
+        return {"success": False, "protocol": None, "http_status": None, "error": blocked}
 
     payload = build_wto_leave_payload(
         branch_aa=str(store.get("branch_aa") or "0"),
@@ -297,6 +314,7 @@ def _execute_command(
     progress_cb: ProgressCallback | None = None,
     progress_done: list[dict[str, Any]] | None = None,
     progress_pending: list[dict[str, Any]] | None = None,
+    leave_reservations: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     store_id = int(parsed.get("store_id") or store.get("id") or 0)
     afms = [str(value or "").strip() for value in (parsed.get("employee_afms") or []) if str(value or "").strip()]
@@ -308,6 +326,8 @@ def _execute_command(
     offsets = list(stagger_offsets or [])
     wall_start = float(queue_wall_start) if queue_wall_start is not None else time.monotonic()
     base_now = queue_base_now or datetime.now(_ATHENS)
+    if leave_reservations is None:
+        leave_reservations = {}
 
     if intent == "sync_employees":
         from app.ergani_env import store_api_context
@@ -489,7 +509,13 @@ def _execute_command(
             row = {"employee": name, "action": action, "success": bool(data.get("success")),
                    "protocol": data.get("protocol"), "http_status": data.get("http_status"), "error": data.get("error")}
         elif intent == "leave":
-            data = _submit_leave(store, bearer, client, employee, parsed)
+            afm = str(employee.get("afm") or "").strip()
+            data = _submit_leave(
+                store, bearer, client, employee, parsed,
+                extra_pending_days=int(leave_reservations.get(afm) or 0),
+            )
+            if data.get("success") and afm:
+                leave_reservations[afm] = int(leave_reservations.get(afm) or 0) + 1
             row = {"employee": name, "action": action, **data}
         else:
             row = {"employee": name, "action": action, "success": False, "protocol": None,
@@ -557,6 +583,7 @@ def execute_confirmed_task(
             )
         punch_offset = 0
         commands_started = time.monotonic()
+        leave_reservations: dict[str, int] = {}
         for command in normalized_commands:
             results.extend(
                 _execute_command(
@@ -569,6 +596,7 @@ def execute_confirmed_task(
                     progress_cb=progress_cb,
                     progress_done=results,
                     progress_pending=pending,
+                    leave_reservations=leave_reservations,
                 )
             )
             intent = str(command.get("intent") or "")

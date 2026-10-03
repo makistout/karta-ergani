@@ -3,6 +3,7 @@ from openpyxl import load_workbook
 
 from app.timekeeping_export import (
     _hours_only,
+    apd_sunday_counts,
     build_timekeeping_detailed_export_xlsx,
     build_timekeeping_export_xlsx,
 )
@@ -28,6 +29,15 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
             "overtime_40_breakdown": {"day": 30, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
         }],
         "days": [{
+            "work_date": "02/08/2026", "employee_afm": "012345678",
+            "eponymo": "ΔΟΚΙΜΗ", "onoma": "ΕΝΑ", "status": "ok",
+            "basis_source": "declared_compliant", "basis_label": "14:00–22:00",
+            "break_interval": "", "recognized_work_minutes": 480,
+            "premium_minutes": {"day": 0, "night": 0, "sunday_holiday": 420, "night_sunday_holiday": 60},
+            "partial_additional_12": 0, "sixth_day_minutes": 0,
+            "overtime_40": 0, "overtime_60": 0, "overtime_120": 0,
+            "warnings": [],
+        }, {
             "work_date": "03/08/2026", "employee_afm": "012345678",
             "eponymo": "ΔΟΚΙΜΗ", "onoma": "ΕΝΑ", "status": "ok",
             "basis_source": "declared_compliant", "basis_label": "14:00–22:00",
@@ -47,7 +57,45 @@ def test_timekeeping_export_has_summary_and_daily_sheets_with_typed_durations():
     assert workbook["Σύνοψη"]["C4"].number_format == "0.##"
     assert workbook["Σύνοψη"]["P3"].value == "Υπερωρία 40% – Ημέρας (ώρες)"
     assert workbook["Σύνοψη"]["P4"].value == 0.5
+    assert workbook["Σύνοψη"]["AF3"].value == "Κυριακές ΑΠΔ"
+    assert workbook["Σύνοψη"]["AF4"].value == 1
     assert workbook["Ανά ημέρα"]["F4"].value == "14:00–22:00"
+
+
+def test_apd_sunday_counts_distinct_sundays_not_holiday_hours():
+    days = [
+        {
+            "employee_afm": "111111111", "work_date": "02/08/2026",
+            "recognized_work_minutes": 480,
+            "premium_minutes": {"day": 0, "night": 0, "sunday_holiday": 480, "night_sunday_holiday": 0},
+        },
+        {
+            "employee_afm": "111111111", "work_date": "08/08/2026",
+            "recognized_work_minutes": 180,
+            "premium_minutes": {"day": 60, "night": 0, "sunday_holiday": 120, "night_sunday_holiday": 0},
+        },
+        {
+            "employee_afm": "111111111", "work_date": "09/08/2026",
+            "recognized_work_minutes": 480,
+            "premium_minutes": {"day": 0, "night": 0, "sunday_holiday": 480, "night_sunday_holiday": 0},
+        },
+        {
+            "employee_afm": "111111111", "work_date": "10/08/2026",
+            "recognized_work_minutes": 240,
+            "premium_minutes": {"day": 0, "night": 0, "sunday_holiday": 240, "night_sunday_holiday": 0},
+        },
+        {
+            "employee_afm": "111111111", "work_date": "16/08/2026",
+            "recognized_work_minutes": 0,
+            "premium_minutes": {"day": 0, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
+        },
+        {
+            "employee_afm": "222222222", "work_date": "03/08/2026",
+            "recognized_work_minutes": 480,
+            "premium_minutes": {"day": 480, "night": 0, "sunday_holiday": 0, "night_sunday_holiday": 0},
+        },
+    ]
+    assert apd_sunday_counts(days) == {"111111111": 2}
 
 
 def test_detailed_export_projects_common_daily_report_without_recalculation():

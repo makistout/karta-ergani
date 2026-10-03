@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 import re
 from typing import Any
@@ -47,6 +47,43 @@ def _family_headers(prefix: str) -> list[str]:
 def _hours_only(value: Any) -> str:
     text = str(value or "").strip()
     return text if _HOURS_RE.search(text) else ""
+
+
+def _export_work_date(value: Any):
+    from app.timekeeping import _work_date
+    try:
+        return _work_date(str(value or ""))
+    except ValueError:
+        return None
+
+
+def _day_has_recognized_work(item: dict[str, Any]) -> bool:
+    if int(item.get("recognized_work_minutes") or 0) > 0:
+        return True
+    premiums = item.get("premium_minutes") or {}
+    return any(int(premiums.get(key) or 0) > 0 for key in _BREAKDOWN_KEYS)
+
+
+def apd_sunday_counts(days: list[dict[str, Any]] | None) -> dict[str, int]:
+    """Distinct Sundays worked per AFM for Epsilon NUM_KYRIAKES (count, not hours)."""
+    found: dict[str, set] = {}
+    for item in days or []:
+        afm = str(item.get("employee_afm") or "").strip()
+        work_date = _export_work_date(item.get("work_date"))
+        if not afm or work_date is None or not _day_has_recognized_work(item):
+            continue
+        sundays: set = set()
+        if work_date.weekday() == 6:
+            sundays.add(work_date)
+        premiums = item.get("premium_minutes") or {}
+        sunday_minutes = int(premiums.get("sunday_holiday") or 0) + int(
+            premiums.get("night_sunday_holiday") or 0
+        )
+        if work_date.weekday() == 5 and sunday_minutes > 0:
+            sundays.add(work_date + timedelta(days=1))
+        if sundays:
+            found.setdefault(afm, set()).update(sundays)
+    return {afm: len(dates) for afm, dates in found.items()}
 
 
 def _style_sheet(ws, *, title: str, meta: str, headers: list[str], widths: list[int]) -> int:
@@ -125,14 +162,17 @@ def build_timekeeping_export_xlsx(
     for label, _ in families:
         summary_headers += _family_headers(label)
     summary_headers += ["Ετήσιες νόμιμες υπερωρίες μετά την περίοδο"]
+    summary_headers.insert(31, "Κυριακές ΑΠΔ")
     header_row = _style_sheet(
         summary, title=title, meta=meta_line, headers=summary_headers,
-        widths=[28, 14, 20] + [18] * (4 + 4 * len(families)) + [25],
+        widths=[28, 14, 20] + [18] * 28 + [14] + [18] * 8 + [25],
     )
+    sunday_counts = apd_sunday_counts(report.get("days") or [])
     for item in report.get("employees") or []:
+        afm = str(item.get("employee_afm") or "")
         values = [
             f"{item.get('eponymo') or ''} {item.get('onoma') or ''}".strip(),
-            str(item.get("employee_afm") or ""),
+            afm,
             _duration(item.get("recognized_work_minutes")),
             _duration(item.get("day")), _duration(item.get("night")),
             _duration(item.get("sunday_holiday")), _duration(item.get("night_sunday_holiday")),
@@ -140,6 +180,7 @@ def build_timekeeping_export_xlsx(
         for _, field in families:
             values += _breakdown_values(item, field)
         values.append(_duration(item.get("annual_legal_overtime_minutes_after_period")))
+        values.insert(31, int(sunday_counts.get(afm, 0)))
         summary.append(values)
     _finish_table(summary, header_row, 3, len(summary_headers))
 

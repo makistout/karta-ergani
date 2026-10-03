@@ -492,7 +492,58 @@
       "apologistic_version": "2026-09-23.full-short-evidence-review",
       "timekeeping_version": "timekeeping-v13-canonical-intervals",
       "count": 95
+    },
+    {
+      "id": "rules-2cf8397d8a06dc5b",
+      "fingerprint": "2cf8397d8a06dc5b46d3dad8b95e2026fe60d24af6feea684b4a20fb8480a6c8",
+      "files": {
+        "app/apologistic_rules.py": "2170fac0ab9ed9ff16a497f01f8407c44ad163ebc0cf756693d390cdf55f8348",
+        "app/apologistic.py": "6268fb25fdbda414bff112a89add6715d35d53adcc86e82b43159183b46130dc",
+        "app/timekeeping.py": "75f26947a9fce7f13968b6934a191296d5b6c1f6872b049517cae9d867660c7a",
+        "app/apologistic_snapshot.py": "902b850aa2f757b97452cb6e9571fee31fa1fd760f543edb1ad5d0501125d03f",
+        "app/repo_apologistic.py": "f2c7ccfb479f2c1474e3010cde61c718513931b589fdcd615b5d4baafe49d318",
+        "app/routes_apologistic.py": "4caee51ec0202bb523735cfb8020c818328a118e28d06c17a97fe18330cef80c",
+        "app/apologistic_submit.py": "fd2afa476ad70883af5a1e458f052d2a46508b45d29df99fa3248047ed348aa3",
+        "app/apologistic_batch_submit.py": "af44fb34d3fde61321d67090f906aeb5bfedb37d89317401a349fbd2562f82e6",
+        "app/timekeeping_export.py": "9f94f3d5b8affc2e3a0079d4b78235b3dd26c0d7dd5cef6e07da02965181f5e9",
+        "app/repo_work_log.py": "482cd35ad865d4abb5d42a5a52b538043bc5e40d6cb4d3ed8314f4f38ef21e69",
+        "app/payroll.py": "198892a1c71335d2e5575231e92afd487ee9359b6d4696d4caa9e1b98499d335",
+        "app/payroll_adjustments.py": "67eee468d4ee0ea3332dca7df1da146246a3db6206aab28adfa393d8f1705e52",
+        "app/routes_payroll.py": "ec0fc45f4d4d576d8ce8ecfe2372113b15e6b36397f914f6d0fd7f784c02dcc7",
+        "app/payroll_schedule.py": "4725de00b94c973f8b52b3040dcc733c7c730996a060f74f7e1d7a0c7819b978",
+        "app/repo_schedule.py": "babc28a0d06a06e6dc16d37854fc7fa8774028196e7f9a2e2a583a316c27f639",
+        "app/payroll_contracts.py": "a873bc605e81956303c2ab8ce6d5c96e503144b6a81264b93c36cb8d008778ba",
+        "app/repo_employment_contract.py": "8bc3f677419180610446044472bed0718965447b62cf8c1bef2745342404f678",
+        "app/payroll_export.py": "23dbe35d2f1ee11a4e0064f699145e0671af07098b47bfefd849f736bc789a58",
+        "app/static/js/apologistic-timekeeping.js": "b739b0e08907f93c1b6d4ae0a1a6daa4a7281179cd7164f087867372045f9d7e",
+        "docs/APOLOGISTIKO_RULES_CATALOG.md": "3b16bfe4ca7ecdf0cbb9c6057a7e4a337f09d94aca950f21cfbd83c3d92e9937",
+        "docs/APOLOGISTIKO_LOGIC.md": "b722dc5b4f6cde298878204f6516c6997f0f641a77151c610c76a09bc9314bbf",
+        "scripts/render_rule_document.py": "6ffb332331a0e149d12b0b308e1e400ae3f9f12633dd2707b26dd18cf0272171",
+        "documentation/Μηχανισμός Απολογιστικού - Προς Έλεγχο Εργατολόγου.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "deliverables/rule_diagrams/build_diagrams.py": "9937cb2ba20792ff734c3d48084bb7bdb1a4ad0145c6c59e11c918e0b6218830",
+        "deliverables/rule_diagrams/viewer.template.html": "a38e1202a85df1fec52899d347bb5dfd81d607e30dcb1b9d38ea1dba67197521",
+        "scripts/build_rule_diagrams.py": "806aca7c92f5c5a24159a6db33cc9d39ce28f7b8e722ed5d491cf3f3eee48d43",
+        "app/rule_diagram_versions.py": "111b66f1e72fdf511a3bddfd31e6fc2bcb9b0346c465c4508bf4e2a8e472cf9a"
+      },
+      "artifacts": {
+        "index.html": "a34ae7c560308b48d4376b5bfacc78586550e4362b57f094ea5f926b8063f4db",
+        "rules.json": "33fcf645c8af662c03f1ed2073846628960d90d87cbaa5499364542cdac79ab5",
+        "flowcharts.md": "49c81d8b91b9f1d2819bb90953126c184b6c9db66574395816d892915339e4b4",
+        "catalog.md": "d416269a9a638056f4ea8d37985e1cf97d7a9b773f7829ce0510a4c2954c3dde",
+        "catalog.html": "fa784ad287e0d539b78a1961f95a13c457659bdfc14d21284932cc7f386fd6ae",
+        "logic.md": "cb3fcd2252d5a2bfec533e03e879a1fe58d973817e70e8a23702fc6ffb31b056",
+        "logic.html": "6f79d166e196e231acb79a678a3bf3c7ed15f83a750d17613f4028c4bdce847a",
+        "notes.html": "affd47c31fef8e7cc65b15bbd1d13b855bf5bbb13f6d98dfbdc4aa8157c37e2a",
+        "overview.html": "5197c99c7844a516a58479a7955e181c8b75f433d8fe4bd6c155a596b4808f21",
+        "legal-review.docx": "f3ff1c7c89b2b90ad1c5e490f32b06c35b95b4ecc25bc002c7ac107e9b1a6f6c",
+        "complete.zip": "533e10299dfd7d76997548b780ea9b04816e5ff744473b13a6c0ea6403e216bc"
+      },
+      "reviewed_at": "2026-10-03T16:47:34+00:00",
+      "source_commit": "2c6763deff1ecd87c11813fade5b905d09ae6bd1",
+      "apologistic_version": "2026-09-23.full-short-evidence-review",
+      "timekeeping_version": "timekeeping-v13-canonical-intervals",
+      "count": 96
     }
   ],
-  "current": "rules-8980b8a4f202c22e"
+  "current": "rules-2cf8397d8a06dc5b"
 }

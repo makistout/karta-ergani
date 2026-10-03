@@ -1401,6 +1401,7 @@ def _checkin_all_matches_for_date(
 def _validate_single_command(
     parsed: dict[str, Any], *, contexts: list[dict[str, Any]], employees: list[dict[str, Any]],
     reply_context: dict[str, Any] | None = None, user_text: str = "",
+    leave_reservations: dict[str, int] | None = None,
 ) -> tuple[str, dict[str, Any], str]:
     _inherit_conversation_context(
         parsed, contexts=contexts, employees=employees,
@@ -1539,6 +1540,31 @@ def _validate_single_command(
             parsed["hour_to"] = intervals[0]["hour_to"]
     if intent == "leave" and not str(parsed.get("leave_type") or "").strip():
         errors.append("Η άδεια χρειάζεται συγκεκριμένο τύπο")
+    elif intent == "leave" and store_id in allowed_store_ids and matches:
+        from app.leave_balance import is_normal_leave_type, normal_leave_block_reason
+
+        leave_type = str(parsed.get("leave_type") or "").strip()
+        if is_normal_leave_type(leave_type):
+            store_context = next(c for c in contexts if int(c["store_id"]) == store_id)
+            reserved = leave_reservations if leave_reservations is not None else {}
+            blocked: list[str] = []
+            for match in matches:
+                afm = str(match.get("afm") or "").strip()
+                reason = normal_leave_block_reason(
+                    store_id=int(store_id),
+                    employer_afm=str(store_context.get("employer_afm") or ""),
+                    branch_aa=str(store_context.get("branch_aa") or "0"),
+                    employee_afm=afm,
+                    employee_name=str(match.get("name") or afm),
+                    leave_type=leave_type,
+                    leave_date=date,
+                    extra_pending_days=int(reserved.get(afm) or 0),
+                )
+                if reason:
+                    blocked.append(reason)
+                elif afm:
+                    reserved[afm] = int(reserved.get(afm) or 0) + 1
+            errors.extend(blocked)
     if intent == "today_info" and not str(parsed.get("clarification_question") or "").strip():
         errors.append("Δεν δόθηκε απάντηση από την εικόνα εργασίας σήμερα")
     if intent == "unknown" and not ambiguous_afms:
@@ -1859,10 +1885,12 @@ def validate_and_describe(
     errors: list[str] = []
     store_ids: set[int] = set()
     statuses: list[str] = []
+    leave_reservations: dict[str, int] = {}
     for index, command in enumerate(normalized, start=1):
         status, validation, proposed = _validate_single_command(
             command, contexts=contexts, employees=employees,
             reply_context=reply_context, user_text=user_text,
+            leave_reservations=leave_reservations,
         )
         proposed_lines.extend(line for line in proposed.splitlines() if line.strip())
         statuses.append(status)
